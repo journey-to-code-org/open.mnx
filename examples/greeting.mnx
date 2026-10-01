@@ -1,0 +1,9 @@
+component: Greeting
+tag: mnix-greeting
+prop name: string
+prop profile: url
+---
+<article class="greeting">
+  <h1>Hello, {{ name }}.</h1>
+  <a href="{{ profile }}">View profile</a>
+</article>

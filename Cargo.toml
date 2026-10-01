@@ -1,0 +1,18 @@
+[package]
+name = "mnix-compiler"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+description = "Build-time compiler for MNIX HTML-first components"
+
+[[bin]]
+name = "mnix"
+path = "src/main.rs"
+
+[dependencies]
+html-escape = "0.2"
+serde_json = "1"
+
+[workspace]
+resolver = "2"
