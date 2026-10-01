@@ -1,4 +1,5 @@
 use crate::diagnostic::Span;
+use crate::expression::Expression;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComponentAst {
@@ -22,12 +23,34 @@ pub enum PropKind {
     Number,
     Boolean,
     Url,
+    Strings,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Node {
     Text(Vec<Part>),
     Element(Element),
+    If {
+        test: Expression,
+        consequent: Vec<Node>,
+        alternate: Vec<Node>,
+        span: Span,
+    },
+    Each {
+        item: String,
+        collection: String,
+        children: Vec<Node>,
+        span: Span,
+    },
+    Slot {
+        name: String,
+        fallback: Vec<Node>,
+        span: Span,
+    },
+    Else {
+        children: Vec<Node>,
+        span: Span,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

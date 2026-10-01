@@ -21,6 +21,7 @@ pub enum PropKind {
     Number,
     Boolean,
     Url,
+    Strings,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,4 +48,5 @@ pub struct Attribute {
 pub enum Part {
     Literal(String),
     Prop(usize),
+    Escaped(String),
 }

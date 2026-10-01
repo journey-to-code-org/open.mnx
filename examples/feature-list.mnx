@@ -1,0 +1,16 @@
+component: FeatureList
+prop ready: boolean
+prop mode: string
+prop features: strings
+---
+<main>
+  <mnix-if test='ready && mode == "active"'>
+    <ul>
+      <mnix-each items="features" as="feature">
+        <li>{{ feature }}</li>
+      </mnix-each>
+    </ul>
+    <mnix-else><p>Features are not available.</p></mnix-else>
+  </mnix-if>
+  <mnix-slot name="actions"><a href="/">Continue</a></mnix-slot>
+</main>

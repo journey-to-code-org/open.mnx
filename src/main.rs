@@ -20,17 +20,19 @@ fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
     if arguments.next().as_deref() != Some("compile") {
         return Err(
-            "usage: mnix compile <component.mnx> --props <props.json> [--output <file>]".into(),
+            "usage: mnix compile <component.mnx> --props <props.json> [--slots <slots.json>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
         .next()
         .ok_or_else(|| "missing component source path".to_owned())?;
     let mut props_path = None;
+    let mut slots_path = None;
     let mut output_path = None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--props" => props_path = arguments.next(),
+            "--slots" => slots_path = arguments.next(),
             "--output" => output_path = arguments.next(),
             _ => return Err(format!("unexpected argument `{argument}`")),
         }
@@ -40,8 +42,14 @@ fn run() -> Result<(), String> {
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
     let props = fs::read_to_string(&props_path)
         .map_err(|error| format!("{props_path}: unable to read props: {error}"))?;
-    let html = mnix_compiler::compile(&source, &props)
-        .map_err(|diagnostic| format!("{source_path}:{diagnostic}"))?;
+    let html = if let Some(slots_path) = slots_path {
+        let slots = fs::read_to_string(&slots_path)
+            .map_err(|error| format!("{slots_path}: unable to read slots: {error}"))?;
+        mnix_compiler::compile_with_slots(&source, &props, &slots)
+    } else {
+        mnix_compiler::compile(&source, &props)
+    }
+    .map_err(|diagnostic| format!("{source_path}:{diagnostic}"))?;
     if let Some(output_path) = output_path {
         write_atomically(&output_path, html.as_bytes())?;
     } else {

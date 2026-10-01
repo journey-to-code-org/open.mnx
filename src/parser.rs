@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::{
     ast::{Attribute, ComponentAst, Element, Node, Part, PropDecl, PropKind},
     diagnostic::{Diagnostic, Span},
+    expression,
 };
 
 const VOID_ELEMENTS: &[&str] = &[
@@ -33,6 +34,16 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         props: header.props,
         nodes,
     })
+}
+
+pub(crate) fn parse_fragment(source: &str) -> Result<Vec<Node>, Diagnostic> {
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    let mut parser = TemplateParser::new(&normalized, 1);
+    let nodes = parser.parse_nodes(None)?;
+    if parser.position != normalized.len() {
+        return Err(parser.error("unexpected content after slot template"));
+    }
+    Ok(nodes)
 }
 
 fn split_source(source: &str) -> Result<(&str, &str, usize), Diagnostic> {
@@ -102,6 +113,7 @@ fn parse_header(header: &str) -> Result<Header, Diagnostic> {
                 "number" => PropKind::Number,
                 "boolean" => PropKind::Boolean,
                 "url" => PropKind::Url,
+                "strings" => PropKind::Strings,
                 _ => {
                     return Err(Diagnostic::new(
                         span,
@@ -198,7 +210,7 @@ impl<'a> TemplateParser<'a> {
                     .error("doctype and processing instructions are not supported in templates"));
             }
             if self.starts_with("<") {
-                nodes.push(Node::Element(self.parse_element()?));
+                nodes.push(self.parse_element()?);
             } else {
                 nodes.push(Node::Text(self.parse_parts(None)?));
             }
@@ -209,7 +221,7 @@ impl<'a> TemplateParser<'a> {
         Ok(nodes)
     }
 
-    fn parse_element(&mut self) -> Result<Element, Diagnostic> {
+    fn parse_element(&mut self) -> Result<Node, Diagnostic> {
         let span = self.current_span();
         self.advance(1);
         let name = self.parse_name()?;
@@ -224,12 +236,13 @@ impl<'a> TemplateParser<'a> {
             }
             if self.starts_with("/>") {
                 self.advance(2);
-                return Ok(Element {
+                let element = Element {
                     name,
                     attributes,
                     children: Vec::new(),
                     span,
-                });
+                };
+                return self.lower_directive(element);
             }
             if self.position >= self.source.len() {
                 return Err(self.error("unterminated start tag"));
@@ -290,12 +303,106 @@ impl<'a> TemplateParser<'a> {
         } else {
             self.parse_nodes(Some(&name))?
         };
-        Ok(Element {
+        self.lower_directive(Element {
             name,
             attributes,
             children,
             span,
         })
+    }
+
+    fn lower_directive(&self, element: Element) -> Result<Node, Diagnostic> {
+        if element.name.eq_ignore_ascii_case("mnix-if") {
+            validate_directive_attributes(&element, &["test"])?;
+            let test = required_literal_attribute(&element, "test")?;
+            let test = expression::parse(&test).map_err(|message| {
+                Diagnostic::new(element.span, format!("invalid mnix-if test: {message}"))
+            })?;
+            let mut consequent = Vec::new();
+            let mut alternate = None;
+            for child in element.children {
+                match child {
+                    Node::Else { children, span } => {
+                        if alternate.is_some() {
+                            return Err(Diagnostic::new(span, "mnix-if may contain only one mnix-else"));
+                        }
+                        alternate = Some(children);
+                    }
+                    Node::Text(parts)
+                        if alternate.is_some()
+                            && parts.iter().all(
+                                |part| matches!(part, Part::Literal(value) if value.trim().is_empty()),
+                            ) => {}
+                    child => {
+                        if alternate.is_some() {
+                            return Err(Diagnostic::new(element.span, "mnix-else must be the final child of mnix-if"));
+                        }
+                        consequent.push(child);
+                    }
+                }
+            }
+            return Ok(Node::If {
+                test,
+                consequent,
+                alternate: alternate.unwrap_or_default(),
+                span: element.span,
+            });
+        }
+        if element.name.eq_ignore_ascii_case("mnix-each") {
+            validate_directive_attributes(&element, &["items", "as"])?;
+            let collection = required_literal_attribute(&element, "items")?;
+            let item = required_literal_attribute(&element, "as")?;
+            if !is_identifier(&collection) {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "mnix-each items must name a declared strings prop",
+                ));
+            }
+            if !is_identifier(&item) {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "mnix-each as must be a valid local identifier",
+                ));
+            }
+            return Ok(Node::Each {
+                item,
+                collection,
+                children: element.children,
+                span: element.span,
+            });
+        }
+        if element.name.eq_ignore_ascii_case("mnix-slot") {
+            validate_directive_attributes(&element, &["name"])?;
+            let name = match optional_literal_attribute(&element, "name")? {
+                Some(name) if is_identifier(&name) => name,
+                Some(name) if name == "default" => "default".to_owned(),
+                None => "default".to_owned(),
+                Some(_) => {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "mnix-slot name must be `default` or a valid identifier",
+                    ));
+                }
+            };
+            return Ok(Node::Slot {
+                name,
+                fallback: element.children,
+                span: element.span,
+            });
+        }
+        if element.name.eq_ignore_ascii_case("mnix-else") {
+            if !element.attributes.is_empty() {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "mnix-else does not accept attributes",
+                ));
+            }
+            return Ok(Node::Else {
+                children: element.children,
+                span: element.span,
+            });
+        }
+        Ok(Node::Element(element))
     }
 
     fn parse_name(&mut self) -> Result<String, Diagnostic> {
@@ -411,4 +518,61 @@ fn is_inline_event_attribute(name: &str) -> bool {
     name.starts_with("on")
         && name.len() > 2
         && name[2..].bytes().all(|byte| byte.is_ascii_alphabetic())
+}
+
+fn validate_directive_attributes(element: &Element, allowed: &[&str]) -> Result<(), Diagnostic> {
+    for attribute in &element.attributes {
+        if !allowed
+            .iter()
+            .any(|name| attribute.name.eq_ignore_ascii_case(name))
+        {
+            return Err(Diagnostic::new(
+                attribute.span,
+                format!(
+                    "unexpected attribute `{}` on <{}>",
+                    attribute.name, element.name
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn required_literal_attribute(element: &Element, name: &str) -> Result<String, Diagnostic> {
+    optional_literal_attribute(element, name)?.ok_or_else(|| {
+        Diagnostic::new(
+            element.span,
+            format!("<{}> requires a `{name}` attribute", element.name),
+        )
+    })
+}
+
+fn optional_literal_attribute(element: &Element, name: &str) -> Result<Option<String>, Diagnostic> {
+    let attribute = element
+        .attributes
+        .iter()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case(name));
+    let Some(attribute) = attribute else {
+        return Ok(None);
+    };
+    let Some(parts) = attribute.value.as_deref() else {
+        return Err(Diagnostic::new(
+            attribute.span,
+            format!("attribute `{name}` requires a quoted value"),
+        ));
+    };
+    if parts.iter().any(|part| !matches!(part, Part::Literal(_))) {
+        return Err(Diagnostic::new(
+            attribute.span,
+            format!("attribute `{name}` must be static text"),
+        ));
+    }
+    let value = parts
+        .iter()
+        .filter_map(|part| match part {
+            Part::Literal(text) => Some(text.as_str()),
+            Part::Interpolation { .. } => None,
+        })
+        .collect::<String>();
+    Ok(Some(value))
 }

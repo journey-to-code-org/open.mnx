@@ -1,0 +1,5 @@
+{
+  "ready": true,
+  "mode": "active",
+  "features": ["Static HTML", "Scoped slots", "Escaped output"]
+}

@@ -102,6 +102,7 @@ fn render_parts(
     for part in parts {
         match part {
             Part::Literal(value) => output.push_str(value),
+            Part::Escaped(value) => escape_html(value, output),
             Part::Prop(index) => {
                 let prop = component.props.get(*index).ok_or_else(|| {
                     Diagnostic::new(

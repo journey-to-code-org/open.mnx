@@ -1,4 +1,4 @@
-use mnix_compiler::{compile, compile_value};
+use mnix_compiler::{compile, compile_value, compile_with_slots};
 use serde_json::json;
 
 const SOURCE: &str = "component: Greeting\nprop name: string\nprop url: url\n---\n<article class=\"greeting\"><h1>Hello, {{ name }}!</h1><a href=\"{{ url }}\">Visit</a></article>";
@@ -240,4 +240,176 @@ fn preserves_case_sensitive_svg_names_and_rejects_srcdoc_interpolation() {
         .unwrap_err()
         .message
         .contains("interpolation in srcdoc is not supported"));
+}
+
+#[test]
+fn selects_compile_time_if_else_branches_without_emitting_directives() {
+    let source = "component: Status\nprop active: boolean\nprop status: string\nprop count: number\n---\n<main><mnix-if test='active && (status == \"ready\" || count == 3)'><p>Ready</p><mnix-else><p>Waiting</p></mnix-else></mnix-if></main>";
+    let selected = compile(source, r#"{"active":true,"status":"ready","count":0}"#).unwrap();
+    assert!(selected.contains("<p>Ready</p>"));
+    assert!(!selected.contains("<p>Waiting</p>"));
+    assert!(!selected.contains("mnix-if"));
+    assert!(!selected.contains("mnix-else"));
+
+    let alternative = compile(source, r#"{"active":false,"status":"ready","count":0}"#).unwrap();
+    assert!(alternative.contains("<p>Waiting</p>"));
+    assert!(!alternative.contains("<p>Ready</p>"));
+}
+
+#[test]
+fn rejects_unknown_and_non_boolean_compile_time_conditions() {
+    let unknown = "component: Conditional\n---\n<main><mnix-if test=\"missing\"><p>Shown</p></mnix-if></main>";
+    assert!(compile(unknown, "{}")
+        .unwrap_err()
+        .message
+        .contains("unknown reference `missing`"));
+
+    let non_boolean = "component: Conditional\nprop count: number\n---\n<main><mnix-if test=\"count\"><p>Shown</p></mnix-if></main>";
+    assert!(compile(non_boolean, r#"{"count":1}"#)
+        .unwrap_err()
+        .message
+        .contains("must evaluate to a boolean"));
+
+    let unsupported = "component: Conditional\nprop count: number\n---\n<main><mnix-if test=\"count + 1 == 2\"><p>Shown</p></mnix-if></main>";
+    assert!(compile(unsupported, r#"{"count":1}"#)
+        .unwrap_err()
+        .message
+        .contains("invalid mnix-if test"));
+
+    let unreachable_unknown = "component: Conditional\n---\n<main><mnix-if test=\"false && missing\"><p>Shown</p></mnix-if></main>";
+    assert!(compile(unreachable_unknown, "{}")
+        .unwrap_err()
+        .message
+        .contains("unknown reference `missing`"));
+
+    let unreachable_type_error = "component: Conditional\nprop label: string\n---\n<main><mnix-if test=\"false && label\"><p>Shown</p></mnix-if></main>";
+    assert!(compile(unreachable_type_error, r#"{"label":"no"}"#)
+        .unwrap_err()
+        .message
+        .contains("operator && requires boolean operands"));
+
+    let unused_branch = "component: Conditional\n---\n<main><mnix-if test=\"true\"><p>Shown</p><mnix-else><p>{{ missing }}</p></mnix-else></mnix-if></main>";
+    assert!(compile(unused_branch, "{}")
+        .unwrap_err()
+        .message
+        .contains("unknown prop reference `missing`"));
+
+    let unsafe_unused_branch = "component: Conditional\n---\n<main><mnix-if test=\"true\"><p>Shown</p><mnix-else><a href=\"javascript:bad()\">Unsafe</a></mnix-else></mnix-if></main>";
+    assert!(compile(unsafe_unused_branch, "{}")
+        .unwrap_err()
+        .message
+        .contains("unsafe URL"));
+}
+
+#[test]
+fn expands_typed_string_loops_with_contextual_escaping() {
+    let source = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
+    let html = compile(
+        source,
+        r#"{"features":["Rust","<script>alert(1)</script>","HTML"]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        html,
+        "<ul><li>Rust</li><li>&lt;script&gt;alert(1)&lt;/script&gt;</li><li>HTML</li></ul>"
+    );
+    assert!(!html.contains("mnix-each"));
+
+    assert_eq!(compile(source, r#"{"features":[]}"#).unwrap(), "<ul></ul>");
+
+    let invalid_empty_body = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ missing }}</li></mnix-each></ul>";
+    assert!(compile(invalid_empty_body, r#"{"features":[]}"#)
+        .unwrap_err()
+        .message
+        .contains("unknown prop reference `missing`"));
+}
+
+#[test]
+fn requires_string_lists_and_valid_loop_sources() {
+    let source = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
+    assert!(compile(source, r#"{"features":["Rust",2]}"#)
+        .unwrap_err()
+        .message
+        .contains("must be an array of strings"));
+
+    let wrong_type = "component: FeatureList\nprop features: string\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
+    assert!(compile(wrong_type, r#"{"features":"Rust"}"#)
+        .unwrap_err()
+        .message
+        .contains("must have type strings"));
+
+    let unknown = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"missing\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
+    assert!(compile(unknown, r#"{"features":[]}"#)
+        .unwrap_err()
+        .message
+        .contains("unknown prop `missing`"));
+}
+
+#[test]
+fn fills_named_and_default_slots_from_parsed_template_fragments() {
+    let source = "component: Panel\nprop title: string\n---\n<main><mnix-slot name=\"heading\"><h1>{{ title }}</h1></mnix-slot><mnix-slot><p>Default fallback</p></mnix-slot></main>";
+    let html = compile_with_slots(
+        source,
+        r#"{"title":"Panel title"}"#,
+        r#"{"heading":"<h2>{{ title }}</h2>","default":"<p>Supplied default</p>"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        html,
+        "<main><h2>Panel title</h2><p>Supplied default</p></main>"
+    );
+    assert!(!html.contains("mnix-slot"));
+
+    assert_eq!(
+        compile(source, r#"{"title":"Fallback title"}"#).unwrap(),
+        "<main><h1>Fallback title</h1><p>Default fallback</p></main>"
+    );
+}
+
+#[test]
+fn rejects_unknown_slots_invalid_slot_markup_and_recursive_expansion() {
+    let source = "component: Panel\n---\n<main><mnix-slot name=\"content\"><p>Fallback</p></mnix-slot></main>";
+    assert!(
+        compile_with_slots(source, "{}", r#"{"unknown":"<p>Bad</p>"}"#)
+            .unwrap_err()
+            .message
+            .contains("slot `unknown` is not declared")
+    );
+    assert!(
+        compile_with_slots(source, "{}", r#"{"content":"<p>Broken</main>"}"#)
+            .unwrap_err()
+            .message
+            .contains("does not match")
+    );
+
+    let recursive = "component: Panel\n---\n<main><mnix-slot name=\"content\"></mnix-slot></main>";
+    assert!(compile_with_slots(
+        recursive,
+        "{}",
+        r#"{"content":"<mnix-slot name=\"content\"></mnix-slot>"}"#
+    )
+    .unwrap_err()
+    .message
+    .contains("recursive slot expansion"));
+}
+
+#[test]
+fn rejects_misplaced_else_and_unknown_directive_attributes() {
+    let misplaced = "component: Bad\n---\n<main><mnix-else><p>Else</p></mnix-else></main>";
+    assert!(compile(misplaced, "{}")
+        .unwrap_err()
+        .message
+        .contains("only valid as a direct child"));
+
+    let extra = "component: Bad\nprop enabled: boolean\n---\n<main><mnix-if test=\"enabled\" other=\"x\"><p>Yes</p></mnix-if></main>";
+    assert!(compile(extra, r#"{"enabled":true}"#)
+        .unwrap_err()
+        .message
+        .contains("unexpected attribute `other`"));
+
+    let misplaced_else = "component: Bad\n---\n<main><mnix-if test=\"true\"><p>Yes</p><mnix-else><p>No</p></mnix-else><p>After</p></mnix-if></main>";
+    assert!(compile(misplaced_else, "{}")
+        .unwrap_err()
+        .message
+        .contains("mnix-else must be the final child"));
 }
