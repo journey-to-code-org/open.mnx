@@ -32,7 +32,7 @@ const VOID_ELEMENTS: &[&str] = &[
 pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     let normalized = normalize(source);
     let mut parser = TemplateParser::new(Cursor::new(&normalized));
-    parser.skip_whitespace_and_comments()?;
+    let leading_comment = parser.skip_whitespace_and_comments()?;
     if normalized.trim_start().starts_with("component:") {
         return Err(Diagnostic::new(
             Span::new(1, 1),
@@ -46,7 +46,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     } else {
         Script::default()
     };
-    parser.skip_whitespace_and_comments()?;
+    let host_comment = parser.skip_whitespace_and_comments()?;
 
     if !parser.starts_with("<") || parser.starts_with("</") {
         return Err(
@@ -91,9 +91,15 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         });
     }
 
+    // A comment right above the host tag (or above the script) documents the component.
+    let description = host_comment
+        .or(leading_comment)
+        .map(|text| dedent(&text))
+        .filter(|text| !text.is_empty());
     Ok(ComponentAst {
         tag: host.name,
         tag_span: host.span,
+        description,
         shadow,
         props,
         script,
@@ -110,6 +116,24 @@ pub(crate) fn parse_fragment(source: &str) -> Result<Vec<Node>, Diagnostic> {
         return Err(parser.error("unexpected content after slot template"));
     }
     Ok(nodes)
+}
+
+/// Trim a comment's text and remove the indentation its lines share.
+fn dedent(text: &str) -> String {
+    let lines: Vec<&str> = text.trim_matches('\n').lines().collect();
+    let indent = lines
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    lines
+        .iter()
+        .map(|line| line.get(indent..).unwrap_or("").trim_end())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_owned()
 }
 
 fn normalize(source: &str) -> String {
@@ -211,18 +235,21 @@ impl<'a> TemplateParser<'a> {
         script::parse(body, body_span)
     }
 
-    fn skip_whitespace_and_comments(&mut self) -> Result<(), Diagnostic> {
+    /// Skip whitespace and comments; returns the text of the last comment skipped.
+    fn skip_whitespace_and_comments(&mut self) -> Result<Option<String>, Diagnostic> {
+        let mut last = None;
         loop {
             self.skip_whitespace();
             if self.starts_with("<!--") {
-                self.skip_comment()?;
+                last = Some(self.skip_comment()?);
             } else {
-                return Ok(());
+                return Ok(last);
             }
         }
     }
 
-    fn skip_comment(&mut self) -> Result<(), Diagnostic> {
+    /// Skip a comment, returning its text.
+    fn skip_comment(&mut self) -> Result<String, Diagnostic> {
         let span = self.current_span();
         let Some(end) = self.cursor.rest().find("-->") else {
             return Err(Diagnostic::new(
@@ -230,8 +257,9 @@ impl<'a> TemplateParser<'a> {
                 "unterminated HTML comment; expected -->",
             ));
         };
+        let text = self.cursor.rest()[4..end].to_owned();
         self.advance(end + 3);
-        Ok(())
+        Ok(text)
     }
 
     fn parse_nodes(&mut self, closing: Option<&str>) -> Result<Vec<Node>, Diagnostic> {

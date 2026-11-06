@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "2.1.0",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "header.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "MnxHeader",
+          "tagName": "mnx-header",
+          "customElement": true,
+          "superclass": {
+            "name": "HTMLElement",
+            "package": "global:"
+          },
+          "attributes": [
+            {
+              "name": "title",
+              "fieldName": "title",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"Mikey Nichols\""
+            },
+            {
+              "name": "data",
+              "fieldName": "data",
+              "type": {
+                "text": "{ sample: string; sampleTwo: string }"
+              },
+              "default": "{\"sample\":\"sample data\",\"sampleTwo\":\"additional data\"}",
+              "description": "JSON"
+            }
+          ],
+          "members": [
+            {
+              "kind": "field",
+              "name": "title",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"Mikey Nichols\"",
+              "attribute": "title"
+            },
+            {
+              "kind": "field",
+              "name": "data",
+              "type": {
+                "text": "{ sample: string; sampleTwo: string }"
+              },
+              "default": "{\"sample\":\"sample data\",\"sampleTwo\":\"additional data\"}",
+              "attribute": "data"
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "default",
+          "declaration": {
+            "name": "MnxHeader",
+            "module": "header.js"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "mnx-header",
+          "declaration": {
+            "name": "MnxHeader",
+            "module": "header.js"
+          }
+        }
+      ]
+    }
+  ]
+}

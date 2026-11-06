@@ -40,3 +40,17 @@ fn header_sample_compiles_to_a_custom_element_module() {
         mnix_compiler::compile_js(&read("header.mnx"), "@mnx/runtime", "header.mnx").unwrap();
     assert_golden(&module, "header.js");
 }
+
+/// TypeScript declarations and the Custom Elements Manifest for the same component.
+#[test]
+fn header_sample_describes_itself_to_tools() {
+    let source = read("header.mnx");
+    assert_golden(
+        &mnix_compiler::compile_declarations(&source, "header.mnx").unwrap(),
+        "header.d.ts",
+    );
+    assert_golden(
+        &mnix_compiler::compile_manifest(&source, "header.js").unwrap(),
+        "header.manifest.json",
+    );
+}

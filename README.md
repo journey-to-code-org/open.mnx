@@ -69,6 +69,14 @@ export default define(tag, {
 
 Not yet in the JavaScript output: prop defaults computed at runtime, and slot content added to the element after it starts (it is projected once).
 
+## Describing components to tools
+
+- `--emit manifest` writes a [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest) (`custom-elements.json`, schema 2.1.0): the tag, each prop as an attribute and a field with its type and default, slots (the default slot is `""`), and a description taken from an HTML comment above the host tag (or above the `<script>`). Editors, Storybook and documentation tools read this format. `--module-path` sets the module path it records (default: the source name with `.js`).
+- `--emit dts` writes TypeScript declarations for the JavaScript output: the element class with typed properties, a `…Props` interface (props with defaults are optional), the `tag` constant, and an `HTMLElementTagNameMap` entry so `document.querySelector("mnx-header")` is typed.
+- Types are inferred from defaults: `{ sample: "…" }` becomes `{ sample: string }`, `["a"]` becomes `string[]`, and a required prop with no default is `unknown`.
+
+Both are checked by `npm run test:tools` in `runtime/`: the manifest against the official JSON schema, and the declarations with the TypeScript compiler on code that should type-check and code that should not.
+
 ## Commands
 
 Install Rust 1.97 or newer (required by the oxc JavaScript parser). The runtime needs Node 20 or newer.
@@ -83,9 +91,10 @@ cargo run --locked -- compile examples/greeting.mnx --props examples/greeting.pr
 cargo run --locked -- compile examples/feature-list.mnx --props examples/feature-list.props.json --slots examples/feature-list.slots.json
 (cd runtime && npm install && npm test)
 (cd runtime && npm run test:browser)   # needs Playwright with Chromium
+(cd runtime && npm run test:tools)     # manifest schema + TypeScript checks
 ```
 
-`--props` is optional: defaults come from the component itself. `--emit js` writes the element module instead of HTML; `--runtime <module>` changes the import it uses (default `@mnx/runtime`). The compiler writes HTML to stdout by default. `--output <file>` writes to a file using atomic promotion. For example, append `--output target/greeting.html` to the final command to save the generated fragment.
+`--props` is optional: defaults come from the component itself. `--emit js` writes the element module instead of HTML, `--emit dts` its TypeScript declarations, and `--emit manifest` its Custom Elements Manifest; `--runtime <module>` changes the import it uses (default `@mnx/runtime`). The compiler writes HTML to stdout by default. `--output <file>` writes to a file using atomic promotion. For example, append `--output target/greeting.html` to the final command to save the generated fragment.
 
 ## Release direction
 

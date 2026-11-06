@@ -1,5 +1,6 @@
 mod ast;
 mod diagnostic;
+mod emit_interface;
 mod emit_js;
 mod expression;
 mod ir;
@@ -81,4 +82,15 @@ pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<Stri
             source_name,
         },
     )
+}
+
+/// A Custom Elements Manifest (`custom-elements.json`) describing the component, as the module
+/// at `module_path` (the path the JavaScript output is published at).
+pub fn compile_manifest(source: &str, module_path: &str) -> Result<String, Diagnostic> {
+    emit_interface::manifest(&parser::parse(source)?, module_path)
+}
+
+/// TypeScript declarations (`.d.ts`) for the JavaScript output.
+pub fn compile_declarations(source: &str, source_name: &str) -> Result<String, Diagnostic> {
+    emit_interface::declarations(&parser::parse(source)?, source_name)
 }

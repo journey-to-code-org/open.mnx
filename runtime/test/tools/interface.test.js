@@ -1,0 +1,120 @@
+// The manifest and type declarations the compiler writes, checked with the real tools: the
+// official Custom Elements Manifest JSON schema, and the TypeScript compiler on code that should
+// and should not type-check. Needs a Rust toolchain. Run with `npm run test:tools`.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import Ajv from 'ajv';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repo = join(here, '../../..');
+const require = createRequire(import.meta.url);
+const tsc = join(dirname(require.resolve('typescript/package.json')), 'bin', 'tsc');
+
+let dir;
+const SOURCE = `<!--
+  A site header.
+  Pass \`data\` as JSON in plain HTML.
+-->
+<script>
+  const title = "Mikey Nichols"
+  const data = { sample: "sample data", sampleTwo: "additional data" }
+</script>
+<mnx-header title={title} data={data} tags={["a"]} max-items={3} open={false} label>
+  <header><h1>{title}</h1><mnx-slot name="actions"></mnx-slot><mnx-slot></mnx-slot></header>
+</mnx-header>
+`;
+
+function compile(...args) {
+  return execFileSync(join(repo, 'target/debug/mnix'), ['compile', join(dir, 'header.mnx'), ...args], { encoding: 'utf8' });
+}
+
+before(() => {
+  execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
+  dir = mkdtempSync(join(tmpdir(), 'mnx-tools-'));
+  writeFileSync(join(dir, 'header.mnx'), SOURCE);
+  writeFileSync(join(dir, 'header.d.ts'), compile('--emit', 'dts'));
+  writeFileSync(join(dir, 'header.js'), compile('--emit', 'js'));
+});
+after(() => rmSync(dir, { recursive: true, force: true }));
+
+test('the manifest is valid against the Custom Elements Manifest schema', () => {
+  const manifest = JSON.parse(compile('--emit', 'manifest'));
+  const schema = JSON.parse(readFileSync(require.resolve('custom-elements-manifest/schema.json'), 'utf8'));
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  const valid = ajv.validate(schema, manifest);
+  assert.equal(valid, true, JSON.stringify(ajv.errors, null, 2));
+
+  const [module] = manifest.modules;
+  const [element] = module.declarations;
+  assert.equal(module.path, 'header.js');
+  assert.equal(element.tagName, 'mnx-header');
+  assert.equal(element.customElement, true, 'without it, tools treat the class as a plain class');
+  assert.equal(element.description, 'A site header.\nPass `data` as JSON in plain HTML.');
+  assert.deepEqual(element.attributes.map((a) => [a.name, a.fieldName, a.type.text]), [
+    ['title', 'title', 'string'],
+    ['data', 'data', '{ sample: string; sampleTwo: string }'],
+    ['tags', 'tags', 'string[]'],
+    ['max-items', 'maxItems', 'number'],
+    ['open', 'open', 'boolean'],
+    ['label', 'label', 'unknown'],
+  ]);
+  assert.deepEqual(element.slots, [{ name: '' }, { name: 'actions' }], 'the default slot is ""');
+  assert.ok(module.exports.some((e) => e.kind === 'custom-element-definition' && e.name === 'mnx-header'));
+});
+
+test('--module-path sets where the manifest says the module lives', () => {
+  const manifest = JSON.parse(compile('--emit', 'manifest', '--module-path', 'dist/components/header.js'));
+  assert.equal(manifest.modules[0].path, 'dist/components/header.js');
+  assert.equal(manifest.modules[0].exports[0].declaration.module, 'dist/components/header.js');
+});
+
+function typecheck(name, code) {
+  writeFileSync(join(dir, `${name}.ts`), code);
+  const result = spawnSync(process.execPath, [tsc, '--noEmit', '--strict', '--target', 'es2022', '--module', 'nodenext',
+    '--moduleResolution', 'nodenext', '--lib', 'es2022,dom', '--skipLibCheck', 'false', join(dir, `${name}.ts`)], { encoding: 'utf8' });
+  return (result.stdout + result.stderr).trim();
+}
+
+test('the declarations type-check correct usage', () => {
+  const output = typecheck('good', `
+    import MnxHeader, { tag, type MnxHeaderProps } from './header.js';
+    const el = document.querySelector('mnx-header')!;
+    el.title = 'Journey to Code';
+    el.data = { sample: 'one', sampleTwo: 'two' };
+    el.tags = ['x', 'y'];
+    el.maxItems = 5;
+    el.open = true;
+    el.label = { anything: true };
+    const items: number = el.maxItems;
+    const created: MnxHeader = document.createElement('mnx-header');
+    const props: MnxHeaderProps = { label: 'required', maxItems: 2 };
+    const name: 'mnx-header' = tag;
+    export async function ready() { await el.updateComplete; }
+    export { items, created, props, name };
+  `);
+  assert.equal(output, '');
+});
+
+test('the declarations reject wrong prop types and missing required props', () => {
+  const output = typecheck('bad', `
+    import { type MnxHeaderProps } from './header.js';
+    const el = document.querySelector('mnx-header')!;
+    el.maxItems = '3';
+    el.data = { sample: 1, sampleTwo: 'two' };
+    el.tags = [1];
+    el.open = 'yes';
+    const props: MnxHeaderProps = { maxItems: 2 };
+    export { props };
+  `);
+  const errors = output.split('\n').filter((line) => /error TS\d+/.test(line));
+  assert.equal(errors.length, 5, output);
+  assert.match(output, /bad\.ts\(4,5\).*Type 'string' is not assignable to type 'number'/);
+  assert.match(output, /bad\.ts\(5,.*Type 'number' is not assignable to type 'string'/);
+  assert.match(output, /Property 'label' is missing/);
+});

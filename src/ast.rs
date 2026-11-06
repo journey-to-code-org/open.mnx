@@ -17,6 +17,8 @@ pub struct ComponentAst {
     /// The custom-element name, from the host tag.
     pub tag: String,
     pub tag_span: Span,
+    /// From an HTML comment above the host tag (or above the script).
+    pub description: Option<String>,
     /// `shadow` on the host opts into shadow DOM (light DOM is the default).
     pub shadow: bool,
     pub props: Vec<PropDecl>,
