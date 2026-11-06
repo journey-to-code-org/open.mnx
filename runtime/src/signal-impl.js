@@ -1,0 +1,375 @@
+// An implementation of the TC39 Signals proposal API (https://github.com/tc39/proposal-signals).
+//
+// This is mnx's polyfill boundary for reactivity: compiled components talk only to this API,
+// and runtime/src/signal.js uses the native `globalThis.Signal` instead whenever one exists.
+//
+// Model: push-pull with version numbers.
+//   - Every signal has a `version` that increments when its value actually changes (per
+//     `equals`), and every State write bumps a global `epoch`.
+//   - A Computed records, per dependency, the version it last read. On `get()` it re-validates
+//     by bringing each dependency up to date and comparing versions, and re-runs only if one
+//     really changed ("equality cut-off" — what makes reads glitch-free).
+//   - Signals reachable from a Watcher are "live": they keep back-links to their consumers, so
+//     a write can *push* a dirty mark down to watchers. Signals nobody watches keep no
+//     back-links, so an unwatched graph is garbage-collectable and costs nothing on write.
+//
+// Dependency bookkeeping is positional, with back-indices for O(1) unlinking, and follows the
+// proposal's reference polyfill exactly: the differential tests in runtime/test compare this
+// implementation with `signal-polyfill` on hand-written scenarios and hundreds of random graphs,
+// including the order in which watchers are notified and watched/unwatched hooks fire.
+// Deliberate differences (all stricter, none observable in correct programs) are listed in
+// runtime/README.md.
+
+const UNSET = Symbol('unset');
+const COMPUTING = Symbol('computing');
+const ERRORED = Symbol('errored');
+
+const watched = Symbol('watched');
+const unwatched = Symbol('unwatched');
+
+let activeConsumer = null;   // the node whose reads are currently being recorded
+let frozen = false;          // true while watchers are notified or hooks run
+let epoch = 0;
+
+const frozenError = () =>
+  new Error('Signals cannot be read or written during a Watcher notification or a watched/unwatched callback');
+
+// ---- graph nodes ---------------------------------------------------------------------------
+//
+// Consumer side (Computed, Watcher):
+//   sources[i]          the i-th dependency read (duplicates allowed, as in the reference)
+//   sourceVersions[i]   that dependency's version when it was read
+//   sourceSlots[i]      where this consumer sits in sources[i].sinks (only while live)
+//   nextSource          read cursor during a computation / append cursor for a Watcher
+// Producer side (State, Computed):
+//   sinks[j]            live consumers
+//   sinkSlots[j]        where this producer sits in sinks[j].sources
+
+class Node {
+  constructor(wrapper) {
+    this.wrapper = wrapper;
+    this.version = 0;
+    this.dirty = false;
+    this.sinks = [];
+    this.sinkSlots = [];
+    this.sources = [];
+    this.sourceVersions = [];
+    this.sourceSlots = [];
+    this.nextSource = 0;
+  }
+  get live() { return this.sinks.length > 0; }
+}
+
+class StateNode extends Node {
+  constructor(wrapper, value, options) {
+    super(wrapper);
+    this.value = value;
+    this.equals = options?.equals ?? Object.is;
+    this.onWatched = options?.[watched];
+    this.onUnwatched = options?.[unwatched];
+  }
+}
+
+class ComputedNode extends Node {
+  constructor(wrapper, computation, options) {
+    super(wrapper);
+    this.computation = computation;
+    this.value = UNSET;
+    this.error = undefined;
+    this.dirty = true;
+    this.lastCleanEpoch = -1;
+    this.equals = options?.equals ?? Object.is;
+    this.onWatched = options?.[watched];
+    this.onUnwatched = options?.[unwatched];
+  }
+}
+
+class WatcherNode extends Node {
+  constructor(wrapper, notify) {
+    super(wrapper);
+    this.notify = notify;
+  }
+  get live() { return true; }
+}
+
+// ---- liveness: linking and unlinking back-references ---------------------------------------
+
+function runFrozen(hook, receiver) {
+  if (typeof hook !== 'function') return;
+  const previous = frozen;
+  frozen = true;
+  try { hook.call(receiver); } finally { frozen = previous; }
+}
+
+/** Add `consumer` as a live sink of `producer`; returns the slot it occupies. */
+function link(producer, consumer, slotInConsumer) {
+  if (producer.sinks.length === 0) {
+    runFrozen(producer.onWatched, producer.wrapper);
+    for (let i = 0; i < producer.sources.length; i++) {
+      producer.sourceSlots[i] = link(producer.sources[i], producer, i);
+    }
+  }
+  producer.sinkSlots.push(slotInConsumer);
+  return producer.sinks.push(consumer) - 1;
+}
+
+/** Remove the live sink at `slot` of `producer` (swap-remove, fixing the moved back-index). */
+function unlink(producer, slot) {
+  if (producer.sinks.length === 1) {
+    runFrozen(producer.onUnwatched, producer.wrapper);
+    for (let i = 0; i < producer.sources.length; i++) unlink(producer.sources[i], producer.sourceSlots[i]);
+  }
+  const last = producer.sinks.length - 1;
+  producer.sinks[slot] = producer.sinks[last];
+  producer.sinkSlots[slot] = producer.sinkSlots[last];
+  producer.sinks.length = last;
+  producer.sinkSlots.length = last;
+  if (slot < last) producer.sinks[slot].sourceSlots[producer.sinkSlots[slot]] = slot;
+}
+
+// ---- tracking reads ------------------------------------------------------------------------
+
+function track(producer) {
+  if (frozen) throw frozenError();
+  const consumer = activeConsumer;
+  if (!consumer) return;
+  const i = consumer.nextSource++;
+  const previous = consumer.sources[i];
+  if (previous !== producer) {
+    if (previous !== undefined && consumer.live) unlink(previous, consumer.sourceSlots[i]);
+    consumer.sources[i] = producer;
+    consumer.sourceSlots[i] = consumer.live ? link(producer, consumer, i) : 0;
+  }
+  consumer.sourceVersions[i] = producer.version;
+}
+
+/** Drop dependencies from the last run that this run didn't read. */
+function trimSources(consumer) {
+  const count = consumer.nextSource;
+  if (consumer.live) {
+    for (let i = count; i < consumer.sources.length; i++) unlink(consumer.sources[i], consumer.sourceSlots[i]);
+  }
+  consumer.sources.length = count;
+  consumer.sourceVersions.length = count;
+  consumer.sourceSlots.length = count;
+}
+
+// ---- push: a write marks live consumers dirty and notifies watchers ------------------------
+
+function notifySinks(producer) {
+  const previous = frozen;
+  frozen = true;
+  try {
+    for (const consumer of producer.sinks) if (!consumer.dirty) markDirty(consumer);
+  } finally {
+    frozen = previous;
+  }
+}
+
+function markDirty(consumer) {
+  consumer.dirty = true;
+  notifySinks(consumer);
+  if (consumer instanceof WatcherNode && typeof consumer.notify === 'function') {
+    consumer.notify.call(consumer.wrapper);
+  }
+}
+
+// ---- pull: bringing a computed up to date --------------------------------------------------
+
+function refresh(node) {
+  if (!(node instanceof ComputedNode)) return;
+  // Validated during this epoch and not marked dirty since: nothing can have changed.
+  // (No shortcut for live nodes: a node that became live while stale was never marked dirty,
+  // and marking it would stop later writes from reaching its watchers.)
+  if (!node.dirty && node.lastCleanEpoch === epoch) return;
+  if (node.value === UNSET || node.value === COMPUTING || sourcesChanged(node)) recompute(node);
+  node.dirty = false;
+  node.lastCleanEpoch = epoch;
+}
+
+function sourcesChanged(node) {
+  for (let i = 0; i < node.sources.length; i++) {
+    const source = node.sources[i];
+    const seen = node.sourceVersions[i];
+    if (source.version !== seen) return true;
+    refresh(source);
+    if (source.version !== seen) return true;
+  }
+  return false;
+}
+
+function recompute(node) {
+  if (node.value === COMPUTING) throw new Error('Detected cycle in computations.');
+  const previousValue = node.value;
+  node.value = COMPUTING;
+  node.nextSource = 0;
+  const previousConsumer = activeConsumer;
+  activeConsumer = node;
+  let value;
+  let equal = false;
+  try {
+    value = node.computation.call(node.wrapper);
+    equal = previousValue !== UNSET && previousValue !== ERRORED
+      && node.equals.call(node.wrapper, previousValue, value);
+  } catch (error) {
+    value = ERRORED;
+    node.error = error;
+  } finally {
+    activeConsumer = previousConsumer;
+    trimSources(node);
+  }
+  if (equal) {
+    node.value = previousValue;
+    return;
+  }
+  node.value = value;
+  node.version++;
+}
+
+// ---- public API ----------------------------------------------------------------------------
+
+const nodes = new WeakMap();
+const nodeFor = (receiver, Kind, method) => {
+  const node = nodes.get(receiver);
+  if (!(node instanceof Kind)) throw new TypeError(`Wrong receiver type for ${method}`);
+  return node;
+};
+const isSignal = (value) => {
+  const node = nodes.get(value);
+  return node instanceof StateNode || node instanceof ComputedNode;
+};
+const isSink = (value) => {
+  const node = nodes.get(value);
+  return node instanceof ComputedNode || node instanceof WatcherNode;
+};
+
+class State {
+  constructor(initialValue, options) {
+    nodes.set(this, new StateNode(this, initialValue, options));
+  }
+
+  get() {
+    const node = nodeFor(this, StateNode, 'Signal.State.prototype.get');
+    track(node);
+    return node.value;
+  }
+
+  set(value) {
+    const node = nodeFor(this, StateNode, 'Signal.State.prototype.set');
+    if (frozen) throw new Error('Writes to signals not permitted during Watcher callback');
+    if (node.equals.call(this, node.value, value)) return;
+    node.value = value;
+    node.version++;
+    epoch++;
+    notifySinks(node);
+  }
+}
+
+class Computed {
+  constructor(computation, options) {
+    if (typeof computation !== 'function') throw new TypeError('Signal.Computed requires a function');
+    nodes.set(this, new ComputedNode(this, computation, options));
+  }
+
+  get() {
+    const node = nodeFor(this, ComputedNode, 'Signal.Computed.prototype.get');
+    // Checked before refreshing, so a forbidden read can't poison the cached value.
+    if (frozen) throw frozenError();
+    refresh(node);
+    track(node);
+    if (node.value === ERRORED) throw node.error;
+    return node.value;
+  }
+}
+
+class Watcher {
+  constructor(notify) {
+    nodes.set(this, new WatcherNode(this, notify));
+  }
+
+  /** Add signals to the watched set and re-arm notification. */
+  watch(...signals) {
+    const node = nodeFor(this, WatcherNode, 'Signal.subtle.Watcher.prototype.watch');
+    if (!signals.every(isSignal)) throw new TypeError('Called watch/unwatch without a Computed or State argument');
+    node.dirty = false;
+    const previousConsumer = activeConsumer;
+    activeConsumer = node;
+    try {
+      for (const signal of signals) track(nodes.get(signal));
+    } finally {
+      activeConsumer = previousConsumer;
+    }
+  }
+
+  /** Remove every occurrence of the given signals from the watched set. */
+  unwatch(...signals) {
+    const node = nodeFor(this, WatcherNode, 'Signal.subtle.Watcher.prototype.unwatch');
+    if (!signals.every(isSignal)) throw new TypeError('Called watch/unwatch without a Computed or State argument');
+    const removing = new Set(signals.map((signal) => nodes.get(signal)));
+    for (let i = node.sources.length - 1; i >= 0; i--) {
+      if (!removing.has(node.sources[i])) continue;
+      unlink(node.sources[i], node.sourceSlots[i]);
+      const last = node.sources.length - 1;
+      node.sources[i] = node.sources[last];
+      node.sourceSlots[i] = node.sourceSlots[last];
+      node.sourceVersions[i] = node.sourceVersions[last];
+      node.sources.length = last;
+      node.sourceSlots.length = last;
+      node.sourceVersions.length = last;
+      node.nextSource--;
+      if (i < last) node.sources[i].sinkSlots[node.sourceSlots[i]] = i;
+    }
+  }
+
+  /** The watched computeds that have been marked dirty and not yet re-read. */
+  getPending() {
+    const node = nodeFor(this, WatcherNode, 'Signal.subtle.Watcher.prototype.getPending');
+    return node.sources.filter((source) => source.dirty).map((source) => source.wrapper);
+  }
+}
+
+function untrack(callback) {
+  const previous = activeConsumer;
+  activeConsumer = null;
+  try { return callback(); } finally { activeConsumer = previous; }
+}
+
+function currentComputed() {
+  return activeConsumer instanceof ComputedNode ? activeConsumer.wrapper : undefined;
+}
+
+function introspectSources(sink) {
+  if (!isSink(sink)) throw new TypeError('Called introspectSources without a Computed or Watcher argument');
+  return nodes.get(sink).sources.map((source) => source.wrapper);
+}
+
+function introspectSinks(signal) {
+  if (!isSignal(signal)) throw new TypeError('Called introspectSinks without a Signal argument');
+  return nodes.get(signal).sinks.map((consumer) => consumer.wrapper);
+}
+
+function hasSinks(signal) {
+  if (!isSignal(signal)) throw new TypeError('Called hasSinks without a Signal argument');
+  return nodes.get(signal).sinks.length > 0;
+}
+
+function hasSources(sink) {
+  if (!isSink(sink)) throw new TypeError('Called hasSources without a Computed or Watcher argument');
+  return nodes.get(sink).sources.length > 0;
+}
+
+export const Signal = Object.freeze({
+  State,
+  Computed,
+  subtle: Object.freeze({
+    Watcher,
+    untrack,
+    currentComputed,
+    introspectSources,
+    introspectSinks,
+    hasSinks,
+    hasSources,
+    watched,
+    unwatched,
+  }),
+});
