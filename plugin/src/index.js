@@ -1,0 +1,148 @@
+// @mnx/unplugin: `.mnx` components in any bundler unplugin supports (Vite first).
+//
+//   // vite.config.js
+//   import mnx from '@mnx/unplugin/vite'
+//   export default { plugins: [mnx(), react()] }
+//
+//   // App.tsx — a React component, because this is a React file
+//   import Rating from './rating.mnx'
+//   <Rating value={stars} onValueChange={(event) => setStars(event.detail)} />
+//
+// What an import of a `.mnx` file gives depends on who imports it, so nobody writes glue code:
+//
+// - from a `.jsx`/`.tsx` file: a React component (`@mnx/runtime/react`);
+// - from a `.vue` file: a Vue component (`@mnx/runtime/vue`);
+// - from anything else (plain JS/TS, another `.mnx`): the custom element class. In a project
+//   using React or Vue, plain `.js`/`.ts` files get that framework's component.
+//
+// Every variant defines the element, so `<mnx-rating>` also works in HTML and in templates.
+// `?element`, `?react` or `?vue` on the import picks one explicitly. Compile errors show the
+// source line (in Vite's overlay, too); editing a `.mnx` file reloads the page, because the
+// platform can't redefine a custom element. Next to each component the plugin writes typings
+// (`rating.d.mnx.ts`, used by TypeScript with `allowArbitraryExtensions`) for the project's
+// framework.
+import { createUnplugin } from 'unplugin';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { basename, dirname, extname, resolve } from 'node:path';
+
+const VARIANTS = ['element', 'react', 'vue'];
+const QUERY = '?mnx=';
+
+const split = (id) => {
+  const at = id.indexOf('?');
+  return at < 0 ? [id, ''] : [id.slice(0, at), id.slice(at + 1)];
+};
+
+/** The variant an importer gets: by explicit query, by the importer's kind, or the project's. */
+export function variantFor(query, importer, project) {
+  const asked = VARIANTS.find((variant) => new URLSearchParams(query).has(variant));
+  if (asked) return asked;
+  if (!importer) return project;
+  const [file] = split(importer);
+  if (file.endsWith('.mnx')) return 'element'; // a component, or a wrapper (`x.mnx?mnx=react`)
+  if (file.endsWith('.vue')) return 'vue';
+  if (/\.[jt]sx$/.test(file)) return 'react';
+  return project;
+}
+
+/** `.mnx` files a component imports, recursively, so changing one recompiles its importers. */
+function dependencies(path, seen = new Set()) {
+  if (seen.has(path)) return seen;
+  seen.add(path);
+  let source = '';
+  try { source = readFileSync(path, 'utf8'); } catch { return seen; }
+  const script = source.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx)['"]/g)) {
+    if (specifier.startsWith('.')) dependencies(resolve(dirname(path), specifier), seen);
+  }
+  return seen;
+}
+
+export const unplugin = createUnplugin((options = {}) => {
+  const compiler = options.compiler ?? process.env.MNX_COMPILER ?? 'mnix';
+  const runtime = options.runtime ?? '@mnx/runtime';
+  let project = options.framework && options.framework !== 'auto' ? options.framework : null;
+  const typings = options.dts ?? true;
+
+  function compile(path, ...args) {
+    const result = spawnSync(compiler, ['compile', path, ...args], { encoding: 'utf8' });
+    if (result.error) {
+      throw new Error(`mnx: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}). `
+        + 'Install it (cargo install --path <open.mnx>) or pass { compiler: "/path/to/mnix" }.');
+    }
+    if (result.status !== 0) throw new Error(result.stderr.trim() || `mnx: the compiler exited with ${result.status}`);
+    return result.stdout;
+  }
+
+  function writeTypings(path) {
+    const framework = project === 'react' || project === 'vue' ? project : 'none';
+    const target = resolve(dirname(path), `${basename(path, '.mnx')}.d.mnx.ts`);
+    const contents = compile(path, '--emit', 'dts', '--framework', framework);
+    // Only when changed, so watchers don't loop.
+    if (!existsSync(target) || readFileSync(target, 'utf8') !== contents) writeFileSync(target, contents);
+  }
+
+  return {
+    name: 'mnx',
+    enforce: 'pre',
+
+    async resolveId(source, importer) {
+      const [specifier, query] = split(source);
+      if (!specifier.endsWith('.mnx')) return null;
+      let path;
+      if (specifier.startsWith('/') && existsSync(specifier)) path = specifier;
+      else if (importer && specifier.startsWith('.')) path = resolve(dirname(split(importer)[0]), specifier);
+      else {
+        const resolved = await this.resolve?.(specifier, importer, { skipSelf: true });
+        if (!resolved) return null;
+        path = split(resolved.id)[0];
+      }
+      // A variant already chosen (a wrapper's import of its element, a dev server URL) stays.
+      const variant = new URLSearchParams(query).get('mnx') ?? variantFor(query, importer, project ?? 'element');
+      return `${path}${QUERY}${variant}`;
+    },
+
+    loadInclude(id) {
+      return id.includes(`.mnx${QUERY}`);
+    },
+
+    load(id) {
+      const [path, query] = split(id);
+      const variant = new URLSearchParams(query).get('mnx');
+      if (variant === 'react' || variant === 'vue') {
+        const element = JSON.stringify(`${path}${QUERY}element`);
+        return `import Element from ${element};\nimport { wrap } from ${JSON.stringify(`${runtime}/${variant}`)};\n`
+          + `export { tag } from ${element};\nexport default wrap(Element);\n`;
+      }
+      for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
+      if (typings) writeTypings(path);
+      try {
+        return compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime);
+      } catch (error) {
+        this.error(error.message);
+      }
+    },
+
+    vite: {
+      config() {
+        // One copy of each framework, even when @mnx/runtime is linked from elsewhere.
+        return { resolve: { dedupe: ['react', 'react-dom', 'vue'] } };
+      },
+      configResolved(config) {
+        if (project) return;
+        const names = config.plugins.map((plugin) => plugin.name);
+        if (names.some((name) => /^vite:react/.test(name))) project = 'react';
+        else if (names.includes('vite:vue')) project = 'vue';
+        else project = 'element';
+      },
+      handleHotUpdate({ file, server }) {
+        if (extname(file) !== '.mnx') return;
+        server.ws.send({ type: 'full-reload' });
+        return [];
+      },
+    },
+  };
+});
+
+export default unplugin;

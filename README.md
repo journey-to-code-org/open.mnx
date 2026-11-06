@@ -121,10 +121,14 @@ Not yet in the JavaScript output: prop defaults computed at runtime.
 - **Other libraries' custom elements** get an attribute until the element is defined with a matching property, then the property (React 19's rule), so `config={{ … }}` reaches a Lit or Stencil element as an object.
 - **The host is the root**: a template can have any number of top-level nodes (text, elements, regions); there is no single-root rule.
 
+## Using components in an app
+
+`@mnx/unplugin` (in `plugin/`) compiles `.mnx` imports in Vite, Rollup, webpack, esbuild and Rspack. What an import gives depends on the importing file: a React component in `.jsx`/`.tsx` files, a Vue component in `.vue` files, the element class elsewhere. Props, events, two-way binding (`value` + `valuechange` → `v-model`, controlled React) and children all work without glue code. It also writes typings next to each component. See `plugin/README.md`. The adapters it uses are `@mnx/runtime/react` (React 18 and 19) and `@mnx/runtime/vue` (Vue 3), and they can be used by hand: `wrap(Element)`.
+
 ## Describing components to tools
 
 - `--emit manifest` writes a [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest) (`custom-elements.json`, schema 2.1.0): the tag, each prop as an attribute and a field with its type and default, slots (the default slot is `""`), and a description taken from an HTML comment above the host tag (or above the `<script>`). Editors, Storybook and documentation tools read this format. `--module-path` sets the module path it records (default: the source name with `.js`).
-- `--emit dts` writes TypeScript declarations for the JavaScript output: the element class with typed properties, a `…Props` interface (props with defaults are optional), the `tag` constant, and an `HTMLElementTagNameMap` entry so `document.querySelector("mnx-header")` is typed.
+- `--emit dts` writes TypeScript declarations for the JavaScript output (with `--framework react|vue`, the default export is typed as that framework's wrapper): the element class with typed properties, a `…Props` interface (props with defaults are optional), the `tag` constant, and an `HTMLElementTagNameMap` entry so `document.querySelector("mnx-header")` is typed.
 - Types are inferred from defaults: `{ sample: "…" }` becomes `{ sample: string }`, `["a"]` becomes `string[]`, and a required prop with no default is `unknown`.
 
 Both are checked by `npm run test:tools` in `runtime/`: the manifest against the official JSON schema, and the declarations with the TypeScript compiler on code that should type-check and code that should not.

@@ -20,7 +20,7 @@ fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
     if arguments.next().as_deref() != Some("compile") {
         return Err(
-            "usage: mnix compile <component.mnx> [--emit html|js|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix compile <component.mnx> [--emit html|js|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -32,11 +32,29 @@ fn run() -> Result<(), String> {
     let mut emit = "html".to_owned();
     let mut runtime = "@mnx/runtime".to_owned();
     let mut module_path = None;
+    let mut keep_imports = false;
+    let mut framework = mnix_compiler::Framework::None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--emit" => emit = arguments.next().unwrap_or_default(),
             "--runtime" => runtime = arguments.next().unwrap_or_default(),
             "--module-path" => module_path = arguments.next(),
+            // For bundler plugins: leave `./x.mnx` imports for the bundler to resolve.
+            "--keep-imports" => keep_imports = true,
+            // For --emit dts: type the default export as that framework's wrapper.
+            "--framework" => {
+                framework = match arguments.next().as_deref() {
+                    Some("react") => mnix_compiler::Framework::React,
+                    Some("vue") => mnix_compiler::Framework::Vue,
+                    Some("none") => mnix_compiler::Framework::None,
+                    other => {
+                        return Err(format!(
+                            "unknown --framework `{}`; expected react, vue or none",
+                            other.unwrap_or_default()
+                        ))
+                    }
+                }
+            }
             "--props" => props_path = arguments.next(),
             "--slots" => slots_path = arguments.next(),
             "--output" => output_path = arguments.next(),
@@ -64,8 +82,15 @@ fn run() -> Result<(), String> {
                 .into_owned()
         });
         let output = match emit.as_str() {
+            "js" if keep_imports => mnix_compiler::compile_js_with(
+                &source,
+                &source_path,
+                &runtime,
+                None,
+                &mnix_compiler::filesystem,
+            ),
             "js" => mnix_compiler::compile_js_file(&source_path, &runtime),
-            "dts" => mnix_compiler::compile_declarations(&source, &name),
+            "dts" => mnix_compiler::compile_declarations_for(&source, &name, framework),
             "manifest" => mnix_compiler::compile_manifest(&source, &module_path),
             _ => {
                 return Err(format!(

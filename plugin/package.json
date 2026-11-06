@@ -1,0 +1,42 @@
+{
+  "name": "@mnx/unplugin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Compile .mnx components in Vite, Rollup, webpack, esbuild and Rspack, with React and Vue wrappers picked automatically",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./vite": "./src/vite.js",
+    "./rollup": "./src/rollup.js",
+    "./webpack": "./src/webpack.js",
+    "./esbuild": "./src/esbuild.js",
+    "./rspack": "./src/rspack.js",
+    "./client": {
+      "types": "./client.d.ts"
+    }
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "unplugin": "3.7.0"
+  },
+  "peerDependencies": {
+    "@mnx/runtime": "*"
+  },
+  "devDependencies": {
+    "@mnx/runtime": "file:../runtime",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "@vitejs/plugin-vue": "6.0.10",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vue": "3.5.45"
+  }
+}

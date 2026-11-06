@@ -18,8 +18,9 @@ mod scanner;
 mod script;
 mod validate;
 
-pub use components::Loader;
+pub use components::{filesystem, Loader};
 pub use diagnostic::{Diagnostic, Span};
+pub use emit_interface::Framework;
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {
     serde_json::from_str(text).map_err(|error| {
@@ -192,5 +193,14 @@ pub fn compile_manifest(source: &str, module_path: &str) -> Result<String, Diagn
 
 /// TypeScript declarations (`.d.ts`) for the JavaScript output.
 pub fn compile_declarations(source: &str, source_name: &str) -> Result<String, Diagnostic> {
-    emit_interface::declarations(&parser::parse(source)?, source_name)
+    emit_interface::declarations(&parser::parse(source)?, source_name, Framework::None)
+}
+
+/// TypeScript declarations where the default export is the `framework`'s wrapper component.
+pub fn compile_declarations_for(
+    source: &str,
+    source_name: &str,
+    framework: Framework,
+) -> Result<String, Diagnostic> {
+    emit_interface::declarations(&parser::parse(source)?, source_name, framework)
 }
