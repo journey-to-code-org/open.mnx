@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler:
+    name: Compiler (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
+  runtime:
+    name: Runtime (unit, browser, tools)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: runtime/package-lock.json
+      - run: npm ci
+        working-directory: runtime
+      - run: npx playwright install --with-deps chromium
+        working-directory: runtime
+      - run: npm test
+        working-directory: runtime
+      - run: npm run test:browser
+        working-directory: runtime
+      - run: npm run test:tools
+        working-directory: runtime
+
+  plugin:
+    name: Build plugin (Vite, React, Vue)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npx playwright install --with-deps chromium
+        working-directory: plugin
+      - run: npm test
+        working-directory: plugin

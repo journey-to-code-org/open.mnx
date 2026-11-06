@@ -72,13 +72,13 @@ export const unplugin = createUnplugin((options = {}) => {
         + 'Install it (cargo install --path <open.mnx>) or pass { compiler: "/path/to/mnix" }.');
     }
     if (result.status !== 0) throw new Error(result.stderr.trim() || `mnx: the compiler exited with ${result.status}`);
-    return result.stdout;
+    return { code: result.stdout, warnings: result.stderr.trim() };
   }
 
   function writeTypings(path) {
     const framework = project === 'react' || project === 'vue' ? project : 'none';
     const target = resolve(dirname(path), `${basename(path, '.mnx')}.d.mnx.ts`);
-    const contents = compile(path, '--emit', 'dts', '--framework', framework);
+    const contents = compile(path, '--emit', 'dts', '--framework', framework).code;
     // Only when changed, so watchers don't loop.
     if (!existsSync(target) || readFileSync(target, 'utf8') !== contents) writeFileSync(target, contents);
   }
@@ -117,11 +117,14 @@ export const unplugin = createUnplugin((options = {}) => {
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
       if (typings) writeTypings(path);
+      let output;
       try {
-        return compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime);
+        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime);
       } catch (error) {
         this.error(error.message);
       }
+      if (output.warnings) this.warn(output.warnings);
+      return output.code;
     },
 
     vite: {

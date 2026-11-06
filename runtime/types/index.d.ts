@@ -1,0 +1,118 @@
+// @mnx/runtime: what compiled components and their scripts use.
+import type { Signal } from './signal.js';
+
+export { Signal, isNative } from './signal.js';
+export { effect, scope, flush, tick, type Cleanup, type Scope } from './effect.js';
+
+/** A value, or a signal holding one: what templates and most hooks accept. */
+export type MaybeSignal<T> = T | Signal.State<T> | Signal.Computed<T>;
+
+// ---- state ----------------------------------------------------------------------------------
+
+/** A writable signal (`Signal.State`). */
+export declare function state<T>(value: T, options?: Signal.Options<T>): Signal.State<T>;
+/** A derived signal (`Signal.Computed`); what it reads is tracked automatically. */
+export declare function computed<T>(fn: () => T, options?: Signal.Options<T>): Signal.Computed<T>;
+/** Call `callback(next, previous)` when `source` changes (not on the first run). */
+export declare function watch<T>(source: (() => T) | MaybeSignal<T>, callback: (next: T, previous: T) => void): void;
+
+// ---- lifecycle and the element (call during setup) -----------------------------------------
+
+/** Run when the element is connected; may return a cleanup for when it is disconnected. */
+export declare function onMount(fn: () => void | (() => void)): void;
+/** Run when the element is disconnected. */
+export declare function onUnmount(fn: () => void): void;
+/** An id unique to this element and call, for `id`/`for`/`aria-*` attributes. */
+export declare function id(): string;
+/** The component's props: reading one tracks it; writing one updates the element. */
+export declare function props<P extends object = Record<string, unknown>>(): P;
+/** The element whose setup is running. */
+export declare function host<E extends HTMLElement = HTMLElement>(): E;
+/**
+ * Fire a DOM event from the component (a bubbling `CustomEvent` with `detail`). The compiler
+ * declares every event it sees. Returns false if a listener called `preventDefault()` on a
+ * cancelable (`before…`) event.
+ */
+export declare function emit(name: string, detail?: unknown): boolean;
+
+// ---- context (the Web Components Community Group Context Protocol) -------------------------
+
+export interface Context<T> {
+  readonly defaultValue: T;
+}
+/** A context key, with the value consumers get when no provider answers. */
+export declare function createContext<T>(defaultValue: T): Context<T>;
+/** Provide `value` for `context` to every element inside this one. */
+export declare function provide<T>(context: Context<T> | unknown, value: MaybeSignal<T>): void;
+/** Read `context` from the nearest provider above this element, as a signal. */
+export declare function inject<T>(context: Context<T>, fallback?: T): Signal.Computed<T>;
+export declare function inject<T = unknown>(context: unknown, fallback?: T): Signal.Computed<T>;
+
+export declare class ContextRequestEvent<T = unknown> extends Event {
+  constructor(context: unknown, contextTarget: Element, callback: (value: T, unsubscribe?: () => void) => void, subscribe?: boolean);
+  readonly context: unknown;
+  readonly contextTarget: Element;
+  readonly callback: (value: T, unsubscribe?: () => void) => void;
+  readonly subscribe?: boolean;
+}
+export declare class ContextProviderEvent extends Event {
+  constructor(context: unknown, contextTarget: Element);
+  readonly context: unknown;
+  readonly contextTarget: Element;
+}
+
+// ---- form-associated components (`form-associated` on the host) ---------------------------
+
+/** What the form submits for this control: follows `source`. */
+export declare function formValue(source: MaybeSignal<string | number | File | FormData | null | undefined> | (() => unknown)): void;
+/** Validation: `check()` returns an error message, or '' / null when the value is valid. */
+export declare function validity(check: () => string | null | undefined | MaybeSignal<string | null | undefined>): void;
+export declare function onFormReset(fn: () => void): void;
+export declare function onFormRestore(fn: (state: string | File | FormData | null, mode: 'restore' | 'autocomplete') => void): void;
+export declare function onFormDisabled(fn: (disabled: boolean) => void): void;
+
+// ---- what compiled code uses ---------------------------------------------------------------
+
+export interface PropSpec {
+  attribute: string;
+  default: unknown;
+  required?: boolean;
+}
+
+/** What adapters and tools read from a compiled element class (`Element.mnx`). */
+export interface ElementMeta {
+  readonly tag: string;
+  readonly props: Readonly<Record<string, Readonly<Required<PropSpec>>>>;
+  readonly events: readonly string[];
+  readonly slots: readonly string[];
+  readonly shadow: boolean;
+  readonly form: boolean;
+}
+
+export interface MnxElementClass<E extends HTMLElement = HTMLElement> {
+  new (): E & { readonly updateComplete: Promise<void> };
+  readonly mnx: ElementMeta;
+  readonly formAssociated: boolean;
+  readonly observedAttributes: string[];
+}
+
+export interface Definition {
+  props?: Record<string, PropSpec>;
+  template?: string;
+  shadow?: boolean;
+  form?: boolean;
+  slots?: string[];
+  events?: string[];
+  /** Runs once per element; returns the template's parts. */
+  setup?: (props: Record<string, unknown>, emit: (name: string, detail?: unknown) => boolean) => unknown[];
+}
+
+/** Register a compiled component (what the compiler's JavaScript output calls). */
+export declare function define(tag: string, definition: Definition): MnxElementClass;
+
+/** Whether a URL is safe for `href`/`src`: relative, or http(s), mailto or tel. */
+export declare function isSafeUrl(value: string): boolean;
+/** @internal Read a value that may be a signal. */
+export declare function $r<T>(value: MaybeSignal<T>): T;
+/** @internal A value as template text. */
+export declare function $t(value: unknown): string;

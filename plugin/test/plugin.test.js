@@ -285,3 +285,14 @@ test('build --watch: editing a child component rebuilds the components that use 
     await watcher.close();
   }
 });
+
+test('compiler warnings reach the bundler', async () => {
+  const root = app('plain');
+  writeFileSync(join(root, 'components/card.mnx'), '<mnx-card hidden={false}>\n  <p>x</p>\n</mnx-card>\n');
+  const warnings = [];
+  await build({
+    root, configFile: false, logLevel: 'silent', plugins: [mnx({ compiler })],
+    build: { outDir: join(root, 'dist'), rollupOptions: { onwarn: (warning) => warnings.push(warning.message) } },
+  });
+  assert.ok(warnings.some((message) => message.includes('prop `hidden` is also every element')), warnings.join('\n'));
+});

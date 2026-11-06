@@ -178,3 +178,60 @@ test('events are in the manifest and type their listeners', () => {
   `);
   assert.match(bad, /events-bad\.ts\(4,.*Type 'null' is not assignable to type 'string'/);
 });
+
+test("the runtime's own declarations type scripts, hooks and adapters", async () => {
+  const { mkdirSync, symlinkSync } = await import('node:fs');
+  const project = join(dir, 'runtime-types');
+  mkdirSync(join(project, 'node_modules/@mnx'), { recursive: true });
+  symlinkSync(join(here, '../..'), join(project, 'node_modules/@mnx/runtime'));
+  for (const name of ['react', 'vue', '@vue', '@types']) {
+    symlinkSync(join(here, '../../node_modules', name), join(project, 'node_modules', name));
+  }
+  writeFileSync(join(project, 'package.json'), '{ "type": "module" }');
+  const check = (name, code) => {
+    writeFileSync(join(project, `${name}.ts`), code);
+    const result = spawnSync(process.execPath, [tsc, '--noEmit', '--strict', '--target', 'es2022', '--module', 'nodenext',
+      '--moduleResolution', 'nodenext', '--lib', 'es2022,dom', '--types', 'react', join(project, `${name}.ts`)], { encoding: 'utf8', cwd: project });
+    return (result.stdout + result.stderr).trim();
+  };
+  assert.equal(check('good', `
+    import { state, computed, effect, scope, watch, onMount, props, host, emit, id, createContext, provide, inject,
+      formValue, validity, define, Signal, tick, type MnxElementClass } from '@mnx/runtime';
+    import { wrap } from '@mnx/runtime/react';
+    import { wrap as wrapVue, models } from '@mnx/runtime/vue';
+    const count = state(0);
+    const doubled = computed(() => count.get() * 2);
+    const n: number = doubled.get();
+    const stop: () => void = effect(() => { count.get(); return () => {}; });
+    scope(() => watch(count, (next: number, previous: number) => next + previous));
+    onMount(() => () => {});
+    const p = props<{ value: number }>();
+    p.value = 2;
+    const el: HTMLElement = host();
+    const kept: boolean = emit('valuechange', 1);
+    const theme = createContext('light');
+    provide(theme, state('dark'));
+    const current: string = inject(theme).get();
+    formValue(count);
+    validity(() => (count.get() < 0 ? 'no' : ''));
+    const watcher = new Signal.subtle.Watcher(() => {});
+    watcher.watch(count);
+    const Element: MnxElementClass = define('mnx-x', { props: { value: { attribute: 'value', default: 0 } }, setup: () => [] });
+    const tag: string = Element.mnx.tag;
+    const Component = wrap(Element);
+    const VueComponent = wrapVue(Element);
+    const pairs = models(Element.mnx);
+    export async function later() { await tick(); }
+    export { n, stop, el, kept, current, tag, Component, VueComponent, pairs, id };
+  `), '');
+  const bad = check('bad', `
+    import { state, computed, emit, inject, createContext } from '@mnx/runtime';
+    const count = state(0);
+    count.set('one');
+    const label: string = computed(() => 1).get();
+    emit(1);
+    const value: number = inject(createContext('x')).get();
+    export { label, value };
+  `);
+  assert.equal(bad.split('\n').filter((line) => /error TS\d+/.test(line)).length, 4, bad);
+});

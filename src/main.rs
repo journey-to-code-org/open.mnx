@@ -63,6 +63,9 @@ fn run() -> Result<(), String> {
     }
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
+    for warning in mnix_compiler::warnings(&source) {
+        eprint!("{}", warning.render_warning(&source, &source_path));
+    }
     if emit != "html" {
         if props_path.is_some() || slots_path.is_some() {
             return Err(format!(

@@ -830,3 +830,22 @@ fn form_associated_is_a_flag_not_a_prop() {
         "a `name` prop takes precedence"
     );
 }
+
+#[test]
+fn props_that_shadow_built_in_element_properties_are_warned_about() {
+    let warnings = mnix_compiler::warnings(
+        "<mnx-x title=\"\" hidden={false} label=\"\">\n  <p>{label}</p>\n</mnx-x>",
+    );
+    let messages: Vec<_> = warnings
+        .iter()
+        .map(|warning| warning.message.as_str())
+        .collect();
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert!(messages[0].starts_with("prop `title` is also every element's built-in `title`"));
+    assert!(messages[1].contains("also hides the element"));
+    assert_eq!(warnings[0].span.column, 8);
+    assert!(warnings[0]
+        .render_warning("<mnx-x title=\"\">", "x.mnx")
+        .starts_with("warning: prop `title`"));
+    assert!(mnix_compiler::warnings("<mnx-x label=\"\"><p>x</p></mnx-x>").is_empty());
+}

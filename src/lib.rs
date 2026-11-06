@@ -185,6 +185,94 @@ pub fn compile_js_with(
 
 // ---- tools ----------------------------------------------------------------------------------
 
+/// Things that compile but may not do what was meant: a prop that shadows a built-in property
+/// of every element (`hidden` hides the host; `title` also shows a tooltip).
+pub fn warnings(source: &str) -> Vec<Diagnostic> {
+    let Ok(component) = parser::parse(source) else {
+        return Vec::new();
+    };
+    component
+        .props
+        .iter()
+        .filter_map(|prop| {
+            let (_, effect) = BUILT_IN_PROPERTIES
+                .iter()
+                .find(|(name, _)| *name == prop.name)?;
+            Some(
+                Diagnostic::new(
+                    prop.span,
+                    format!(
+                        "prop `{}` is also every element's built-in `{}`: {effect}",
+                        prop.name, prop.name
+                    ),
+                )
+                .with_help(format!(
+                    "rename the prop if that isn't intended (e.g. `{}-text`)",
+                    prop.name
+                )),
+            )
+        })
+        .collect()
+}
+
+/// `HTMLElement` properties a prop would shadow, and what the attribute does on its own.
+const BUILT_IN_PROPERTIES: &[(&str, &str)] = &[
+    (
+        "title",
+        "the attribute also shows as a tooltip on the element",
+    ),
+    ("hidden", "the attribute also hides the element"),
+    ("id", "the attribute is also the element's id"),
+    (
+        "slot",
+        "the attribute also assigns the element to a slot of its parent",
+    ),
+    ("style", "the attribute is also the element's inline style"),
+    (
+        "lang",
+        "the attribute also sets the language of the element's content",
+    ),
+    (
+        "dir",
+        "the attribute also sets the text direction of the element's content",
+    ),
+    (
+        "inert",
+        "the attribute also makes the element and its content inert",
+    ),
+    (
+        "draggable",
+        "the attribute also makes the element draggable",
+    ),
+    (
+        "translate",
+        "the attribute also controls translation of the element's content",
+    ),
+    ("popover", "the attribute also makes the element a popover"),
+    (
+        "autofocus",
+        "the attribute also focuses the element on page load",
+    ),
+    ("tabIndex", "the attribute also makes the element focusable"),
+    (
+        "accessKey",
+        "the attribute also gives the element a keyboard shortcut",
+    ),
+    (
+        "contentEditable",
+        "the attribute also makes the element's content editable",
+    ),
+    (
+        "spellcheck",
+        "the attribute also controls spell checking of the element's content",
+    ),
+    (
+        "role",
+        "the attribute also sets the element's accessibility role",
+    ),
+    ("className", "it is also the element's class list"),
+];
+
 /// A Custom Elements Manifest (`custom-elements.json`) describing the component, as the module
 /// at `module_path` (the path the JavaScript output is published at).
 pub fn compile_manifest(source: &str, module_path: &str) -> Result<String, Diagnostic> {

@@ -63,8 +63,17 @@ impl Diagnostic {
     ///    = help: did you mean `title`?
     /// ```
     pub fn render(&self, source: &str, path: &str) -> String {
+        self.render_as("error", source, path)
+    }
+
+    /// The same, as a warning.
+    pub fn render_warning(&self, source: &str, path: &str) -> String {
+        self.render_as("warning", source, path)
+    }
+
+    fn render_as(&self, severity: &str, source: &str, path: &str) -> String {
         let mut output = format!(
-            "error: {}\n --> {path}:{}:{}\n",
+            "{severity}: {}\n --> {path}:{}:{}\n",
             self.message, self.span.line, self.span.column
         );
         let normalized = source.replace("\r\n", "\n");
