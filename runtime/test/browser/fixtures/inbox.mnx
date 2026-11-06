@@ -1,0 +1,15 @@
+<script>
+  import './badge.mnx'
+  const people = [{ name: "Ada", unread: 3 }, { name: "Linus", unread: 0 }]
+</script>
+<mnx-inbox items={people} title="Inbox">
+  <section>
+    <h1>{title}</h1>
+    <mnx-each items={items} as="item" key={item.name}>
+      <mnx-badge label={item.name} count={item.unread} info={{ color: item.unread > 0 ? "red" : "gray" }} class="row" data-who={item.name}>
+        <em slot="icon">{item.unread > 0 ? "*" : "-"}</em>{item.unread > 0 ? "unread" : "read"}
+      </mnx-badge>
+    </mnx-each>
+    <x-widget config={{ size: items.length }} mode="plain"></x-widget>
+  </section>
+</mnx-inbox>

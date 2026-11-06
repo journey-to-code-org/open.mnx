@@ -27,6 +27,16 @@ pub struct ComponentAst {
     pub script: Script,
     /// The template: the host element's children.
     pub nodes: Vec<Node>,
+    /// Components imported from `.mnx` files, by tag, once loaded.
+    pub children: Vec<ChildComponent>,
+}
+
+impl ComponentAst {
+    pub fn child(&self, tag: &str) -> Option<&ChildComponent> {
+        self.children
+            .iter()
+            .find(|child| child.ast.tag.eq_ignore_ascii_case(tag))
+    }
 }
 
 /// A prop, declared by an attribute on the host tag.
@@ -54,10 +64,35 @@ pub struct Script {
     pub bindings: Vec<Binding>,
     /// Names the script declares that only exist at runtime (functions, classes, imports).
     pub runtime_names: Vec<String>,
-    /// `import` statements, verbatim, for the top of the JavaScript module.
-    pub imports: Vec<String>,
+    /// `import` statements, for the top of the JavaScript module.
+    pub imports: Vec<Import>,
+    /// Imports of other `.mnx` components (also present in `imports`).
+    pub components: Vec<ComponentImport>,
     /// Everything else, verbatim: it runs once per component instance, during setup.
     pub body: String,
+}
+
+/// An `import` statement, kept verbatim, with where its module specifier is inside the text
+/// (so `./button.mnx` can be rewritten to `./button.js` in the output).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Import {
+    pub text: String,
+    pub specifier: String,
+    pub specifier_range: std::ops::Range<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ComponentImport {
+    pub specifier: String,
+    pub span: Span,
+}
+
+/// A component this one uses, loaded and parsed (see `components.rs`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChildComponent {
+    pub path: String,
+    pub source: String,
+    pub ast: ComponentAst,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -461,14 +461,27 @@ fn rejects_interpolating_objects() {
 }
 
 #[test]
-fn requires_exactly_one_template_root() {
-    for source in [
-        "<mnx-x></mnx-x>",
-        "<mnx-x><p>One</p><p>Two</p></mnx-x>",
-        "<mnx-x>leading <p>Root</p></mnx-x>",
-    ] {
-        assert_error(source, "{}", "exactly one root element");
-    }
+fn the_host_is_the_root_so_templates_may_have_any_number_of_top_level_nodes() {
+    assert_eq!(compile("<mnx-x></mnx-x>", "{}").unwrap(), "<mnx-x></mnx-x>");
+    assert_eq!(
+        compile(
+            "<mnx-x name=\"Ada\">Hi {name} <p>One</p><p>Two</p></mnx-x>",
+            "{}"
+        )
+        .unwrap(),
+        "<mnx-x><!---->Hi Ada <p>One</p><p>Two</p></mnx-x>"
+    );
+    let js = compile_js(
+        "<mnx-x name=\"Ada\">Hi {name} <p>One</p></mnx-x>",
+        "@mnx/runtime",
+        "x.mnx",
+    )
+    .unwrap();
+    assert!(js.contains(r#"template: "<!----><p>One</p>""#), "{js}");
+    assert!(
+        js.contains(r#"{ path: [0], anchor: () => "Hi " + $t($p.name) + " " }"#),
+        "{js}"
+    );
 }
 
 // ---- directives -----------------------------------------------------------------------------

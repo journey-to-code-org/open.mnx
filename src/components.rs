@@ -1,0 +1,98 @@
+//! Loading the components a component imports.
+//!
+//! `import "./button.mnx"` in a `<script>` makes `<mnx-button>` a known child component: the
+//! compiler loads and parses it (recursively), so the HTML backend can render it inline and the
+//! JavaScript backend can pass it props as values and find its slotted content. Where sources
+//! come from is up to the caller — the filesystem for the CLI, a bundler's resolver for a plugin.
+
+use crate::{
+    ast::{ChildComponent, ComponentAst},
+    diagnostic::Diagnostic,
+    parser,
+};
+
+/// Finds and reads an imported component: `(specifier, importer path)` → `(path, source)`.
+pub type Loader<'a> = &'a dyn Fn(&str, &str) -> Result<(String, String), String>;
+
+/// Load every component `component` (at `path`) imports, and theirs, into `children`.
+pub fn load(
+    component: &mut ComponentAst,
+    path: &str,
+    loader: Option<Loader<'_>>,
+) -> Result<(), Diagnostic> {
+    load_from(component, path, loader, &mut vec![path.to_owned()])
+}
+
+fn load_from(
+    component: &mut ComponentAst,
+    path: &str,
+    loader: Option<Loader<'_>>,
+    stack: &mut Vec<String>,
+) -> Result<(), Diagnostic> {
+    for import in component.script.components.clone() {
+        let Some(loader) = loader else {
+            return Err(Diagnostic::new(
+                import.span,
+                format!(
+                    "this component imports `{}`; compile it from a file so imports can be found",
+                    import.specifier
+                ),
+            ));
+        };
+        let (child_path, source) = loader(&import.specifier, path).map_err(|message| {
+            Diagnostic::new(
+                import.span,
+                format!("can't load `{}`: {message}", import.specifier),
+            )
+        })?;
+        if stack.contains(&child_path) {
+            return Err(Diagnostic::new(
+                import.span,
+                format!("import cycle: {} → {child_path}", stack.join(" → ")),
+            ));
+        }
+        let mut child = parser::parse(&source)
+            .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
+        stack.push(child_path.clone());
+        let loaded = load_from(&mut child, &child_path, Some(loader), stack);
+        stack.pop();
+        loaded?;
+        if component.child(&child.tag).is_some() {
+            return Err(Diagnostic::new(
+                import.span,
+                format!("<{}> is imported more than once", child.tag),
+            ));
+        }
+        if child.tag == component.tag {
+            return Err(Diagnostic::new(
+                import.span,
+                format!("<{}> can't import itself", child.tag),
+            ));
+        }
+        component.children.push(ChildComponent {
+            path: child_path,
+            source,
+            ast: child,
+        });
+    }
+    Ok(())
+}
+
+/// The filesystem loader the CLI uses: specifiers are paths relative to the importing file.
+pub fn filesystem(specifier: &str, from: &str) -> Result<(String, String), String> {
+    if !(specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/'))
+    {
+        return Err(
+            "component imports must be relative paths (./ or ../) when compiling files".to_owned(),
+        );
+    }
+    let base = std::path::Path::new(from)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let path = base.join(specifier);
+    let path =
+        std::fs::canonicalize(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let source =
+        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok((path.to_string_lossy().into_owned(), source))
+}

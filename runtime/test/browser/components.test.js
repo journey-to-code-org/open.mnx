@@ -10,6 +10,7 @@ useBrowser({
   counter: join(here, 'fixtures/counter.mnx'),
   link: join(here, 'fixtures/link.mnx'),
   greeting: join(here, 'fixtures/greeting.mnx'),
+  pair: join(here, 'fixtures/pair.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -136,6 +137,38 @@ test('markup that does not match the template is re-rendered, with a warning', a
   assert.equal(await page.$eval('mnx-header h1', (h1) => h1.textContent), 'Mikey Nichols');
   assert.equal(await page.$('mnx-header > p'), null);
   assert.ok(messages.some((message) => message.startsWith('warning:') && message.includes("doesn't match its template")));
+  await page.close();
+});
+
+test('markup whose parts would line up but whose shape differs is re-rendered too', async () => {
+  // Every part finds a <button> at its path, but the server never rendered the extra <p>.
+  const { page, messages } = await open('<mnx-counter><button type="button">x</button><p>extra</p></mnx-counter>', { modules: ['counter'] });
+  assert.equal(await page.$('mnx-counter > p'), null);
+  assert.equal(await page.$eval('mnx-counter button', (button) => button.textContent), 'Clicks: 0');
+  assert.ok(messages.some((message) => message.includes("doesn't match its template")));
+  await page.close();
+});
+
+test('a template with several top-level nodes renders, hydrates and updates', async () => {
+  const read = (page) => page.$eval('mnx-pair', (pair) => pair.innerHTML.replace(/<!--.*?-->/g, ''));
+  const fresh = await open('<mnx-pair></mnx-pair>', { modules: ['pair'] });
+  assert.equal(await read(fresh.page), 'Hi Ada <p>x</p><i>y</i>');
+  await fresh.page.close();
+
+  const props = join(site, 'pair.props.json');
+  writeFileSync(props, JSON.stringify({ name: 'Lin' }));
+  const server = compiler(join(here, 'fixtures/pair.mnx'), '--props', props);
+  const { page, messages } = await open(server, { modules: ['pair'] });
+  await page.evaluate(() => { window.p = document.querySelector('mnx-pair p'); });
+  await page.evaluate(async () => {
+    const pair = document.querySelector('mnx-pair');
+    pair.name = 'Grace';
+    pair.on = false;
+    await pair.updateComplete;
+  });
+  assert.equal(await read(page), 'Hi Grace <p>x</p>');
+  assert.equal(await page.evaluate(() => window.p === document.querySelector('mnx-pair p')), true, 'hydrated, not re-rendered');
+  assert.deepEqual(messages, []);
   await page.close();
 });
 

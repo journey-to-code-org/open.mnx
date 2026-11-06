@@ -71,6 +71,28 @@ export default define(tag, {
 
 Not yet in the JavaScript output: prop defaults computed at runtime, and slot content added to the element after it starts (it is projected once).
 
+## Components using components
+
+```html
+<script>
+  import './badge.mnx'
+</script>
+<mnx-inbox items={[]}>
+  <mnx-each items={items} as="item" key={item.name}>
+    <mnx-badge label={item.name} info={{ color: item.unread > 0 ? "red" : "gray" }}>
+      <em slot="icon">{item.unread}</em>new mail
+    </mnx-badge>
+  </mnx-each>
+</mnx-inbox>
+```
+
+- **Importing a `.mnx` file** makes its tag a known child. The compiler loads it (and what it imports) relative to the importing file; cycles, a component imported twice, and a component importing itself are errors. Imports only work when compiling from a file (the CLI, or a bundler plugin that supplies a loader).
+- **Props are checked at the call site**: each attribute must be one of the child's props (or a global, `data-`/`aria-` or event attribute), with a "did you mean" for typos; its value must have the type of the child's default; required props must be given. Errors point at the parent's attribute, and errors inside the child name the child's file.
+- **HTML output** renders the child inline: its host attributes, its template (a declarative shadow root for shadow children) and the parent's content in the child's slots, as server markup both components can hydrate.
+- **JavaScript output** imports the child's module (`./badge.mnx` → `./badge.js`; a bundler plugin keeps the specifier) and passes props as properties, so objects and arrays arrive as values, not JSON. The parent's content stays bound to the parent's state; when hydrating, the runtime finds it inside the child's slot regions.
+- **Other libraries' custom elements** get an attribute until the element is defined with a matching property, then the property (React 19's rule), so `config={{ … }}` reaches a Lit or Stencil element as an object.
+- **The host is the root**: a template can have any number of top-level nodes (text, elements, regions); there is no single-root rule.
+
 ## Describing components to tools
 
 - `--emit manifest` writes a [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest) (`custom-elements.json`, schema 2.1.0): the tag, each prop as an attribute and a field with its type and default, slots (the default slot is `""`), and a description taken from an HTML comment above the host tag (or above the `<script>`). Editors, Storybook and documentation tools read this format. `--module-path` sets the module path it records (default: the source name with `.js`).

@@ -18,6 +18,8 @@ pub struct Diagnostic {
     pub message: String,
     /// An optional suggestion, e.g. "did you mean `title`?".
     pub help: Option<String>,
+    /// When the error is in an imported component: that file's path and source.
+    pub file: Option<(String, String)>,
 }
 
 impl Diagnostic {
@@ -26,6 +28,22 @@ impl Diagnostic {
             span,
             message: message.into(),
             help: None,
+            file: None,
+        }
+    }
+
+    /// Mark the error as being in another file (an imported component). The innermost file wins.
+    pub fn in_file(mut self, path: &str, source: &str) -> Self {
+        self.file
+            .get_or_insert_with(|| (path.to_owned(), source.to_owned()));
+        self
+    }
+
+    /// Render for a terminal, using the imported component's source when the error is there.
+    pub fn render_in(&self, source: &str, path: &str) -> String {
+        match &self.file {
+            Some((file, file_source)) => self.render(file_source, file),
+            None => self.render(source, path),
         }
     }
 

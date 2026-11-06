@@ -304,8 +304,15 @@ function walk(range, path) {
       if (++seen === index) { node = candidate; break; }
     }
     if (!node) return null;
-    first = node.firstChild;
-    stop = null;
+    // The next step goes into this node: an element's children, or a region's contents (a
+    // part inside a child component's slot, in server markup, is reached that way).
+    if (isOpen(node)) {
+      first = node.nextSibling;
+      stop = matchingClose(node);
+    } else {
+      first = node.firstChild;
+      stop = null;
+    }
   }
   return node;
 }
@@ -314,10 +321,11 @@ const childRange = (parent) => ({ first: parent.firstChild, stop: null });
 const regionRange = (open, close) => ({ first: open.nextSibling, stop: close });
 
 /** The node for every part, or null if the markup doesn't have the template's shape. */
-function locate(range, parts) {
+function locate(range, parts, hydrating = false) {
   const nodes = [];
   for (const part of parts) {
-    const node = walk(range, part.path);
+    // In server markup, content given to a child component sits where the child projected it.
+    const node = walk(range, hydrating && part.hydrate ? part.hydrate : part.path);
     const fits = !node ? false
       : part.when || part.each || part.slot ? isOpen(node) && matchingClose(node) !== null
       : part.anchor ? node.nodeType === COMMENT && node.data === ''
@@ -351,17 +359,28 @@ function clearBetween(open, close) {
  */
 function mountBlock(block, args, open, close, hydrating, context) {
   const parts = block.parts(...args);
-  let nodes = hydrating ? locate(regionRange(open, close), parts) : null;
-  const hydrated = nodes !== null;
-  if (!nodes) {
-    if (hydrating) console.warn('mnx: server markup for a region does not match its template; rendering it fresh');
-    clearBetween(open, close);
-    const fragment = blueprint(block).content.cloneNode(true);
-    nodes = locate(childRange(fragment), parts);
-    close.before(fragment);
+  const nodes = hydrating ? locate(regionRange(open, close), parts, true) : null;
+  if (nodes) {
+    parts.forEach((part, index) => bind(part, nodes[index], true, context));
+    return;
   }
-  parts.forEach((part, index) => bind(part, nodes[index], hydrated, context));
+  if (hydrating) console.warn('mnx: server markup for a region does not match its template; rendering it fresh');
+  clearBetween(open, close);
+  // Find and bind the parts in the fragment, then insert it: child components inside see
+  // their props from the start, and can't move slotted nodes before they're found.
+  // importNode, not cloneNode: defined custom elements upgrade now, so their properties exist
+  // before parts bind (a clone stays in the template's inert document).
+  const fragment = document.importNode(blueprint(block).content, true);
+  const fresh = locate(childRange(fragment), parts);
+  parts.forEach((part, index) => bind(part, fresh[index], false, context));
+  close.before(fragment);
 }
+
+/** A range's shape: its top-level positions as tag names and region markers. */
+const signature = (range) =>
+  [...positions(range.first, range.stop)]
+    .map((node) => (node.nodeType === 1 ? node.localName : isOpen(node) ? '[' : '#'))
+    .join(' ');
 
 // ---- binding parts -------------------------------------------------------------------------
 
@@ -386,6 +405,11 @@ function bind(part, node, hydrating, context) {
     node.addEventListener(part.on, (event) => {
       const handler = $r(part.handler());
       if (typeof handler === 'function') handler.call(node, event);
+    });
+  } else if (part.property) {
+    // A child component's prop: always a property, so objects and arrays arrive as they are.
+    effect(() => {
+      node[part.property] = $r(part.value());
     });
   } else if (part.attribute) {
     bindAttribute(part, node);
@@ -427,6 +451,11 @@ function bindAttribute(part, node) {
   const name = part.attribute;
   effect(() => {
     const value = $r(part.value());
+    // Another library's custom element: a property when it has one (React 19's rule).
+    if (part.prop && part.prop in node) {
+      node[part.prop] = value;
+      return;
+    }
     if (part.boolean) {
       if (typeof value !== 'boolean') {
         console.error(`mnx: "${name}" is a boolean attribute; got`, value);
@@ -436,11 +465,11 @@ function bindAttribute(part, node) {
       return;
     }
     if (value == null) return node.removeAttribute(name);
-    if (typeof value === 'object') {
+    if (typeof value === 'object' && !part.prop) {
       console.error(`mnx: cannot write an object to the "${name}" attribute`, value);
       return node.removeAttribute(name);
     }
-    const text = String(value);
+    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
     if (part.url && !isSafeUrl(text)) {
       console.error(`mnx: blocked an unsafe URL in "${name}":`, text);
       return node.removeAttribute(name);
@@ -606,6 +635,7 @@ const hasContent = (root) =>
 export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], setup }) {
   if (customElements.get(tag)) return customElements.get(tag);
   const componentTemplate = blueprint({ template });
+  const templateSignature = signature(childRange(componentTemplate.content));
   let instances = 0;
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
@@ -706,9 +736,13 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
 
         const context = { slots: new Map() };
         const server = hasContent(root);
-        let nodes = server ? locate(childRange(root), parts) : null;
-        const hydrated = nodes !== null;
-        if (!nodes) {
+        // Server markup has the template's shape; anything else is the page's own children.
+        const nodes = server && signature(childRange(root)) === templateSignature
+          ? locate(childRange(root), parts, true)
+          : null;
+        if (nodes) {
+          parts.forEach((part, index) => bind(part, nodes[index], true, context));
+        } else {
           if (server && !shadow && slots.length) {
             // Not server markup: the page's own children for this element, to be slotted.
             for (const node of [...root.childNodes]) {
@@ -723,10 +757,12 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
           } else if (server) {
             console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh`);
           }
-          root.replaceChildren(componentTemplate.content.cloneNode(true));
-          nodes = locate(childRange(root), parts);
+          // Find and bind the parts before inserting (see mountBlock).
+          const fragment = document.importNode(componentTemplate.content, true);
+          const fresh = locate(childRange(fragment), parts);
+          parts.forEach((part, index) => bind(part, fresh[index], false, context));
+          root.replaceChildren(fragment);
         }
-        parts.forEach((part, index) => bind(part, nodes[index], hydrated, context));
       });
       // Disabled (e.g. inside a disabled <fieldset>) before setup registered its hooks. Chromium
       // always calls formDisabledCallback after connectedCallback, so this never runs there (the

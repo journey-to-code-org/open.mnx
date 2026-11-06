@@ -18,7 +18,7 @@ use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{Binding, Script},
+    ast::{Binding, ComponentImport, Import, Script},
     diagnostic::{Diagnostic, Span},
     expression,
     scanner::span_after,
@@ -105,7 +105,21 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
                     script.runtime_names.push(specifier.name().to_string());
                 }
                 let range = import.span.start as usize..import.span.end as usize;
-                script.imports.push(source[range.clone()].to_owned());
+                let specifier = import.source.value.as_str().unwrap_or_default().to_owned();
+                // The specifier's quotes included; relative to the import statement's text.
+                let specifier_range = (import.source.span.start as usize - range.start)
+                    ..(import.source.span.end as usize - range.start);
+                if specifier.ends_with(".mnx") {
+                    script.components.push(ComponentImport {
+                        specifier: specifier.clone(),
+                        span: at(import.source.span.start),
+                    });
+                }
+                script.imports.push(Import {
+                    text: source[range.clone()].to_owned(),
+                    specifier,
+                    specifier_range,
+                });
                 import_ranges.push(range);
             }
             Statement::ExportNamedDeclaration(_)
@@ -167,7 +181,15 @@ mod tests {
         );
         assert_eq!(script.runtime_names, ["state", "a", "b", "inc", "Thing"]);
         assert_eq!(script.bindings[1].span, Span::new(4, 5));
-        assert_eq!(script.imports, ["import { state } from '@mnx/runtime'"]);
+        assert_eq!(
+            script.imports[0].text,
+            "import { state } from '@mnx/runtime'"
+        );
+        assert_eq!(script.imports[0].specifier, "@mnx/runtime");
+        assert_eq!(
+            &script.imports[0].text[script.imports[0].specifier_range.clone()],
+            "'@mnx/runtime'"
+        );
         assert!(script
             .body
             .starts_with("                                    \nconst title"));

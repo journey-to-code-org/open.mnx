@@ -110,6 +110,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         props,
         script,
         nodes: host.children,
+        children: Vec::new(),
     })
 }
 

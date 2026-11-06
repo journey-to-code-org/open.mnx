@@ -319,8 +319,9 @@ impl Expression {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            // Parenthesized: `() => { a: 1 }` would be a function body, not an object.
             Self::Object(properties) => format!(
-                "{{ {} }}",
+                "({{ {} }})",
                 properties
                     .iter()
                     .map(|(key, value)| format!(
@@ -1090,7 +1091,7 @@ mod tests {
         assert_eq!(names, ["user", "items", "i", "v"]);
         assert_eq!(
             expression.to_js(),
-            "(user?.name ?? (items[i].label + { \"k\": v }.k))"
+            "(user?.name ?? (items[i].label + ({ \"k\": v }).k))"
         );
     }
 }

@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
                 .into_owned()
         });
         let output = match emit.as_str() {
-            "js" => mnix_compiler::compile_js(&source, &runtime, &name),
+            "js" => mnix_compiler::compile_js_file(&source_path, &runtime),
             "dts" => mnix_compiler::compile_declarations(&source, &name),
             "manifest" => mnix_compiler::compile_manifest(&source, &module_path),
             _ => {
@@ -73,7 +73,7 @@ fn run() -> Result<(), String> {
                 ))
             }
         }
-        .map_err(|diagnostic| diagnostic.render(&source, &source_path))?;
+        .map_err(|diagnostic| diagnostic.render_in(&source, &source_path))?;
         return match output_path {
             Some(output_path) => write_atomically(&output_path, output.as_bytes()),
             None => {
@@ -92,11 +92,11 @@ fn run() -> Result<(), String> {
     let html = if let Some(slots_path) = slots_path {
         let slots = fs::read_to_string(&slots_path)
             .map_err(|error| format!("{slots_path}: unable to read slots: {error}"))?;
-        mnix_compiler::compile_with_slots(&source, &props, &slots)
+        mnix_compiler::compile_file(&source_path, &props, &slots)
     } else {
-        mnix_compiler::compile(&source, &props)
+        mnix_compiler::compile_file(&source_path, &props, "{}")
     }
-    .map_err(|diagnostic| diagnostic.render(&source, &source_path))?;
+    .map_err(|diagnostic| diagnostic.render_in(&source, &source_path))?;
     if let Some(output_path) = output_path {
         write_atomically(&output_path, html.as_bytes())?;
     } else {

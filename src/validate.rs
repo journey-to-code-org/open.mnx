@@ -100,22 +100,47 @@ pub fn validate(
     let overrides = values
         .as_object()
         .ok_or_else(|| Diagnostic::new(Span::new(1, 1), "component props must be a JSON object"))?;
+    lower_component(&component, overrides, &Supply::Templates(slot_values))
+}
+
+/// Content supplied to a component's slots: template fragments (`--slots`), lowered in the
+/// component's own scope, or nodes a parent component already lowered in *its* scope.
+enum Supply<'a> {
+    Templates(&'a HashMap<String, Vec<ast::Node>>),
+    Lowered(HashMap<String, Vec<Node>>),
+}
+
+impl Supply<'_> {
+    fn names(&self) -> Vec<&String> {
+        match self {
+            Supply::Templates(map) => map.keys().collect(),
+            Supply::Lowered(map) => map.keys().collect(),
+        }
+    }
+}
+
+fn lower_component(
+    component: &ast::ComponentAst,
+    overrides: &serde_json::Map<String, Value>,
+    supply: &Supply<'_>,
+) -> Result<ir::Component, Diagnostic> {
     validate_custom_element(&component.tag, component.tag_span)?;
 
     let locals = evaluate_script(&component.script)?;
-    let props = evaluate_props(&component, &locals, overrides)?;
+    let props = evaluate_props(component, &locals, overrides)?;
 
     let context = Context {
+        component,
         locals: &locals,
         props: &props,
-        slot_values,
+        supply,
         shadow: component.shadow,
     };
 
     // 2. Resolve everything, including branches and slots this build won't render.
     let mut declared_slots = HashSet::new();
     collect_slots(&component.nodes, &mut declared_slots);
-    for name in slot_values.keys() {
+    for name in supply.names() {
         if !declared_slots.contains(name) {
             return Err(Diagnostic::new(
                 Span::new(1, 1),
@@ -125,14 +150,15 @@ pub fn validate(
     }
     let mut scopes = Vec::new();
     context.resolve_nodes(&component.nodes, &mut scopes)?;
-    for nodes in slot_values.values() {
-        context.resolve_nodes(nodes, &mut scopes)?;
+    if let Supply::Templates(templates) = supply {
+        for nodes in templates.values() {
+            context.resolve_nodes(nodes, &mut scopes)?;
+        }
     }
 
     // 3. Lower the branches that are taken.
     let mut state = LowerState::default();
     let nodes = context.lower_nodes(&component.nodes, &mut state)?;
-    check_single_root(&nodes)?;
     let light_children = std::mem::take(&mut state.light);
 
     let host_attributes = props
@@ -142,7 +168,7 @@ pub fn validate(
         .collect();
 
     Ok(ir::Component {
-        tag: component.tag,
+        tag: component.tag.clone(),
         shadow: component.shadow,
         host_attributes,
         nodes,
@@ -199,11 +225,13 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
             default,
         });
     }
-    let slot_values = HashMap::new();
+    let templates = HashMap::new();
+    let supply = Supply::Templates(&templates);
     let context = Context {
+        component,
         locals: &locals,
         props: &props,
-        slot_values: &slot_values,
+        supply: &supply,
         shadow: component.shadow,
     };
     context.resolve_nodes(&component.nodes, &mut Vec::new())?;
@@ -461,9 +489,10 @@ fn host_attribute(prop: &Prop) -> Option<String> {
 // ---- 2. resolve / 3. lower -----------------------------------------------------------------
 
 struct Context<'a> {
+    component: &'a ast::ComponentAst,
     locals: &'a [(String, Local)],
     props: &'a [Prop],
-    slot_values: &'a HashMap<String, Vec<ast::Node>>,
+    supply: &'a Supply<'a>,
     /// Shadow-DOM components use native `<slot>` elements.
     shadow: bool,
 }
@@ -686,9 +715,13 @@ impl Context<'_> {
         match node {
             ast::Node::Text(parts) => Ok(vec![Node::Text(self.lower_parts(parts, state)?)]),
             ast::Node::Element(element) => {
+                if let Some(child) = self.component.child(&element.name) {
+                    return Ok(vec![self.lower_child(element, child, state)?]);
+                }
+                let custom = element.name.contains('-');
                 let mut attributes = Vec::with_capacity(element.attributes.len());
                 for attribute in &element.attributes {
-                    if let Some(lowered) = self.lower_attribute(attribute, state)? {
+                    if let Some(lowered) = self.lower_attribute(attribute, state, custom)? {
                         attributes.push(lowered);
                     }
                 }
@@ -795,12 +828,19 @@ impl Context<'_> {
                         format!("recursive slot expansion for `{name}`"),
                     ));
                 }
-                let supplied = self.slot_values.get(name);
+                // Supplied content, lowered: templates in this component's scope (as a block),
+                // or nodes the parent already lowered in its own.
+                let supplied = match self.supply {
+                    Supply::Templates(templates) => templates
+                        .get(name)
+                        .map(|nodes| self.lower_block(nodes, state, !self.shadow))
+                        .transpose()?,
+                    Supply::Lowered(lowered) => lowered.get(name).cloned(),
+                };
                 let output = if self.shadow {
                     // A native <slot>; supplied content goes in the host's light DOM.
                     let fallback = self.lower_nodes(fallback, state)?;
-                    if let Some(nodes) = supplied {
-                        let lowered = self.lower_nodes(nodes, state)?;
+                    if let Some(lowered) = supplied {
                         state.light.extend(assign_to_slot(name, lowered, *span)?);
                     }
                     let attributes = if name == "default" {
@@ -819,12 +859,17 @@ impl Context<'_> {
                 } else {
                     // A region; `<!--[!-->` marks supplied content, which stays static, as
                     // opposed to fallback content, which the JavaScript side binds.
-                    let (open, nodes) = match supplied {
-                        Some(nodes) => (Node::OpenProjected, nodes),
-                        None => (Node::Open, fallback),
-                    };
-                    let mut output = vec![open];
-                    output.extend(self.lower_block(nodes, state, true)?);
+                    let mut output = Vec::new();
+                    match supplied {
+                        Some(lowered) => {
+                            output.push(Node::OpenProjected);
+                            output.extend(lowered);
+                        }
+                        None => {
+                            output.push(Node::Open);
+                            output.extend(self.lower_block(fallback, state, true)?);
+                        }
+                    }
                     output.push(Node::Close);
                     Ok(output)
                 };
@@ -838,10 +883,150 @@ impl Context<'_> {
         }
     }
 
+    /// A child component used in this template: rendered inline from its own definition, with
+    /// props passed as values (type-checked against the child's defaults) and the element's
+    /// content — lowered here, in this component's scope — as the child's slot content.
+    fn lower_child(
+        &self,
+        element: &ast::Element,
+        child: &ast::ChildComponent,
+        state: &mut LowerState,
+    ) -> Result<Node, Diagnostic> {
+        let interface =
+            analyze(&child.ast).map_err(|error| error.in_file(&child.path, &child.source))?;
+        let mut overrides = serde_json::Map::new();
+        let mut attributes = Vec::new();
+        for attribute in &element.attributes {
+            let prop_name = camel(&attribute.name);
+            let lower = attribute.name.to_ascii_lowercase();
+            if let Some(prop) = interface.props.iter().find(|prop| prop.name == prop_name) {
+                let (value, span) = match &attribute.value {
+                    AttributeValue::None => (Value::Bool(true), attribute.span),
+                    AttributeValue::Text(parts) => (
+                        Value::String(joined(&self.lower_parts(parts, state)?)),
+                        attribute.span,
+                    ),
+                    AttributeValue::Expression(expression, span) => {
+                        (self.evaluate(expression, *span, state)?, *span)
+                    }
+                };
+                if let Some(default) = &prop.default {
+                    if !same_type(default, &value) {
+                        return Err(Diagnostic::new(
+                            span,
+                            format!(
+                                "<{}> prop `{}` must be {} (like its default), found {}",
+                                child.ast.tag,
+                                prop.name,
+                                expression::type_name(default),
+                                expression::type_name(&value)
+                            ),
+                        ));
+                    }
+                }
+                overrides.insert(prop.name.clone(), value);
+            } else if matches!(attribute.value, AttributeValue::Expression(..))
+                && !crate::parser::is_event_attribute(&lower)
+                && !is_global_attribute(&lower)
+            {
+                let names: Vec<&str> = interface
+                    .props
+                    .iter()
+                    .map(|prop| prop.name.as_str())
+                    .collect();
+                return Err(with_suggestion(
+                    Diagnostic::new(
+                        attribute.span,
+                        format!("<{}> has no prop `{prop_name}`", child.ast.tag),
+                    ),
+                    &prop_name,
+                    &names,
+                ));
+            } else if let Some(lowered) = self.lower_attribute(attribute, state, true)? {
+                attributes.push(lowered);
+            }
+        }
+        for prop in &interface.props {
+            if prop.default.is_none() && !overrides.contains_key(&prop.name) {
+                return Err(Diagnostic::new(
+                    element.span,
+                    format!("<{}> requires the prop `{}`", child.ast.tag, prop.attribute),
+                ));
+            }
+        }
+
+        // The element's content becomes the child's slot content, grouped by `slot="…"`.
+        let content = self.lower_block(&element.children, state, !child.ast.shadow)?;
+        let mut declared = HashSet::new();
+        collect_slots(&child.ast.nodes, &mut declared);
+        let mut groups: HashMap<String, Vec<Node>> = HashMap::new();
+        let mut depth = 0usize;
+        let mut current = "default".to_owned();
+        for node in content {
+            if depth == 0 {
+                current = match &node {
+                    Node::Element(element) => element
+                        .attributes
+                        .iter()
+                        .find(|attribute| attribute.name == "slot")
+                        .and_then(|attribute| attribute.value.as_deref())
+                        .map_or_else(|| "default".to_owned(), joined),
+                    _ => "default".to_owned(),
+                };
+                if matches!(&node, Node::Text(parts) if parts.iter().all(|part| match part {
+                    Part::Literal(text) | Part::Escaped(text) => text.trim().is_empty(),
+                })) {
+                    continue;
+                }
+            }
+            match node {
+                Node::Open | Node::OpenProjected => depth += 1,
+                Node::Close => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+            if !declared.contains(&current) {
+                return Err(Diagnostic::new(
+                    element.span,
+                    format!("<{}> has no slot named `{current}`", child.ast.tag),
+                ));
+            }
+            groups.entry(current.clone()).or_default().push(node);
+        }
+
+        let rendered = lower_component(&child.ast, &overrides, &Supply::Lowered(groups))
+            .map_err(|error| error.in_file(&child.path, &child.source))?;
+        for (name, value) in rendered.host_attributes {
+            attributes.push(ir::Attribute {
+                name,
+                value: (!value.is_empty()).then(|| vec![Part::Escaped(value)]),
+            });
+        }
+        let children = if rendered.shadow {
+            let mut children = vec![Node::Element(ir::Element {
+                name: "template".to_owned(),
+                attributes: vec![ir::Attribute {
+                    name: "shadowrootmode".to_owned(),
+                    value: Some(vec![Part::Literal("open".to_owned())]),
+                }],
+                children: rendered.nodes,
+            })];
+            children.extend(rendered.light_children);
+            children
+        } else {
+            rendered.nodes
+        };
+        Ok(Node::Element(ir::Element {
+            name: element.name.clone(),
+            attributes,
+            children,
+        }))
+    }
+
     fn lower_attribute(
         &self,
         attribute: &ast::Attribute,
         state: &LowerState,
+        custom_element: bool,
     ) -> Result<Option<ir::Attribute>, Diagnostic> {
         let lower = attribute.name.to_ascii_lowercase();
         if crate::parser::is_event_attribute(&lower) {
@@ -881,8 +1066,14 @@ impl Context<'_> {
                 if value.is_null() {
                     return Ok(None);
                 }
-                let text = expression::to_display_string(&value)
-                    .map_err(|message| Diagnostic::new(*span, message))?;
+                // Custom elements take arrays and objects as JSON attributes.
+                let text = match &value {
+                    Value::Array(_) | Value::Object(_) if custom_element => {
+                        serde_json::to_string(&value).expect("JSON serializes")
+                    }
+                    _ => expression::to_display_string(&value)
+                        .map_err(|message| Diagnostic::new(*span, message))?,
+                };
                 if is_url {
                     check_url(attribute, &text)?;
                 }
@@ -1030,6 +1221,48 @@ pub(crate) fn collect_slots(nodes: &[ast::Node], slots: &mut HashSet<String>) {
     }
 }
 
+/// `max-value` → `maxValue`.
+pub(crate) fn camel(name: &str) -> String {
+    let mut output = String::new();
+    let mut upper = false;
+    for character in name.chars() {
+        if character == '-' {
+            upper = true;
+        } else if upper {
+            output.push(character.to_ascii_uppercase());
+            upper = false;
+        } else {
+            output.push(character);
+        }
+    }
+    output
+}
+
+/// Attributes any element may carry, which aren't component props.
+pub(crate) fn is_global_attribute(name: &str) -> bool {
+    matches!(
+        name,
+        "id" | "class"
+            | "slot"
+            | "part"
+            | "exportparts"
+            | "title"
+            | "hidden"
+            | "lang"
+            | "dir"
+            | "tabindex"
+            | "role"
+            | "inert"
+            | "autofocus"
+            | "nonce"
+            | "draggable"
+            | "translate"
+            | "is"
+            | "name"
+    ) || name.starts_with("data-")
+        || name.starts_with("aria-")
+}
+
 /// Content for a named slot of a shadow-DOM component: each top-level element gets
 /// `slot="name"` so the browser projects it; top-level text can't be assigned to a named slot.
 fn assign_to_slot(name: &str, nodes: Vec<Node>, span: Span) -> Result<Vec<Node>, Diagnostic> {
@@ -1064,26 +1297,6 @@ fn assign_to_slot(name: &str, nodes: Vec<Node>, span: Span) -> Result<Vec<Node>,
             )),
         })
         .collect()
-}
-
-fn check_single_root(nodes: &[Node]) -> Result<(), Diagnostic> {
-    let element_roots = nodes
-        .iter()
-        .filter(|node| matches!(node, Node::Element(_)))
-        .count();
-    let has_text = nodes.iter().any(|node| match node {
-        Node::Text(parts) => parts.iter().any(|part| match part {
-            Part::Literal(text) | Part::Escaped(text) => !text.trim().is_empty(),
-        }),
-        Node::Element(_) | Node::Anchor | Node::Open | Node::OpenProjected | Node::Close => false,
-    });
-    if element_roots != 1 || has_text {
-        return Err(Diagnostic::new(
-            Span::new(1, 1),
-            "a component's template must have exactly one root element",
-        ));
-    }
-    Ok(())
 }
 
 fn validate_custom_element(tag: &str, span: Span) -> Result<(), Diagnostic> {

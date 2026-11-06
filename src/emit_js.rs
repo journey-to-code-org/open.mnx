@@ -39,6 +39,9 @@ pub struct Options<'a> {
     pub runtime: &'a str,
     /// Shown in the generated header comment.
     pub source_name: &'a str,
+    /// Rewrite `.mnx` imports to this extension (`".js"` for CLI output); `None` keeps them,
+    /// for bundler plugins that load `.mnx` files themselves.
+    pub component_extension: Option<&'a str>,
 }
 
 pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, Diagnostic> {
@@ -51,12 +54,16 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             ));
         }
     }
+    let children = child_infos(component)?;
     let mut emitter = Emitter {
         interface: &interface,
+        children: &children,
         shadow: component.shadow,
         scopes: Vec::new(),
+        base: Vec::new(),
         template: String::new(),
         parts: Vec::new(),
+        slot_paths: Vec::new(),
     };
     emitter.nodes(&component.nodes, &[], false)?;
 
@@ -67,8 +74,20 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         json(options.runtime)
     ));
     for import in &component.script.imports {
-        out.push_str(import);
-        if !import.trim_end().ends_with(';') {
+        let mut text = import.text.clone();
+        // A component import loads the compiled module, which defines the element.
+        if let (Some(extension), true) = (
+            options.component_extension,
+            import.specifier.ends_with(".mnx"),
+        ) {
+            let rewritten = format!(
+                "{}{extension}",
+                &import.specifier[..import.specifier.len() - 4]
+            );
+            text.replace_range(import.specifier_range.clone(), &json(&rewritten));
+        }
+        out.push_str(&text);
+        if !text.trim_end().ends_with(';') {
             out.push(';');
         }
         out.push('\n');
@@ -114,15 +133,82 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     out.push_str("    return [\n");
     for part in &emitter.parts {
         out.push_str("      ");
-        out.push_str(part);
+        out.push_str(&part.render());
         out.push_str(",\n");
     }
     out.push_str("    ];\n  },\n});\n");
     Ok(out)
 }
 
+/// The children `component` imports, as its emitter needs them.
+fn child_infos(component: &ComponentAst) -> Result<Vec<(String, ChildInfo)>, Diagnostic> {
+    component
+        .children
+        .iter()
+        .map(|child| {
+            let info = (|| {
+                let interface = validate::analyze(&child.ast)?;
+                let grandchildren = child_infos(&child.ast)?;
+                let mut emitter = Emitter {
+                    interface: &interface,
+                    children: &grandchildren,
+                    shadow: child.ast.shadow,
+                    scopes: Vec::new(),
+                    base: Vec::new(),
+                    template: String::new(),
+                    parts: Vec::new(),
+                    slot_paths: Vec::new(),
+                };
+                emitter.nodes(&child.ast.nodes, &[], false)?;
+                Ok(ChildInfo {
+                    props: interface
+                        .props
+                        .iter()
+                        .map(|prop| prop.name.clone())
+                        .collect(),
+                    shadow: child.ast.shadow,
+                    slot_paths: emitter.slot_paths,
+                })
+            })()
+            .map_err(|error: Diagnostic| error.in_file(&child.path, &child.source))?;
+            Ok((child.ast.tag.clone(), info))
+        })
+        .collect()
+}
+
 fn json(value: &str) -> String {
     serde_json::to_string(value).expect("strings serialize")
+}
+
+/// One part: where it is (`path` in a fresh template; `hydrate` where it sits in server markup
+/// when that differs — content projected into a child component's slot) and what it does.
+#[derive(Clone)]
+struct JsPart {
+    path: Vec<usize>,
+    hydrate: Option<Vec<usize>>,
+    body: String,
+}
+
+impl JsPart {
+    fn at(path: &[usize], body: String) -> Self {
+        Self {
+            path: path.to_vec(),
+            hydrate: None,
+            body,
+        }
+    }
+
+    fn render(&self) -> String {
+        match &self.hydrate {
+            Some(hydrate) => format!(
+                "{{ path: {}, hydrate: {}, {} }}",
+                path_js(&self.path),
+                path_js(hydrate),
+                self.body
+            ),
+            None => format!("{{ path: {}, {} }}", path_js(&self.path), self.body),
+        }
+    }
 }
 
 fn path_js(path: &[usize]) -> String {
@@ -135,14 +221,27 @@ fn path_js(path: &[usize]) -> String {
     )
 }
 
+/// What a parent needs to know about a child component it uses.
+struct ChildInfo {
+    props: Vec<String>,
+    shadow: bool,
+    /// Where each slot region is in the child's template (light DOM only), for hydrate paths.
+    slot_paths: Vec<(String, Vec<usize>)>,
+}
+
 struct Emitter<'a> {
     interface: &'a Interface,
+    children: &'a [(String, ChildInfo)],
     /// Shadow-DOM components compile mnx-slot to a native <slot>.
     shadow: bool,
     /// Loop variables in scope, innermost last.
     scopes: Vec<String>,
+    /// This emitter's position in the component template (non-empty inside mnx-if blocks), so
+    /// slot regions can be recorded with full paths.
+    base: Vec<usize>,
     template: String,
-    parts: Vec<String>,
+    parts: Vec<JsPart>,
+    slot_paths: Vec<(String, Vec<usize>)>,
 }
 
 impl<'a> Emitter<'a> {
@@ -151,11 +250,21 @@ impl<'a> Emitter<'a> {
         scopes.extend(extra.iter().cloned());
         Emitter {
             interface: self.interface,
+            children: self.children,
             shadow: self.shadow,
             scopes,
+            base: self.base.clone(),
             template: String::new(),
             parts: Vec::new(),
+            slot_paths: Vec::new(),
         }
+    }
+
+    fn child_info(&self, tag: &str) -> Option<&'a ChildInfo> {
+        self.children
+            .iter()
+            .find(|(child, _)| child.eq_ignore_ascii_case(tag))
+            .map(|(_, info)| info)
     }
 
     /// An expression as JavaScript: loop variables and script names go through `$r`, which
@@ -192,14 +301,26 @@ impl<'a> Emitter<'a> {
     }
 
     /// A branch or row: its own template, and a function from its loop variables to its parts.
-    fn block(&self, nodes: &[Node], params: &[String]) -> Result<String, Diagnostic> {
+    fn block(
+        &mut self,
+        nodes: &[Node],
+        params: &[String],
+        at: &[usize],
+    ) -> Result<String, Diagnostic> {
         let mut block = self.child(params);
+        block.base = self.base.iter().chain(at).copied().collect();
         block.nodes(nodes, &[], true)?;
+        self.slot_paths.append(&mut block.slot_paths);
         Ok(format!(
             "{{ template: {}, parts: ({}) => [{}] }}",
             json(&block.template),
             params.join(", "),
-            block.parts.join(", ")
+            block
+                .parts
+                .iter()
+                .map(JsPart::render)
+                .collect::<Vec<_>>()
+                .join(", ")
         ))
     }
 
@@ -228,17 +349,15 @@ impl<'a> Emitter<'a> {
                     } else if needs_text_anchor(nodes, node, block_top) {
                         self.template.push_str("<!---->");
                         let anchor = next(path);
-                        self.parts.push(format!(
-                            "{{ path: {}, anchor: () => {} }}",
-                            path_js(&anchor),
-                            self.text_js(parts)
+                        self.parts.push(JsPart::at(
+                            &anchor,
+                            format!("anchor: () => {}", self.text_js(parts)),
                         ));
                     } else {
                         // The element's only child: bind the element's text.
-                        self.parts.push(format!(
-                            "{{ path: {}, text: () => {} }}",
-                            path_js(path),
-                            self.text_js(parts)
+                        self.parts.push(JsPart::at(
+                            path,
+                            format!("text: () => {}", self.text_js(parts)),
                         ));
                     }
                 }
@@ -256,17 +375,14 @@ impl<'a> Emitter<'a> {
                     // server markup) at runtime.
                     self.template.push_str("<!--[--><!--]-->");
                     let region = next(path);
-                    let yes = self.block(consequent, &[])?;
+                    let yes = self.block(consequent, &[], &region)?;
                     let no = if alternate.is_empty() {
                         "null".to_owned()
                     } else {
-                        self.block(alternate, &[])?
+                        self.block(alternate, &[], &region)?
                     };
-                    self.parts.push(format!(
-                        "{{ path: {}, when: () => {}, blocks: [{yes}, {no}] }}",
-                        path_js(&region),
-                        self.js(test)
-                    ));
+                    let body = format!("when: () => {}, blocks: [{yes}, {no}]", self.js(test));
+                    self.parts.push(JsPart::at(&region, body));
                 }
                 Node::Each {
                     items,
@@ -282,7 +398,7 @@ impl<'a> Emitter<'a> {
                         item.clone(),
                         position.clone().unwrap_or_else(|| "$index".to_owned()),
                     ];
-                    let row = self.block(children, &params)?;
+                    let row = self.block(children, &params, &region)?;
                     // The key gets plain values (not row signals): it identifies a row.
                     let key = match key {
                         Some((key, _)) => format!(
@@ -292,11 +408,8 @@ impl<'a> Emitter<'a> {
                         ),
                         None => String::new(),
                     };
-                    self.parts.push(format!(
-                        "{{ path: {}, each: () => {}{key}, block: {row} }}",
-                        path_js(&region),
-                        self.js(items)
-                    ));
+                    let body = format!("each: () => {}{key}, block: {row}", self.js(items));
+                    self.parts.push(JsPart::at(&region, body));
                 }
                 Node::Slot {
                     name,
@@ -327,16 +440,17 @@ impl<'a> Emitter<'a> {
                         // or with the fallback block.
                         self.template.push_str("<!--[--><!--]-->");
                         let region = next(path);
+                        self.slot_paths.push((
+                            name.clone(),
+                            self.base.iter().chain(&region).copied().collect(),
+                        ));
                         let fallback = if fallback.is_empty() {
                             "null".to_owned()
                         } else {
-                            self.block(fallback, &[])?
+                            self.block(fallback, &[], &region)?
                         };
-                        self.parts.push(format!(
-                            "{{ path: {}, slot: {}, fallback: {fallback} }}",
-                            path_js(&region),
-                            json(name)
-                        ));
+                        let body = format!("slot: {}, fallback: {fallback}", json(name));
+                        self.parts.push(JsPart::at(&region, body));
                     }
                 }
                 Node::Else { span, .. } => {
@@ -351,10 +465,27 @@ impl<'a> Emitter<'a> {
     }
 
     fn element(&mut self, element: &ast::Element, path: &[usize]) -> Result<(), Diagnostic> {
+        let child = self.child_info(&element.name);
+        let custom = element.name.contains('-');
         self.template.push('<');
         self.template.push_str(&element.name);
         for attribute in &element.attributes {
             let lower = attribute.name.to_ascii_lowercase();
+            let prop = validate::camel(&lower);
+            // A prop of a known child component: always passed as a property value.
+            if let Some(child) = child.filter(|child| child.props.contains(&prop)) {
+                let _ = child;
+                let compute = match &attribute.value {
+                    AttributeValue::None => "true".to_owned(),
+                    AttributeValue::Text(parts) => self.text_js(parts),
+                    AttributeValue::Expression(expression, _) => self.js(expression),
+                };
+                self.parts.push(JsPart::at(
+                    path,
+                    format!("property: {}, value: () => {compute}", json(&prop)),
+                ));
+                continue;
+            }
             match &attribute.value {
                 AttributeValue::None => {
                     self.template.push(' ');
@@ -374,12 +505,12 @@ impl<'a> Emitter<'a> {
                     self.template.push('"');
                 }
                 AttributeValue::Expression(expression, _) if is_event_attribute(&lower) => {
-                    self.parts.push(format!(
-                        "{{ path: {}, on: {}, handler: () => {} }}",
-                        path_js(path),
+                    let body = format!(
+                        "on: {}, handler: () => {}",
                         json(&lower[2..]),
                         self.js(expression)
-                    ));
+                    );
+                    self.parts.push(JsPart::at(path, body));
                 }
                 value => {
                     let compute = match value {
@@ -388,18 +519,24 @@ impl<'a> Emitter<'a> {
                         AttributeValue::None => unreachable!("handled above"),
                     };
                     let kind = if BOOLEAN_ATTRIBUTES.contains(&lower.as_str()) {
-                        ", boolean: true"
+                        ", boolean: true".to_owned()
                     } else if URL_ATTRIBUTES.contains(&lower.as_str()) {
-                        ", url: true"
+                        ", url: true".to_owned()
+                    } else if custom
+                        && child.is_none()
+                        && matches!(value, AttributeValue::Expression(..))
+                    {
+                        // Another library's custom element: a property if it has one, else an
+                        // attribute (React 19's rule).
+                        format!(", prop: {}", json(&prop))
                     } else {
-                        ""
+                        String::new()
                     };
-                    self.parts.push(format!(
-                        "{{ path: {}, attribute: {}{kind}, value: () => {} }}",
-                        path_js(path),
-                        json(&attribute.name),
-                        compute
-                    ));
+                    let body = format!(
+                        "attribute: {}{kind}, value: () => {compute}",
+                        json(&attribute.name)
+                    );
+                    self.parts.push(JsPart::at(path, body));
                 }
             }
         }
@@ -407,10 +544,107 @@ impl<'a> Emitter<'a> {
         if VOID_ELEMENTS.contains(&element.name.to_ascii_lowercase().as_str()) {
             return Ok(());
         }
-        self.nodes(&element.children, path, false)?;
+        match child {
+            // Content for a light-DOM child component's slots: emitted here (it's this
+            // component's markup, in this component's scope), with hydrate paths that follow
+            // each node to where the child projected it in server markup.
+            Some(info) if !info.shadow => {
+                let units = content_units(&element.children);
+                let mut content = self.child(&[]);
+                content.nodes(&element.children, &[], true)?;
+                self.template.push_str(&content.template);
+                for part in content.parts {
+                    let local = part.hydrate.clone().unwrap_or_else(|| part.path.clone());
+                    let hydrate = match local.split_first() {
+                        Some((first, rest)) => {
+                            let Some((slot, position)) = units.get(*first) else {
+                                return Err(Diagnostic::new(
+                                    element.span,
+                                    "internal error: slot content position out of range",
+                                ));
+                            };
+                            let Some((_, region)) =
+                                info.slot_paths.iter().find(|(name, _)| name == slot)
+                            else {
+                                return Err(Diagnostic::new(
+                                    element.span,
+                                    format!("<{}> has no slot named `{slot}`", element.name),
+                                ));
+                            };
+                            path.iter()
+                                .chain(region)
+                                .copied()
+                                .chain(std::iter::once(*position))
+                                .chain(rest.iter().copied())
+                                .collect()
+                        }
+                        // A part bound to the content's own parent: can't happen at block top.
+                        None => path.to_vec(),
+                    };
+                    self.parts.push(JsPart {
+                        path: path.iter().chain(&part.path).copied().collect(),
+                        hydrate: Some(hydrate),
+                        body: part.body,
+                    });
+                }
+            }
+            _ => self.nodes(&element.children, path, false)?,
+        }
         self.template.push_str("</");
         self.template.push_str(&element.name);
         self.template.push('>');
         Ok(())
     }
+}
+
+/// For content placed inside a light-DOM child component: for each position (as `nodes`
+/// counts them with `block_top`), the slot it goes to and its position within that slot.
+fn content_units(nodes: &[Node]) -> Vec<(String, usize)> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    let mut units = Vec::new();
+    let mut push = |slot: String| {
+        let entry = counts.iter_mut().find(|(name, _)| *name == slot);
+        let position = match entry {
+            Some((_, count)) => {
+                *count += 1;
+                *count - 1
+            }
+            None => {
+                counts.push((slot.clone(), 1));
+                0
+            }
+        };
+        units.push((slot, position));
+    };
+    for node in nodes {
+        match node {
+            Node::Text(parts) => {
+                if needs_text_anchor(nodes, node, true)
+                    && parts
+                        .iter()
+                        .any(|part| matches!(part, Part::Expression { .. }))
+                {
+                    push("default".to_owned());
+                }
+            }
+            Node::Element(element) => {
+                let slot = element
+                    .attributes
+                    .iter()
+                    .find(|attribute| attribute.name == "slot")
+                    .and_then(|attribute| match &attribute.value {
+                        AttributeValue::Text(parts) => match parts.as_slice() {
+                            [Part::Literal(text)] => Some(text.clone()),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "default".to_owned());
+                push(slot);
+            }
+            Node::If { .. } | Node::Each { .. } | Node::Slot { .. } => push("default".to_owned()),
+            Node::Else { .. } => {}
+        }
+    }
+    units
 }
