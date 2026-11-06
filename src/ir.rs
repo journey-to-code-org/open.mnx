@@ -10,6 +10,8 @@ pub struct Component {
     /// a runtime can pick them up from the markup. `""` means a bare attribute.
     pub host_attributes: Vec<(String, String)>,
     pub nodes: Vec<Node>,
+    /// Shadow-DOM components: supplied slot content, as the host's own (light DOM) children.
+    pub light_children: Vec<Node>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,6 +23,8 @@ pub enum Node {
     /// `<!--[-->` and `<!--]-->`: the start and end of an `mnx-if` or `mnx-each` region, or of
     /// one row of a list, for hydration.
     Open,
+    /// `<!--[!-->`: the start of a slot region holding supplied (static) content.
+    OpenProjected,
     Close,
 }
 

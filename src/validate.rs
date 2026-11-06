@@ -109,6 +109,7 @@ pub fn validate(
         locals: &locals,
         props: &props,
         slot_values,
+        shadow: component.shadow,
     };
 
     // 2. Resolve everything, including branches and slots this build won't render.
@@ -132,6 +133,7 @@ pub fn validate(
     let mut state = LowerState::default();
     let nodes = context.lower_nodes(&component.nodes, &mut state)?;
     check_single_root(&nodes)?;
+    let light_children = std::mem::take(&mut state.light);
 
     let host_attributes = props
         .iter()
@@ -144,6 +146,7 @@ pub fn validate(
         shadow: component.shadow,
         host_attributes,
         nodes,
+        light_children,
     })
 }
 
@@ -201,6 +204,7 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         locals: &locals,
         props: &props,
         slot_values: &slot_values,
+        shadow: component.shadow,
     };
     context.resolve_nodes(&component.nodes, &mut Vec::new())?;
     Ok(Interface {
@@ -460,10 +464,14 @@ struct Context<'a> {
     locals: &'a [(String, Local)],
     props: &'a [Prop],
     slot_values: &'a HashMap<String, Vec<ast::Node>>,
+    /// Shadow-DOM components use native `<slot>` elements.
+    shadow: bool,
 }
 
 #[derive(Default)]
 struct LowerState {
+    /// Shadow-DOM components: supplied slot content, rendered as the host's light-DOM children.
+    light: Vec<Node>,
     /// Loop variables, innermost last.
     scopes: Vec<Vec<(String, Value)>>,
     active_slots: HashSet<String>,
@@ -567,7 +575,15 @@ impl Context<'_> {
                     scopes.pop();
                     result?;
                 }
-                ast::Node::Slot { fallback, .. } => self.resolve_nodes(fallback, scopes)?,
+                ast::Node::Slot { fallback, span, .. } => {
+                    if !scopes.is_empty() {
+                        return Err(Diagnostic::new(
+                            *span,
+                            "mnx-slot can't be inside mnx-each: slotted content can only be in one place",
+                        ));
+                    }
+                    self.resolve_nodes(fallback, scopes)?;
+                }
                 ast::Node::Else { span, .. } => {
                     return Err(Diagnostic::new(
                         *span,
@@ -779,9 +795,38 @@ impl Context<'_> {
                         format!("recursive slot expansion for `{name}`"),
                     ));
                 }
-                let output = match self.slot_values.get(name) {
-                    Some(nodes) => self.lower_nodes(nodes, state),
-                    None => self.lower_nodes(fallback, state),
+                let supplied = self.slot_values.get(name);
+                let output = if self.shadow {
+                    // A native <slot>; supplied content goes in the host's light DOM.
+                    let fallback = self.lower_nodes(fallback, state)?;
+                    if let Some(nodes) = supplied {
+                        let lowered = self.lower_nodes(nodes, state)?;
+                        state.light.extend(assign_to_slot(name, lowered, *span)?);
+                    }
+                    let attributes = if name == "default" {
+                        Vec::new()
+                    } else {
+                        vec![ir::Attribute {
+                            name: "name".to_owned(),
+                            value: Some(vec![Part::Literal(name.clone())]),
+                        }]
+                    };
+                    Ok(vec![Node::Element(ir::Element {
+                        name: "slot".to_owned(),
+                        attributes,
+                        children: fallback,
+                    })])
+                } else {
+                    // A region; `<!--[!-->` marks supplied content, which stays static, as
+                    // opposed to fallback content, which the JavaScript side binds.
+                    let (open, nodes) = match supplied {
+                        Some(nodes) => (Node::OpenProjected, nodes),
+                        None => (Node::Open, fallback),
+                    };
+                    let mut output = vec![open];
+                    output.extend(self.lower_block(nodes, state, true)?);
+                    output.push(Node::Close);
+                    Ok(output)
                 };
                 state.active_slots.remove(name);
                 output
@@ -961,7 +1006,7 @@ fn validate_srcset(attribute: &ast::Attribute) -> Result<(), Diagnostic> {
     Ok(())
 }
 
-fn collect_slots(nodes: &[ast::Node], slots: &mut HashSet<String>) {
+pub(crate) fn collect_slots(nodes: &[ast::Node], slots: &mut HashSet<String>) {
     for node in nodes {
         match node {
             ast::Node::Element(element) => collect_slots(&element.children, slots),
@@ -985,6 +1030,42 @@ fn collect_slots(nodes: &[ast::Node], slots: &mut HashSet<String>) {
     }
 }
 
+/// Content for a named slot of a shadow-DOM component: each top-level element gets
+/// `slot="name"` so the browser projects it; top-level text can't be assigned to a named slot.
+fn assign_to_slot(name: &str, nodes: Vec<Node>, span: Span) -> Result<Vec<Node>, Diagnostic> {
+    if name == "default" {
+        return Ok(nodes);
+    }
+    nodes
+        .into_iter()
+        .map(|node| match node {
+            Node::Element(mut element) => {
+                element
+                    .attributes
+                    .retain(|attribute| attribute.name != "slot");
+                element.attributes.push(ir::Attribute {
+                    name: "slot".to_owned(),
+                    value: Some(vec![Part::Literal(name.to_owned())]),
+                });
+                Ok(Node::Element(element))
+            }
+            Node::Text(parts)
+                if parts.iter().all(|part| match part {
+                    Part::Literal(text) | Part::Escaped(text) => text.trim().is_empty(),
+                }) =>
+            {
+                Ok(Node::Text(parts))
+            }
+            _ => Err(Diagnostic::new(
+                span,
+                format!(
+                    "content for the named slot `{name}` of a shadow component must be elements"
+                ),
+            )),
+        })
+        .collect()
+}
+
 fn check_single_root(nodes: &[Node]) -> Result<(), Diagnostic> {
     let element_roots = nodes
         .iter()
@@ -994,7 +1075,7 @@ fn check_single_root(nodes: &[Node]) -> Result<(), Diagnostic> {
         Node::Text(parts) => parts.iter().any(|part| match part {
             Part::Literal(text) | Part::Escaped(text) => !text.trim().is_empty(),
         }),
-        Node::Element(_) | Node::Anchor | Node::Open | Node::Close => false,
+        Node::Element(_) | Node::Anchor | Node::Open | Node::OpenProjected | Node::Close => false,
     });
     if element_roots != 1 || has_text {
         return Err(Diagnostic::new(

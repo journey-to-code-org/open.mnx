@@ -53,6 +53,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     }
     let mut emitter = Emitter {
         interface: &interface,
+        shadow: component.shadow,
         scopes: Vec::new(),
         template: String::new(),
         parts: Vec::new(),
@@ -88,9 +89,20 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             prop.default.is_none()
         ));
     }
+    let mut slots: Vec<String> = {
+        let mut names = std::collections::HashSet::new();
+        validate::collect_slots(&component.nodes, &mut names);
+        names.into_iter().collect()
+    };
+    slots.sort();
     out.push_str(&format!(
-        "  }},\n  shadow: {},\n  template: {},\n  setup($p) {{\n",
+        "  }},\n  shadow: {},\n  slots: [{}],\n  template: {},\n  setup($p) {{\n",
         component.shadow,
+        slots
+            .iter()
+            .map(|name| json(name))
+            .collect::<Vec<_>>()
+            .join(", "),
         json(&emitter.template)
     ));
     let body = component.script.body.trim_matches('\n');
@@ -124,6 +136,8 @@ fn path_js(path: &[usize]) -> String {
 
 struct Emitter<'a> {
     interface: &'a Interface,
+    /// Shadow-DOM components compile mnx-slot to a native <slot>.
+    shadow: bool,
     /// Loop variables in scope, innermost last.
     scopes: Vec<String>,
     template: String,
@@ -136,6 +150,7 @@ impl<'a> Emitter<'a> {
         scopes.extend(extra.iter().cloned());
         Emitter {
             interface: self.interface,
+            shadow: self.shadow,
             scopes,
             template: String::new(),
             parts: Vec::new(),
@@ -282,11 +297,46 @@ impl<'a> Emitter<'a> {
                         self.js(items)
                     ));
                 }
-                Node::Slot { span, .. } => {
-                    return Err(Diagnostic::new(
-                        *span,
-                        "mnx-slot in the JavaScript output is not supported yet; it works in the HTML output",
-                    ));
+                Node::Slot {
+                    name,
+                    fallback,
+                    span,
+                } => {
+                    if self.shadow {
+                        // The platform's own <slot>, with the fallback as its children.
+                        let attributes = if name == "default" {
+                            Vec::new()
+                        } else {
+                            vec![ast::Attribute {
+                                name: "name".to_owned(),
+                                value: AttributeValue::Text(vec![Part::Literal(name.clone())]),
+                                span: *span,
+                            }]
+                        };
+                        let slot = ast::Element {
+                            name: "slot".to_owned(),
+                            attributes,
+                            children: fallback.clone(),
+                            span: *span,
+                        };
+                        let slot_path = next(path);
+                        self.element(&slot, &slot_path)?;
+                    } else {
+                        // A region the runtime fills with the host's own children for this slot,
+                        // or with the fallback block.
+                        self.template.push_str("<!--[--><!--]-->");
+                        let region = next(path);
+                        let fallback = if fallback.is_empty() {
+                            "null".to_owned()
+                        } else {
+                            self.block(fallback, &[])?
+                        };
+                        self.parts.push(format!(
+                            "{{ path: {}, slot: {}, fallback: {fallback} }}",
+                            path_js(&region),
+                            json(name)
+                        ));
+                    }
                 }
                 Node::Else { span, .. } => {
                     return Err(Diagnostic::new(

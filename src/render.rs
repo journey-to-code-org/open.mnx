@@ -26,6 +26,9 @@ pub fn render(component: &Component) -> String {
     if component.shadow {
         output.push_str("</template>");
     }
+    for node in &component.light_children {
+        render_node(node, &mut output);
+    }
     output.push_str(&format!("</{}>", component.tag));
     output
 }
@@ -35,6 +38,7 @@ fn render_node(node: &Node, output: &mut String) {
         Node::Text(parts) => render_parts(parts, output),
         Node::Anchor => output.push_str("<!---->"),
         Node::Open => output.push_str("<!--[-->"),
+        Node::OpenProjected => output.push_str("<!--[!-->"),
         Node::Close => output.push_str("<!--]-->"),
         Node::Element(element) => {
             output.push('<');

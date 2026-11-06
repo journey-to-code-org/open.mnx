@@ -107,7 +107,8 @@ export function watch(source, callback) {
 // only, and a whole region counts as one position (its start marker), so a list's length never
 // shifts the paths of what comes after it.
 
-const isOpen = (node) => node.nodeType === COMMENT && node.data === '[';
+// `<!--[!-->` opens a slot region holding supplied content (static, left alone on hydration).
+const isOpen = (node) => node.nodeType === COMMENT && (node.data === '[' || node.data === '[!');
 const isClose = (node) => node.nodeType === COMMENT && node.data === ']';
 
 function matchingClose(open) {
@@ -159,7 +160,7 @@ function locate(range, parts) {
   for (const part of parts) {
     const node = walk(range, part.path);
     const fits = !node ? false
-      : part.when || part.each ? isOpen(node) && matchingClose(node) !== null
+      : part.when || part.each || part.slot ? isOpen(node) && matchingClose(node) !== null
       : part.anchor ? node.nodeType === COMMENT && node.data === ''
       : node.nodeType === 1;
     if (!fits) return null;
@@ -189,7 +190,7 @@ function clearBetween(open, close) {
  * Render `block` between `open` and `close`. When `hydrating`, first try to bind to nodes the
  * server already put there; otherwise (or if they don't fit) clone the block's template.
  */
-function mountBlock(block, args, open, close, hydrating) {
+function mountBlock(block, args, open, close, hydrating, context) {
   const parts = block.parts(...args);
   let nodes = hydrating ? locate(regionRange(open, close), parts) : null;
   const hydrated = nodes !== null;
@@ -200,12 +201,12 @@ function mountBlock(block, args, open, close, hydrating) {
     nodes = locate(childRange(fragment), parts);
     close.before(fragment);
   }
-  parts.forEach((part, index) => bind(part, nodes[index], hydrated));
+  parts.forEach((part, index) => bind(part, nodes[index], hydrated, context));
 }
 
 // ---- binding parts -------------------------------------------------------------------------
 
-function bind(part, node, hydrating) {
+function bind(part, node, hydrating, context) {
   if (part.text) {
     effect(() => {
       const text = part.text();
@@ -230,9 +231,36 @@ function bind(part, node, hydrating) {
   } else if (part.attribute) {
     bindAttribute(part, node);
   } else if (part.when) {
-    bindWhen(part, node, hydrating);
+    bindWhen(part, node, hydrating, context);
   } else if (part.each) {
-    bindEach(part, node, hydrating);
+    bindEach(part, node, hydrating, context);
+  } else if (part.slot) {
+    bindSlot(part, node, hydrating, context);
+  }
+}
+
+/**
+ * mnx-slot in light DOM: the host's own children for this slot, moved in once at startup, or the
+ * fallback block. The provided nodes are kept, so a slot inside an mnx-if branch gets them back
+ * when the branch comes back.
+ */
+function bindSlot(part, open, hydrating, context) {
+  const close = matchingClose(open);
+  if (hydrating && open.data === '[!') {
+    // The server already put supplied content here; remember it in case the region re-renders.
+    const nodes = [];
+    for (let node = open.nextSibling; node !== close; node = node.nextSibling) nodes.push(node);
+    context.slots.set(part.slot, nodes);
+    return;
+  }
+  const provided = context.slots.get(part.slot);
+  if (provided?.length) {
+    clearBetween(open, close);
+    open.data = '[!';
+    close.before(...provided);
+  } else if (part.fallback) {
+    open.data = '[';
+    mountBlock(part.fallback, [], open, close, hydrating, context);
   }
 }
 
@@ -263,7 +291,7 @@ function bindAttribute(part, node) {
 }
 
 /** mnx-if: re-render only when the chosen branch changes, not whenever the test re-runs. */
-function bindWhen(part, open, hydrating) {
+function bindWhen(part, open, hydrating, context) {
   const close = matchingClose(open);
   const branch = new Signal.Computed(() => ($r(part.when()) ? 0 : 1));
   let first = hydrating;
@@ -273,7 +301,7 @@ function bindWhen(part, open, hydrating) {
     first = false;
     // Effects created while mounting belong to this effect, so switching branches disposes them.
     untrack(() => {
-      if (block) mountBlock(block, [], open, close, hydrate);
+      if (block) mountBlock(block, [], open, close, hydrate, context);
       else clearBetween(open, close);
     });
   });
@@ -289,7 +317,7 @@ function bindWhen(part, open, hydrating) {
  *   state they have, like a half-typed input), using `moveBefore()` where the browser has it so
  *   focus and iframes survive the move.
  */
-function bindEach(part, open, hydrating) {
+function bindEach(part, open, hydrating, context) {
   const close = matchingClose(open);
   // Rows belong to this scope, not to the effect below, so re-running the effect (the list
   // changed) doesn't dispose them.
@@ -305,7 +333,7 @@ function bindEach(part, open, hydrating) {
     }
     const item = new Signal.State(value);
     const position = new Signal.State(index);
-    const owner = rowsOwner.run(() => scope(() => mountBlock(part.block, [item, position], rowOpen, rowClose, hydrateRow)));
+    const owner = rowsOwner.run(() => scope(() => mountBlock(part.block, [item, position], rowOpen, rowClose, hydrateRow, context)));
     return { key, item, position, open: rowOpen, close: rowClose, owner };
   };
   const nodesOf = (row) => {
@@ -416,7 +444,7 @@ const hasContent = (root) =>
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
-export function define(tag, { props = {}, template = '', shadow = false, setup }) {
+export function define(tag, { props = {}, template = '', shadow = false, slots = [], setup }) {
   if (customElements.get(tag)) return customElements.get(tag);
   const componentTemplate = blueprint({ template });
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
@@ -495,15 +523,29 @@ export function define(tag, { props = {}, template = '', shadow = false, setup }
         let parts;
         try { parts = setup ? setup($p) : []; } finally { current = previous; }
 
+        const context = { slots: new Map() };
         const server = hasContent(root);
         let nodes = server ? locate(childRange(root), parts) : null;
         const hydrated = nodes !== null;
         if (!nodes) {
-          if (server) console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh`);
+          if (server && !shadow && slots.length) {
+            // Not server markup: the page's own children for this element, to be slotted.
+            for (const node of [...root.childNodes]) {
+              if (node.nodeType === TEXT && node.data.trim() === '') continue;
+              const name = (node.nodeType === 1 && node.getAttribute('slot')) || 'default';
+              if (!context.slots.has(name)) context.slots.set(name, []);
+              context.slots.get(name).push(node);
+            }
+            for (const name of context.slots.keys()) {
+              if (!slots.includes(name)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
+            }
+          } else if (server) {
+            console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh`);
+          }
           root.replaceChildren(componentTemplate.content.cloneNode(true));
           nodes = locate(childRange(root), parts);
         }
-        parts.forEach((part, index) => bind(part, nodes[index], hydrated));
+        parts.forEach((part, index) => bind(part, nodes[index], hydrated, context));
       });
     }
   }

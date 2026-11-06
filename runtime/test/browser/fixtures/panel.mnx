@@ -1,0 +1,3 @@
+<mnx-panel shadow heading="Panel">
+  <div class="panel"><mnx-slot name="title"><h3>{heading}</h3></mnx-slot><mnx-slot>Nothing here</mnx-slot></div>
+</mnx-panel>

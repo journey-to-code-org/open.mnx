@@ -561,11 +561,11 @@ fn fills_named_and_default_slots_from_parsed_template_fragments() {
         r#"{"heading":"<h2>{title}</h2>","default":"<p>Supplied default</p>"}"#,
     )
     .unwrap();
-    assert_eq!(html, "<mnx-panel title=\"Panel title\"><main><h2>Panel title</h2><p>Supplied default</p></main></mnx-panel>");
+    assert_eq!(html, "<mnx-panel title=\"Panel title\"><main><!--[!--><h2>Panel title</h2><!--]--><!--[!--><p>Supplied default</p><!--]--></main></mnx-panel>");
     assert!(!html.contains("mnx-slot"));
     assert_eq!(
         compile(source, r#"{"title":"Fallback title"}"#).unwrap(),
-        "<mnx-panel title=\"Fallback title\"><main><h1>Fallback title</h1><p>Default fallback</p></main></mnx-panel>"
+        "<mnx-panel title=\"Fallback title\"><main><!--[--><h1>Fallback title</h1><!--]--><!--[--><p>Default fallback</p><!--]--></main></mnx-panel>"
     );
 }
 
@@ -663,15 +663,15 @@ fn js_output_keeps_props_without_defaults_and_kebab_attributes() {
 
 #[test]
 fn js_output_rejects_what_it_cannot_do_yet() {
-    let slot = compile_js(
-        "<mnx-x><main><mnx-slot><p>fallback</p></mnx-slot></main></mnx-x>",
+    let slot_in_loop = compile_js(
+        "<mnx-x items={[]}><ul><mnx-each items={items} as=\"i\"><li><mnx-slot></mnx-slot></li></mnx-each></ul></mnx-x>",
         "r",
         "t",
     )
     .unwrap_err();
-    assert!(slot
+    assert!(slot_in_loop
         .message
-        .contains("mnx-slot in the JavaScript output is not supported yet"));
+        .contains("mnx-slot can't be inside mnx-each"));
     let reserved = compile_js(
         "<script>const $p = 1</script><mnx-x><p></p></mnx-x>",
         "r",
@@ -751,5 +751,44 @@ fn keyed_lists_compile_a_key_function_over_plain_values() {
     assert!(
         module.contains("each: () => $p.todos, key: (todo, $index) => $r(todo).id, block:"),
         "{module}"
+    );
+}
+
+#[test]
+fn slots_compile_to_regions_in_light_dom_and_native_slots_in_shadow_dom() {
+    let light = js("<mnx-x title=\"t\"><main><mnx-slot name=\"heading\"><h1>{title}</h1></mnx-slot><mnx-slot></mnx-slot></main></mnx-x>");
+    assert!(
+        light.contains(r#"slots: ["default", "heading"],"#),
+        "{light}"
+    );
+    assert!(light.contains(r#"{ path: [0, 0], slot: "heading", fallback: { template: "<h1></h1>", parts: () => [{ path: [0], text: () => $t($p.title) }] } }"#), "{light}");
+    assert!(
+        light.contains(r#"{ path: [0, 1], slot: "default", fallback: null }"#),
+        "{light}"
+    );
+
+    let shadow = js("<mnx-x shadow title=\"t\"><main><mnx-slot name=\"heading\"><h1>{title}</h1></mnx-slot></main></mnx-x>");
+    assert!(
+        shadow.contains(r#"template: "<main><slot name=\"heading\"><h1></h1></slot></main>","#),
+        "{shadow}"
+    );
+    assert!(
+        shadow.contains(r#"{ path: [0, 0, 0], text: () => $t($p.title) }"#),
+        "{shadow}"
+    );
+}
+
+#[test]
+fn shadow_components_put_supplied_slot_content_in_light_dom() {
+    let source = "<mnx-x shadow><main><mnx-slot name=\"heading\"><h1>Fallback</h1></mnx-slot><mnx-slot>empty</mnx-slot></main></mnx-x>";
+    assert_eq!(
+        compile_with_slots(source, "{}", r#"{"heading":"<h2>Mine</h2>","default":"Body"}"#).unwrap(),
+        "<mnx-x><template shadowrootmode=\"open\"><main><slot name=\"heading\"><h1>Fallback</h1></slot><slot>empty</slot></main></template><h2 slot=\"heading\">Mine</h2>Body</mnx-x>"
+    );
+    assert!(
+        compile_with_slots(source, "{}", r#"{"heading":"just text"}"#)
+            .unwrap_err()
+            .message
+            .contains("must be elements")
     );
 }

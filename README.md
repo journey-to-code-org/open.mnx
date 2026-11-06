@@ -65,7 +65,9 @@ export default define(tag, {
 
 - **Keyed lists**: with `key={…}`, rows follow their key. Reordering moves the existing rows, with their DOM state (a half-typed input, focus), using `moveBefore()` where the browser has it; inserting or removing in the middle touches only those rows. Duplicate keys at runtime are reported and the duplicate row is left unkeyed.
 
-Not yet in the JavaScript output: `mnx-slot` (it works in the HTML output), and prop defaults computed at runtime.
+- **Slots**: in light DOM (the default), the element's own children are moved into its `mnx-slot` regions at startup, by their `slot` attribute (everything else goes to the default slot); an empty slot shows its fallback, which stays live. Slotted content inside an `mnx-if` comes back when the branch does. Content for a slot that doesn't exist is reported. In the HTML output a slot holding supplied content opens with `<!--[!-->` and is left as-is on hydration; a fallback is hydrated and bound. In shadow components `mnx-slot` compiles to a native `<slot>`, and supplied content goes in the host's light DOM with `slot="…"`, as declarative shadow DOM expects. A slot can't be inside `mnx-each`.
+
+Not yet in the JavaScript output: prop defaults computed at runtime, and slot content added to the element after it starts (it is projected once).
 
 ## Commands
 
