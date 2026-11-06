@@ -530,7 +530,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
             })
         }
         "mnx-each" => {
-            allow_attributes(&element, &["items", "as", "index"])?;
+            allow_attributes(&element, &["items", "as", "index", "key"])?;
             let (items, items_span) = required_expression(&element, "items")?;
             let item = required_text(&element, "as")?;
             if !is_identifier(&item) {
@@ -549,11 +549,15 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                     "mnx-each index must be a valid identifier different from `as`",
                 ));
             }
+            let key = find(&element, "key")
+                .map(|_| required_expression(&element, "key"))
+                .transpose()?;
             Ok(Node::Each {
                 items,
                 items_span,
                 item,
                 index,
+                key,
                 children: element.children,
                 span: element.span,
             })

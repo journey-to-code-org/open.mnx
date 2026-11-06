@@ -1,0 +1,7 @@
+<mnx-todos todos={[{ id: 1, text: "milk" }, { id: 2, text: "eggs" }, { id: 3, text: "bread" }]}>
+  <ul>
+    <mnx-each items={todos} as="todo" index="i" key={todo.id}>
+      <li data-id={todo.id} data-i={i}><input value={todo.text}> {todo.text}</li>
+    </mnx-each>
+  </ul>
+</mnx-todos>

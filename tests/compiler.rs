@@ -719,3 +719,37 @@ fn loop_variables_shadow_props_in_js_output_too() {
         "{module}"
     );
 }
+
+#[test]
+fn keyed_lists_check_keys_at_build_time() {
+    let source = r#"<mnx-x todos={[{ id: 1, t: "a" }, { id: "two", t: "b" }]}><ul><mnx-each items={todos} as="todo" key={todo.id}><li>{todo.t}</li></mnx-each></ul></mnx-x>"#;
+    assert!(compile(source, "{}").unwrap().contains("<li>a</li>"));
+    let duplicate = error(source, r#"{"todos":[{"id":1,"t":"a"},{"id":1,"t":"b"}]}"#);
+    assert_eq!(duplicate.message, "duplicate mnx-each key 1 (row 2)");
+    assert_error(
+        source,
+        r#"{"todos":[{"id":null,"t":"a"}]}"#,
+        "key must be a string or number, found null",
+    );
+    assert_error(
+        "<mnx-x todos={[]}><ul><mnx-each items={todos} as=\"todo\" key={tood.id}><li></li></mnx-each></ul></mnx-x>",
+        "{}",
+        "unknown reference `tood`",
+    );
+    assert_error(
+        "<mnx-x todos={[]}><ul><mnx-each items={todos} as=\"todo\" key=\"id\"><li></li></mnx-each></ul></mnx-x>",
+        "{}",
+        "write key={…}",
+    );
+}
+
+#[test]
+fn keyed_lists_compile_a_key_function_over_plain_values() {
+    let module = js(
+        r#"<mnx-x todos={[]}><ul><mnx-each items={todos} as="todo" key={todo.id}><li>{todo.t}</li></mnx-each></ul></mnx-x>"#,
+    );
+    assert!(
+        module.contains("each: () => $p.todos, key: (todo, $index) => $r(todo).id, block:"),
+        "{module}"
+    );
+}

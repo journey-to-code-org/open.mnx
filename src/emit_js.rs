@@ -256,6 +256,7 @@ impl<'a> Emitter<'a> {
                     items,
                     item,
                     index: position,
+                    key,
                     children,
                     ..
                 } => {
@@ -266,8 +267,17 @@ impl<'a> Emitter<'a> {
                         position.clone().unwrap_or_else(|| "$index".to_owned()),
                     ];
                     let row = self.block(children, &params)?;
+                    // The key gets plain values (not row signals): it identifies a row.
+                    let key = match key {
+                        Some((key, _)) => format!(
+                            ", key: ({}) => {}",
+                            params.join(", "),
+                            self.child(&params).js(key)
+                        ),
+                        None => String::new(),
+                    };
                     self.parts.push(format!(
-                        "{{ path: {}, each: () => {}, block: {row} }}",
+                        "{{ path: {}, each: () => {}{key}, block: {row} }}",
                         path_js(&region),
                         self.js(items)
                     ));

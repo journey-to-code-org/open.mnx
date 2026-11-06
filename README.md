@@ -28,7 +28,7 @@ The long-term aim is for the web platform to absorb what mnx proves, so the runt
 - **`<script>` is real JavaScript** (parsed with oxc). Top-level `const`/`let` initializers written in the expression language are evaluated at build time. Functions, imports and anything else are kept for the runtime; referring to them in static HTML is a compile error that says so.
 - **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). The expression language is a JavaScript subset: literals, arrays and objects, member and index access (with `?.`), `!` `-` `+` `-` `*` `/` `%`, comparisons, `==`/`!=` (strict), `&&` `||` `??` and `? :`, with JavaScript's truthiness. Calls, assignment, `new` and `this` are rejected with a reason.
 - **Inside the template, names resolve** to loop variables, then props, then script bindings. Every reference is checked in every branch, including branches this build won't render, and unknown names get a "did you mean" suggestion.
-- **Directives**: `<mnx-if test={…}>` with an optional final `<mnx-else>`; `<mnx-each items={list} as="item" index="i">` over any array; `<mnx-slot name="…">` with fallback content. Directives are expanded at build time and never emitted.
+- **Directives**: `<mnx-if test={…}>` with an optional final `<mnx-else>`; `<mnx-each items={list} as="item" index="i" key={item.id}>` over any array (`key` is optional; keys must be strings or numbers and unique, checked at build time); `<mnx-slot name="…">` with fallback content. In the HTML output, directives are expanded at build time.
 - **Safety**: dynamic values are escaped. URL attributes (`href`, `src`, …) must be relative or use `http`, `https`, `mailto` or `tel`; literal URLs are checked everywhere, computed URLs on their final value. Boolean attributes take `{true}`/`{false}`. Inline `on…` handlers, `style` attributes, and `<script>`/`<style>` inside templates are rejected; dynamic `srcset` and `srcdoc` are not supported.
 - **Host attributes**: props that differ from their defaults are written onto the host (`JSON` for arrays and objects), so the v0.4 runtime can hydrate from the markup.
 - **Errors** point at the source line, with a caret and a suggestion where there is one.
@@ -63,7 +63,9 @@ export default define(tag, {
 - `shadow` on the host renders into a shadow root (a declarative one in the HTML output).
 - **`mnx-if` and `mnx-each` are regions.** Both backends wrap them in `<!--[-->` … `<!--]-->`, and each list row in its own pair, so the runtime can find them in server markup. A region counts as one position in its parent's paths, so a list's length never shifts what comes after it. Each branch and row has its own template and parts. `mnx-if` re-renders only when the chosen branch changes. `mnx-each` updates rows in place by position: each row holds its item and index as signals, so changing one item updates only that row, and rows are added or removed at the end. Server-rendered branches and rows are hydrated without being replaced; a server list whose length doesn't match its items is re-rendered with a warning.
 
-Not yet in the JavaScript output: `mnx-slot` (it works in the HTML output), keyed lists, and prop defaults computed at runtime.
+- **Keyed lists**: with `key={…}`, rows follow their key. Reordering moves the existing rows, with their DOM state (a half-typed input, focus), using `moveBefore()` where the browser has it; inserting or removing in the middle touches only those rows. Duplicate keys at runtime are reported and the duplicate row is left unkeyed.
+
+Not yet in the JavaScript output: `mnx-slot` (it works in the HTML output), and prop defaults computed at runtime.
 
 ## Commands
 

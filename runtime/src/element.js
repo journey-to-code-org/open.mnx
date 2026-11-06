@@ -280,22 +280,69 @@ function bindWhen(part, open, hydrating) {
 }
 
 /**
- * mnx-each: one row per item, updated in place by position. Each row holds its item and index
- * as signals, so changing one item updates only that row's parts; rows are only created or
- * removed at the end when the length changes.
+ * mnx-each: one row per item. Each row holds its item and index as signals, so changing one
+ * item updates only that row's parts.
+ *
+ * - Without a key, rows are matched by position: a new array updates rows in place, and rows are
+ *   only created or removed at the end.
+ * - With `key={…}`, rows follow their key: reordering moves the existing rows (with whatever DOM
+ *   state they have, like a half-typed input), using `moveBefore()` where the browser has it so
+ *   focus and iframes survive the move.
  */
 function bindEach(part, open, hydrating) {
   const close = matchingClose(open);
   // Rows belong to this scope, not to the effect below, so re-running the effect (the list
   // changed) doesn't dispose them.
   const rowsOwner = scope();
-  const rows = [];
-  const addRow = (rowOpen, rowClose, value, index, hydrateRow) => {
+  let rows = [];
+
+  const createRow = (value, index, key, rowOpen, rowClose, hydrateRow) => {
+    if (!rowOpen) {
+      // A new row is assembled in a fragment, then placed.
+      rowOpen = document.createComment('[');
+      rowClose = document.createComment(']');
+      new DocumentFragment().append(rowOpen, rowClose);
+    }
     const item = new Signal.State(value);
     const position = new Signal.State(index);
     const owner = rowsOwner.run(() => scope(() => mountBlock(part.block, [item, position], rowOpen, rowClose, hydrateRow)));
-    rows.push({ item, position, open: rowOpen, close: rowClose, owner });
+    return { key, item, position, open: rowOpen, close: rowClose, owner };
   };
+  const nodesOf = (row) => {
+    const nodes = [];
+    for (let node = row.open; ; node = node.nextSibling) {
+      nodes.push(node);
+      if (node === row.close) return nodes;
+    }
+  };
+  const removeRow = (row) => {
+    row.owner.dispose();
+    for (const node of nodesOf(row)) node.remove();
+  };
+  const placeRow = (row, before) => {
+    const parent = close.parentNode;
+    for (const node of nodesOf(row)) {
+      try {
+        if (parent.moveBefore && node.isConnected && parent.isConnected) parent.moveBefore(node, before);
+        else parent.insertBefore(node, before);
+      } catch {
+        parent.insertBefore(node, before);
+      }
+    }
+  };
+  const keysOf = (list) => {
+    const seen = new Set();
+    return list.map((value, index) => {
+      let key = part.key(value, index);
+      if (seen.has(key)) {
+        console.error('mnx: duplicate mnx-each key', key, `(row ${index + 1}); that row is not keyed`);
+        key = Symbol('duplicate');
+      }
+      seen.add(key);
+      return key;
+    });
+  };
+
   let first = hydrating;
   effect(() => {
     let list = $r(part.each());
@@ -306,32 +353,55 @@ function bindEach(part, open, hydrating) {
     const hydrate = first;
     first = false;
     untrack(() => {
+      const keys = part.key ? keysOf(list) : null;
       if (hydrate) {
         const existing = [...positions(open.nextSibling, close)];
         if (existing.length === list.length && existing.every(isOpen)) {
-          existing.forEach((rowOpen, index) => addRow(rowOpen, matchingClose(rowOpen), list[index], index, true));
+          rows = existing.map((rowOpen, index) =>
+            createRow(list[index], index, keys?.[index], rowOpen, matchingClose(rowOpen), true));
           return;
         }
         console.warn('mnx: server markup for a list does not match its items; rendering it fresh');
         clearBetween(open, close);
       }
-      const shared = Math.min(rows.length, list.length);
-      for (let index = 0; index < shared; index++) {
-        rows[index].item.set(list[index]);
-        rows[index].position.set(index);
+
+      if (!keys) {
+        const shared = Math.min(rows.length, list.length);
+        for (let index = 0; index < shared; index++) {
+          rows[index].item.set(list[index]);
+          rows[index].position.set(index);
+        }
+        for (let index = rows.length; index < list.length; index++) {
+          const row = createRow(list[index], index);
+          placeRow(row, close);
+          rows.push(row);
+        }
+        for (const row of rows.splice(list.length)) removeRow(row);
+        return;
       }
-      for (let index = rows.length; index < list.length; index++) {
-        const rowOpen = document.createComment('[');
-        const rowClose = document.createComment(']');
-        close.before(rowOpen, rowClose);
-        addRow(rowOpen, rowClose, list[index], index, false);
+
+      // Keyed: reuse the row for each key, create the missing ones, drop the rest, then walk the
+      // new order and move only rows that aren't already where they belong.
+      const byKey = new Map(rows.map((row) => [row.key, row]));
+      const next = list.map((value, index) => {
+        const row = byKey.get(keys[index]);
+        if (!row) return createRow(value, index, keys[index]);
+        byKey.delete(keys[index]);
+        row.item.set(value);
+        row.position.set(index);
+        return row;
+      });
+      for (const row of byKey.values()) removeRow(row);
+      let at = open.nextSibling;
+      while (at && at.nodeType === TEXT) at = at.nextSibling;
+      for (const row of next) {
+        if (row.open === at) {
+          at = row.close.nextSibling;
+          continue;
+        }
+        placeRow(row, at ?? close);
       }
-      for (const row of rows.splice(list.length)) {
-        row.owner.dispose();
-        while (row.open.nextSibling !== row.close) row.open.nextSibling.remove();
-        row.open.remove();
-        row.close.remove();
-      }
+      rows = next;
     });
   });
 }

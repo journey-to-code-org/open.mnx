@@ -82,6 +82,8 @@ pub enum Node {
         items_span: Span,
         item: String,
         index: Option<String>,
+        /// `key={todo.id}`: rows follow their key when the list is reordered.
+        key: Option<(Expression, Span)>,
         children: Vec<Node>,
         span: Span,
     },

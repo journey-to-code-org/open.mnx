@@ -553,12 +553,17 @@ impl Context<'_> {
                     items_span,
                     item,
                     index,
+                    key,
                     children,
                     ..
                 } => {
                     self.resolve_expression(items, *items_span, scopes)?;
                     scopes.push(std::iter::once(item.clone()).chain(index.clone()).collect());
-                    let result = self.resolve_nodes(children, scopes);
+                    let result = match key {
+                        Some((key, key_span)) => self.resolve_expression(key, *key_span, scopes),
+                        None => Ok(()),
+                    }
+                    .and_then(|()| self.resolve_nodes(children, scopes));
                     scopes.pop();
                     result?;
                 }
@@ -701,6 +706,7 @@ impl Context<'_> {
                 items_span,
                 item,
                 index,
+                key,
                 children,
                 ..
             } => {
@@ -716,12 +722,43 @@ impl Context<'_> {
                 };
                 // A region for the list, and one per row.
                 let mut output = vec![Node::Open];
+                let mut keys = HashSet::new();
                 for (position, entry) in list.into_iter().enumerate() {
                     let mut scope = vec![(item.clone(), entry)];
                     if let Some(index) = index {
                         scope.push((index.clone(), Value::from(position)));
                     }
                     state.scopes.push(scope);
+                    if let Some((key, key_span)) = key {
+                        let checked =
+                            self.evaluate(key, *key_span, state)
+                                .and_then(|value| match value {
+                                    Value::String(_) | Value::Number(_) => {
+                                        if keys.insert(value.to_string()) {
+                                            Ok(())
+                                        } else {
+                                            Err(Diagnostic::new(
+                                                *key_span,
+                                                format!(
+                                                    "duplicate mnx-each key {value} (row {})",
+                                                    position + 1
+                                                ),
+                                            ))
+                                        }
+                                    }
+                                    other => Err(Diagnostic::new(
+                                        *key_span,
+                                        format!(
+                                            "mnx-each key must be a string or number, found {}",
+                                            expression::type_name(&other)
+                                        ),
+                                    )),
+                                });
+                        if let Err(error) = checked {
+                            state.scopes.pop();
+                            return Err(error);
+                        }
+                    }
                     let lowered = self.lower_block(children, state, true);
                     state.scopes.pop();
                     output.push(Node::Open);
