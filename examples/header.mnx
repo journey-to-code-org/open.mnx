@@ -1,0 +1,18 @@
+<script>
+  const title = "Mikey Nichols"
+  const data = {
+    sample: "sample data",
+    sampleTwo: "additional data"
+  }
+</script>
+<mnx-header title={title} data={data}>
+  <header>
+    <nav>
+      <h1>{title}</h1>
+      <menu>
+        <li>{data.sample}</li>
+        <li>{data.sampleTwo}</li>
+      </menu>
+    </nav>
+  </header>
+</mnx-header>
