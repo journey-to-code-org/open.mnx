@@ -63,9 +63,14 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
 
     let mut props = Vec::new();
     let mut shadow = false;
+    let mut form_associated = false;
     for attribute in host.attributes {
         if attribute.name == "shadow" && attribute.value == AttributeValue::None {
             shadow = true;
+            continue;
+        }
+        if attribute.name == "form-associated" && attribute.value == AttributeValue::None {
+            form_associated = true;
             continue;
         }
         let name = prop_name(&attribute)?;
@@ -101,6 +106,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         tag_span: host.span,
         description,
         shadow,
+        form_associated,
         props,
         script,
         nodes: host.children,

@@ -118,3 +118,26 @@ test('the declarations reject wrong prop types and missing required props', () =
   assert.match(output, /bad\.ts\(5,.*Type 'number' is not assignable to type 'string'/);
   assert.match(output, /Property 'label' is missing/);
 });
+
+test('form-associated components declare the native control API', () => {
+  writeFileSync(join(dir, 'stepper.mnx'), readFileSync(join(here, '../browser/fixtures/stepper.mnx'), 'utf8'));
+  writeFileSync(join(dir, 'stepper.d.ts'),
+    execFileSync(join(repo, 'target/debug/mnix'), ['compile', join(dir, 'stepper.mnx'), '--emit', 'dts'], { encoding: 'utf8' }));
+  const good = typecheck('form-good', `
+    import './stepper.js';
+    const el = document.querySelector('mnx-stepper')!;
+    const form: HTMLFormElement | null = el.form;
+    el.name = 'qty';
+    const ok: boolean = el.checkValidity() && el.reportValidity() && el.willValidate;
+    const message: string = el.validationMessage;
+    export { form, ok, message };
+  `);
+  assert.equal(good, '');
+  const bad = typecheck('form-bad', `
+    import './stepper.js';
+    const el = document.querySelector('mnx-stepper')!;
+    el.validity = null;
+    export {};
+  `);
+  assert.match(bad, /read-only|readonly/i);
+});

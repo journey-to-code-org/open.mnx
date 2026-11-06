@@ -21,6 +21,8 @@ pub struct ComponentAst {
     pub description: Option<String>,
     /// `shadow` on the host opts into shadow DOM (light DOM is the default).
     pub shadow: bool,
+    /// `form-associated` on the host makes the element a form control (ElementInternals).
+    pub form_associated: bool,
     pub props: Vec<PropDecl>,
     pub script: Script,
     /// The template: the host element's children.

@@ -96,8 +96,9 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     };
     slots.sort();
     out.push_str(&format!(
-        "  }},\n  shadow: {},\n  slots: [{}],\n  template: {},\n  setup($p) {{\n",
+        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  template: {},\n  setup($p) {{\n",
         component.shadow,
+        component.form_associated,
         slots
             .iter()
             .map(|name| json(name))

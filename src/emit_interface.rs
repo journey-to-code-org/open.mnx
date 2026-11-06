@@ -202,6 +202,15 @@ pub fn declarations(component: &ComponentAst, source_name: &str) -> Result<Strin
             prop_type(prop)
         ));
     }
+    if component.form_associated {
+        out.push_str("  /** The form this control belongs to, as for native controls. */\n");
+        out.push_str("  readonly form: HTMLFormElement | null;\n");
+        if !interface.props.iter().any(|prop| prop.name == "name") {
+            out.push_str("  /** The `name` attribute: the key this control submits under. */\n  name: string | null;\n");
+        }
+        out.push_str("  readonly validity: ValidityState;\n  readonly validationMessage: string;\n  readonly willValidate: boolean;\n");
+        out.push_str("  checkValidity(): boolean;\n  reportValidity(): boolean;\n");
+    }
     out.push_str("  /** Resolves once pending prop changes have reached the DOM. */\n");
     out.push_str("  readonly updateComplete: Promise<void>;\n}\n\n");
     out.push_str(&format!(

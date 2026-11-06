@@ -96,6 +96,57 @@ export function id() {
   return `${base}-${++component.ids}`;
 }
 
+// ---- form-associated components ------------------------------------------------------------
+//
+// With `form-associated` on the host, the element is a form control built on the platform's
+// ElementInternals: it submits a value, takes part in validation, reset and restore, and is
+// disabled by a disabled <fieldset> — and exposes the same API as native controls.
+
+function formHooks(name) {
+  const component = hooks(name);
+  if (!component.internals) {
+    throw new Error(`mnx: ${name}() needs form-associated on the component's host tag`);
+  }
+  return component;
+}
+
+/** What the form submits for this control: follows `source` (a signal, function or value). */
+export function formValue(source) {
+  const { internals } = formHooks('formValue');
+  effect(() => {
+    const value = $r(typeof source === 'function' ? source() : source);
+    internals.setFormValue(value == null ? null : value instanceof FormData || value instanceof File ? value : String(value));
+  });
+}
+
+/**
+ * Validation: `check()` returns an error message, or '' / null when the value is valid. Re-runs
+ * when what it reads changes; the form won't submit while it reports an error.
+ */
+export function validity(check) {
+  const { internals, host } = formHooks('validity');
+  effect(() => {
+    const message = $r(check());
+    if (message) internals.setValidity({ customError: true }, String(message), host);
+    else internals.setValidity({});
+  });
+}
+
+/** The form was reset. */
+export function onFormReset(fn) {
+  formHooks('onFormReset').formReset.push(fn);
+}
+
+/** The browser restored a value (back/forward navigation, autofill): `fn(state, mode)`. */
+export function onFormRestore(fn) {
+  formHooks('onFormRestore').formRestore.push(fn);
+}
+
+/** The control was disabled or enabled (its own attribute, or a disabled <fieldset>). */
+export function onFormDisabled(fn) {
+  formHooks('onFormDisabled').formDisabled.push(fn);
+}
+
 // ---- context (the Web Components Community Group Context Protocol) -------------------------
 //
 // A consumer dispatches a bubbling, composed `context-request` event carrying the context key
@@ -552,18 +603,23 @@ const hasContent = (root) =>
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
-export function define(tag, { props = {}, template = '', shadow = false, slots = [], setup }) {
+export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], setup }) {
   if (customElements.get(tag)) return customElements.get(tag);
   const componentTemplate = blueprint({ template });
   let instances = 0;
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
+  let internals; // (element) => its ElementInternals; set in the static block below
   class MnxElement extends HTMLElement {
     static observedAttributes = Object.keys(byAttribute);
+    static formAssociated = form;
+    static { internals = (element) => element.#internals; }
     #signals = {};
     #scope = null;
     #hooks = null;
     #cleanups = [];
+    #internals = null;
+    #disabled = false;
 
     static {
       for (const name of Object.keys(props)) {
@@ -578,6 +634,7 @@ export function define(tag, { props = {}, template = '', shadow = false, slots =
 
     constructor() {
       super();
+      if (form) this.#internals = this.attachInternals();
       for (const [name, spec] of Object.entries(props)) {
         this.#signals[name] = new Signal.State(clone(spec.default));
         // A framework may have set the property before the element was defined; that landed
@@ -614,6 +671,18 @@ export function define(tag, { props = {}, template = '', shadow = false, slots =
       return tick();
     }
 
+    // Form-associated lifecycle (only called by the browser when `formAssociated` is true).
+    formResetCallback() {
+      for (const fn of this.#hooks?.formReset ?? []) fn();
+    }
+    formStateRestoreCallback(state, mode) {
+      for (const fn of this.#hooks?.formRestore ?? []) fn(state, mode);
+    }
+    formDisabledCallback(disabled) {
+      this.#disabled = disabled;
+      for (const fn of this.#hooks?.formDisabled ?? []) fn(disabled);
+    }
+
     #boot() {
       const element = this;
       const root = shadow ? (this.shadowRoot ?? this.attachShadow({ mode: 'open' })) : this;
@@ -625,7 +694,10 @@ export function define(tag, { props = {}, template = '', shadow = false, slots =
           enumerable: true,
         });
       }
-      this.#hooks = { mount: [], unmount: [], host: this, instance: ++instances, ids: 0 };
+      this.#hooks = {
+        mount: [], unmount: [], host: this, instance: ++instances, ids: 0,
+        internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
+      };
       this.#scope = scope(() => {
         const previous = current;
         current = this.#hooks;
@@ -656,6 +728,33 @@ export function define(tag, { props = {}, template = '', shadow = false, slots =
         }
         parts.forEach((part, index) => bind(part, nodes[index], hydrated, context));
       });
+      // Disabled (e.g. inside a disabled <fieldset>) before setup registered its hooks. Chromium
+      // always calls formDisabledCallback after connectedCallback, so this never runs there (the
+      // browser tests confirm the behaviour without it); it guards engines that order the
+      // callbacks the other way, which the test suite can't currently exercise.
+      if (this.#disabled) for (const fn of this.#hooks.formDisabled) fn(true);
+    }
+  }
+
+  if (form) {
+    // The API native form controls have, backed by ElementInternals.
+    const api = {
+      form: { get() { return internals(this).form; } },
+      validity: { get() { return internals(this).validity; } },
+      validationMessage: { get() { return internals(this).validationMessage; } },
+      willValidate: { get() { return internals(this).willValidate; } },
+      labels: { get() { return internals(this).labels; } },
+      checkValidity: { value() { return internals(this).checkValidity(); } },
+      reportValidity: { value() { return internals(this).reportValidity(); } },
+    };
+    if (!('name' in props)) {
+      api.name = {
+        get() { return this.getAttribute('name'); },
+        set(value) { this.setAttribute('name', value); },
+      };
+    }
+    for (const [key, descriptor] of Object.entries(api)) {
+      Object.defineProperty(MnxElement.prototype, key, { ...descriptor, configurable: true });
     }
   }
 

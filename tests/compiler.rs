@@ -792,3 +792,28 @@ fn shadow_components_put_supplied_slot_content_in_light_dom() {
             .contains("must be elements")
     );
 }
+
+#[test]
+fn form_associated_is_a_flag_not_a_prop() {
+    let source = "<mnx-x form-associated label=\"L\"><p>{label}</p></mnx-x>";
+    assert_eq!(compile(source, "{}").unwrap(), "<mnx-x><p>L</p></mnx-x>");
+    assert!(js(source).contains("  form: true,\n"));
+    assert!(js("<mnx-x><p>x</p></mnx-x>").contains("  form: false,\n"));
+    assert!(compile(source, r#"{"formAssociated":true}"#)
+        .unwrap_err()
+        .message
+        .contains("unknown prop"));
+    let dts = mnix_compiler::compile_declarations(source, "x.mnx").unwrap();
+    assert!(dts.contains("readonly form: HTMLFormElement | null;"));
+    assert!(dts.contains("name: string | null;"));
+    assert!(dts.contains("checkValidity(): boolean;"));
+    let named = mnix_compiler::compile_declarations(
+        "<mnx-x form-associated name=\"n\"><p>{name}</p></mnx-x>",
+        "x.mnx",
+    )
+    .unwrap();
+    assert!(
+        !named.contains("name: string | null;"),
+        "a `name` prop takes precedence"
+    );
+}

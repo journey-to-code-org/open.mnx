@@ -9,6 +9,7 @@ export default define(tag, {
     "data": { attribute: "data", default: {"sample":"sample data","sampleTwo":"additional data"}, required: false },
   },
   shadow: false,
+  form: false,
   slots: [],
   template: "\n  <header>\n    <nav>\n      <h1></h1>\n      <menu>\n        <li></li>\n        <li></li>\n      </menu>\n    </nav>\n  </header>\n",
   setup($p) {
