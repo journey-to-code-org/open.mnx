@@ -4,6 +4,7 @@ mod expression;
 mod ir;
 mod parser;
 mod render;
+mod scanner;
 mod validate;
 
 pub use diagnostic::{Diagnostic, Span};

@@ -4,6 +4,7 @@ use crate::{
     ast::{Attribute, ComponentAst, Element, Node, Part, PropDecl, PropKind},
     diagnostic::{Diagnostic, Span},
     expression,
+    scanner::Cursor,
 };
 
 const VOID_ELEMENTS: &[&str] = &[
@@ -22,9 +23,9 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
     let (header, template, template_line) = split_source(&normalized)?;
     let header = parse_header(header)?;
-    let mut parser = TemplateParser::new(template, template_line);
+    let mut parser = TemplateParser::new(Cursor::at(template, Span::new(template_line, 1)));
     let nodes = parser.parse_nodes(None)?;
-    if parser.position != template.len() {
+    if !parser.cursor.is_at_end() {
         return Err(parser.error("unexpected content after template"));
     }
     Ok(ComponentAst {
@@ -38,9 +39,9 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
 
 pub(crate) fn parse_fragment(source: &str) -> Result<Vec<Node>, Diagnostic> {
     let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
-    let mut parser = TemplateParser::new(&normalized, 1);
+    let mut parser = TemplateParser::new(Cursor::new(&normalized));
     let nodes = parser.parse_nodes(None)?;
-    if parser.position != normalized.len() {
+    if !parser.cursor.is_at_end() {
         return Err(parser.error("unexpected content after slot template"));
     }
     Ok(nodes)
@@ -163,25 +164,17 @@ fn is_identifier(value: &str) -> bool {
 }
 
 struct TemplateParser<'a> {
-    source: &'a str,
-    position: usize,
-    line: usize,
-    column: usize,
+    cursor: Cursor<'a>,
 }
 
 impl<'a> TemplateParser<'a> {
-    fn new(source: &'a str, line: usize) -> Self {
-        Self {
-            source,
-            position: 0,
-            line,
-            column: 1,
-        }
+    fn new(cursor: Cursor<'a>) -> Self {
+        Self { cursor }
     }
 
     fn parse_nodes(&mut self, closing: Option<&str>) -> Result<Vec<Node>, Diagnostic> {
         let mut nodes = Vec::new();
-        while self.position < self.source.len() {
+        while !self.cursor.is_at_end() {
             if self.starts_with("</") {
                 let span = self.current_span();
                 self.advance(2);
@@ -244,7 +237,7 @@ impl<'a> TemplateParser<'a> {
                 };
                 return self.lower_directive(element);
             }
-            if self.position >= self.source.len() {
+            if self.cursor.is_at_end() {
                 return Err(self.error("unterminated start tag"));
             }
             let attribute_span = self.current_span();
@@ -274,10 +267,10 @@ impl<'a> TemplateParser<'a> {
                 if !self.starts_with("\"") && !self.starts_with("'") {
                     return Err(self.error("attribute values must be quoted"));
                 }
-                let quote = self.source.as_bytes()[self.position] as char;
+                let quote = self.cursor.peek_byte().unwrap_or(b'"') as char;
                 self.advance(1);
                 let parts = self.parse_parts(Some(quote))?;
-                if self.position >= self.source.len() {
+                if self.cursor.is_at_end() {
                     return Err(self.error("unterminated attribute value"));
                 }
                 self.advance(1);
@@ -406,69 +399,58 @@ impl<'a> TemplateParser<'a> {
     }
 
     fn parse_name(&mut self) -> Result<String, Diagnostic> {
-        let start = self.position;
-        while let Some(byte) = self.source.as_bytes().get(self.position) {
-            if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b':' | b'.') {
-                self.advance(1);
-            } else {
-                break;
-            }
-        }
-        if start == self.position {
+        let name = self.cursor.take_while(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b':' | b'.')
+        });
+        if name.is_empty() {
             return Err(self.error("expected an HTML tag or attribute name"));
         }
-        Ok(self.source[start..self.position].to_owned())
+        Ok(name.to_owned())
     }
 
     fn parse_parts(&mut self, quote: Option<char>) -> Result<Vec<Part>, Diagnostic> {
         let mut parts = Vec::new();
-        let mut literal_start = self.position;
-        while self.position < self.source.len() {
-            let byte = self.source.as_bytes()[self.position];
+        let source = self.cursor.source();
+        let mut literal_start = self.cursor.position();
+        while let Some(byte) = self.cursor.peek_byte() {
             if quote.is_some_and(|quote| byte == quote as u8) || quote.is_none() && byte == b'<' {
                 break;
             }
             if self.starts_with("{{") {
-                if literal_start < self.position {
+                if literal_start < self.cursor.position() {
                     parts.push(Part::Literal(
-                        self.source[literal_start..self.position].to_owned(),
+                        source[literal_start..self.cursor.position()].to_owned(),
                     ));
                 }
                 let span = self.current_span();
                 self.advance(2);
-                let expression_start = self.position;
-                let Some(relative_end) = self.source[self.position..].find("}}") else {
+                let expression_start = self.cursor.position();
+                let Some(relative_end) = self.cursor.rest().find("}}") else {
                     return Err(Diagnostic::new(
                         span,
                         "unterminated interpolation; expected }}",
                     ));
                 };
-                let expression_end = self.position + relative_end;
-                let name = self.source[expression_start..expression_end].trim();
+                let name = source[expression_start..expression_start + relative_end].trim();
                 if !is_identifier(name) {
                     return Err(Diagnostic::new(
                         span,
                         "MNIX v0.1 interpolation must be a prop identifier",
                     ));
                 }
-                self.advance(expression_end - self.position + 2);
+                self.advance(relative_end + 2);
                 parts.push(Part::Interpolation {
                     name: name.to_owned(),
                     span,
                 });
-                literal_start = self.position;
+                literal_start = self.cursor.position();
                 continue;
             }
-            let character_length = self.source[self.position..]
-                .chars()
-                .next()
-                .expect("position is before the end of the source")
-                .len_utf8();
-            self.advance(character_length);
+            self.cursor.advance_char();
         }
-        if literal_start < self.position {
+        if literal_start < self.cursor.position() {
             parts.push(Part::Literal(
-                self.source[literal_start..self.position].to_owned(),
+                source[literal_start..self.cursor.position()].to_owned(),
             ));
         } else if parts.is_empty() {
             parts.push(Part::Literal(String::new()));
@@ -477,39 +459,23 @@ impl<'a> TemplateParser<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        while self
-            .source
-            .as_bytes()
-            .get(self.position)
-            .is_some_and(u8::is_ascii_whitespace)
-        {
-            self.advance(1);
-        }
+        self.cursor.skip_whitespace();
     }
 
     fn starts_with(&self, value: &str) -> bool {
-        self.source[self.position..].starts_with(value)
+        self.cursor.starts_with(value)
     }
 
     fn current_span(&self) -> Span {
-        Span::new(self.line, self.column)
+        self.cursor.span()
     }
 
     fn error(&self, message: &str) -> Diagnostic {
-        Diagnostic::new(self.current_span(), message)
+        self.cursor.error(message)
     }
 
     fn advance(&mut self, byte_count: usize) {
-        let end = self.position + byte_count;
-        for character in self.source[self.position..end].chars() {
-            if character == '\n' {
-                self.line += 1;
-                self.column = 1;
-            } else {
-                self.column += 1;
-            }
-        }
-        self.position = end;
+        self.cursor.advance(byte_count);
     }
 }
 
