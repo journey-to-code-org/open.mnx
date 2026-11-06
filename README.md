@@ -1,81 +1,63 @@
-# MNIX HTML-First Framework
+# mnx
 
-MNIX is an experimental build-time component compiler. Rust parses `.mnx` source, validates it into an intermediate representation, and emits semantic HTML. A later release may add scoped CSS and a small Custom Element runtime that executes compiler-generated DOM operations. The compiler is native build tooling; it is not part of `portfolio-wasm` and is never shipped to the browser.
+mnx is an experimental compiler for Web Components. You write a component as HTML with `{expr}` bindings; the compiler emits semantic HTML today, and a small custom-element module built on platform-shaped primitives (the TC39 Signals API, template parts) from v0.4. The compiler is native build tooling written in Rust; `runtime/` is the browser side.
 
-## v0.1.0: Static compiler foundation
+The long-term aim is for the web platform to absorb what mnx proves, so the runtime shrinks as native features ship. See `runtime/README.md` for the Signals implementation and how it is tested against the proposal's reference polyfill.
 
-The first release supports component metadata, required typed scalar props, one HTML-fragment template, and escaped interpolation. It intentionally has no browser runtime.
+## v0.3: single-file components
 
-```text
-component: Greeting
-tag: mnix-greeting
-prop name: string
-prop profile: url
----
-<article class="greeting">
-  <h1>Hello, {{ name }}.</h1>
-  <a href="{{ profile }}">View profile</a>
-</article>
+```html
+<script>
+  const title = "Mikey Nichols"
+  const data = { sample: "sample data", sampleTwo: "additional data" }
+</script>
+<mnx-header title={title} data={data}>
+  <header>
+    <nav>
+      <h1>{title}</h1>
+      <menu>
+        <li>{data.sample}</li>
+        <li>{data.sampleTwo}</li>
+      </menu>
+    </nav>
+  </header>
+</mnx-header>
 ```
 
-An optional valid hyphenated `tag` wraps the rendered root in that custom-element host; it does not imply that a runtime has been generated.
+- **The host tag declares the component.** Its name is the custom element; its attributes are the props. `title={title}` declares a prop whose default comes from the script, `label="Hi"` a string default, and a bare `name` a required prop. Kebab-case attributes become camelCase props (`max-value` → `maxValue`). `shadow` opts into shadow DOM (light DOM is the default).
+- **`<script>` is real JavaScript** (parsed with oxc). Top-level `const`/`let` initializers written in the expression language are evaluated at build time. Functions, imports and anything else are kept for the runtime; referring to them in static HTML is a compile error that says so.
+- **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). The expression language is a JavaScript subset: literals, arrays and objects, member and index access (with `?.`), `!` `-` `+` `-` `*` `/` `%`, comparisons, `==`/`!=` (strict), `&&` `||` `??` and `? :`, with JavaScript's truthiness. Calls, assignment, `new` and `this` are rejected with a reason.
+- **Inside the template, names resolve** to loop variables, then props, then script bindings. Every reference is checked in every branch, including branches this build won't render, and unknown names get a "did you mean" suggestion.
+- **Directives**: `<mnx-if test={…}>` with an optional final `<mnx-else>`; `<mnx-each items={list} as="item" index="i">` over any array; `<mnx-slot name="…">` with fallback content. Directives are expanded at build time and never emitted.
+- **Safety**: dynamic values are escaped. URL attributes (`href`, `src`, …) must be relative or use `http`, `https`, `mailto` or `tel`; literal URLs are checked everywhere, computed URLs on their final value. Boolean attributes take `{true}`/`{false}`. Inline `on…` handlers, `style` attributes, and `<script>`/`<style>` inside templates are rejected; dynamic `srcset` and `srcdoc` are not supported.
+- **Host attributes**: props that differ from their defaults are written onto the host (`JSON` for arrays and objects), so the v0.4 runtime can hydrate from the markup.
+- **Errors** point at the source line, with a caret and a suggestion where there is one.
 
-The static compiler supports required scalar prop types `string`, `number`, `boolean`, and `url`. v0.2 adds `strings`, a JSON array of strings intended for compile-time iteration. Extra values and values of the wrong declared type are rejected.
-
-The template parser recognizes nested HTML elements, quoted attributes, boolean attributes, and HTML void elements. A component must have exactly one root element. Scripts, styles, inline `style` attributes, inline event-handler attributes, comments, doctypes, and unquoted attribute values are rejected. Dynamic values are escaped for HTML text/attribute contexts; authored static markup is preserved as written. Interpolating a boolean prop into a native boolean attribute adds or omits that attribute; the compiler rejects incompatible dynamic types. URL attributes accept safe literal URLs or a single prop declared `url`; URL props and static URL attributes reject unsafe schemes (including schemes obscured by HTML character references), protocol-relative URLs, and control characters. Static `srcset` candidates are checked individually; dynamic `srcset` and `srcdoc` interpolation are rejected because their URL-list and nested-HTML contexts need distinct contracts.
-
-## v0.2.0: Static composition
-
-MNIX now supports compile-time structure and slots. `@if` and `@each` are intentionally expressed as reserved HTML-like tags, not as runtime bindings:
-
-```text
-component: FeatureList
-prop ready: boolean
-prop mode: string
-prop features: strings
----
-<main>
-  <mnix-if test='ready && mode == "active"'>
-    <ul>
-      <mnix-each items="features" as="feature">
-        <li>{{ feature }}</li>
-      </mnix-each>
-    </ul>
-    <mnix-else><p>Features are not available.</p></mnix-else>
-  </mnix-if>
-  <mnix-slot name="actions"><a href="/">Continue</a></mnix-slot>
-</main>
-```
-
-`<mnix-if test="...">` accepts literals, prop or loop identifiers, `!`, `==`, `!=`, `&&`, `||`, and parentheses. Conditions must evaluate to booleans; both sides are validated even if a boolean operator could otherwise short-circuit. `<mnix-else>` is optional, unique, and the final non-whitespace child of its `<mnix-if>`.
-
-`<mnix-each items="features" as="feature">` iterates over a declared `strings` prop. The item is a lexically scoped string identifier and can be interpolated or referenced by nested conditions. The compiler expands it before HTML rendering; no runtime list or directive element is emitted. Lists of other values and object/member access are not supported yet.
-
-`<mnix-slot>` names the default slot; `name="actions"` declares a named slot. Missing slot content uses the slot's fallback children. Optional CLI `--slots slots.json` input is a JSON object mapping slot names to **MNIX template fragment strings**. Each fragment is parsed and validated through the same HTML/template pipeline; it is never copied as raw HTML. `mnix-slot`, `mnix-if`, `mnix-each`, and `mnix-else` are reserved compiler tags and are removed during static lowering.
-
-The compiler pipeline parses source into an AST, validates props/references/structure while lowering into a static HTML IR, and renders deterministic HTML. Runtime descriptors, scoped CSS, browser bindings, state, and events remain future releases.
+v0.2 syntax (the `component:`/`prop`/`---` header, `{{ name }}`, `mnix-*` directives) is rejected with a migration hint.
 
 ## Commands
 
-Install Rust 1.82 or newer. The compiler is tested with Rust 1.93.0.
+Install Rust 1.97 or newer (required by the oxc JavaScript parser). The runtime needs Node 20 or newer.
 
 ```sh
 cargo test --locked
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
+cargo run --locked -- compile examples/header.mnx
 cargo run --locked -- compile examples/greeting.mnx --props examples/greeting.props.json
 cargo run --locked -- compile examples/feature-list.mnx --props examples/feature-list.props.json --slots examples/feature-list.slots.json
+(cd runtime && npm install && npm test)
 ```
 
-The compiler writes HTML to stdout by default. `--output <file>` writes to a file using atomic promotion. For example, append `--output target/greeting.html` to the final command to save the generated fragment.
+`--props` is optional: defaults come from the component itself. The compiler writes HTML to stdout by default. `--output <file>` writes to a file using atomic promotion. For example, append `--output target/greeting.html` to the final command to save the generated fragment.
 
 ## Release direction
 
 - `0.1.0`: static parser, typed props, validated IR, escaping, diagnostics, CLI, tests.
-- `0.2.0`: compile-time conditions, loops, and default/named slots (implemented).
-- `0.3.0`: parsed/scoped CSS, deterministic artifact manifest, hashes, byte counts, atomic output, and freshness checking.
-- `0.4.0`: light-DOM Custom Element upgrade and generated descriptors.
-- `0.5.0`: typed local state and fine-grained DOM operations.
-- `0.6.0` and later: standalone Workshop document, portfolio routing/build/PWA integration, and hardening.
+- `0.2.0`: compile-time conditions, loops, and default/named slots.
+- `0.3.0`: single-file components with `<script>`, host-tag props and `{expr}`; the Signals-based runtime core (in progress).
+- `0.4.0`: JavaScript output: a light-DOM custom element on the runtime, hydrating server markup by template parts; manifest and type generation.
+- `0.5.0`: state, events (inferred from callback props and `emit`), JSX components, React and Vue adapters, bundler plugin.
+- `0.6.0`: Angular, Svelte and Solid; SSR inside meta-frameworks; wasm build; scoped styles.
 
-The version list is the MNIX framework roadmap. This repository owns the generic parser, IR, validation, renderer, and CLI; portfolio-specific page content, visual theme, and routing will remain in the portfolio repository when a later release integrates MNIX as a submodule.
+This repository owns the compiler (parser, resolver, IR, renderer, CLI) and the runtime.

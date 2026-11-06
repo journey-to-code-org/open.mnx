@@ -1,10 +1,27 @@
+//! Parsing a `.mnx` single-file component into a [`ComponentAst`].
+//!
+//! ```text
+//! component  → whitespace ( script whitespace )? host whitespace
+//! script     → "<script>" javascript "</script>"
+//! host       → "<" custom-element-name attribute* ">" template "</" same-name ">"
+//! template   → ( text | element | directive | comment )*
+//! text       → ( characters | "{" expression "}" )*
+//! attribute  → name ( "=" ( quoted-text | "{" expression "}" ) )?
+//! ```
+//!
+//! Markup is scanned with [`Cursor`]; on `{` it switches to the expression language
+//! ([`Cursor::scan_braced`] finds the matching `}`), and the `<script>` body is handed to oxc.
+
 use std::collections::HashSet;
 
 use crate::{
-    ast::{Attribute, ComponentAst, Element, Node, Part, PropDecl, PropKind},
+    ast::{
+        Attribute, AttributeValue, ComponentAst, Element, Node, Part, PropDecl, PropDefault, Script,
+    },
     diagnostic::{Diagnostic, Span},
-    expression,
-    scanner::Cursor,
+    expression::{self, Expression},
+    scanner::{span_after, Cursor},
+    script,
 };
 
 const VOID_ELEMENTS: &[&str] = &[
@@ -12,33 +29,81 @@ const VOID_ELEMENTS: &[&str] = &[
     "track", "wbr",
 ];
 
-struct Header {
-    name: String,
-    tag: Option<String>,
-    tag_span: Option<Span>,
-    props: Vec<PropDecl>,
-}
-
 pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
-    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
-    let (header, template, template_line) = split_source(&normalized)?;
-    let header = parse_header(header)?;
-    let mut parser = TemplateParser::new(Cursor::at(template, Span::new(template_line, 1)));
-    let nodes = parser.parse_nodes(None)?;
-    if !parser.cursor.is_at_end() {
-        return Err(parser.error("unexpected content after template"));
+    let normalized = normalize(source);
+    let mut parser = TemplateParser::new(Cursor::new(&normalized));
+    parser.skip_whitespace_and_comments()?;
+    if normalized.trim_start().starts_with("component:") {
+        return Err(Diagnostic::new(
+            Span::new(1, 1),
+            "the `component:`/`prop`/`---` header is v0.2 syntax; declare the component with its host tag instead",
+        )
+        .with_help("<script>const name = \"…\"</script>\n<my-element name={name}>…</my-element>"));
     }
+
+    let script = if parser.cursor.starts_with_ignore_ascii_case("<script") {
+        parser.parse_script_block()?
+    } else {
+        Script::default()
+    };
+    parser.skip_whitespace_and_comments()?;
+
+    if !parser.starts_with("<") || parser.starts_with("</") {
+        return Err(
+            parser.error("expected the component's host element, e.g. <my-element>…</my-element>")
+        );
+    }
+    let host = parser.parse_raw_element()?;
+    parser.skip_whitespace_and_comments()?;
+    if !parser.cursor.is_at_end() {
+        return Err(parser.error(
+            "unexpected content after the host element; a component file has one <script> and one host element",
+        ));
+    }
+
+    let mut props = Vec::new();
+    let mut shadow = false;
+    for attribute in host.attributes {
+        if attribute.name == "shadow" && attribute.value == AttributeValue::None {
+            shadow = true;
+            continue;
+        }
+        let name = prop_name(&attribute)?;
+        let default = match attribute.value {
+            AttributeValue::None => PropDefault::Required,
+            AttributeValue::Expression(expression, span) => {
+                PropDefault::Expression(expression, span)
+            }
+            AttributeValue::Text(parts) => match parts.as_slice() {
+                [Part::Literal(text)] => PropDefault::Text(text.clone()),
+                _ => {
+                    return Err(Diagnostic::new(
+                        attribute.span,
+                        "a prop default can't interpolate; write the whole default as {…}",
+                    ));
+                }
+            },
+        };
+        props.push(PropDecl {
+            name,
+            default,
+            span: attribute.span,
+        });
+    }
+
     Ok(ComponentAst {
-        name: header.name,
-        tag: header.tag,
-        tag_span: header.tag_span,
-        props: header.props,
-        nodes,
+        tag: host.name,
+        tag_span: host.span,
+        shadow,
+        props,
+        script,
+        nodes: host.children,
     })
 }
 
+/// Parse a template fragment (slot content supplied at build time).
 pub(crate) fn parse_fragment(source: &str) -> Result<Vec<Node>, Diagnostic> {
-    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    let normalized = normalize(source);
     let mut parser = TemplateParser::new(Cursor::new(&normalized));
     let nodes = parser.parse_nodes(None)?;
     if !parser.cursor.is_at_end() {
@@ -47,120 +112,68 @@ pub(crate) fn parse_fragment(source: &str) -> Result<Vec<Node>, Diagnostic> {
     Ok(nodes)
 }
 
-fn split_source(source: &str) -> Result<(&str, &str, usize), Diagnostic> {
-    let Some(separator) = source.find("\n---\n") else {
-        return Err(Diagnostic::new(
-            Span::new(1, 1),
-            "expected a metadata header followed by a line containing ---",
-        ));
-    };
-    let header = &source[..separator];
-    let template_start = separator + "\n---\n".len();
-    let template_line = source[..template_start].lines().count() + 1;
-    Ok((header, &source[template_start..], template_line))
+fn normalize(source: &str) -> String {
+    source.replace("\r\n", "\n").replace('\r', "\n")
 }
 
-fn parse_header(header: &str) -> Result<Header, Diagnostic> {
-    let mut name = None;
-    let mut tag = None;
-    let mut tag_span = None;
-    let mut props = Vec::new();
-
-    for (line_index, raw_line) in header.lines().enumerate() {
-        let line_number = line_index + 1;
-        let line = raw_line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let span = Span::new(
-            line_number,
-            raw_line.len() - raw_line.trim_start().len() + 1,
-        );
-        if let Some(value) = line.strip_prefix("component:") {
-            if name.is_some() {
-                return Err(Diagnostic::new(
-                    span,
-                    "component name is declared more than once",
-                ));
-            }
-            let value = value.trim();
-            if !is_identifier(value) {
-                return Err(Diagnostic::new(
-                    span,
-                    "component name must start with a letter and contain only letters, digits, or underscores",
-                ));
-            }
-            name = Some(value.to_owned());
-        } else if let Some(value) = line.strip_prefix("tag:") {
-            if tag.is_some() {
-                return Err(Diagnostic::new(
-                    span,
-                    "custom-element tag is declared more than once",
-                ));
-            }
-            tag = Some(value.trim().to_owned());
-            tag_span = Some(span);
-        } else if let Some(value) = line.strip_prefix("prop ") {
-            let Some((prop_name, prop_kind)) = value.split_once(':') else {
-                return Err(Diagnostic::new(span, "expected prop name: type"));
-            };
-            let prop_name = prop_name.trim();
-            let prop_kind = prop_kind.trim();
-            if !is_identifier(prop_name) {
-                return Err(Diagnostic::new(span, "invalid prop name"));
-            }
-            let kind = match prop_kind {
-                "string" => PropKind::String,
-                "number" => PropKind::Number,
-                "boolean" => PropKind::Boolean,
-                "url" => PropKind::Url,
-                "strings" => PropKind::Strings,
-                _ => {
-                    return Err(Diagnostic::new(
-                        span,
-                        format!("unsupported prop type `{prop_kind}`"),
-                    ));
+/// `max-value` → `maxValue`. Attribute names are lowercase in HTML, so camelCase props are
+/// written kebab-case on the host tag (the same rule custom elements use for attributes).
+fn prop_name(attribute: &Attribute) -> Result<String, Diagnostic> {
+    let name = &attribute.name;
+    if name.bytes().any(|byte| byte.is_ascii_uppercase()) {
+        let kebab: String = name
+            .chars()
+            .flat_map(|character| {
+                if character.is_ascii_uppercase() {
+                    vec!['-', character.to_ascii_lowercase()]
+                } else {
+                    vec![character]
                 }
-            };
-            props.push(PropDecl {
-                name: prop_name.to_owned(),
-                kind,
-                span,
-            });
+            })
+            .collect();
+        return Err(Diagnostic::new(
+            attribute.span,
+            format!("HTML lowercases attribute names, so `{name}` can't be a prop name"),
+        )
+        .with_help(format!(
+            "write `{kebab}`; the prop will be `{name}` in code"
+        )));
+    }
+    let valid = name.starts_with(|character: char| character.is_ascii_lowercase())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !name.ends_with('-')
+        && !name.contains("--");
+    if !valid {
+        return Err(Diagnostic::new(
+            attribute.span,
+            format!("`{name}` is not a valid prop name; use lowercase letters, digits and single hyphens"),
+        ));
+    }
+    let mut prop = String::new();
+    let mut upper = false;
+    for character in name.chars() {
+        if character == '-' {
+            upper = true;
+        } else if upper {
+            prop.push(character.to_ascii_uppercase());
+            upper = false;
         } else {
-            return Err(Diagnostic::new(
-                span,
-                "expected component:, tag:, or prop name: type",
-            ));
+            prop.push(character);
         }
     }
-
-    let Some(name) = name else {
-        return Err(Diagnostic::new(Span::new(1, 1), "missing component: Name"));
-    };
-    let mut seen = HashSet::new();
-    for prop in &props {
-        if !seen.insert(&prop.name) {
-            return Err(Diagnostic::new(
-                prop.span,
-                format!("duplicate prop `{}`", prop.name),
-            ));
-        }
-    }
-    Ok(Header {
-        name,
-        tag,
-        tag_span,
-        props,
-    })
+    Ok(prop)
 }
 
-fn is_identifier(value: &str) -> bool {
+pub(crate) fn is_identifier(value: &str) -> bool {
     let mut chars = value.chars();
     chars
         .next()
-        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_' || first == '$')
+        && chars.all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '$'
+        })
 }
 
 struct TemplateParser<'a> {
@@ -170,6 +183,55 @@ struct TemplateParser<'a> {
 impl<'a> TemplateParser<'a> {
     fn new(cursor: Cursor<'a>) -> Self {
         Self { cursor }
+    }
+
+    fn parse_script_block(&mut self) -> Result<Script, Diagnostic> {
+        let span = self.current_span();
+        self.advance("<script".len());
+        self.skip_whitespace();
+        if !self.starts_with(">") {
+            return Err(Diagnostic::new(
+                span,
+                "<script> in a component takes no attributes (it is always a module)",
+            ));
+        }
+        self.advance(1);
+        let body_span = self.current_span();
+        let rest = self.cursor.rest();
+        let Some(end) = rest.to_ascii_lowercase().find("</script") else {
+            return Err(Diagnostic::new(span, "missing </script>"));
+        };
+        let body = &rest[..end];
+        self.advance(end + "</script".len());
+        self.skip_whitespace();
+        if !self.starts_with(">") {
+            return Err(self.error("expected > after </script"));
+        }
+        self.advance(1);
+        script::parse(body, body_span)
+    }
+
+    fn skip_whitespace_and_comments(&mut self) -> Result<(), Diagnostic> {
+        loop {
+            self.skip_whitespace();
+            if self.starts_with("<!--") {
+                self.skip_comment()?;
+            } else {
+                return Ok(());
+            }
+        }
+    }
+
+    fn skip_comment(&mut self) -> Result<(), Diagnostic> {
+        let span = self.current_span();
+        let Some(end) = self.cursor.rest().find("-->") else {
+            return Err(Diagnostic::new(
+                span,
+                "unterminated HTML comment; expected -->",
+            ));
+        };
+        self.advance(end + 3);
+        Ok(())
     }
 
     fn parse_nodes(&mut self, closing: Option<&str>) -> Result<Vec<Node>, Diagnostic> {
@@ -196,14 +258,17 @@ impl<'a> TemplateParser<'a> {
                 return Ok(nodes);
             }
             if self.starts_with("<!--") {
-                return Err(self.error("HTML comments are not supported in MNIX v0.1"));
+                // Comments are authoring notes; they are not emitted.
+                self.skip_comment()?;
+                continue;
             }
             if self.starts_with("<!") || self.starts_with("<?") {
                 return Err(self
                     .error("doctype and processing instructions are not supported in templates"));
             }
             if self.starts_with("<") {
-                nodes.push(self.parse_element()?);
+                let element = self.parse_raw_element()?;
+                nodes.push(lower_directive(element)?);
             } else {
                 nodes.push(Node::Text(self.parse_parts(None)?));
             }
@@ -214,28 +279,24 @@ impl<'a> TemplateParser<'a> {
         Ok(nodes)
     }
 
-    fn parse_element(&mut self) -> Result<Node, Diagnostic> {
+    /// An element with its attributes and (directive-lowered) children, before the element
+    /// itself is checked for being a directive.
+    fn parse_raw_element(&mut self) -> Result<Element, Diagnostic> {
         let span = self.current_span();
         self.advance(1);
         let name = self.parse_name()?;
         let mut attributes = Vec::new();
         let mut seen = HashSet::new();
 
-        loop {
+        let self_closing = loop {
             self.skip_whitespace();
             if self.starts_with(">") {
                 self.advance(1);
-                break;
+                break false;
             }
             if self.starts_with("/>") {
                 self.advance(2);
-                let element = Element {
-                    name,
-                    attributes,
-                    children: Vec::new(),
-                    span,
-                };
-                return self.lower_directive(element);
+                break true;
             }
             if self.cursor.is_at_end() {
                 return Err(self.error("unterminated start tag"));
@@ -248,154 +309,56 @@ impl<'a> TemplateParser<'a> {
                     format!("duplicate attribute `{attribute_name}`"),
                 ));
             }
-            if attribute_name.eq_ignore_ascii_case("style") {
-                return Err(Diagnostic::new(
-                    attribute_span,
-                    "inline style attributes are not supported; use component styles in a later MNIX release",
-                ));
-            }
-            if is_inline_event_attribute(&attribute_name) {
-                return Err(Diagnostic::new(
-                    attribute_span,
-                    "inline event-handler attributes are not allowed",
-                ));
-            }
             self.skip_whitespace();
             let value = if self.starts_with("=") {
                 self.advance(1);
                 self.skip_whitespace();
-                if !self.starts_with("\"") && !self.starts_with("'") {
-                    return Err(self.error("attribute values must be quoted"));
+                if self.starts_with("{") {
+                    let (expression, expression_span) = self.parse_braced_expression()?;
+                    AttributeValue::Expression(expression, expression_span)
+                } else if self.starts_with("\"") || self.starts_with("'") {
+                    let quote = self.cursor.peek_byte().unwrap_or(b'"') as char;
+                    self.advance(1);
+                    let parts = self.parse_parts(Some(quote))?;
+                    if self.cursor.is_at_end() {
+                        return Err(self.error("unterminated attribute value"));
+                    }
+                    self.advance(1);
+                    AttributeValue::Text(parts)
+                } else {
+                    return Err(
+                        self.error("attribute values must be quoted text or a {…} expression")
+                    );
                 }
-                let quote = self.cursor.peek_byte().unwrap_or(b'"') as char;
-                self.advance(1);
-                let parts = self.parse_parts(Some(quote))?;
-                if self.cursor.is_at_end() {
-                    return Err(self.error("unterminated attribute value"));
-                }
-                self.advance(1);
-                Some(parts)
             } else {
-                None
+                AttributeValue::None
             };
+            check_attribute(&attribute_name, &value, attribute_span)?;
             attributes.push(Attribute {
                 name: attribute_name,
                 value,
                 span: attribute_span,
             });
-        }
+        };
 
         if name.eq_ignore_ascii_case("script") || name.eq_ignore_ascii_case("style") {
             return Err(Diagnostic::new(
                 span,
-                format!("<{name}> elements are not supported in MNIX templates"),
+                format!("<{name}> elements are not supported inside a template"),
             ));
         }
-        let children = if VOID_ELEMENTS.contains(&name.to_ascii_lowercase().as_str()) {
-            Vec::new()
-        } else {
-            self.parse_nodes(Some(&name))?
-        };
-        self.lower_directive(Element {
+        let children =
+            if self_closing || VOID_ELEMENTS.contains(&name.to_ascii_lowercase().as_str()) {
+                Vec::new()
+            } else {
+                self.parse_nodes(Some(&name))?
+            };
+        Ok(Element {
             name,
             attributes,
             children,
             span,
         })
-    }
-
-    fn lower_directive(&self, element: Element) -> Result<Node, Diagnostic> {
-        if element.name.eq_ignore_ascii_case("mnix-if") {
-            validate_directive_attributes(&element, &["test"])?;
-            let test = required_literal_attribute(&element, "test")?;
-            let test = expression::parse(&test).map_err(|message| {
-                Diagnostic::new(element.span, format!("invalid mnix-if test: {message}"))
-            })?;
-            let mut consequent = Vec::new();
-            let mut alternate = None;
-            for child in element.children {
-                match child {
-                    Node::Else { children, span } => {
-                        if alternate.is_some() {
-                            return Err(Diagnostic::new(span, "mnix-if may contain only one mnix-else"));
-                        }
-                        alternate = Some(children);
-                    }
-                    Node::Text(parts)
-                        if alternate.is_some()
-                            && parts.iter().all(
-                                |part| matches!(part, Part::Literal(value) if value.trim().is_empty()),
-                            ) => {}
-                    child => {
-                        if alternate.is_some() {
-                            return Err(Diagnostic::new(element.span, "mnix-else must be the final child of mnix-if"));
-                        }
-                        consequent.push(child);
-                    }
-                }
-            }
-            return Ok(Node::If {
-                test,
-                consequent,
-                alternate: alternate.unwrap_or_default(),
-                span: element.span,
-            });
-        }
-        if element.name.eq_ignore_ascii_case("mnix-each") {
-            validate_directive_attributes(&element, &["items", "as"])?;
-            let collection = required_literal_attribute(&element, "items")?;
-            let item = required_literal_attribute(&element, "as")?;
-            if !is_identifier(&collection) {
-                return Err(Diagnostic::new(
-                    element.span,
-                    "mnix-each items must name a declared strings prop",
-                ));
-            }
-            if !is_identifier(&item) {
-                return Err(Diagnostic::new(
-                    element.span,
-                    "mnix-each as must be a valid local identifier",
-                ));
-            }
-            return Ok(Node::Each {
-                item,
-                collection,
-                children: element.children,
-                span: element.span,
-            });
-        }
-        if element.name.eq_ignore_ascii_case("mnix-slot") {
-            validate_directive_attributes(&element, &["name"])?;
-            let name = match optional_literal_attribute(&element, "name")? {
-                Some(name) if is_identifier(&name) => name,
-                Some(name) if name == "default" => "default".to_owned(),
-                None => "default".to_owned(),
-                Some(_) => {
-                    return Err(Diagnostic::new(
-                        element.span,
-                        "mnix-slot name must be `default` or a valid identifier",
-                    ));
-                }
-            };
-            return Ok(Node::Slot {
-                name,
-                fallback: element.children,
-                span: element.span,
-            });
-        }
-        if element.name.eq_ignore_ascii_case("mnix-else") {
-            if !element.attributes.is_empty() {
-                return Err(Diagnostic::new(
-                    element.span,
-                    "mnix-else does not accept attributes",
-                ));
-            }
-            return Ok(Node::Else {
-                children: element.children,
-                span: element.span,
-            });
-        }
-        Ok(Node::Element(element))
     }
 
     fn parse_name(&mut self) -> Result<String, Diagnostic> {
@@ -408,6 +371,37 @@ impl<'a> TemplateParser<'a> {
         Ok(name.to_owned())
     }
 
+    /// `{ expression }` at the cursor, parsed, with errors placed at their file position.
+    fn parse_braced_expression(&mut self) -> Result<(Expression, Span), Diagnostic> {
+        let braced = self.cursor.scan_braced()?;
+        if braced.inner.trim().is_empty() {
+            return Err(Diagnostic::new(braced.open_span, "empty {} expression"));
+        }
+        let expression = expression::parse(braced.inner).map_err(|error| {
+            // `{{ name }}` parses as an (invalid) object literal; it's almost certainly v0.2.
+            let inner = braced.inner.trim();
+            if let Some(name) = inner
+                .strip_prefix('{')
+                .and_then(|rest| rest.strip_suffix('}'))
+            {
+                let name = name.trim();
+                if is_identifier(name) {
+                    return Diagnostic::new(
+                        braced.open_span,
+                        "`{{ … }}` is v0.2 syntax; v0.3 uses single braces",
+                    )
+                    .with_help(format!("write {{{name}}} instead of {{{{ {name} }}}}"));
+                }
+            }
+            Diagnostic::new(
+                span_after(braced.inner_span, braced.inner, error.offset),
+                error.message,
+            )
+        })?;
+        Ok((expression, braced.open_span))
+    }
+
+    /// Text up to `<` (or the closing quote), splitting out `{expression}` parts.
     fn parse_parts(&mut self, quote: Option<char>) -> Result<Vec<Part>, Diagnostic> {
         let mut parts = Vec::new();
         let source = self.cursor.source();
@@ -416,33 +410,14 @@ impl<'a> TemplateParser<'a> {
             if quote.is_some_and(|quote| byte == quote as u8) || quote.is_none() && byte == b'<' {
                 break;
             }
-            if self.starts_with("{{") {
+            if byte == b'{' {
                 if literal_start < self.cursor.position() {
                     parts.push(Part::Literal(
                         source[literal_start..self.cursor.position()].to_owned(),
                     ));
                 }
-                let span = self.current_span();
-                self.advance(2);
-                let expression_start = self.cursor.position();
-                let Some(relative_end) = self.cursor.rest().find("}}") else {
-                    return Err(Diagnostic::new(
-                        span,
-                        "unterminated interpolation; expected }}",
-                    ));
-                };
-                let name = source[expression_start..expression_start + relative_end].trim();
-                if !is_identifier(name) {
-                    return Err(Diagnostic::new(
-                        span,
-                        "MNIX v0.1 interpolation must be a prop identifier",
-                    ));
-                }
-                self.advance(relative_end + 2);
-                parts.push(Part::Interpolation {
-                    name: name.to_owned(),
-                    span,
-                });
+                let (expression, span) = self.parse_braced_expression()?;
+                parts.push(Part::Expression { expression, span });
                 literal_start = self.cursor.position();
                 continue;
             }
@@ -479,14 +454,142 @@ impl<'a> TemplateParser<'a> {
     }
 }
 
-fn is_inline_event_attribute(name: &str) -> bool {
-    let name = name.to_ascii_lowercase();
+fn check_attribute(name: &str, value: &AttributeValue, span: Span) -> Result<(), Diagnostic> {
+    let lower = name.to_ascii_lowercase();
+    if lower == "style" {
+        return Err(Diagnostic::new(
+            span,
+            "inline style attributes are not supported; use component styles in a later release",
+        ));
+    }
+    if is_event_attribute(&lower) {
+        return Err(match value {
+            AttributeValue::Expression(..) => Diagnostic::new(
+                span,
+                format!("`{name}={{…}}` event handlers need the JavaScript output, which arrives in v0.4"),
+            ),
+            _ => Diagnostic::new(span, "inline event-handler attributes are not allowed")
+                .with_help(format!("pass a function from <script>: {name}={{handler}} (v0.4+)")),
+        });
+    }
+    Ok(())
+}
+
+fn is_event_attribute(name: &str) -> bool {
     name.starts_with("on")
         && name.len() > 2
         && name[2..].bytes().all(|byte| byte.is_ascii_alphabetic())
 }
 
-fn validate_directive_attributes(element: &Element, allowed: &[&str]) -> Result<(), Diagnostic> {
+// ---- directives ----------------------------------------------------------------------------
+
+fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
+    let lower = element.name.to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("mnix-") {
+        if matches!(rest, "if" | "else" | "each" | "slot") {
+            return Err(Diagnostic::new(
+                element.span,
+                format!("<{}> was renamed to <mnx-{rest}> in v0.3", element.name),
+            ));
+        }
+    }
+    match lower.as_str() {
+        "mnx-if" => {
+            allow_attributes(&element, &["test"])?;
+            let (test, test_span) = required_expression(&element, "test")?;
+            let mut consequent = Vec::new();
+            let mut alternate = None;
+            for child in element.children {
+                match child {
+                    Node::Else { children, span } => {
+                        if alternate.is_some() {
+                            return Err(Diagnostic::new(span, "mnx-if may contain only one mnx-else"));
+                        }
+                        alternate = Some(children);
+                    }
+                    Node::Text(parts)
+                        if alternate.is_some()
+                            && parts.iter().all(|part| matches!(part, Part::Literal(text) if text.trim().is_empty())) => {}
+                    child => {
+                        if alternate.is_some() {
+                            return Err(Diagnostic::new(element.span, "mnx-else must be the final child of mnx-if"));
+                        }
+                        consequent.push(child);
+                    }
+                }
+            }
+            Ok(Node::If {
+                test,
+                test_span,
+                consequent,
+                alternate: alternate.unwrap_or_default(),
+                span: element.span,
+            })
+        }
+        "mnx-each" => {
+            allow_attributes(&element, &["items", "as", "index"])?;
+            let (items, items_span) = required_expression(&element, "items")?;
+            let item = required_text(&element, "as")?;
+            if !is_identifier(&item) {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "mnx-each as must be a valid identifier",
+                ));
+            }
+            let index = optional_text(&element, "index")?;
+            if index
+                .as_deref()
+                .is_some_and(|index| !is_identifier(index) || index == item)
+            {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "mnx-each index must be a valid identifier different from `as`",
+                ));
+            }
+            Ok(Node::Each {
+                items,
+                items_span,
+                item,
+                index,
+                children: element.children,
+                span: element.span,
+            })
+        }
+        "mnx-slot" => {
+            allow_attributes(&element, &["name"])?;
+            let name = match optional_text(&element, "name")? {
+                None => "default".to_owned(),
+                Some(name) if name == "default" || is_identifier(&name) => name,
+                Some(_) => {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "mnx-slot name must be `default` or a valid identifier",
+                    ));
+                }
+            };
+            Ok(Node::Slot {
+                name,
+                fallback: element.children,
+                span: element.span,
+            })
+        }
+        "mnx-else" => {
+            if !element.attributes.is_empty() {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "mnx-else does not accept attributes",
+                ));
+            }
+            Ok(Node::Else {
+                children: element.children,
+                span: element.span,
+            })
+        }
+        _ => Ok(Node::Element(element)),
+    }
+}
+
+fn allow_attributes(element: &Element, allowed: &[&str]) -> Result<(), Diagnostic> {
     for attribute in &element.attributes {
         if !allowed
             .iter()
@@ -504,8 +607,36 @@ fn validate_directive_attributes(element: &Element, allowed: &[&str]) -> Result<
     Ok(())
 }
 
-fn required_literal_attribute(element: &Element, name: &str) -> Result<String, Diagnostic> {
-    optional_literal_attribute(element, name)?.ok_or_else(|| {
+fn find<'e>(element: &'e Element, name: &str) -> Option<&'e Attribute> {
+    element
+        .attributes
+        .iter()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case(name))
+}
+
+fn required_expression(element: &Element, name: &str) -> Result<(Expression, Span), Diagnostic> {
+    match find(element, name).map(|attribute| (&attribute.value, attribute.span)) {
+        Some((AttributeValue::Expression(expression, span), _)) => Ok((expression.clone(), *span)),
+        Some((AttributeValue::Text(_), span)) => Err(Diagnostic::new(
+            span,
+            format!(
+                "`{name}` on <{}> is an expression: write {name}={{…}}",
+                element.name
+            ),
+        )),
+        Some((AttributeValue::None, span)) => Err(Diagnostic::new(
+            span,
+            format!("`{name}` on <{}> needs a value: {name}={{…}}", element.name),
+        )),
+        None => Err(Diagnostic::new(
+            element.span,
+            format!("<{}> requires a `{name}={{…}}` attribute", element.name),
+        )),
+    }
+}
+
+fn required_text(element: &Element, name: &str) -> Result<String, Diagnostic> {
+    optional_text(element, name)?.ok_or_else(|| {
         Diagnostic::new(
             element.span,
             format!("<{}> requires a `{name}` attribute", element.name),
@@ -513,32 +644,21 @@ fn required_literal_attribute(element: &Element, name: &str) -> Result<String, D
     })
 }
 
-fn optional_literal_attribute(element: &Element, name: &str) -> Result<Option<String>, Diagnostic> {
-    let attribute = element
-        .attributes
-        .iter()
-        .find(|attribute| attribute.name.eq_ignore_ascii_case(name));
-    let Some(attribute) = attribute else {
+fn optional_text(element: &Element, name: &str) -> Result<Option<String>, Diagnostic> {
+    let Some(attribute) = find(element, name) else {
         return Ok(None);
     };
-    let Some(parts) = attribute.value.as_deref() else {
-        return Err(Diagnostic::new(
+    match &attribute.value {
+        AttributeValue::Text(parts) => match parts.as_slice() {
+            [Part::Literal(text)] => Ok(Some(text.clone())),
+            _ => Err(Diagnostic::new(
+                attribute.span,
+                format!("attribute `{name}` must be static text"),
+            )),
+        },
+        _ => Err(Diagnostic::new(
             attribute.span,
-            format!("attribute `{name}` requires a quoted value"),
-        ));
-    };
-    if parts.iter().any(|part| !matches!(part, Part::Literal(_))) {
-        return Err(Diagnostic::new(
-            attribute.span,
-            format!("attribute `{name}` must be static text"),
-        ));
+            format!("attribute `{name}` must be quoted text, e.g. {name}=\"item\""),
+        )),
     }
-    let value = parts
-        .iter()
-        .filter_map(|part| match part {
-            Part::Literal(text) => Some(text.as_str()),
-            Part::Interpolation { .. } => None,
-        })
-        .collect::<String>();
-    Ok(Some(value))
 }

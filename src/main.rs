@@ -20,7 +20,7 @@ fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
     if arguments.next().as_deref() != Some("compile") {
         return Err(
-            "usage: mnix compile <component.mnx> --props <props.json> [--slots <slots.json>] [--output <file>]".into(),
+            "usage: mnix compile <component.mnx> [--props <props.json>] [--slots <slots.json>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -37,11 +37,14 @@ fn run() -> Result<(), String> {
             _ => return Err(format!("unexpected argument `{argument}`")),
         }
     }
-    let props_path = props_path.ok_or_else(|| "missing --props <props.json>".to_owned())?;
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
-    let props = fs::read_to_string(&props_path)
-        .map_err(|error| format!("{props_path}: unable to read props: {error}"))?;
+    // Props are optional: defaults come from the component's <script> and host tag.
+    let props = match &props_path {
+        Some(props_path) => fs::read_to_string(props_path)
+            .map_err(|error| format!("{props_path}: unable to read props: {error}"))?,
+        None => "{}".to_owned(),
+    };
     let html = if let Some(slots_path) = slots_path {
         let slots = fs::read_to_string(&slots_path)
             .map_err(|error| format!("{slots_path}: unable to read slots: {error}"))?;
@@ -49,7 +52,7 @@ fn run() -> Result<(), String> {
     } else {
         mnix_compiler::compile(&source, &props)
     }
-    .map_err(|diagnostic| format!("{source_path}:{diagnostic}"))?;
+    .map_err(|diagnostic| diagnostic.render(&source, &source_path))?;
     if let Some(output_path) = output_path {
         write_atomically(&output_path, html.as_bytes())?;
     } else {

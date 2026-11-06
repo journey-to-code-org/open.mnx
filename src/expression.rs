@@ -295,7 +295,9 @@ impl Expression {
     }
 
     /// Print as JavaScript. Fully parenthesized where precedence could matter, so the output
-    /// is unambiguous without reproducing the precedence table in the printer.
+    /// is unambiguous without reproducing the precedence table in the printer. Used by the JS
+    /// backend (v0.4); exercised by tests until then.
+    #[allow(dead_code)]
     pub fn to_js(&self) -> String {
         match self {
             Self::Identifier(name) => name.clone(),

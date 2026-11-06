@@ -1,5 +1,4 @@
 {
-  "ready": true,
   "mode": "active",
-  "features": ["Static HTML", "Scoped slots", "Escaped output"]
+  "features": ["Static HTML", "Typed props", "Escaped output"]
 }

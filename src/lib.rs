@@ -5,6 +5,7 @@ mod ir;
 mod parser;
 mod render;
 mod scanner;
+mod script;
 mod validate;
 
 pub use diagnostic::{Diagnostic, Span};
@@ -57,11 +58,11 @@ pub fn compile_value_with_slots(
         let source = source.as_str().ok_or_else(|| {
             Diagnostic::new(
                 Span::new(1, 1),
-                format!("slot `{name}` must contain a MNIX template string"),
+                format!("slot `{name}` must contain an mnx template string"),
             )
         })?;
         slot_nodes.insert(name.clone(), parser::parse_fragment(source)?);
     }
     let component = validate::validate(component, props, &slot_nodes)?;
-    render::render(&component)
+    Ok(render::render(&component))
 }

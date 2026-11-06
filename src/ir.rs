@@ -1,27 +1,13 @@
-use crate::diagnostic::Span;
+//! Static HTML IR: what the HTML backend renders. Every value is already known; conditions,
+//! loops and slots have been expanded.
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Component {
-    pub name: String,
-    pub tag: Option<String>,
-    pub props: Vec<Prop>,
+    pub tag: String,
+    /// Prop values written back onto the host (only those that differ from their defaults), so
+    /// a runtime can pick them up from the markup. `""` means a bare attribute.
+    pub host_attributes: Vec<(String, String)>,
     pub nodes: Vec<Node>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Prop {
-    pub name: String,
-    pub kind: PropKind,
-    pub value: serde_json::Value,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PropKind {
-    String,
-    Number,
-    Boolean,
-    Url,
-    Strings,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,18 +21,19 @@ pub struct Element {
     pub name: String,
     pub attributes: Vec<Attribute>,
     pub children: Vec<Node>,
-    pub span: Span,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Attribute {
     pub name: String,
+    /// `None` renders a bare attribute.
     pub value: Option<Vec<Part>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Part {
+    /// Authored markup, preserved as written.
     Literal(String),
-    Prop(usize),
+    /// A computed value, escaped when rendered.
     Escaped(String),
 }

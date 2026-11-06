@@ -75,10 +75,6 @@ impl<'a> Cursor<'a> {
         self.source.as_bytes().get(self.position).copied()
     }
 
-    pub fn peek_byte_at(&self, offset: usize) -> Option<u8> {
-        self.source.as_bytes().get(self.position + offset).copied()
-    }
-
     pub fn peek_char(&self) -> Option<char> {
         self.rest().chars().next()
     }

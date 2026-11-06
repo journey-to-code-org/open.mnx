@@ -1,21 +1,38 @@
-use mnix_compiler::{compile, compile_value, compile_with_slots};
+use mnix_compiler::{compile, compile_value, compile_with_slots, Diagnostic};
 use serde_json::json;
 
-const SOURCE: &str = "component: Greeting\nprop name: string\nprop url: url\n---\n<article class=\"greeting\"><h1>Hello, {{ name }}!</h1><a href=\"{{ url }}\">Visit</a></article>";
+const GREETING: &str = r#"<mnx-greeting name url>
+  <article class="greeting"><h1>Hello, {name}!</h1><a href={url}>Visit</a></article>
+</mnx-greeting>"#;
+
+fn error(source: &str, props: &str) -> Diagnostic {
+    compile(source, props).expect_err("expected a compile error")
+}
+
+fn assert_error(source: &str, props: &str, expected: &str) {
+    let diagnostic = error(source, props);
+    assert!(
+        diagnostic.message.contains(expected),
+        "expected an error containing {expected:?}, got {:?}",
+        diagnostic.message
+    );
+}
+
+// ---- rendering ------------------------------------------------------------------------------
 
 #[test]
-fn renders_a_typed_component_as_semantic_html() {
-    let html = compile(SOURCE, r#"{"name":"Mikey","url":"https://mnix.dev"}"#).unwrap();
+fn renders_a_component_inside_its_host_element() {
+    let html = compile(GREETING, r#"{"name":"Mikey","url":"https://mnix.dev"}"#).unwrap();
     assert_eq!(
         html,
-        "<article class=\"greeting\"><h1>Hello, Mikey!</h1><a href=\"https://mnix.dev\">Visit</a></article>"
+        "<mnx-greeting name=\"Mikey\" url=\"https://mnix.dev\">\n  <article class=\"greeting\"><h1>Hello, Mikey!</h1><a href=\"https://mnix.dev\">Visit</a></article>\n</mnx-greeting>"
     );
 }
 
 #[test]
-fn escapes_text_and_attribute_interpolation() {
+fn escapes_text_and_attribute_values() {
     let html = compile(
-        SOURCE,
+        GREETING,
         r#"{"name":"<script>alert(1)</script> & \"quoted\"","url":"/search?q=one&x=two"}"#,
     )
     .unwrap();
@@ -25,172 +42,57 @@ fn escapes_text_and_attribute_interpolation() {
 }
 
 #[test]
-fn escapes_static_text_and_attributes_deterministically() {
-    let source = "component: Notice\nprop text: string\n---\n<p title=\"A &amp; B\">{{ text }}</p>";
+fn preserves_authored_markup_and_is_deterministic() {
+    let source = "<mnx-notice text>\n<p title=\"A &amp; B\">{text}</p>\n</mnx-notice>";
     let html = compile(source, r#"{"text":"x > y"}"#).unwrap();
-    assert_eq!(html, "<p title=\"A &amp; B\">x &gt; y</p>");
+    assert_eq!(
+        html,
+        "<mnx-notice text=\"x &gt; y\">\n<p title=\"A &amp; B\">x &gt; y</p>\n</mnx-notice>"
+    );
     assert_eq!(compile(source, r#"{"text":"x > y"}"#).unwrap(), html);
 }
 
 #[test]
-fn emits_a_declared_custom_element_host_without_runtime_assumptions() {
+fn script_bindings_feed_prop_defaults_and_the_template() {
+    let source = r#"<script>
+  const first = "Mikey"
+  const last = "Nichols"
+  const full = first + " " + last
+  const tags = ["rust", "web"]
+</script>
+<mnx-card name={full} count={tags.length}>
+  <p>{name} ({count} tags, first: {tags[0]})</p>
+</mnx-card>"#;
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-card>\n  <p>Mikey Nichols (2 tags, first: rust)</p>\n</mnx-card>"
+    );
+}
+
+#[test]
+fn props_shadow_script_bindings_inside_the_template() {
     let source =
-        "component: Greeting\ntag: mnix-greeting\nprop name: string\n---\n<p>Hello {{ name }}</p>";
+        "<script>const title = \"Script\"</script>\n<mnx-x title={title}><h1>{title}</h1></mnx-x>";
     assert_eq!(
-        compile(source, r#"{"name":"Mikey"}"#).unwrap(),
-        "<mnix-greeting><p>Hello Mikey</p></mnix-greeting>"
+        compile(source, "{}").unwrap(),
+        "<mnx-x><h1>Script</h1></mnx-x>"
+    );
+    assert_eq!(
+        compile(source, r#"{"title":"Override"}"#).unwrap(),
+        "<mnx-x title=\"Override\"><h1>Override</h1></mnx-x>"
     );
 }
 
 #[test]
-fn rejects_unsafe_static_and_interpolated_urls() {
-    let static_url = "component: Link\n---\n<a href=\"javascript:alert(1)\">Open</a>";
-    assert!(compile(static_url, "{}")
-        .unwrap_err()
-        .message
-        .contains("unsafe URL"));
-
-    let entity_url = "component: Link\n---\n<a href=\"javascript&colon;alert(1)\">Open</a>";
-    assert!(compile(entity_url, "{}")
-        .unwrap_err()
-        .message
-        .contains("unsafe URL"));
-
-    let wrong_type = "component: Link\nprop target: string\n---\n<a href=\"{{ target }}\">Open</a>";
-    assert!(compile(wrong_type, r#"{"target":"/safe"}"#)
-        .unwrap_err()
-        .message
-        .contains("requires a prop declared as url"));
-
-    let unsafe_prop = "component: Link\nprop target: url\n---\n<a href=\"{{ target }}\">Open</a>";
-    assert!(compile(unsafe_prop, r#"{"target":"data:text/html,bad"}"#)
-        .unwrap_err()
-        .message
-        .contains("must be a safe URL"));
-}
-
-#[test]
-fn rejects_missing_extra_and_mistyped_props() {
-    assert!(compile(SOURCE, r#"{"name":"Mikey"}"#)
-        .unwrap_err()
-        .message
-        .contains("missing required prop `url`"));
-    assert!(
-        compile(SOURCE, r#"{"name":"Mikey","url":"/","extra":true}"#)
-            .unwrap_err()
-            .message
-            .contains("unknown prop `extra`")
-    );
-    assert!(compile(SOURCE, r#"{"name":42,"url":"/"}"#)
-        .unwrap_err()
-        .message
-        .contains("must be a string"));
-}
-
-#[test]
-fn rejects_unknown_interpolation_with_source_location() {
-    let error = compile(
-        "component: Greeting\nprop name: string\n---\n<p>Hi {{ visitor }}</p>",
-        r#"{"name":"Mikey"}"#,
-    )
-    .unwrap_err();
-    assert!(error.message.contains("unknown prop reference `visitor`"));
-    assert_eq!(error.span.line, 4);
-    assert_eq!(error.span.column, 7);
-}
-
-#[test]
-fn rejects_malformed_html_and_unsafe_template_features() {
-    for (source, expected) in [
-        ("component: Bad\n---\n<p></section>", "does not match"),
-        ("component: Bad\n---\n<p>", "missing closing tag"),
-        ("component: Bad\n---\n<script>alert(1)</script>", "<script>"),
-        (
-            "component: Bad\n---\n<button onclick=\"run()\">Go</button>",
-            "event-handler",
-        ),
-        (
-            "component: Bad\n---\n<div style=\"color:red\">Text</div>",
-            "inline style",
-        ),
-    ] {
-        assert!(compile(source, "{}")
-            .unwrap_err()
-            .message
-            .contains(expected));
-    }
-}
-
-#[test]
-fn rejects_duplicate_props_attributes_and_invalid_custom_tags() {
-    for (source, expected) in [
-        (
-            "component: Bad\nprop value: string\nprop value: number\n---\n<p>{{ value }}</p>",
-            "duplicate prop",
-        ),
-        (
-            "component: Bad\n---\n<p id=\"a\" id=\"b\">Text</p>",
-            "duplicate attribute",
-        ),
-        (
-            "component: Bad\ntag: Not-Valid\n---\n<p>Text</p>",
-            "not a valid custom-element name",
-        ),
-    ] {
-        assert!(compile(source, "{}")
-            .unwrap_err()
-            .message
-            .contains(expected));
-    }
-}
-
-#[test]
-fn reports_invalid_custom_element_names_at_their_declaration() {
-    let error = compile("component: Bad\ntag: xml-widget\n---\n<p>Text</p>", "{}").unwrap_err();
-    assert!(error.message.contains("not a valid custom-element name"));
-    assert_eq!(error.span.line, 2);
-}
-
-#[test]
-fn validates_srcset_candidates_and_rejects_dynamic_interpolation() {
-    let safe =
-        "component: Picture\n---\n<img srcset=\"/small.webp 1x, https://mnix.dev/large.webp 2x\">";
-    assert!(compile(safe, "{}").is_ok());
-
-    let unsafe_srcset =
-        "component: Picture\n---\n<img srcset=\"/small.webp 1x, javascript:alert(1) 2x\">";
-    assert!(compile(unsafe_srcset, "{}")
-        .unwrap_err()
-        .message
-        .contains("unsafe or empty URL"));
-
-    let dynamic = "component: Picture\nprop sources: string\n---\n<img srcset=\"{{ sources }}\">";
-    assert!(compile(dynamic, r#"{"sources":"/image.webp 1x"}"#)
-        .unwrap_err()
-        .message
-        .contains("srcset interpolation is not supported"));
-}
-
-#[test]
-fn requires_exactly_one_template_root() {
-    for source in [
-        "component: Empty\n---\n",
-        "component: Many\n---\n<p>One</p><p>Two</p>",
-        "component: Text\n---\nleading <p>Root</p>",
-    ] {
-        assert!(compile(source, "{}")
-            .unwrap_err()
-            .message
-            .contains("exactly one root element"));
-    }
-}
-
-#[test]
-fn supports_typed_scalar_values_and_rejects_non_objects() {
-    let source = "component: Summary\nprop count: number\nprop active: boolean\n---\n<p>{{ count }} {{ active }}</p>";
+fn renders_scalars_member_access_and_expressions() {
+    let source = "<mnx-summary count={0} active={false} user={null}><p>{count + 1} {active} {user?.name ?? \"anon\"} {count > 0 ? \"some\" : \"none\"}</p></mnx-summary>";
     assert_eq!(
-        compile_value(source, &json!({ "count": 3, "active": true })).unwrap(),
-        "<p>3 true</p>"
+        compile_value(source, &json!({ "count": 3, "active": true, "user": { "name": "Zoë" } })).unwrap(),
+        "<mnx-summary count=\"3\" active user=\"{&quot;name&quot;:&quot;Zoë&quot;}\"><p>4 true Zoë some</p></mnx-summary>"
+    );
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-summary><p>1 false anon none</p></mnx-summary>"
     );
     assert!(compile(source, "[]")
         .unwrap_err()
@@ -199,176 +101,446 @@ fn supports_typed_scalar_values_and_rejects_non_objects() {
 }
 
 #[test]
-fn renders_boolean_attributes_by_presence_and_rejects_wrong_prop_types() {
-    let source = "component: Toggle\nprop active: boolean\n---\n<button disabled=\"{{ active }}\">Toggle</button>";
+fn camel_case_props_are_written_kebab_case_on_the_host() {
+    let source = "<mnx-counter max-value={10}><p>{maxValue}</p></mnx-counter>";
+    assert_eq!(
+        compile(source, r#"{"maxValue":5}"#).unwrap(),
+        "<mnx-counter max-value=\"5\"><p>5</p></mnx-counter>"
+    );
+    assert_error(
+        "<mnx-counter maxValue={10}><p></p></mnx-counter>",
+        "{}",
+        "lowercases attribute names",
+    );
+}
+
+#[test]
+fn boolean_attributes_render_by_presence_and_require_booleans() {
+    let source =
+        "<mnx-toggle active={false}><button disabled={active}>Toggle</button></mnx-toggle>";
     assert_eq!(
         compile(source, r#"{"active":true}"#).unwrap(),
-        "<button disabled>Toggle</button>"
+        "<mnx-toggle active><button disabled>Toggle</button></mnx-toggle>"
     );
     assert_eq!(
-        compile(source, r#"{"active":false}"#).unwrap(),
-        "<button>Toggle</button>"
+        compile(source, "{}").unwrap(),
+        "<mnx-toggle><button>Toggle</button></mnx-toggle>"
     );
 
-    let invalid = "component: Toggle\nprop active: string\n---\n<button disabled=\"{{ active }}\">Toggle</button>";
-    assert!(compile(invalid, r#"{"active":"true"}"#)
-        .unwrap_err()
-        .message
-        .contains("requires one boolean prop"));
+    assert_error(
+        "<mnx-toggle label=\"x\"><button disabled={label}>Toggle</button></mnx-toggle>",
+        "{}",
+        "must be true or false",
+    );
+    assert_error(
+        "<mnx-toggle active={true}><button disabled=\"{active}\">Toggle</button></mnx-toggle>",
+        "{}",
+        "bind it with disabled={…}",
+    );
 }
 
 #[test]
-fn parses_and_renders_unicode_template_text() {
-    let source = "component: Greeting\nprop name: string\n---\n<p>Héllo, {{ name }}</p>";
+fn default_true_booleans_round_trip_as_false() {
+    let source = "<mnx-panel open={true}><p>{open}</p></mnx-panel>";
     assert_eq!(
-        compile(source, r#"{"name":"Zoë"}"#).unwrap(),
-        "<p>Héllo, Zoë</p>"
+        compile(source, r#"{"open":false}"#).unwrap(),
+        "<mnx-panel open=\"false\"><p>false</p></mnx-panel>"
     );
 }
 
 #[test]
-fn preserves_case_sensitive_svg_names_and_rejects_srcdoc_interpolation() {
-    let svg = "component: Icon\n---\n<svg viewBox=\"0 0 10 10\"><path d=\"M0 0\"></path></svg>";
+fn null_valued_attributes_are_omitted() {
+    let source = "<mnx-x label={null}><p title={label}>x</p></mnx-x>";
+    assert_eq!(compile(source, "{}").unwrap(), "<mnx-x><p>x</p></mnx-x>");
+}
+
+#[test]
+fn parses_unicode_svg_and_comments() {
+    let source = "<!-- a note -->\n<mnx-icon name=\"Zoë\"><!-- inner --><svg viewBox=\"0 0 10 10\"><title>Héllo, {name}</title><path d=\"M0 0\"></path></svg></mnx-icon>";
     assert_eq!(
-        compile(svg, "{}").unwrap(),
-        "<svg viewBox=\"0 0 10 10\"><path d=\"M0 0\"></path></svg>"
+        compile(source, "{}").unwrap(),
+        "<mnx-icon><svg viewBox=\"0 0 10 10\"><title>Héllo, Zoë</title><path d=\"M0 0\"></path></svg></mnx-icon>"
+    );
+}
+
+#[test]
+fn records_the_shadow_flag_without_making_it_a_prop() {
+    let source = "<mnx-x shadow><p>x</p></mnx-x>";
+    assert_eq!(compile(source, "{}").unwrap(), "<mnx-x><p>x</p></mnx-x>");
+    assert_error(source, r#"{"shadow":true}"#, "unknown prop `shadow`");
+}
+
+// ---- props ----------------------------------------------------------------------------------
+
+#[test]
+fn rejects_missing_unknown_and_mistyped_props() {
+    assert_error(
+        GREETING,
+        r#"{"name":"Mikey"}"#,
+        "missing required prop `url`",
+    );
+    let unknown = error(GREETING, r#"{"name":"Mikey","url":"/","nmae":1}"#);
+    assert!(unknown.message.contains("unknown prop `nmae`"));
+    assert_eq!(unknown.help.as_deref(), Some("did you mean `name`?"));
+    assert_error(
+        "<mnx-x count={0}><p>{count}</p></mnx-x>",
+        r#"{"count":"3"}"#,
+        "prop `count` must be a number (like its default), found a string",
+    );
+}
+
+#[test]
+fn rejects_duplicate_props_attributes_and_invalid_host_names() {
+    assert_error("<mnx-x a a><p></p></mnx-x>", "{}", "duplicate attribute");
+    assert_error(
+        "<mnx-x><p id=\"a\" id=\"b\">Text</p></mnx-x>",
+        "{}",
+        "duplicate attribute",
+    );
+    let no_hyphen = error("<header><p></p></header>", "{}");
+    assert!(no_hyphen
+        .message
+        .contains("not a valid custom-element name"));
+    assert_eq!(
+        no_hyphen.help.as_deref(),
+        Some("custom element names need a hyphen, e.g. `header-element`")
+    );
+    let reserved = error(
+        "<script></script>\n\n<xml-widget><p>Text</p></xml-widget>",
+        "{}",
+    );
+    assert!(reserved.message.contains("not a valid custom-element name"));
+    assert_eq!(reserved.span.line, 3);
+}
+
+#[test]
+fn prop_defaults_cannot_interpolate() {
+    assert_error(
+        "<mnx-x label=\"a {b}\"><p></p></mnx-x>",
+        "{}",
+        "can't interpolate",
+    );
+}
+
+// ---- script ---------------------------------------------------------------------------------
+
+#[test]
+fn runtime_only_script_names_resolve_but_cannot_render_statically() {
+    let source = "<script>\nconst now = Date.now()\nfunction label() { return 'x' }\n</script>\n<mnx-clock><p>{now}</p></mnx-clock>";
+    let diagnostic = error(source, "{}");
+    assert!(diagnostic.message.contains("`now` only exists at runtime"));
+    assert_eq!(diagnostic.span.line, 5);
+
+    // Declared but unused runtime names are fine.
+    let unused = "<script>function label() { return 'x' }</script>\n<mnx-x><p>static</p></mnx-x>";
+    assert_eq!(
+        compile(unused, "{}").unwrap(),
+        "<mnx-x><p>static</p></mnx-x>"
     );
 
-    let srcdoc =
-        "component: Frame\nprop content: string\n---\n<iframe srcdoc=\"{{ content }}\"></iframe>";
-    assert!(compile(srcdoc, r#"{"content":"<script>bad</script>"}"#)
-        .unwrap_err()
-        .message
-        .contains("interpolation in srcdoc is not supported"));
+    // A runtime-only prop default can be supplied at build time instead.
+    let default =
+        "<script>const now = Date.now()</script>\n<mnx-clock at={now}><p>{at}</p></mnx-clock>";
+    assert_error(default, "{}", "only exists at runtime");
+    assert!(compile(default, r#"{"at":5}"#)
+        .unwrap()
+        .contains("<p>5</p>"));
 }
 
 #[test]
-fn selects_compile_time_if_else_branches_without_emitting_directives() {
-    let source = "component: Status\nprop active: boolean\nprop status: string\nprop count: number\n---\n<main><mnix-if test='active && (status == \"ready\" || count == 3)'><p>Ready</p><mnix-else><p>Waiting</p></mnix-else></mnix-if></main>";
-    let selected = compile(source, r#"{"active":true,"status":"ready","count":0}"#).unwrap();
-    assert!(selected.contains("<p>Ready</p>"));
-    assert!(!selected.contains("<p>Waiting</p>"));
-    assert!(!selected.contains("mnix-if"));
-    assert!(!selected.contains("mnix-else"));
+fn script_errors_are_reported_where_they_happen() {
+    let syntax = error(
+        "<script>\nconst ok = 1\nconst = 2\n</script>\n<mnx-x><p></p></mnx-x>",
+        "{}",
+    );
+    assert!(syntax.message.starts_with("invalid <script>"));
+    assert_eq!(syntax.span.line, 3);
 
-    let alternative = compile(source, r#"{"active":false,"status":"ready","count":0}"#).unwrap();
-    assert!(alternative.contains("<p>Waiting</p>"));
-    assert!(!alternative.contains("<p>Ready</p>"));
+    let order = error(
+        "<script>\nconst a = b + 1\nconst b = 2\n</script>\n<mnx-x><p></p></mnx-x>",
+        "{}",
+    );
+    assert!(order.message.contains("`b` is used before it is declared"));
+
+    let types = error(
+        "<script>\nconst x = 1 - \"a\"\n</script>\n<mnx-x><p></p></mnx-x>",
+        "{}",
+    );
+    assert!(types.message.contains("in `x`"));
+    assert_eq!(types.span, mnix_compiler::Span::new(2, 7));
+
+    assert_error(
+        "<script>const a = 1\nconst a = 2</script><mnx-x><p></p></mnx-x>",
+        "{}",
+        "declared more than once",
+    );
+}
+
+// ---- references -----------------------------------------------------------------------------
+
+#[test]
+fn rejects_unknown_references_with_location_and_suggestion() {
+    let diagnostic = error(
+        "<mnx-greeting name>\n  <p>Hi {nmae}</p>\n</mnx-greeting>",
+        r#"{"name":"Mikey"}"#,
+    );
+    assert_eq!(diagnostic.message, "unknown reference `nmae`");
+    assert_eq!(diagnostic.span, mnix_compiler::Span::new(2, 9));
+    assert_eq!(diagnostic.help.as_deref(), Some("did you mean `name`?"));
 }
 
 #[test]
-fn rejects_unknown_and_non_boolean_compile_time_conditions() {
-    let unknown = "component: Conditional\n---\n<main><mnix-if test=\"missing\"><p>Shown</p></mnix-if></main>";
-    assert!(compile(unknown, "{}")
-        .unwrap_err()
-        .message
-        .contains("unknown reference `missing`"));
-
-    let non_boolean = "component: Conditional\nprop count: number\n---\n<main><mnix-if test=\"count\"><p>Shown</p></mnix-if></main>";
-    assert!(compile(non_boolean, r#"{"count":1}"#)
-        .unwrap_err()
-        .message
-        .contains("must evaluate to a boolean"));
-
-    let unsupported = "component: Conditional\nprop count: number\n---\n<main><mnix-if test=\"count + 1 == 2\"><p>Shown</p></mnix-if></main>";
-    assert!(compile(unsupported, r#"{"count":1}"#)
-        .unwrap_err()
-        .message
-        .contains("invalid mnix-if test"));
-
-    let unreachable_unknown = "component: Conditional\n---\n<main><mnix-if test=\"false && missing\"><p>Shown</p></mnix-if></main>";
-    assert!(compile(unreachable_unknown, "{}")
-        .unwrap_err()
-        .message
-        .contains("unknown reference `missing`"));
-
-    let unreachable_type_error = "component: Conditional\nprop label: string\n---\n<main><mnix-if test=\"false && label\"><p>Shown</p></mnix-if></main>";
-    assert!(compile(unreachable_type_error, r#"{"label":"no"}"#)
-        .unwrap_err()
-        .message
-        .contains("operator && requires boolean operands"));
-
-    let unused_branch = "component: Conditional\n---\n<main><mnix-if test=\"true\"><p>Shown</p><mnix-else><p>{{ missing }}</p></mnix-else></mnix-if></main>";
-    assert!(compile(unused_branch, "{}")
-        .unwrap_err()
-        .message
-        .contains("unknown prop reference `missing`"));
-
-    let unsafe_unused_branch = "component: Conditional\n---\n<main><mnix-if test=\"true\"><p>Shown</p><mnix-else><a href=\"javascript:bad()\">Unsafe</a></mnix-else></mnix-if></main>";
-    assert!(compile(unsafe_unused_branch, "{}")
-        .unwrap_err()
-        .message
-        .contains("unsafe URL"));
+fn checks_references_in_branches_that_are_not_rendered() {
+    // A typo behind a false condition, inside an else, or in an empty loop is still an error.
+    for source in [
+        "<mnx-x><main><mnx-if test={false && missing}><p></p></mnx-if></main></mnx-x>",
+        "<mnx-x><main><mnx-if test={true}><p>Shown</p><mnx-else><p>{missing}</p></mnx-else></mnx-if></main></mnx-x>",
+        "<mnx-x items={[]}><ul><mnx-each items={items} as=\"item\"><li>{missing}</li></mnx-each></ul></mnx-x>",
+    ] {
+        assert_error(source, "{}", "unknown reference `missing`");
+    }
 }
 
 #[test]
-fn expands_typed_string_loops_with_contextual_escaping() {
-    let source = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
-    let html = compile(
-        source,
-        r#"{"features":["Rust","<script>alert(1)</script>","HTML"]}"#,
+fn reports_v0_2_syntax_with_migration_help() {
+    assert_error(
+        "component: Old\nprop name: string\n---\n<p>{{ name }}</p>",
+        "{}",
+        "v0.2 syntax; declare the component with its host tag",
+    );
+    assert_error(
+        "<mnx-x name><p>{{ name }}</p></mnx-x>",
+        "{}",
+        "v0.3 uses single braces",
+    );
+    assert_error(
+        "<mnx-x><main><mnix-if test={true}><p></p></mnix-if></main></mnx-x>",
+        "{}",
+        "renamed to <mnx-if>",
+    );
+}
+
+// ---- safety ---------------------------------------------------------------------------------
+
+#[test]
+fn rejects_unsafe_static_and_dynamic_urls() {
+    assert_error(
+        "<mnx-link><a href=\"javascript:alert(1)\">Open</a></mnx-link>",
+        "{}",
+        "unsafe URL",
+    );
+    assert_error(
+        "<mnx-link><a href=\"javascript&colon;alert(1)\">Open</a></mnx-link>",
+        "{}",
+        "unsafe URL",
+    );
+    assert_error(
+        GREETING,
+        r#"{"name":"x","url":"data:text/html,bad"}"#,
+        "unsafe URL in `href`",
+    );
+    assert_error(
+        "<mnx-link host=\"evil\"><a href=\"//{host}.example\">Open</a></mnx-link>",
+        "{}",
+        "unsafe URL",
+    );
+    assert_error(
+        "<mnx-link scheme=\"javascript\"><a href=\"{scheme}:alert(1)\">Open</a></mnx-link>",
+        "{}",
+        "unsafe URL",
+    );
+    // An unsafe literal URL in a branch that isn't rendered is still rejected.
+    assert_error(
+        "<mnx-x><main><mnx-if test={true}><p>Shown</p><mnx-else><a href=\"javascript:bad()\">x</a></mnx-else></mnx-if></main></mnx-x>",
+        "{}",
+        "unsafe URL",
+    );
+    assert!(compile(GREETING, r#"{"name":"x","url":"/safe/path"}"#).is_ok());
+}
+
+#[test]
+fn validates_srcset_and_rejects_dynamic_srcset_and_srcdoc() {
+    assert!(compile(
+        "<mnx-pic><img srcset=\"/small.webp 1x, https://mnix.dev/large.webp 2x\"></mnx-pic>",
+        "{}"
     )
-    .unwrap();
-    assert_eq!(
-        html,
-        "<ul><li>Rust</li><li>&lt;script&gt;alert(1)&lt;/script&gt;</li><li>HTML</li></ul>"
+    .is_ok());
+    assert_error(
+        "<mnx-pic><img srcset=\"/small.webp 1x, javascript:alert(1) 2x\"></mnx-pic>",
+        "{}",
+        "unsafe or empty URL",
     );
-    assert!(!html.contains("mnix-each"));
-
-    assert_eq!(compile(source, r#"{"features":[]}"#).unwrap(), "<ul></ul>");
-
-    let invalid_empty_body = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ missing }}</li></mnix-each></ul>";
-    assert!(compile(invalid_empty_body, r#"{"features":[]}"#)
-        .unwrap_err()
-        .message
-        .contains("unknown prop reference `missing`"));
+    assert_error(
+        "<mnx-pic s=\"/a 1x\"><img srcset={s}></mnx-pic>",
+        "{}",
+        "dynamic srcset",
+    );
+    assert_error(
+        "<mnx-frame c=\"x\"><iframe srcdoc={c}></iframe></mnx-frame>",
+        "{}",
+        "srcdoc",
+    );
 }
 
 #[test]
-fn requires_string_lists_and_valid_loop_sources() {
-    let source = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
-    assert!(compile(source, r#"{"features":["Rust",2]}"#)
-        .unwrap_err()
-        .message
-        .contains("must be an array of strings"));
-
-    let wrong_type = "component: FeatureList\nprop features: string\n---\n<ul><mnix-each items=\"features\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
-    assert!(compile(wrong_type, r#"{"features":"Rust"}"#)
-        .unwrap_err()
-        .message
-        .contains("must have type strings"));
-
-    let unknown = "component: FeatureList\nprop features: strings\n---\n<ul><mnix-each items=\"missing\" as=\"feature\"><li>{{ feature }}</li></mnix-each></ul>";
-    assert!(compile(unknown, r#"{"features":[]}"#)
-        .unwrap_err()
-        .message
-        .contains("unknown prop `missing`"));
+fn rejects_malformed_html_and_unsafe_template_features() {
+    for (source, expected) in [
+        ("<mnx-x><p></section></mnx-x>", "does not match"),
+        ("<mnx-x><p></mnx-x>", "does not match"),
+        ("<mnx-x><p>", "missing closing tag"),
+        ("<mnx-x><script>alert(1)</script></mnx-x>", "<script>"),
+        (
+            "<mnx-x><button onclick=\"run()\">Go</button></mnx-x>",
+            "event-handler",
+        ),
+        (
+            "<mnx-x><button onclick={run}>Go</button></mnx-x>",
+            "arrives in v0.4",
+        ),
+        (
+            "<mnx-x><div style=\"color:red\">Text</div></mnx-x>",
+            "inline style",
+        ),
+        (
+            "<mnx-x><p title=bare>x</p></mnx-x>",
+            "quoted text or a {…} expression",
+        ),
+        ("<mnx-x><p>{ }</p></mnx-x>", "empty {} expression"),
+        ("<mnx-x><p>{a.b(1)}</p></mnx-x>", "function calls"),
+        ("<mnx-x></mnx-x><mnx-y></mnx-y>", "after the host element"),
+    ] {
+        assert_error(source, "{}", expected);
+    }
 }
+
+#[test]
+fn reports_expression_errors_at_their_position_in_the_file() {
+    let diagnostic = error("<mnx-x a={1}>\n  <p>{a +* 2}</p>\n</mnx-x>", "{}");
+    assert_eq!(diagnostic.span, mnix_compiler::Span::new(2, 10));
+}
+
+#[test]
+fn rejects_interpolating_objects() {
+    assert_error(
+        "<mnx-x data={{ a: 1 }}><p>{data}</p></mnx-x>",
+        "{}",
+        "cannot interpolate an object",
+    );
+}
+
+#[test]
+fn requires_exactly_one_template_root() {
+    for source in [
+        "<mnx-x></mnx-x>",
+        "<mnx-x><p>One</p><p>Two</p></mnx-x>",
+        "<mnx-x>leading <p>Root</p></mnx-x>",
+    ] {
+        assert_error(source, "{}", "exactly one root element");
+    }
+}
+
+// ---- directives -----------------------------------------------------------------------------
+
+#[test]
+fn selects_compile_time_branches_with_javascript_truthiness() {
+    let source = r#"<mnx-status active={false} status="" count={0}>
+<main><mnx-if test={active && (status == "ready" || count)}><p>Ready</p><mnx-else><p>Waiting</p></mnx-else></mnx-if></main>
+</mnx-status>"#;
+    let ready = compile(source, r#"{"active":true,"status":"","count":3}"#).unwrap();
+    assert!(ready.contains("<p>Ready</p>") && !ready.contains("Waiting"));
+    assert!(!ready.contains("mnx-if") && !ready.contains("mnx-else"));
+    let waiting = compile(source, r#"{"active":true,"status":"","count":0}"#).unwrap();
+    assert!(waiting.contains("<p>Waiting</p>") && !waiting.contains("Ready"));
+}
+
+#[test]
+fn directive_attributes_are_expressions() {
+    assert_error(
+        "<mnx-x><main><mnx-if test=\"ready\"><p></p></mnx-if></main></mnx-x>",
+        "{}",
+        "write test={…}",
+    );
+    assert_error(
+        "<mnx-x><main><mnx-if><p></p></mnx-if></main></mnx-x>",
+        "{}",
+        "requires a `test={…}`",
+    );
+    assert_error(
+        "<mnx-x><main><mnx-if test={true} other=\"x\"><p>Yes</p></mnx-if></main></mnx-x>",
+        "{}",
+        "unexpected attribute `other`",
+    );
+}
+
+#[test]
+fn expands_loops_over_any_values_with_member_access_and_index() {
+    let source = r#"<script>
+const people = [{ name: "Ada", role: "<admin>" }, { name: "Linus", role: "dev" }]
+</script>
+<mnx-team people={people}>
+<ul><mnx-each items={people} as="person" index="i"><li data-n={i + 1}>{person.name} ({person.role})</li></mnx-each></ul>
+</mnx-team>"#;
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-team>\n<ul><li data-n=\"1\">Ada (&lt;admin&gt;)</li><li data-n=\"2\">Linus (dev)</li></ul>\n</mnx-team>"
+    );
+    assert!(compile(source, r#"{"people":[]}"#)
+        .unwrap()
+        .contains("<ul></ul>"));
+    assert_error(source, r#"{"people":{"a":1}}"#, "must be an array");
+}
+
+#[test]
+fn loop_variables_shadow_props_and_stay_scoped() {
+    let source = "<mnx-x name=\"outer\" items={[\"inner\"]}><p><mnx-each items={items} as=\"name\">{name}</mnx-each>/{name}</p></mnx-x>";
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-x><p>inner/outer</p></mnx-x>"
+    );
+    assert_error(
+        "<mnx-x items={[1]}><p><mnx-each items={items} as=\"item\" index=\"item\">x</mnx-each></p></mnx-x>",
+        "{}",
+        "different from `as`",
+    );
+}
+
+#[test]
+fn rejects_misplaced_else() {
+    assert_error(
+        "<mnx-x><main><mnx-else><p>Else</p></mnx-else></main></mnx-x>",
+        "{}",
+        "only valid as a direct child",
+    );
+    assert_error(
+        "<mnx-x><main><mnx-if test={true}><p>Yes</p><mnx-else><p>No</p></mnx-else><p>After</p></mnx-if></main></mnx-x>",
+        "{}",
+        "mnx-else must be the final child",
+    );
+}
+
+// ---- slots ----------------------------------------------------------------------------------
 
 #[test]
 fn fills_named_and_default_slots_from_parsed_template_fragments() {
-    let source = "component: Panel\nprop title: string\n---\n<main><mnix-slot name=\"heading\"><h1>{{ title }}</h1></mnix-slot><mnix-slot><p>Default fallback</p></mnix-slot></main>";
+    let source = "<mnx-panel title><main><mnx-slot name=\"heading\"><h1>{title}</h1></mnx-slot><mnx-slot><p>Default fallback</p></mnx-slot></main></mnx-panel>";
     let html = compile_with_slots(
         source,
         r#"{"title":"Panel title"}"#,
-        r#"{"heading":"<h2>{{ title }}</h2>","default":"<p>Supplied default</p>"}"#,
+        r#"{"heading":"<h2>{title}</h2>","default":"<p>Supplied default</p>"}"#,
     )
     .unwrap();
-    assert_eq!(
-        html,
-        "<main><h2>Panel title</h2><p>Supplied default</p></main>"
-    );
-    assert!(!html.contains("mnix-slot"));
-
+    assert_eq!(html, "<mnx-panel title=\"Panel title\"><main><h2>Panel title</h2><p>Supplied default</p></main></mnx-panel>");
+    assert!(!html.contains("mnx-slot"));
     assert_eq!(
         compile(source, r#"{"title":"Fallback title"}"#).unwrap(),
-        "<main><h1>Fallback title</h1><p>Default fallback</p></main>"
+        "<mnx-panel title=\"Fallback title\"><main><h1>Fallback title</h1><p>Default fallback</p></main></mnx-panel>"
     );
 }
 
 #[test]
 fn rejects_unknown_slots_invalid_slot_markup_and_recursive_expansion() {
-    let source = "component: Panel\n---\n<main><mnix-slot name=\"content\"><p>Fallback</p></mnix-slot></main>";
+    let source =
+        "<mnx-panel><main><mnx-slot name=\"content\"><p>Fallback</p></mnx-slot></main></mnx-panel>";
     assert!(
         compile_with_slots(source, "{}", r#"{"unknown":"<p>Bad</p>"}"#)
             .unwrap_err()
@@ -381,35 +553,32 @@ fn rejects_unknown_slots_invalid_slot_markup_and_recursive_expansion() {
             .message
             .contains("does not match")
     );
+    assert!(
+        compile_with_slots(source, "{}", r#"{"content":"<p>{missing}</p>"}"#)
+            .unwrap_err()
+            .message
+            .contains("unknown reference `missing`")
+    );
 
-    let recursive = "component: Panel\n---\n<main><mnix-slot name=\"content\"></mnix-slot></main>";
+    let recursive = "<mnx-panel><main><mnx-slot name=\"content\"></mnx-slot></main></mnx-panel>";
     assert!(compile_with_slots(
         recursive,
         "{}",
-        r#"{"content":"<mnix-slot name=\"content\"></mnix-slot>"}"#
+        r#"{"content":"<mnx-slot name=\"content\"></mnx-slot>"}"#
     )
     .unwrap_err()
     .message
     .contains("recursive slot expansion"));
 }
 
+// ---- diagnostics ----------------------------------------------------------------------------
+
 #[test]
-fn rejects_misplaced_else_and_unknown_directive_attributes() {
-    let misplaced = "component: Bad\n---\n<main><mnix-else><p>Else</p></mnix-else></main>";
-    assert!(compile(misplaced, "{}")
-        .unwrap_err()
-        .message
-        .contains("only valid as a direct child"));
-
-    let extra = "component: Bad\nprop enabled: boolean\n---\n<main><mnix-if test=\"enabled\" other=\"x\"><p>Yes</p></mnix-if></main>";
-    assert!(compile(extra, r#"{"enabled":true}"#)
-        .unwrap_err()
-        .message
-        .contains("unexpected attribute `other`"));
-
-    let misplaced_else = "component: Bad\n---\n<main><mnix-if test=\"true\"><p>Yes</p><mnix-else><p>No</p></mnix-else><p>After</p></mnix-if></main>";
-    assert!(compile(misplaced_else, "{}")
-        .unwrap_err()
-        .message
-        .contains("mnix-else must be the final child"));
+fn renders_diagnostics_with_the_source_line() {
+    let source = "<mnx-x title>\n  <h1>{titel}</h1>\n</mnx-x>";
+    let rendered = error(source, r#"{"title":"t"}"#).render(source, "x.mnx");
+    assert_eq!(
+        rendered,
+        "error: unknown reference `titel`\n --> x.mnx:2:7\n  |\n2 |   <h1>{titel}</h1>\n  |       ^\n  = help: did you mean `title`?\n"
+    );
 }
