@@ -22,12 +22,16 @@ export function compiler(...args) {
   return execFileSync(join(repo, 'target/debug/mnix'), ['compile', ...args], { encoding: 'utf8' });
 }
 
-/** Register setup and teardown; `components` maps module names to `.mnx` paths. */
-export function useBrowser(components) {
+/**
+ * Register setup and teardown. `components` maps module names to `.mnx` paths; `files` maps
+ * extra served paths to their contents (plain modules a component imports, …).
+ */
+export function useBrowser(components, files = {}) {
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   site = mkdtempSync(join(tmpdir(), 'mnx-browser-'));
   cpSync(join(here, '../../src'), join(site, 'runtime'), { recursive: true });
+  for (const [path, contents] of Object.entries(files)) writeFileSync(join(site, path), contents);
   for (const [name, path] of Object.entries(components)) {
     writeFileSync(join(site, `${name}.js`), compiler(path, '--emit', 'js'));
   }

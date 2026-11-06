@@ -85,6 +85,114 @@ export function onUnmount(fn) {
   hooks('onUnmount').unmount.push(fn);
 }
 
+/**
+ * An id unique to this element and call, for `id`/`for`/`aria-*` attributes. Stable for the
+ * element's life; based on the host's own `id` when it has one, so it can be made to match
+ * server-rendered markup.
+ */
+export function id() {
+  const component = hooks('id');
+  const base = component.host.id || `${component.host.localName}-${component.instance}`;
+  return `${base}-${++component.ids}`;
+}
+
+// ---- context (the Web Components Community Group Context Protocol) -------------------------
+//
+// A consumer dispatches a bubbling, composed `context-request` event carrying the context key
+// and a callback; the nearest provider for that key stops it and calls back with the value,
+// and with `subscribe: true` keeps calling back when the value changes, passing an
+// `unsubscribe` function. Providers announce themselves with a `context-provider` event, so a
+// consumer that asked before its provider existed can ask again. Because it is plain DOM events,
+// mnx components share context with any other implementation (Lit's @lit/context, …).
+
+export class ContextRequestEvent extends Event {
+  constructor(context, contextTarget, callback, subscribe) {
+    super('context-request', { bubbles: true, composed: true });
+    this.context = context;
+    this.contextTarget = contextTarget;
+    this.callback = callback;
+    this.subscribe = subscribe;
+  }
+}
+
+export class ContextProviderEvent extends Event {
+  constructor(context, contextTarget) {
+    super('context-provider', { bubbles: true, composed: true });
+    this.context = context;
+    this.contextTarget = contextTarget;
+  }
+}
+
+/** A context key, with the value consumers get when no provider answers. */
+export function createContext(defaultValue) {
+  return Object.freeze({ defaultValue });
+}
+
+/**
+ * Provide `value` (a plain value or a signal) for `context` to every element inside this one.
+ * Must be called during setup.
+ */
+export function provide(context, value) {
+  const host = hooks('provide').host;
+  const subscribers = new Set();
+  host.addEventListener('context-request', (event) => {
+    if (event.context !== context || event.contextTarget === host) return;
+    event.stopPropagation();
+    if (!event.subscribe) return event.callback($r(value));
+    const subscriber = { callback: event.callback };
+    subscriber.unsubscribe = () => subscribers.delete(subscriber);
+    subscribers.add(subscriber);
+    event.callback($r(value), subscriber.unsubscribe);
+  });
+  watch(() => $r(value), (next) => {
+    for (const subscriber of [...subscribers]) subscriber.callback(next, subscriber.unsubscribe);
+  });
+  host.dispatchEvent(new ContextProviderEvent(context, host));
+}
+
+/**
+ * Read `context` from the nearest provider above this element, as a signal that follows the
+ * provider's value. Must be called during setup. Without a provider the value is `fallback`
+ * (by default the context's own default). Works with any Context Protocol provider: pass its
+ * key as `context`.
+ */
+export function inject(context, fallback = context?.defaultValue) {
+  const host = hooks('inject').host;
+  const value = new Signal.State(fallback);
+  let unsubscribe = null;
+  let answered = false;
+  let generation = 0;
+  const request = () => {
+    const mine = ++generation;
+    answered = false;
+    host.dispatchEvent(new ContextRequestEvent(context, host, (next, stop) => {
+      if (mine !== generation) return stop?.();  // an answer to a request we've moved past
+      answered = true;
+      if (stop) unsubscribe = stop;
+      value.set(next);
+    }, true));
+  };
+  const lateProvider = (event) => {
+    if (!answered && event.context === context && event.contextTarget !== host) request();
+  };
+  // Ask now, so the first render already has the value; ask again whenever the element is
+  // re-attached (it may have moved under a different provider).
+  let firstMount = true;
+  request();
+  onMount(() => {
+    if (!firstMount) request();
+    firstMount = false;
+    document.addEventListener('context-provider', lateProvider);
+    return () => {
+      document.removeEventListener('context-provider', lateProvider);
+      generation++;
+      unsubscribe?.();
+      unsubscribe = null;
+    };
+  });
+  return new Signal.Computed(() => value.get());
+}
+
 /** Call `callback(next, previous)` when `source()` changes (not on the first run). */
 export function watch(source, callback) {
   let first = true;
@@ -447,6 +555,7 @@ const hasContent = (root) =>
 export function define(tag, { props = {}, template = '', shadow = false, slots = [], setup }) {
   if (customElements.get(tag)) return customElements.get(tag);
   const componentTemplate = blueprint({ template });
+  let instances = 0;
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
   class MnxElement extends HTMLElement {
@@ -516,7 +625,7 @@ export function define(tag, { props = {}, template = '', shadow = false, slots =
           enumerable: true,
         });
       }
-      this.#hooks = { mount: [], unmount: [] };
+      this.#hooks = { mount: [], unmount: [], host: this, instance: ++instances, ids: 0 };
       this.#scope = scope(() => {
         const previous = current;
         current = this.#hooks;

@@ -1,0 +1,13 @@
+<script>
+  import { provide, state } from '@mnx/runtime'
+  import { theme } from './theme.js'
+
+  const current = state('dark')
+  provide(theme, current)
+  function toggle() {
+    current.set(current.get() === 'dark' ? 'light' : 'dark')
+  }
+</script>
+<mnx-theme-provider>
+  <div><button type="button" onclick={toggle}>toggle</button><mnx-slot></mnx-slot></div>
+</mnx-theme-provider>
