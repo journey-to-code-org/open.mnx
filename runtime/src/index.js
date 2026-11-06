@@ -2,7 +2,7 @@
 export { Signal, isNative } from './signal.js';
 export { effect, scope, flush, tick } from './effect.js';
 export {
-  define, state, computed, watch, onMount, onUnmount, id,
+  define, state, computed, watch, onMount, onUnmount, id, props, host, emit,
   createContext, provide, inject, ContextRequestEvent, ContextProviderEvent,
   formValue, validity, onFormReset, onFormRestore, onFormDisabled,
   isSafeUrl, $r, $t,

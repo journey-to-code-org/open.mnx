@@ -11,8 +11,9 @@ export default define(tag, {
   shadow: false,
   form: false,
   slots: [],
+  events: [],
   template: "\n  <header>\n    <nav>\n      <h1></h1>\n      <menu>\n        <li></li>\n        <li></li>\n      </menu>\n    </nav>\n  </header>\n",
-  setup($p) {
+  setup($p, $emit) {
   const title = "Mikey Nichols"
   const data = {
     sample: "sample data",

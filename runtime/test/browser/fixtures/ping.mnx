@@ -1,0 +1,7 @@
+<script>
+  import { emit as fire } from '@mnx/runtime'
+  function ping() { fire('ping', { at: 1 }) }
+</script>
+<mnx-ping shadow>
+  <button type="button" onclick={ping}>ping</button>
+</mnx-ping>

@@ -70,6 +70,19 @@ pub struct Script {
     pub components: Vec<ComponentImport>,
     /// Everything else, verbatim: it runs once per component instance, during setup.
     pub body: String,
+    /// The local name of `emit` imported from `@mnx/runtime`, if the script imports it.
+    pub emit: Option<String>,
+    /// Every `emit("name", detail)` call, in source order.
+    pub emits: Vec<Emit>,
+}
+
+/// An `emit("name", detail)` call: the component fires a DOM event called `name`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Emit {
+    pub name: String,
+    /// The TypeScript type of `detail`, inferred from the argument's shape.
+    pub detail: String,
+    pub span: Span,
 }
 
 /// An `import` statement, kept verbatim, with where its module specifier is inside the text

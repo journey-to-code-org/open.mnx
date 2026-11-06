@@ -13,12 +13,17 @@
 //! Everything else in the script is left for the JavaScript output to carry verbatim.
 
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Statement, VariableDeclarationKind};
+use oxc_ast::ast::{
+    Argument, ArrayExpressionElement, BinaryOperator, CallExpression, Expression,
+    IdentifierReference, ImportDeclarationSpecifier, ObjectPropertyKind, Statement, UnaryOperator,
+    VariableDeclarationKind,
+};
+use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{Binding, ComponentImport, Import, Script},
+    ast::{Binding, ComponentImport, Emit, Import, Script},
     diagnostic::{Diagnostic, Span},
     expression,
     scanner::span_after,
@@ -103,6 +108,13 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
             Statement::ImportDeclaration(import) => {
                 for specifier in import.specifiers.iter().flatten() {
                     script.runtime_names.push(specifier.name().to_string());
+                    if let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier {
+                        if import.source.value.as_str() == Some(RUNTIME)
+                            && named.imported.name().as_str() == "emit"
+                        {
+                            script.emit = Some(named.local.name.to_string());
+                        }
+                    }
                 }
                 let range = import.span.start as usize..import.span.end as usize;
                 let specifier = import.source.value.as_str().unwrap_or_default().to_owned();
@@ -141,6 +153,19 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
             _ => {}
         }
     }
+    if let Some(emit) = script.emit.clone() {
+        let mut finder = EmitFinder {
+            emit: &emit,
+            at: &at,
+            emits: Vec::new(),
+            error: None,
+        };
+        finder.visit_program(&parsed.program);
+        if let Some(error) = finder.error {
+            return Err(error);
+        }
+        script.emits = finder.emits;
+    }
     // The body without its imports. Removed imports become blank space of the same shape, so
     // line numbers in the emitted setup function still match the source.
     let mut body = source.to_owned();
@@ -153,6 +178,203 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
     }
     script.body = body;
     Ok(script)
+}
+
+/// The module components import hooks from.
+pub const RUNTIME: &str = "@mnx/runtime";
+
+/// Finds `emit("name", detail)` calls; `emit` used any other way can't be analyzed.
+struct EmitFinder<'s, F: Fn(u32) -> Span> {
+    emit: &'s str,
+    at: &'s F,
+    emits: Vec<Emit>,
+    error: Option<Diagnostic>,
+}
+
+impl<'a, F: Fn(u32) -> Span> Visit<'a> for EmitFinder<'_, F> {
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        let Expression::Identifier(callee) = &call.callee else {
+            return walk::walk_call_expression(self, call);
+        };
+        if callee.name.as_str() != self.emit {
+            return walk::walk_call_expression(self, call);
+        }
+        if self.error.is_none() {
+            match emitted(call, self.at) {
+                Ok(emit) => self.emits.push(emit),
+                Err(error) => self.error = Some(error),
+            }
+        }
+        // Not the callee: that's this call. The arguments may emit too.
+        self.visit_arguments(&call.arguments);
+    }
+
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        if identifier.name.as_str() == self.emit && self.error.is_none() {
+            self.error = Some(Diagnostic::new(
+                (self.at)(identifier.span.start),
+                format!("call `{}(\"name\", detail)` directly, so the compiler can see which events the component fires", self.emit),
+            ));
+        }
+    }
+}
+
+fn emitted(call: &CallExpression<'_>, at: &impl Fn(u32) -> Span) -> Result<Emit, Diagnostic> {
+    let span = at(call.span.start);
+    let name =
+        match call.arguments.first().and_then(Argument::as_expression) {
+            Some(Expression::StringLiteral(literal)) => {
+                literal.value.as_str().unwrap_or_default().to_owned()
+            }
+            Some(Expression::TemplateLiteral(template)) if template.expressions.is_empty() => {
+                template.quasis[0].value.raw.to_string()
+            }
+            _ => return Err(Diagnostic::new(
+                span,
+                "the event name must be a string literal, so the compiler can declare the event",
+            )),
+        };
+    if !is_event_name(&name) {
+        let fixed: String = name
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect::<String>()
+            .to_ascii_lowercase();
+        let error = Diagnostic::new(
+            span,
+            format!("event names are lowercase letters and digits, like the DOM's own (`input`, `selectionchange`); got `{name}`"),
+        );
+        return Err(if is_event_name(&fixed) {
+            error.with_help(format!("use `{fixed}`"))
+        } else {
+            error
+        });
+    }
+    if call.arguments.len() > 2 {
+        return Err(Diagnostic::new(
+            span,
+            "emit takes an event name and one detail value",
+        ));
+    }
+    let detail = match call.arguments.get(1) {
+        None => "null".to_owned(),
+        Some(argument) => argument
+            .as_expression()
+            .map_or_else(|| "unknown".to_owned(), detail_type),
+    };
+    Ok(Emit { name, detail, span })
+}
+
+/// `valuechange`, `beforetoggle`: what the DOM's own event names look like.
+pub fn is_event_name(name: &str) -> bool {
+    name.starts_with(|first: char| first.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+}
+
+/// The TypeScript type of an event's detail, from the shape of the expression that makes it.
+fn detail_type(expression: &Expression<'_>) -> String {
+    match expression {
+        Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => "string".to_owned(),
+        Expression::NumericLiteral(_) => "number".to_owned(),
+        Expression::BooleanLiteral(_) => "boolean".to_owned(),
+        Expression::NullLiteral(_) => "null".to_owned(),
+        Expression::ParenthesizedExpression(inner) => detail_type(&inner.expression),
+        Expression::UnaryExpression(unary) => match unary.operator {
+            UnaryOperator::LogicalNot | UnaryOperator::Delete => "boolean".to_owned(),
+            UnaryOperator::UnaryNegation | UnaryOperator::UnaryPlus => "number".to_owned(),
+            UnaryOperator::Typeof => "string".to_owned(),
+            _ => "unknown".to_owned(),
+        },
+        Expression::BinaryExpression(binary) => {
+            let operator = binary.operator;
+            if operator.is_equality() || operator.is_compare() || operator.is_relational() {
+                "boolean".to_owned()
+            } else if operator == BinaryOperator::Addition {
+                match (
+                    detail_type(&binary.left).as_str(),
+                    detail_type(&binary.right).as_str(),
+                ) {
+                    ("string", _) | (_, "string") => "string".to_owned(),
+                    ("number", "number") => "number".to_owned(),
+                    _ => "unknown".to_owned(),
+                }
+            } else if operator.is_arithmetic() {
+                "number".to_owned()
+            } else {
+                "unknown".to_owned()
+            }
+        }
+        Expression::ConditionalExpression(conditional) => union([
+            detail_type(&conditional.consequent),
+            detail_type(&conditional.alternate),
+        ]),
+        Expression::ArrayExpression(array) => {
+            let types: Vec<String> = array
+                .elements
+                .iter()
+                .map(|element| match element {
+                    ArrayExpressionElement::SpreadElement(_)
+                    | ArrayExpressionElement::Elision(_) => "unknown".to_owned(),
+                    element => element
+                        .as_expression()
+                        .map_or_else(|| "unknown".to_owned(), detail_type),
+                })
+                .collect();
+            match union(types).as_str() {
+                "never" => "unknown[]".to_owned(),
+                one if !one.contains(" | ") => format!("{one}[]"),
+                many => format!("({many})[]"),
+            }
+        }
+        Expression::ObjectExpression(object) => {
+            let mut members = Vec::new();
+            for property in &object.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return "Record<string, unknown>".to_owned();
+                };
+                let Some(key) = property.key.static_name().filter(|_| !property.computed) else {
+                    return "Record<string, unknown>".to_owned();
+                };
+                let value = if property.method {
+                    "(...args: any[]) => unknown".to_owned()
+                } else {
+                    detail_type(&property.value)
+                };
+                members.push(format!(
+                    "{}: {value}",
+                    crate::emit_interface::property_key(
+                        key.as_js_str().as_str().unwrap_or_default()
+                    )
+                ));
+            }
+            if members.is_empty() {
+                "Record<string, unknown>".to_owned()
+            } else {
+                format!("{{ {} }}", members.join("; "))
+            }
+        }
+        _ => "unknown".to_owned(),
+    }
+}
+
+/// `a | b` without repeats; `unknown` absorbs everything.
+pub fn union(types: impl IntoIterator<Item = String>) -> String {
+    let mut seen: Vec<String> = Vec::new();
+    for type_ in types {
+        if type_ == "unknown" {
+            return type_;
+        }
+        if !seen.contains(&type_) {
+            seen.push(type_);
+        }
+    }
+    if seen.is_empty() {
+        "never".to_owned()
+    } else {
+        seen.join(" | ")
+    }
 }
 
 #[cfg(test)]

@@ -114,17 +114,20 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         names.into_iter().collect()
     };
     slots.sort();
+    let list =
+        |names: &mut dyn Iterator<Item = &str>| names.map(json).collect::<Vec<_>>().join(", ");
     out.push_str(&format!(
-        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  template: {},\n  setup($p) {{\n",
+        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n  template: {},\n  setup($p, $emit) {{\n",
         component.shadow,
         component.form_associated,
-        slots
-            .iter()
-            .map(|name| json(name))
-            .collect::<Vec<_>>()
-            .join(", "),
+        list(&mut slots.iter().map(String::as_str)),
+        list(&mut interface.events.iter().map(|event| event.name.as_str())),
         json(&emitter.template)
     ));
+    // `emit` from the runtime, bound to this element (handlers call it long after setup).
+    if let Some(emit) = &component.script.emit {
+        out.push_str(&format!("    const {emit} = $emit;\n"));
+    }
     let body = component.script.body.trim_matches('\n');
     if !body.trim().is_empty() {
         out.push_str(body);

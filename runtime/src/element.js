@@ -86,6 +86,31 @@ export function onUnmount(fn) {
 }
 
 /**
+ * The component's props: reading one tracks it (in `computed`, `effect`, the template), and
+ * writing one updates the element as if it had been set from outside.
+ */
+export function props() {
+  return hooks('props').props;
+}
+
+/**
+ * The element whose setup is running, for custom hooks that need it (to read an attribute,
+ * dispatch an event, observe its size, …).
+ */
+export function host() {
+  return hooks('host').host;
+}
+
+/**
+ * Fire a DOM event from the component: `emit('valuechange', value)`. The compiler binds `emit`
+ * to each element, so handlers and timers can call it long after setup, and declares every
+ * event it sees. Outside a compiled component, use the `emit` that `setup` receives.
+ */
+export function emit(name) {
+  throw new Error(`mnx: emit("${name}") is bound to each element by the compiler; outside a compiled component, use the emit that setup() receives`);
+}
+
+/**
  * An id unique to this element and call, for `id`/`for`/`aria-*` attributes. Stable for the
  * element's life; based on the host's own `id` when it has one, so it can be made to match
  * server-rendered markup.
@@ -627,12 +652,14 @@ const hasContent = (root) =>
 
 // ---- define --------------------------------------------------------------------------------
 
+const fired = new WeakMap(); // event → the component that dispatched it
+
 /**
  * Register a compiled component. `props` maps prop names to `{ attribute, default, required }`;
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
-export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], setup }) {
+export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], setup }) {
   if (customElements.get(tag)) return customElements.get(tag);
   const componentTemplate = blueprint({ template });
   const templateSignature = signature(childRange(componentTemplate.content));
@@ -665,6 +692,14 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
     constructor() {
       super();
       if (form) this.#internals = this.attachInternals();
+      // An event the component fires is its own: an inner element's event of the same name
+      // (a native `change` bubbling out of light DOM, a nested component's `valuechange`) stops
+      // here, so listeners outside see only the component's, as with a built-in element.
+      for (const name of events) {
+        this.addEventListener(name, (event) => {
+          if (fired.get(event) !== this) event.stopImmediatePropagation();
+        });
+      }
       for (const [name, spec] of Object.entries(props)) {
         this.#signals[name] = new Signal.State(clone(spec.default));
         // A framework may have set the property before the element was defined; that landed
@@ -696,6 +731,18 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
       this.#scope.pause();
     }
 
+    /**
+     * Dispatch the component's event. It bubbles (and leaves a shadow root); `before…` events
+     * are cancelable, like the platform's. Returns false if a listener called preventDefault().
+     */
+    #emit(name, detail) {
+      const event = new CustomEvent(name, {
+        detail, bubbles: true, composed: shadow, cancelable: name.startsWith('before'),
+      });
+      fired.set(event, this);
+      return this.dispatchEvent(event);
+    }
+
     /** Resolves once pending prop changes have reached the DOM. */
     get updateComplete() {
       return tick();
@@ -725,14 +772,14 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
         });
       }
       this.#hooks = {
-        mount: [], unmount: [], host: this, instance: ++instances, ids: 0,
+        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0,
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
       this.#scope = scope(() => {
         const previous = current;
         current = this.#hooks;
         let parts;
-        try { parts = setup ? setup($p) : []; } finally { current = previous; }
+        try { parts = setup ? setup($p, (name, detail) => this.#emit(name, detail)) : []; } finally { current = previous; }
 
         const context = { slots: new Map() };
         const server = hasContent(root);

@@ -57,7 +57,7 @@ export default define(tag, {
 - **Hydration**: if the element already contains the server's markup, the runtime finds each part by its path and binds to the existing DOM. Nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match the template is replaced, with a warning.
 - **Paths count elements and comments only**, because browsers merge and drop text nodes. Dynamic text that is an element's only child is bound through the element; dynamic text beside other nodes follows an empty `<!---->` anchor, which both backends emit.
 - **Script**: imports move to the top of the module; the rest runs once per element. `const count = state(0)` plus `{count}` in the template is reactive, and `onclick={increment}` calls a script function (handlers are read when the event fires, and are left out of static HTML).
-- **Hooks**: `state`, `computed`, `effect`, `watch`, `onMount` (may return a cleanup), `onUnmount`, `id()` (unique per element and call, based on the host's own `id` when it has one), and context: `createContext(default)`, `provide(context, value)`, `inject(context)`.
+- **Hooks**: `state`, `computed`, `effect`, `watch`, `onMount` (may return a cleanup), `onUnmount`, `id()` (unique per element and call, based on the host's own `id` when it has one), `props()`, `host()`, `emit()` (see Events), and context: `createContext(default)`, `provide(context, value)`, `inject(context)`.
 - **Form controls**: `form-associated` on the host makes the element a form control on the platform's `ElementInternals`. `formValue(signal)` sets what the form submits (under the element's `name`), `validity(() => message)` takes part in validation (`''` means valid; the form won't submit otherwise, and `:invalid`/`:valid` match), and `onFormReset`, `onFormRestore` and `onFormDisabled` follow the form's lifecycle — a disabled `<fieldset>` disables the control and leaves it out of the submitted data. The element gets the native control API: `form`, `name`, `labels`, `validity`, `validationMessage`, `willValidate`, `checkValidity()`, `reportValidity()`, and the generated `.d.ts` declares it.
 - **Context** follows the Web Components Community Group Context Protocol: `inject` dispatches a bubbling `context-request` event that the nearest provider answers (and keeps answering as the value changes); providers announce themselves with `context-provider`, so a consumer defined before its provider still connects. A consumer that is moved asks again, and one that is removed unsubscribes. Because it's plain DOM events, mnx components share context with other implementations such as Lit's `@lit/context`: pass the other library's key to `inject`.
 - **Detached elements pause**: long-lived signals stop holding them; on return only parts whose inputs changed re-run.
@@ -70,6 +70,34 @@ export default define(tag, {
 - **Slots**: in light DOM (the default), the element's own children are moved into its `mnx-slot` regions at startup, by their `slot` attribute (everything else goes to the default slot); an empty slot shows its fallback, which stays live. Slotted content inside an `mnx-if` comes back when the branch does. Content for a slot that doesn't exist is reported. In the HTML output a slot holding supplied content opens with `<!--[!-->` and is left as-is on hydration; a fallback is hydrated and bound. In shadow components `mnx-slot` compiles to a native `<slot>`, and supplied content goes in the host's light DOM with `slot="…"`, as declarative shadow DOM expects. A slot can't be inside `mnx-each`.
 
 Not yet in the JavaScript output: prop defaults computed at runtime, and slot content added to the element after it starts (it is projected once).
+
+## Events
+
+```html
+<!--
+  A star rating.
+  @fires valuechange - The value changed; `detail` is the new value.
+-->
+<script>
+  import { emit, props } from '@mnx/runtime'
+  const p = props()
+  function rate(stars) {
+    if (!emit('beforevaluechange', stars)) return   // a listener called preventDefault()
+    p.value = stars
+    emit('valuechange', stars)
+  }
+</script>
+<mnx-rating value={0}> … </mnx-rating>
+```
+
+- **Nothing is declared by hand.** Each `emit("name", detail)` call in the script declares an event; the compiler binds `emit` to each element, so handlers and timers can call it at any time. The name must be a string literal, and `emit` must be called directly (not passed around), so the compiler sees every event.
+- **Names follow the platform**: lowercase letters and digits, like the DOM's own events (`valuechange`, `itemselect`), and native names where the meaning matches (`change`, `toggle`, `close`). `valueChange` or `value-change` is an error that suggests `valuechange`. Every framework can listen to these names declaratively.
+- **Events are `CustomEvent`s** dispatched from the host, with the value in `detail`. They bubble; shadow components' events are also `composed`, so they leave the shadow root. `before…` events are cancelable, and `emit` returns `false` when a listener called `preventDefault()`.
+- **A component's events are its own**: an inner element's event with the same name (a native `change` from an inner `<input>`, a nested component's `valuechange`) stops at the host, so listeners outside — including on the host itself — see only the component's, as with built-in elements. Capture-phase listeners above the host still see inner events.
+- **Parents listen** with `on<name>={handler}`. On an imported component, a listener for a near miss of one of its events (`onvaluchange`) is a compile error with a suggestion.
+- **Tools**: the manifest lists each event with its `CustomEvent<…>` type, and the `.d.ts` has an `…EventMap` with typed `addEventListener`/`removeEventListener` overloads. Detail types come from the values passed (`emit('select', { id: 1 })` → `CustomEvent<{ id: number }>`; a variable is `unknown` for now).
+- **`@fires name - text`** lines in the description document events (the manifest and `.d.ts` use the text). When there are any, they must match the events the code fires exactly: a documented event that's never emitted, or an emitted one that isn't documented, is an error.
+- **`props()`** returns the component's reactive props (reading one tracks it, writing one updates the element), and **`host()`** the element itself, for scripts and custom hooks.
 
 ## Components using components
 

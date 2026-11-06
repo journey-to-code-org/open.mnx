@@ -141,3 +141,40 @@ test('form-associated components declare the native control API', () => {
   `);
   assert.match(bad, /read-only|readonly/i);
 });
+
+test('events are in the manifest and type their listeners', () => {
+  const compileFixture = (emit) => execFileSync(join(repo, 'target/debug/mnix'),
+    ['compile', join(here, '../browser/fixtures/rating.mnx'), '--emit', emit], { encoding: 'utf8' });
+  const manifest = JSON.parse(compileFixture('manifest'));
+  const schema = JSON.parse(readFileSync(require.resolve('custom-elements-manifest/schema.json'), 'utf8'));
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  assert.equal(ajv.validate(schema, manifest), true, JSON.stringify(ajv.errors, null, 2));
+  const [element] = manifest.modules[0].declarations;
+  assert.deepEqual(element.events.map((event) => [event.name, event.type.text]), [
+    ['beforevaluechange', 'CustomEvent<unknown>'],
+    ['valuechange', 'CustomEvent<unknown>'],
+    ['change', 'CustomEvent<null>'],
+  ]);
+  assert.equal(element.description, 'A two-star rating.', '@fires lines are not part of the description');
+
+  writeFileSync(join(dir, 'rating.d.ts'), compileFixture('dts'));
+  const good = typecheck('events-good', `
+    import './rating.js';
+    const el = document.querySelector('mnx-rating')!;
+    el.addEventListener('change', (event) => { const detail: null = event.detail; void detail; });
+    el.addEventListener('valuechange', (event) => { const detail: unknown = event.detail; void detail; });
+    el.addEventListener('beforevaluechange', (event) => event.preventDefault());
+    el.addEventListener('click', (event) => { const x: number = event.clientX; void x; });
+    el.addEventListener('anything', () => {});
+    el.removeEventListener('change', () => {});
+    export {};
+  `);
+  assert.equal(good, '');
+  const bad = typecheck('events-bad', `
+    import './rating.js';
+    const el = document.querySelector('mnx-rating')!;
+    el.addEventListener('change', (event) => { const detail: string = event.detail; void detail; });
+    export {};
+  `);
+  assert.match(bad, /events-bad\.ts\(4,.*Type 'null' is not assignable to type 'string'/);
+});

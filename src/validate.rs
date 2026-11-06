@@ -180,6 +180,10 @@ fn lower_component(
 /// same script evaluation and resolver checks the HTML backend runs.
 pub struct Interface {
     pub props: Vec<PropInterface>,
+    /// The events the component fires (see [`crate::events`]).
+    pub events: Vec<crate::events::EventInterface>,
+    /// The description comment without its `@fires` lines.
+    pub description: Option<String>,
     /// Every name the script declares (build-time and runtime-only).
     pub script_names: Vec<String>,
 }
@@ -235,7 +239,10 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         shadow: component.shadow,
     };
     context.resolve_nodes(&component.nodes, &mut Vec::new())?;
+    let (events, description) = crate::events::events(component)?;
     Ok(Interface {
+        events,
+        description,
         props: props
             .into_iter()
             .map(|prop| PropInterface {
@@ -899,6 +906,34 @@ impl Context<'_> {
         for attribute in &element.attributes {
             let prop_name = camel(&attribute.name);
             let lower = attribute.name.to_ascii_lowercase();
+            if crate::parser::is_event_attribute(&lower) {
+                // A near miss for one of the child's events is a typo: the listener would never
+                // run. Other names may be native events or bubble up from further inside.
+                let event = &lower[2..];
+                if !NATIVE_EVENTS.contains(&event)
+                    && !interface
+                        .events
+                        .iter()
+                        .any(|declared| declared.name == event)
+                {
+                    let names: Vec<&str> = interface
+                        .events
+                        .iter()
+                        .map(|declared| declared.name.as_str())
+                        .collect();
+                    let error = with_suggestion(
+                        Diagnostic::new(
+                            attribute.span,
+                            format!("<{}> never fires `{event}`", child.ast.tag),
+                        ),
+                        event,
+                        &names,
+                    );
+                    if error.help.is_some() {
+                        return Err(error);
+                    }
+                }
+            }
             if let Some(prop) = interface.props.iter().find(|prop| prop.name == prop_name) {
                 let (value, span) = match &attribute.value {
                     AttributeValue::None => (Value::Bool(true), attribute.span),
@@ -1339,9 +1374,82 @@ pub fn is_safe_url(value: &str) -> bool {
     true
 }
 
+/// Common DOM events an element can receive, so a listener for one is never taken for a typo.
+const NATIVE_EVENTS: &[&str] = &[
+    "abort",
+    "animationend",
+    "animationiteration",
+    "animationstart",
+    "auxclick",
+    "beforeinput",
+    "beforetoggle",
+    "blur",
+    "cancel",
+    "change",
+    "click",
+    "close",
+    "contextmenu",
+    "copy",
+    "cut",
+    "dblclick",
+    "drag",
+    "dragend",
+    "dragenter",
+    "dragleave",
+    "dragover",
+    "dragstart",
+    "drop",
+    "error",
+    "focus",
+    "focusin",
+    "focusout",
+    "formdata",
+    "input",
+    "invalid",
+    "keydown",
+    "keypress",
+    "keyup",
+    "load",
+    "mousedown",
+    "mouseenter",
+    "mouseleave",
+    "mousemove",
+    "mouseout",
+    "mouseover",
+    "mouseup",
+    "paste",
+    "pointercancel",
+    "pointerdown",
+    "pointerenter",
+    "pointerleave",
+    "pointermove",
+    "pointerout",
+    "pointerover",
+    "pointerup",
+    "reset",
+    "resize",
+    "scroll",
+    "scrollend",
+    "select",
+    "selectionchange",
+    "slotchange",
+    "submit",
+    "toggle",
+    "touchcancel",
+    "touchend",
+    "touchmove",
+    "touchstart",
+    "transitionend",
+    "wheel",
+];
+
 // ---- suggestions ---------------------------------------------------------------------------
 
-fn with_suggestion(diagnostic: Diagnostic, name: &str, candidates: &[&str]) -> Diagnostic {
+pub(crate) fn with_suggestion(
+    diagnostic: Diagnostic,
+    name: &str,
+    candidates: &[&str],
+) -> Diagnostic {
     let best = candidates
         .iter()
         .filter(|candidate| **candidate != name)

@@ -1,0 +1,14 @@
+<script>
+  import { state, emit } from '@mnx/runtime'
+  import './rating.mnx'
+
+  const last = state('none')
+  // Re-fired as the survey's own: outside, only the survey's valuechange is seen.
+  function saved(event) {
+    last.set(String(event.detail))
+    emit('valuechange', { rating: event.detail })
+  }
+</script>
+<mnx-survey>
+  <mnx-rating onvaluechange={saved}></mnx-rating><p>{last}</p>
+</mnx-survey>

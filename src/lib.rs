@@ -9,6 +9,7 @@ mod components;
 mod diagnostic;
 mod emit_interface;
 mod emit_js;
+mod events;
 mod expression;
 mod ir;
 mod parser;
