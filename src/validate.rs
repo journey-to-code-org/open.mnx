@@ -23,7 +23,7 @@ use crate::{
     ir::{self, Node, Part},
 };
 
-const URL_ATTRIBUTES: &[&str] = &[
+pub(crate) const URL_ATTRIBUTES: &[&str] = &[
     "action",
     "background",
     "cite",
@@ -39,7 +39,7 @@ const URL_ATTRIBUTES: &[&str] = &[
     "xlink:href",
     "usemap",
 ];
-const BOOLEAN_ATTRIBUTES: &[&str] = &[
+pub(crate) const BOOLEAN_ATTRIBUTES: &[&str] = &[
     "allowfullscreen",
     "async",
     "autofocus",
@@ -141,9 +141,87 @@ pub fn validate(
 
     Ok(ir::Component {
         tag: component.tag,
+        shadow: component.shadow,
         host_attributes,
         nodes,
     })
+}
+
+/// What the JavaScript backend needs: the prop interface and the script's names, after the
+/// same script evaluation and resolver checks the HTML backend runs.
+pub struct Interface {
+    pub props: Vec<PropInterface>,
+    /// Every name the script declares (build-time and runtime-only).
+    pub script_names: Vec<String>,
+}
+
+pub struct PropInterface {
+    pub name: String,
+    pub attribute: String,
+    /// `None` for a required prop.
+    pub default: Option<Value>,
+}
+
+pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
+    validate_custom_element(&component.tag, component.tag_span)?;
+    let locals = evaluate_script(&component.script)?;
+    let mut props = Vec::new();
+    for declaration in &component.props {
+        if props
+            .iter()
+            .any(|prop: &Prop| prop.name == declaration.name)
+        {
+            return Err(Diagnostic::new(
+                declaration.span,
+                format!("duplicate prop `{}`", declaration.name),
+            ));
+        }
+        let default = match prop_default(declaration, &locals)? {
+            None => None,
+            Some(Ok(value)) => Some(value),
+            Some(Err(runtime)) => {
+                return Err(Diagnostic::new(
+                    declaration.span,
+                    format!(
+                        "the default for prop `{}` uses `{runtime}`, which only exists at runtime; prop defaults must be build-time values for now",
+                        declaration.name
+                    ),
+                ));
+            }
+        };
+        props.push(Prop {
+            name: declaration.name.clone(),
+            attribute: kebab(&declaration.name),
+            value: default.clone().unwrap_or(Value::Null),
+            default,
+        });
+    }
+    let slot_values = HashMap::new();
+    let context = Context {
+        locals: &locals,
+        props: &props,
+        slot_values: &slot_values,
+    };
+    context.resolve_nodes(&component.nodes, &mut Vec::new())?;
+    Ok(Interface {
+        props: props
+            .into_iter()
+            .map(|prop| PropInterface {
+                name: prop.name,
+                attribute: prop.attribute,
+                default: prop.default,
+            })
+            .collect(),
+        script_names: locals.into_iter().map(|(name, _)| name).collect(),
+    })
+}
+
+/// Dynamic text that shares its parent with other nodes gets an empty-comment anchor before it,
+/// in both backends, so the JavaScript side can find it in server-rendered markup. (Text that is
+/// an element's only child is bound through the element instead and needs no anchor.)
+pub(crate) fn needs_text_anchor(siblings: &[ast::Node], node: &ast::Node) -> bool {
+    siblings.len() > 1
+        && matches!(node, ast::Node::Text(parts) if parts.iter().any(|part| matches!(part, AstPart::Expression { .. })))
 }
 
 // ---- 1. script and props -------------------------------------------------------------------
@@ -235,49 +313,7 @@ fn evaluate_props(
                 format!("duplicate prop `{}`", declaration.name),
             ));
         }
-        let default = match &declaration.default {
-            PropDefault::Required => None,
-            PropDefault::Text(text) => Some(Ok(Value::String(text.clone()))),
-            PropDefault::Expression(expression, span) => {
-                let names: Vec<&str> = locals.iter().map(|(name, _)| name.as_str()).collect();
-                let mut problem = None;
-                expression.for_each_identifier(&mut |name| {
-                    if problem.is_some() {
-                        return;
-                    }
-                    match find_local(locals, name) {
-                        Some(Local::Value(_)) => {}
-                        Some(Local::Runtime) => problem = Some(Err(name.to_owned())),
-                        None => problem = Some(Ok(name.to_owned())),
-                    }
-                });
-                match problem {
-                    Some(Ok(unknown)) => {
-                        return Err(with_suggestion(
-                            Diagnostic::new(
-                                *span,
-                                format!(
-                                    "unknown reference `{unknown}` in the default for prop `{}`",
-                                    declaration.name
-                                ),
-                            ),
-                            &unknown,
-                            &names,
-                        ));
-                    }
-                    Some(Err(runtime)) => Some(Err(runtime)),
-                    None => {
-                        let lookup = |name: &str| match find_local(locals, name) {
-                            Some(Local::Value(value)) => Some(value.clone()),
-                            _ => None,
-                        };
-                        Some(Ok(expression
-                            .evaluate(&lookup)
-                            .map_err(|message| Diagnostic::new(*span, message))?))
-                    }
-                }
-            }
-        };
+        let default = prop_default(declaration, locals)?;
         let value = match (overrides.get(&declaration.name), &default) {
             (Some(value), Some(Ok(default))) => {
                 if !same_type(default, value) {
@@ -333,6 +369,57 @@ fn evaluate_props(
         }
     }
     Ok(props)
+}
+
+/// A prop's default: `None` if required, `Some(Err(name))` if it depends on a runtime-only
+/// script name, `Some(Ok(value))` otherwise.
+fn prop_default(
+    declaration: &ast::PropDecl,
+    locals: &[(String, Local)],
+) -> Result<Option<Result<Value, String>>, Diagnostic> {
+    Ok(match &declaration.default {
+        PropDefault::Required => None,
+        PropDefault::Text(text) => Some(Ok(Value::String(text.clone()))),
+        PropDefault::Expression(expression, span) => {
+            let names: Vec<&str> = locals.iter().map(|(name, _)| name.as_str()).collect();
+            let mut problem = None;
+            expression.for_each_identifier(&mut |name| {
+                if problem.is_some() {
+                    return;
+                }
+                match find_local(locals, name) {
+                    Some(Local::Value(_)) => {}
+                    Some(Local::Runtime) => problem = Some(Err(name.to_owned())),
+                    None => problem = Some(Ok(name.to_owned())),
+                }
+            });
+            match problem {
+                Some(Ok(unknown)) => {
+                    return Err(with_suggestion(
+                        Diagnostic::new(
+                            *span,
+                            format!(
+                                "unknown reference `{unknown}` in the default for prop `{}`",
+                                declaration.name
+                            ),
+                        ),
+                        &unknown,
+                        &names,
+                    ));
+                }
+                Some(Err(runtime)) => Some(Err(runtime)),
+                None => {
+                    let lookup = |name: &str| match find_local(locals, name) {
+                        Some(Local::Value(value)) => Some(value.clone()),
+                        _ => None,
+                    };
+                    Some(Ok(expression
+                        .evaluate(&lookup)
+                        .map_err(|message| Diagnostic::new(*span, message))?))
+                }
+            }
+        }
+    })
 }
 
 fn same_type(default: &Value, value: &Value) -> bool {
@@ -551,6 +638,9 @@ impl Context<'_> {
     ) -> Result<Vec<Node>, Diagnostic> {
         let mut output = Vec::new();
         for node in nodes {
+            if needs_text_anchor(nodes, node) {
+                output.push(Node::Anchor);
+            }
             output.extend(self.lower_node(node, state)?);
         }
         Ok(output)
@@ -655,6 +745,10 @@ impl Context<'_> {
         state: &LowerState,
     ) -> Result<Option<ir::Attribute>, Diagnostic> {
         let lower = attribute.name.to_ascii_lowercase();
+        if crate::parser::is_event_attribute(&lower) {
+            // Handlers are functions: they exist only in the JavaScript output.
+            return Ok(None);
+        }
         let is_boolean = BOOLEAN_ATTRIBUTES.contains(&lower.as_str());
         let is_url = URL_ATTRIBUTES.contains(&lower.as_str());
         let value = match &attribute.value {
@@ -846,7 +940,7 @@ fn check_single_root(nodes: &[Node]) -> Result<(), Diagnostic> {
         Node::Text(parts) => parts.iter().any(|part| match part {
             Part::Literal(text) | Part::Escaped(text) => !text.trim().is_empty(),
         }),
-        Node::Element(_) => false,
+        Node::Element(_) | Node::Anchor => false,
     });
     if element_roots != 1 || has_text {
         return Err(Diagnostic::new(

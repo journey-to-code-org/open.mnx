@@ -1,5 +1,6 @@
 mod ast;
 mod diagnostic;
+mod emit_js;
 mod expression;
 mod ir;
 mod parser;
@@ -65,4 +66,19 @@ pub fn compile_value_with_slots(
     }
     let component = validate::validate(component, props, &slot_nodes)?;
     Ok(render::render(&component))
+}
+
+/// Compile a component to a JavaScript module that defines its custom element.
+///
+/// `runtime` is the module specifier the output imports the runtime from (usually
+/// `"@mnx/runtime"`); `source_name` appears in the generated header.
+pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<String, Diagnostic> {
+    let component = parser::parse(source)?;
+    emit_js::emit(
+        &component,
+        &emit_js::Options {
+            runtime,
+            source_name,
+        },
+    )
 }

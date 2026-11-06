@@ -31,3 +31,12 @@ fn header_sample_accepts_prop_overrides() {
     let html = mnix_compiler::compile(&read("header.mnx"), &read("header.props.json")).unwrap();
     assert_golden(&html, "header.override.html");
 }
+
+/// The same component compiled to a JavaScript module: template, prop interface, and the parts
+/// (paths into the template) that hydration binds to.
+#[test]
+fn header_sample_compiles_to_a_custom_element_module() {
+    let module =
+        mnix_compiler::compile_js(&read("header.mnx"), "@mnx/runtime", "header.mnx").unwrap();
+    assert_golden(&module, "header.js");
+}

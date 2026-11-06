@@ -20,7 +20,7 @@ fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
     if arguments.next().as_deref() != Some("compile") {
         return Err(
-            "usage: mnix compile <component.mnx> [--props <props.json>] [--slots <slots.json>] [--output <file>]".into(),
+            "usage: mnix compile <component.mnx> [--emit html|js] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -29,8 +29,12 @@ fn run() -> Result<(), String> {
     let mut props_path = None;
     let mut slots_path = None;
     let mut output_path = None;
+    let mut emit = "html".to_owned();
+    let mut runtime = "@mnx/runtime".to_owned();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
+            "--emit" => emit = arguments.next().unwrap_or_default(),
+            "--runtime" => runtime = arguments.next().unwrap_or_default(),
             "--props" => props_path = arguments.next(),
             "--slots" => slots_path = arguments.next(),
             "--output" => output_path = arguments.next(),
@@ -39,6 +43,28 @@ fn run() -> Result<(), String> {
     }
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
+    if emit == "js" {
+        if props_path.is_some() || slots_path.is_some() {
+            return Err("--props and --slots apply to --emit html; a compiled element reads its props at runtime".into());
+        }
+        let name = Path::new(&source_path)
+            .file_name()
+            .map_or(source_path.clone(), |name| {
+                name.to_string_lossy().into_owned()
+            });
+        let module = mnix_compiler::compile_js(&source, &runtime, &name)
+            .map_err(|diagnostic| diagnostic.render(&source, &source_path))?;
+        return match output_path {
+            Some(output_path) => write_atomically(&output_path, module.as_bytes()),
+            None => {
+                print!("{module}");
+                Ok(())
+            }
+        };
+    }
+    if emit != "html" {
+        return Err(format!("unknown --emit `{emit}`; expected html or js"));
+    }
     // Props are optional: defaults come from the component's <script> and host tag.
     let props = match &props_path {
         Some(props_path) => fs::read_to_string(props_path)

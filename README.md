@@ -35,6 +35,35 @@ The long-term aim is for the web platform to absorb what mnx proves, so the runt
 
 v0.2 syntax (the `component:`/`prop`/`---` header, `{{ name }}`, `mnix-*` directives) is rejected with a migration hint.
 
+## v0.4 (in progress): JavaScript output
+
+`mnix compile header.mnx --emit js` writes a module that defines the custom element on `@mnx/runtime`:
+
+```js
+export default define(tag, {
+  props: { "title": { attribute: "title", default: "Mikey Nichols", required: false }, … },
+  template: "\n  <header>\n    <nav>\n      <h1></h1>…",
+  setup($p) {
+    /* the component's <script>, run once per element */
+    return [
+      { path: [0, 0, 0], text: () => $t($p.title) },
+      …
+    ];
+  },
+});
+```
+
+- **Props** are properties backed by signals; attributes are parsed by the default's type (JSON for arrays and objects). A property set before the element is defined is kept.
+- **Hydration**: if the element already contains the server's markup, the runtime finds each part by its path and binds to the existing DOM. Nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match the template is replaced, with a warning.
+- **Paths count elements and comments only**, because browsers merge and drop text nodes. Dynamic text that is an element's only child is bound through the element; dynamic text beside other nodes follows an empty `<!---->` anchor, which both backends emit.
+- **Script**: imports move to the top of the module; the rest runs once per element. `const count = state(0)` plus `{count}` in the template is reactive, and `onclick={increment}` calls a script function (handlers are read when the event fires, and are left out of static HTML).
+- **Hooks**: `state`, `computed`, `effect`, `watch`, `onMount` (may return a cleanup), `onUnmount`.
+- **Detached elements pause**: long-lived signals stop holding them; on return only parts whose inputs changed re-run.
+- **URL attributes** get the same safety check at runtime as at build time.
+- `shadow` on the host renders into a shadow root (a declarative one in the HTML output).
+
+Not yet in the JavaScript output: `mnx-if`, `mnx-each` and `mnx-slot` (v0.5; they work in the HTML output), and prop defaults computed at runtime.
+
 ## Commands
 
 Install Rust 1.97 or newer (required by the oxc JavaScript parser). The runtime needs Node 20 or newer.
@@ -44,12 +73,14 @@ cargo test --locked
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo run --locked -- compile examples/header.mnx
+cargo run --locked -- compile examples/header.mnx --emit js
 cargo run --locked -- compile examples/greeting.mnx --props examples/greeting.props.json
 cargo run --locked -- compile examples/feature-list.mnx --props examples/feature-list.props.json --slots examples/feature-list.slots.json
 (cd runtime && npm install && npm test)
+(cd runtime && npm run test:browser)   # needs Playwright with Chromium
 ```
 
-`--props` is optional: defaults come from the component itself. The compiler writes HTML to stdout by default. `--output <file>` writes to a file using atomic promotion. For example, append `--output target/greeting.html` to the final command to save the generated fragment.
+`--props` is optional: defaults come from the component itself. `--emit js` writes the element module instead of HTML; `--runtime <module>` changes the import it uses (default `@mnx/runtime`). The compiler writes HTML to stdout by default. `--output <file>` writes to a file using atomic promotion. For example, append `--output target/greeting.html` to the final command to save the generated fragment.
 
 ## Release direction
 

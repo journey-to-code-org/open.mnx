@@ -5,11 +5,13 @@
   "description": "Browser runtime for mnx compiled components, built on the TC39 Signals API",
   "type": "module",
   "exports": {
+    ".": "./src/index.js",
     "./signal": "./src/signal.js",
     "./effect": "./src/effect.js"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "test:browser": "node --test \"test/browser/*.test.js\""
   },
   "engines": {
     "node": ">=20"

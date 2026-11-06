@@ -4,6 +4,8 @@
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Component {
     pub tag: String,
+    /// Render the template into a declarative shadow root instead of light DOM.
+    pub shadow: bool,
     /// Prop values written back onto the host (only those that differ from their defaults), so
     /// a runtime can pick them up from the markup. `""` means a bare attribute.
     pub host_attributes: Vec<(String, String)>,
@@ -14,6 +16,8 @@ pub struct Component {
 pub enum Node {
     Text(Vec<Part>),
     Element(Element),
+    /// `<!---->`: marks where a dynamic text node starts, for hydration.
+    Anchor,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

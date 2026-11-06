@@ -50,6 +50,10 @@ pub struct Script {
     pub bindings: Vec<Binding>,
     /// Names the script declares that only exist at runtime (functions, classes, imports).
     pub runtime_names: Vec<String>,
+    /// `import` statements, verbatim, for the top of the JavaScript module.
+    pub imports: Vec<String>,
+    /// Everything else, verbatim: it runs once per component instance, during setup.
+    pub body: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]

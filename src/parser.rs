@@ -270,7 +270,14 @@ impl<'a> TemplateParser<'a> {
                 let element = self.parse_raw_element()?;
                 nodes.push(lower_directive(element)?);
             } else {
-                nodes.push(Node::Text(self.parse_parts(None)?));
+                let parts = self.parse_parts(None)?;
+                // A comment between two runs of text was stripped, so in the DOM they are one
+                // text node; keep them as one here too.
+                if let Some(Node::Text(previous)) = nodes.last_mut() {
+                    previous.extend(parts);
+                } else {
+                    nodes.push(Node::Text(parts));
+                }
             }
         }
         if let Some(name) = closing {
@@ -462,20 +469,16 @@ fn check_attribute(name: &str, value: &AttributeValue, span: Span) -> Result<(),
             "inline style attributes are not supported; use component styles in a later release",
         ));
     }
-    if is_event_attribute(&lower) {
-        return Err(match value {
-            AttributeValue::Expression(..) => Diagnostic::new(
-                span,
-                format!("`{name}={{…}}` event handlers need the JavaScript output, which arrives in v0.4"),
-            ),
-            _ => Diagnostic::new(span, "inline event-handler attributes are not allowed")
-                .with_help(format!("pass a function from <script>: {name}={{handler}} (v0.4+)")),
-        });
+    if is_event_attribute(&lower) && !matches!(value, AttributeValue::Expression(..)) {
+        return Err(
+            Diagnostic::new(span, "inline event-handler attributes are not allowed")
+                .with_help(format!("pass a function from <script>: {name}={{handler}}")),
+        );
     }
     Ok(())
 }
 
-fn is_event_attribute(name: &str) -> bool {
+pub(crate) fn is_event_attribute(name: &str) -> bool {
     name.starts_with("on")
         && name.len() > 2
         && name[2..].bytes().all(|byte| byte.is_ascii_alphabetic())

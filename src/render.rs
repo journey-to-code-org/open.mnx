@@ -17,8 +17,14 @@ pub fn render(component: &Component) -> String {
         }
     }
     output.push('>');
+    if component.shadow {
+        output.push_str("<template shadowrootmode=\"open\">");
+    }
     for node in &component.nodes {
         render_node(node, &mut output);
+    }
+    if component.shadow {
+        output.push_str("</template>");
     }
     output.push_str(&format!("</{}>", component.tag));
     output
@@ -27,6 +33,7 @@ pub fn render(component: &Component) -> String {
 fn render_node(node: &Node, output: &mut String) {
     match node {
         Node::Text(parts) => render_parts(parts, output),
+        Node::Anchor => output.push_str("<!---->"),
         Node::Element(element) => {
             output.push('<');
             output.push_str(&element.name);

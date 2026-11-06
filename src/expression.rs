@@ -295,12 +295,18 @@ impl Expression {
     }
 
     /// Print as JavaScript. Fully parenthesized where precedence could matter, so the output
-    /// is unambiguous without reproducing the precedence table in the printer. Used by the JS
-    /// backend (v0.4); exercised by tests until then.
-    #[allow(dead_code)]
+    /// is unambiguous without reproducing the precedence table in the printer.
+    #[cfg(test)]
     pub fn to_js(&self) -> String {
+        self.to_js_with(&|name| name.to_owned())
+    }
+
+    /// Print as JavaScript, with every free identifier replaced by `map(name)`. The JS backend
+    /// uses this to turn `title` into `p.title` (a prop) or `$r(count)` (a script binding,
+    /// unwrapped if it is a signal).
+    pub fn to_js_with(&self, map: &dyn Fn(&str) -> String) -> String {
         match self {
-            Self::Identifier(name) => name.clone(),
+            Self::Identifier(name) => map(name),
             Self::String(value) => serde_json::to_string(value).unwrap_or_default(),
             Self::Number(text) => text.clone(),
             Self::Boolean(value) => value.to_string(),
@@ -309,7 +315,7 @@ impl Expression {
                 "[{}]",
                 elements
                     .iter()
-                    .map(Self::to_js)
+                    .map(|element| element.to_js_with(map))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -320,7 +326,7 @@ impl Expression {
                     .map(|(key, value)| format!(
                         "{}: {}",
                         serde_json::to_string(key).unwrap_or_default(),
-                        value.to_js()
+                        value.to_js_with(map)
                     ))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -330,7 +336,7 @@ impl Expression {
                     UnaryOperator::Not => "!",
                     UnaryOperator::Negate => "-",
                 };
-                format!("{symbol}({})", operand.to_js())
+                format!("{symbol}({})", operand.to_js_with(map))
             }
             Self::Binary {
                 operator,
@@ -350,7 +356,11 @@ impl Expression {
                     BinaryOperator::Divide => "/",
                     BinaryOperator::Remainder => "%",
                 };
-                format!("({} {symbol} {})", left.to_js(), right.to_js())
+                format!(
+                    "({} {symbol} {})",
+                    left.to_js_with(map),
+                    right.to_js_with(map)
+                )
             }
             Self::Logical {
                 operator,
@@ -362,7 +372,11 @@ impl Expression {
                     LogicalOperator::Or => "||",
                     LogicalOperator::Nullish => "??",
                 };
-                format!("({} {symbol} {})", left.to_js(), right.to_js())
+                format!(
+                    "({} {symbol} {})",
+                    left.to_js_with(map),
+                    right.to_js_with(map)
+                )
             }
             Self::Conditional {
                 test,
@@ -370,9 +384,9 @@ impl Expression {
                 alternate,
             } => format!(
                 "({} ? {} : {})",
-                test.to_js(),
-                consequent.to_js(),
-                alternate.to_js()
+                test.to_js_with(map),
+                consequent.to_js_with(map),
+                alternate.to_js_with(map)
             ),
             Self::Member {
                 object,
@@ -380,7 +394,7 @@ impl Expression {
                 optional,
             } => format!(
                 "{}{}{property}",
-                object.to_js(),
+                object.to_js_with(map),
                 if *optional { "?." } else { "." }
             ),
             Self::Index {
@@ -389,9 +403,9 @@ impl Expression {
                 optional,
             } => format!(
                 "{}{}[{}]",
-                object.to_js(),
+                object.to_js_with(map),
                 if *optional { "?." } else { "" },
-                index.to_js()
+                index.to_js_with(map)
             ),
         }
     }

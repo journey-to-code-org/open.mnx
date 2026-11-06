@@ -8,8 +8,9 @@ ships one, this package deletes code instead of components being rewritten.
 |---|---|---|
 | `src/signal.js` | [TC39 Signals](https://github.com/tc39/proposal-signals) (`Signal.State`, `Signal.Computed`, `Signal.subtle`) | Done. Uses native `globalThis.Signal` when present, otherwise `src/signal-impl.js` |
 | `src/effect.js` | Not a proposal — the Signals proposal leaves effects to libraries. Built only on `Signal.subtle.Watcher` and microtasks | Done |
-| template parts (`walk`/`bind`) | [DOM Parts](https://github.com/WICG/webcomponents/blob/gh-pages/proposals/DOM-Parts.md) | Next (0.4) |
-| `define` | Custom elements, light DOM by default | Next (0.4), rebuilt from wc.js v4 on these signals |
+| `src/element.js` parts (`walk`/`bind`) | [DOM Parts](https://github.com/WICG/webcomponents/blob/gh-pages/proposals/DOM-Parts.md): a template plus the locations of its dynamic parts | Done for text, attributes and events; paths count elements and comments only |
+| `src/element.js` `define` | Custom elements, light DOM by default, shadow opt-in | Done: signal-backed props, typed attributes, pre-upgrade capture, hydration without re-rendering, pause on detach |
+| `src/element.js` hooks | Plain functions (see the project's hooks decision) | `state`, `computed`, `watch`, `onMount`, `onUnmount` |
 
 ## Signals
 
@@ -72,8 +73,11 @@ computed in the reference). Derive the value instead of writing it back.
 
 ```sh
 npm install
-npm test
+npm test               # Signals, effects (Node only)
+npm run test:browser   # compiled components in Chromium; needs Rust and Playwright
 ```
+
+The browser tests compile real `.mnx` files with the Rust CLI and check fresh rendering, batched updates, pre-upgrade properties, hydration that keeps every server node, anchored text, mismatched markup, a `state()` + `onclick` counter, mount/unmount hooks across a detach and re-attach, and runtime URL blocking. They were mutation-checked too: always rewriting text, never hydrating, not pausing on disconnect, skipping the runtime URL check, or counting text nodes in paths each fails at least one test.
 
 The effect tests were mutation-checked: removing the parent-first sort, the `untrack` around
 child runs, child disposal on re-run, or unwatching on pause each makes at least one test fail.

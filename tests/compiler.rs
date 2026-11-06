@@ -1,4 +1,4 @@
-use mnix_compiler::{compile, compile_value, compile_with_slots, Diagnostic};
+use mnix_compiler::{compile, compile_js, compile_value, compile_with_slots, Diagnostic};
 use serde_json::json;
 
 const GREETING: &str = r#"<mnx-greeting name url>
@@ -166,7 +166,10 @@ fn parses_unicode_svg_and_comments() {
 #[test]
 fn records_the_shadow_flag_without_making_it_a_prop() {
     let source = "<mnx-x shadow><p>x</p></mnx-x>";
-    assert_eq!(compile(source, "{}").unwrap(), "<mnx-x><p>x</p></mnx-x>");
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-x><template shadowrootmode=\"open\"><p>x</p></template></mnx-x>"
+    );
     assert_error(source, r#"{"shadow":true}"#, "unknown prop `shadow`");
 }
 
@@ -394,10 +397,6 @@ fn rejects_malformed_html_and_unsafe_template_features() {
             "event-handler",
         ),
         (
-            "<mnx-x><button onclick={run}>Go</button></mnx-x>",
-            "arrives in v0.4",
-        ),
-        (
             "<mnx-x><div style=\"color:red\">Text</div></mnx-x>",
             "inline style",
         ),
@@ -411,6 +410,39 @@ fn rejects_malformed_html_and_unsafe_template_features() {
     ] {
         assert_error(source, "{}", expected);
     }
+}
+
+#[test]
+fn event_handlers_are_resolved_but_left_out_of_static_html() {
+    let source = "<script>function go() {}</script>\n<mnx-x><button onclick={go} type=\"button\">Go</button></mnx-x>";
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-x><button type=\"button\">Go</button></mnx-x>"
+    );
+    assert_error(
+        "<mnx-x><button onclick={og}>Go</button></mnx-x>",
+        "{}",
+        "unknown reference `og`",
+    );
+}
+
+#[test]
+fn dynamic_text_beside_other_nodes_gets_a_hydration_anchor() {
+    let source = "<mnx-x name=\"Ada\"><p>Hi <b>there</b> {name}!</p></mnx-x>";
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-x><p>Hi <b>there</b><!----> Ada!</p></mnx-x>"
+    );
+    // An element's only child needs no anchor.
+    assert_eq!(
+        compile("<mnx-x n=\"A\"><p>Hi {n}</p></mnx-x>", "{}").unwrap(),
+        "<mnx-x><p>Hi A</p></mnx-x>"
+    );
+    // Text split by a comment is one text node.
+    assert_eq!(
+        compile("<mnx-x n=\"A\"><p>Hi <!-- c -->{n}</p></mnx-x>", "{}").unwrap(),
+        "<mnx-x><p>Hi A</p></mnx-x>"
+    );
 }
 
 #[test]
@@ -495,7 +527,7 @@ fn loop_variables_shadow_props_and_stay_scoped() {
     let source = "<mnx-x name=\"outer\" items={[\"inner\"]}><p><mnx-each items={items} as=\"name\">{name}</mnx-each>/{name}</p></mnx-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<mnx-x><p>inner/outer</p></mnx-x>"
+        "<mnx-x><p>inner<!---->/outer</p></mnx-x>"
     );
     assert_error(
         "<mnx-x items={[1]}><p><mnx-each items={items} as=\"item\" index=\"item\">x</mnx-each></p></mnx-x>",
@@ -581,4 +613,74 @@ fn renders_diagnostics_with_the_source_line() {
         rendered,
         "error: unknown reference `titel`\n --> x.mnx:2:7\n  |\n2 |   <h1>{titel}</h1>\n  |       ^\n  = help: did you mean `title`?\n"
     );
+}
+
+// ---- JavaScript output ----------------------------------------------------------------------
+
+fn js(source: &str) -> String {
+    compile_js(source, "@mnx/runtime", "test.mnx").unwrap()
+}
+
+#[test]
+fn js_output_binds_text_attributes_and_events_by_path() {
+    let module = js(r#"<script>
+import { state } from '@mnx/runtime'
+const count = state(0)
+function go() {}
+</script>
+<mnx-x label="Hi" href="/" off={false}>
+  <p>Hi <b>there</b> {label}!</p>
+  <a href={href} class="link {label}" hidden={off} onclick={go}>{count}</a>
+</mnx-x>"#);
+    assert!(module.contains(
+        "import { define, $r, $t } from \"@mnx/runtime\";\nimport { state } from '@mnx/runtime';"
+    ));
+    assert!(module.contains(r#"template: "\n  <p>Hi <b>there</b><!----></p>\n  <a></a>\n","#));
+    for part in [
+        r#"{ path: [0, 1], anchor: () => " " + $t($p.label) + "!" }"#,
+        r#"{ path: [1], attribute: "href", url: true, value: () => $p.href }"#,
+        r#"{ path: [1], attribute: "class", value: () => "link " + $t($p.label) }"#,
+        r#"{ path: [1], attribute: "hidden", boolean: true, value: () => $p.off }"#,
+        r#"{ path: [1], on: "click", handler: () => $r(go) }"#,
+        r#"{ path: [1], text: () => $t($r(count)) }"#,
+    ] {
+        assert!(module.contains(part), "missing {part} in\n{module}");
+    }
+    assert!(
+        module.contains("const count = state(0)"),
+        "the script body runs in setup"
+    );
+    assert!(module.contains(r#""off": { attribute: "off", default: false, required: false }"#));
+}
+
+#[test]
+fn js_output_keeps_props_without_defaults_and_kebab_attributes() {
+    let module = js("<mnx-x max-value name><p>{maxValue} {name}</p></mnx-x>");
+    assert!(module
+        .contains(r#""maxValue": { attribute: "max-value", default: undefined, required: true }"#));
+    assert!(module.contains(r#"{ path: [0], text: () => $t($p.maxValue) + " " + $t($p.name) }"#));
+}
+
+#[test]
+fn js_output_rejects_what_it_cannot_do_yet() {
+    let directive = compile_js("<mnx-x items={[]}><ul><mnx-each items={items} as=\"i\"><li>{i}</li></mnx-each></ul></mnx-x>", "r", "t").unwrap_err();
+    assert!(directive.message.contains("arrive in v0.5"));
+    let reserved = compile_js(
+        "<script>const $p = 1</script><mnx-x><p></p></mnx-x>",
+        "r",
+        "t",
+    )
+    .unwrap_err();
+    assert!(reserved.message.contains("reserved"));
+    let typo = compile_js("<mnx-x name><p>{nmae}</p></mnx-x>", "r", "t").unwrap_err();
+    assert_eq!(typo.help.as_deref(), Some("did you mean `name`?"));
+}
+
+#[test]
+fn both_backends_agree_on_anchors() {
+    let source = "<mnx-x name=\"Ada\"><p>Hi <b>there</b> {name}!</p></mnx-x>";
+    assert!(compile(source, "{}")
+        .unwrap()
+        .contains("<b>there</b><!----> Ada!"));
+    assert!(js(source).contains("<b>there</b><!---->"));
 }

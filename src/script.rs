@@ -39,6 +39,7 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
     }
 
     let mut script = Script::default();
+    let mut import_ranges = Vec::new();
     for statement in &parsed.program.body {
         match statement {
             Statement::VariableDeclaration(declaration) => {
@@ -103,6 +104,9 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
                 for specifier in import.specifiers.iter().flatten() {
                     script.runtime_names.push(specifier.name().to_string());
                 }
+                let range = import.span.start as usize..import.span.end as usize;
+                script.imports.push(source[range.clone()].to_owned());
+                import_ranges.push(range);
             }
             Statement::ExportNamedDeclaration(_)
             | Statement::ExportDeclaration(_)
@@ -123,6 +127,17 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
             _ => {}
         }
     }
+    // The body without its imports. Removed imports become blank space of the same shape, so
+    // line numbers in the emitted setup function still match the source.
+    let mut body = source.to_owned();
+    for range in import_ranges.iter().rev() {
+        let blank: String = source[range.clone()]
+            .chars()
+            .map(|character| if character == '\n' { '\n' } else { ' ' })
+            .collect();
+        body.replace_range(range.clone(), &blank);
+    }
+    script.body = body;
     Ok(script)
 }
 
@@ -152,6 +167,10 @@ mod tests {
         );
         assert_eq!(script.runtime_names, ["state", "a", "b", "inc", "Thing"]);
         assert_eq!(script.bindings[1].span, Span::new(4, 5));
+        assert_eq!(script.imports, ["import { state } from '@mnx/runtime'"]);
+        assert!(script
+            .body
+            .starts_with("                                    \nconst title"));
     }
 
     #[test]
