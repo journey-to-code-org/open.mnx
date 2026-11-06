@@ -18,6 +18,10 @@ pub enum Node {
     Element(Element),
     /// `<!---->`: marks where a dynamic text node starts, for hydration.
     Anchor,
+    /// `<!--[-->` and `<!--]-->`: the start and end of an `mnx-if` or `mnx-each` region, or of
+    /// one row of a list, for hydration.
+    Open,
+    Close,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

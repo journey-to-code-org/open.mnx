@@ -61,8 +61,9 @@ export default define(tag, {
 - **Detached elements pause**: long-lived signals stop holding them; on return only parts whose inputs changed re-run.
 - **URL attributes** get the same safety check at runtime as at build time.
 - `shadow` on the host renders into a shadow root (a declarative one in the HTML output).
+- **`mnx-if` and `mnx-each` are regions.** Both backends wrap them in `<!--[-->` … `<!--]-->`, and each list row in its own pair, so the runtime can find them in server markup. A region counts as one position in its parent's paths, so a list's length never shifts what comes after it. Each branch and row has its own template and parts. `mnx-if` re-renders only when the chosen branch changes. `mnx-each` updates rows in place by position: each row holds its item and index as signals, so changing one item updates only that row, and rows are added or removed at the end. Server-rendered branches and rows are hydrated without being replaced; a server list whose length doesn't match its items is re-rendered with a warning.
 
-Not yet in the JavaScript output: `mnx-if`, `mnx-each` and `mnx-slot` (v0.5; they work in the HTML output), and prop defaults computed at runtime.
+Not yet in the JavaScript output: `mnx-slot` (it works in the HTML output), keyed lists, and prop defaults computed at runtime.
 
 ## Commands
 

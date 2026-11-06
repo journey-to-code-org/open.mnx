@@ -53,10 +53,11 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     }
     let mut emitter = Emitter {
         interface: &interface,
+        scopes: Vec::new(),
         template: String::new(),
         parts: Vec::new(),
     };
-    emitter.nodes(&component.nodes, &[])?;
+    emitter.nodes(&component.nodes, &[], false)?;
 
     let mut out = String::new();
     out.push_str(&format!(
@@ -123,16 +124,33 @@ fn path_js(path: &[usize]) -> String {
 
 struct Emitter<'a> {
     interface: &'a Interface,
+    /// Loop variables in scope, innermost last.
+    scopes: Vec<String>,
     template: String,
     parts: Vec<String>,
 }
 
-impl Emitter<'_> {
-    /// An expression as JavaScript: props read from `$p` (signal-backed getters), script names
-    /// through `$r`, which unwraps signals so `{count}` works for `const count = state(0)`.
+impl<'a> Emitter<'a> {
+    fn child(&self, extra: &[String]) -> Emitter<'a> {
+        let mut scopes = self.scopes.clone();
+        scopes.extend(extra.iter().cloned());
+        Emitter {
+            interface: self.interface,
+            scopes,
+            template: String::new(),
+            parts: Vec::new(),
+        }
+    }
+
+    /// An expression as JavaScript: loop variables and script names go through `$r`, which
+    /// unwraps signals (rows hold their item as a signal; `const count = state(0)` makes `{count}`
+    /// reactive); props read from `$p`, whose getters are signal-backed. Loop variables shadow
+    /// props, props shadow script names — the same order the HTML backend resolves.
     fn js(&self, expression: &Expression) -> String {
         expression.to_js_with(&|name| {
-            if self.interface.props.iter().any(|prop| prop.name == name) {
+            if self.scopes.iter().any(|scope| scope == name) {
+                format!("$r({name})")
+            } else if self.interface.props.iter().any(|prop| prop.name == name) {
                 format!("$p.{name}")
             } else {
                 format!("$r({name})")
@@ -157,8 +175,28 @@ impl Emitter<'_> {
         }
     }
 
-    fn nodes(&mut self, nodes: &[Node], path: &[usize]) -> Result<(), Diagnostic> {
+    /// A branch or row: its own template, and a function from its loop variables to its parts.
+    fn block(&self, nodes: &[Node], params: &[String]) -> Result<String, Diagnostic> {
+        let mut block = self.child(params);
+        block.nodes(nodes, &[], true)?;
+        Ok(format!(
+            "{{ template: {}, parts: ({}) => [{}] }}",
+            json(&block.template),
+            params.join(", "),
+            block.parts.join(", ")
+        ))
+    }
+
+    /// `block_top`: these nodes are the top level of a branch or row (see
+    /// `validate::needs_text_anchor`).
+    fn nodes(&mut self, nodes: &[Node], path: &[usize], block_top: bool) -> Result<(), Diagnostic> {
         let mut index = 0;
+        let mut next = |path: &[usize]| {
+            let mut at = path.to_vec();
+            at.push(index);
+            index += 1;
+            at
+        };
         for node in nodes {
             match node {
                 Node::Text(parts) => {
@@ -171,11 +209,9 @@ impl Emitter<'_> {
                                 self.template.push_str(text);
                             }
                         }
-                    } else if needs_text_anchor(nodes, node) {
+                    } else if needs_text_anchor(nodes, node, block_top) {
                         self.template.push_str("<!---->");
-                        let mut anchor = path.to_vec();
-                        anchor.push(index);
-                        index += 1;
+                        let anchor = next(path);
                         self.parts.push(format!(
                             "{{ path: {}, anchor: () => {} }}",
                             path_js(&anchor),
@@ -191,18 +227,61 @@ impl Emitter<'_> {
                     }
                 }
                 Node::Element(element) => {
-                    let mut element_path = path.to_vec();
-                    element_path.push(index);
-                    index += 1;
+                    let element_path = next(path);
                     self.element(element, &element_path)?;
                 }
-                Node::If { span, .. }
-                | Node::Each { span, .. }
-                | Node::Slot { span, .. }
-                | Node::Else { span, .. } => {
+                Node::If {
+                    test,
+                    consequent,
+                    alternate,
+                    ..
+                } => {
+                    // An empty region in the template; the branch is rendered (or found in
+                    // server markup) at runtime.
+                    self.template.push_str("<!--[--><!--]-->");
+                    let region = next(path);
+                    let yes = self.block(consequent, &[])?;
+                    let no = if alternate.is_empty() {
+                        "null".to_owned()
+                    } else {
+                        self.block(alternate, &[])?
+                    };
+                    self.parts.push(format!(
+                        "{{ path: {}, when: () => {}, blocks: [{yes}, {no}] }}",
+                        path_js(&region),
+                        self.js(test)
+                    ));
+                }
+                Node::Each {
+                    items,
+                    item,
+                    index: position,
+                    children,
+                    ..
+                } => {
+                    self.template.push_str("<!--[--><!--]-->");
+                    let region = next(path);
+                    let params = vec![
+                        item.clone(),
+                        position.clone().unwrap_or_else(|| "$index".to_owned()),
+                    ];
+                    let row = self.block(children, &params)?;
+                    self.parts.push(format!(
+                        "{{ path: {}, each: () => {}, block: {row} }}",
+                        path_js(&region),
+                        self.js(items)
+                    ));
+                }
+                Node::Slot { span, .. } => {
                     return Err(Diagnostic::new(
                         *span,
-                        "mnx-if, mnx-each and mnx-slot in the JavaScript output arrive in v0.5; they work in the HTML output today",
+                        "mnx-slot in the JavaScript output is not supported yet; it works in the HTML output",
+                    ));
+                }
+                Node::Else { span, .. } => {
+                    return Err(Diagnostic::new(
+                        *span,
+                        "mnx-else is only valid as a direct child of mnx-if",
                     ));
                 }
             }
@@ -267,7 +346,7 @@ impl Emitter<'_> {
         if VOID_ELEMENTS.contains(&element.name.to_ascii_lowercase().as_str()) {
             return Ok(());
         }
-        self.nodes(&element.children, path)?;
+        self.nodes(&element.children, path, false)?;
         self.template.push_str("</");
         self.template.push_str(&element.name);
         self.template.push('>');

@@ -216,11 +216,12 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
     })
 }
 
-/// Dynamic text that shares its parent with other nodes gets an empty-comment anchor before it,
-/// in both backends, so the JavaScript side can find it in server-rendered markup. (Text that is
-/// an element's only child is bound through the element instead and needs no anchor.)
-pub(crate) fn needs_text_anchor(siblings: &[ast::Node], node: &ast::Node) -> bool {
-    siblings.len() > 1
+/// Dynamic text that shares its parent with other nodes, or sits directly inside an `mnx-if`
+/// branch or `mnx-each` row (which has no element of its own), gets an empty-comment anchor
+/// before it in both backends, so the JavaScript side can find it in server-rendered markup.
+/// Text that is an element's only child is bound through the element and needs no anchor.
+pub(crate) fn needs_text_anchor(siblings: &[ast::Node], node: &ast::Node, block_top: bool) -> bool {
+    (block_top || siblings.len() > 1)
         && matches!(node, ast::Node::Text(parts) if parts.iter().any(|part| matches!(part, AstPart::Expression { .. })))
 }
 
@@ -636,9 +637,19 @@ impl Context<'_> {
         nodes: &[ast::Node],
         state: &mut LowerState,
     ) -> Result<Vec<Node>, Diagnostic> {
+        self.lower_block(nodes, state, false)
+    }
+
+    /// `block_top`: these nodes are the top level of an `mnx-if` branch or `mnx-each` row.
+    fn lower_block(
+        &self,
+        nodes: &[ast::Node],
+        state: &mut LowerState,
+        block_top: bool,
+    ) -> Result<Vec<Node>, Diagnostic> {
         let mut output = Vec::new();
         for node in nodes {
-            if needs_text_anchor(nodes, node) {
+            if needs_text_anchor(nodes, node, block_top) {
                 output.push(Node::Anchor);
             }
             output.extend(self.lower_node(node, state)?);
@@ -674,14 +685,16 @@ impl Context<'_> {
                 ..
             } => {
                 let value = self.evaluate(test, *test_span, state)?;
-                self.lower_nodes(
-                    if expression::is_truthy(&value) {
-                        consequent
-                    } else {
-                        alternate
-                    },
-                    state,
-                )
+                let branch = if expression::is_truthy(&value) {
+                    consequent
+                } else {
+                    alternate
+                };
+                // Region markers let the JavaScript side find (and later replace) the branch.
+                let mut output = vec![Node::Open];
+                output.extend(self.lower_block(branch, state, true)?);
+                output.push(Node::Close);
+                Ok(output)
             }
             ast::Node::Each {
                 items,
@@ -701,17 +714,21 @@ impl Context<'_> {
                         ),
                     ));
                 };
-                let mut output = Vec::new();
+                // A region for the list, and one per row.
+                let mut output = vec![Node::Open];
                 for (position, entry) in list.into_iter().enumerate() {
                     let mut scope = vec![(item.clone(), entry)];
                     if let Some(index) = index {
                         scope.push((index.clone(), Value::from(position)));
                     }
                     state.scopes.push(scope);
-                    let lowered = self.lower_nodes(children, state);
+                    let lowered = self.lower_block(children, state, true);
                     state.scopes.pop();
+                    output.push(Node::Open);
                     output.extend(lowered?);
+                    output.push(Node::Close);
                 }
+                output.push(Node::Close);
                 Ok(output)
             }
             ast::Node::Slot {
@@ -940,7 +957,7 @@ fn check_single_root(nodes: &[Node]) -> Result<(), Diagnostic> {
         Node::Text(parts) => parts.iter().any(|part| match part {
             Part::Literal(text) | Part::Escaped(text) => !text.trim().is_empty(),
         }),
-        Node::Element(_) | Node::Anchor => false,
+        Node::Element(_) | Node::Anchor | Node::Open | Node::Close => false,
     });
     if element_roots != 1 || has_text {
         return Err(Diagnostic::new(

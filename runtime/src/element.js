@@ -100,36 +100,112 @@ export function watch(source, callback) {
   });
 }
 
-// ---- finding and binding parts -------------------------------------------------------------
+// ---- finding parts -------------------------------------------------------------------------
+//
+// A range is a run of sibling nodes: an element's children, or the nodes between a region's
+// `<!--[-->` and its matching `<!--]-->`. Within a range, positions count elements and comments
+// only, and a whole region counts as one position (its start marker), so a list's length never
+// shifts the paths of what comes after it.
 
-function walk(root, path) {
-  let node = root;
-  for (const index of path) {
-    let seen = -1;
-    let next = null;
-    for (const child of node.childNodes) {
-      if (child.nodeType === TEXT) continue;
-      if (++seen === index) { next = child; break; }
+const isOpen = (node) => node.nodeType === COMMENT && node.data === '[';
+const isClose = (node) => node.nodeType === COMMENT && node.data === ']';
+
+function matchingClose(open) {
+  let depth = 0;
+  for (let node = open.nextSibling; node; node = node.nextSibling) {
+    if (isOpen(node)) depth++;
+    else if (isClose(node)) {
+      if (depth === 0) return node;
+      depth--;
     }
-    if (!next) return null;
-    node = next;
+  }
+  return null;
+}
+
+function* positions(first, stop) {
+  for (let node = first; node && node !== stop; node = node.nextSibling) {
+    if (node.nodeType === TEXT) continue;
+    yield node;
+    if (isOpen(node)) {
+      node = matchingClose(node);
+      if (!node) return;
+    }
+  }
+}
+
+function walk(range, path) {
+  let first = range.first;
+  let stop = range.stop;
+  let node = null;
+  for (const index of path) {
+    node = null;
+    let seen = -1;
+    for (const candidate of positions(first, stop)) {
+      if (++seen === index) { node = candidate; break; }
+    }
+    if (!node) return null;
+    first = node.firstChild;
+    stop = null;
   }
   return node;
 }
 
+const childRange = (parent) => ({ first: parent.firstChild, stop: null });
+const regionRange = (open, close) => ({ first: open.nextSibling, stop: close });
+
 /** The node for every part, or null if the markup doesn't have the template's shape. */
-function locate(root, parts) {
+function locate(range, parts) {
   const nodes = [];
   for (const part of parts) {
-    const node = walk(root, part.path);
-    const want = part.anchor ? COMMENT : 1;
-    if (!node || node.nodeType !== want) return null;
+    const node = walk(range, part.path);
+    const fits = !node ? false
+      : part.when || part.each ? isOpen(node) && matchingClose(node) !== null
+      : part.anchor ? node.nodeType === COMMENT && node.data === ''
+      : node.nodeType === 1;
+    if (!fits) return null;
     nodes.push(node);
   }
   return nodes;
 }
 
-function bind(part, node) {
+// ---- blocks: the contents of an mnx-if branch or an mnx-each row ----------------------------
+
+const blueprints = new WeakMap();
+function blueprint(source) {
+  let element = blueprints.get(source);
+  if (!element) {
+    element = document.createElement('template');
+    element.innerHTML = source.template;
+    blueprints.set(source, element);
+  }
+  return element;
+}
+
+function clearBetween(open, close) {
+  while (open.nextSibling && open.nextSibling !== close) open.nextSibling.remove();
+}
+
+/**
+ * Render `block` between `open` and `close`. When `hydrating`, first try to bind to nodes the
+ * server already put there; otherwise (or if they don't fit) clone the block's template.
+ */
+function mountBlock(block, args, open, close, hydrating) {
+  const parts = block.parts(...args);
+  let nodes = hydrating ? locate(regionRange(open, close), parts) : null;
+  const hydrated = nodes !== null;
+  if (!nodes) {
+    if (hydrating) console.warn('mnx: server markup for a region does not match its template; rendering it fresh');
+    clearBetween(open, close);
+    const fragment = blueprint(block).content.cloneNode(true);
+    nodes = locate(childRange(fragment), parts);
+    close.before(fragment);
+  }
+  parts.forEach((part, index) => bind(part, nodes[index], hydrated));
+}
+
+// ---- binding parts -------------------------------------------------------------------------
+
+function bind(part, node, hydrating) {
   if (part.text) {
     effect(() => {
       const text = part.text();
@@ -152,30 +228,112 @@ function bind(part, node) {
       if (typeof handler === 'function') handler.call(node, event);
     });
   } else if (part.attribute) {
-    const name = part.attribute;
-    effect(() => {
-      const value = $r(part.value());
-      if (part.boolean) {
-        if (typeof value !== 'boolean') {
-          console.error(`mnx: "${name}" is a boolean attribute; got`, value);
-          return;
-        }
-        node.toggleAttribute(name, value);
+    bindAttribute(part, node);
+  } else if (part.when) {
+    bindWhen(part, node, hydrating);
+  } else if (part.each) {
+    bindEach(part, node, hydrating);
+  }
+}
+
+function bindAttribute(part, node) {
+  const name = part.attribute;
+  effect(() => {
+    const value = $r(part.value());
+    if (part.boolean) {
+      if (typeof value !== 'boolean') {
+        console.error(`mnx: "${name}" is a boolean attribute; got`, value);
         return;
       }
-      if (value == null) return node.removeAttribute(name);
-      if (typeof value === 'object') {
-        console.error(`mnx: cannot write an object to the "${name}" attribute`, value);
-        return node.removeAttribute(name);
-      }
-      const text = String(value);
-      if (part.url && !isSafeUrl(text)) {
-        console.error(`mnx: blocked an unsafe URL in "${name}":`, text);
-        return node.removeAttribute(name);
-      }
-      if (node.getAttribute(name) !== text) node.setAttribute(name, text);
+      node.toggleAttribute(name, value);
+      return;
+    }
+    if (value == null) return node.removeAttribute(name);
+    if (typeof value === 'object') {
+      console.error(`mnx: cannot write an object to the "${name}" attribute`, value);
+      return node.removeAttribute(name);
+    }
+    const text = String(value);
+    if (part.url && !isSafeUrl(text)) {
+      console.error(`mnx: blocked an unsafe URL in "${name}":`, text);
+      return node.removeAttribute(name);
+    }
+    if (node.getAttribute(name) !== text) node.setAttribute(name, text);
+  });
+}
+
+/** mnx-if: re-render only when the chosen branch changes, not whenever the test re-runs. */
+function bindWhen(part, open, hydrating) {
+  const close = matchingClose(open);
+  const branch = new Signal.Computed(() => ($r(part.when()) ? 0 : 1));
+  let first = hydrating;
+  effect(() => {
+    const block = part.blocks[branch.get()];
+    const hydrate = first;
+    first = false;
+    // Effects created while mounting belong to this effect, so switching branches disposes them.
+    untrack(() => {
+      if (block) mountBlock(block, [], open, close, hydrate);
+      else clearBetween(open, close);
     });
-  }
+  });
+}
+
+/**
+ * mnx-each: one row per item, updated in place by position. Each row holds its item and index
+ * as signals, so changing one item updates only that row's parts; rows are only created or
+ * removed at the end when the length changes.
+ */
+function bindEach(part, open, hydrating) {
+  const close = matchingClose(open);
+  // Rows belong to this scope, not to the effect below, so re-running the effect (the list
+  // changed) doesn't dispose them.
+  const rowsOwner = scope();
+  const rows = [];
+  const addRow = (rowOpen, rowClose, value, index, hydrateRow) => {
+    const item = new Signal.State(value);
+    const position = new Signal.State(index);
+    const owner = rowsOwner.run(() => scope(() => mountBlock(part.block, [item, position], rowOpen, rowClose, hydrateRow)));
+    rows.push({ item, position, open: rowOpen, close: rowClose, owner });
+  };
+  let first = hydrating;
+  effect(() => {
+    let list = $r(part.each());
+    if (!Array.isArray(list)) {
+      if (list != null) console.error('mnx: mnx-each items must be an array; got', list);
+      list = [];
+    }
+    const hydrate = first;
+    first = false;
+    untrack(() => {
+      if (hydrate) {
+        const existing = [...positions(open.nextSibling, close)];
+        if (existing.length === list.length && existing.every(isOpen)) {
+          existing.forEach((rowOpen, index) => addRow(rowOpen, matchingClose(rowOpen), list[index], index, true));
+          return;
+        }
+        console.warn('mnx: server markup for a list does not match its items; rendering it fresh');
+        clearBetween(open, close);
+      }
+      const shared = Math.min(rows.length, list.length);
+      for (let index = 0; index < shared; index++) {
+        rows[index].item.set(list[index]);
+        rows[index].position.set(index);
+      }
+      for (let index = rows.length; index < list.length; index++) {
+        const rowOpen = document.createComment('[');
+        const rowClose = document.createComment(']');
+        close.before(rowOpen, rowClose);
+        addRow(rowOpen, rowClose, list[index], index, false);
+      }
+      for (const row of rows.splice(list.length)) {
+        row.owner.dispose();
+        while (row.open.nextSibling !== row.close) row.open.nextSibling.remove();
+        row.open.remove();
+        row.close.remove();
+      }
+    });
+  });
 }
 
 const hasContent = (root) =>
@@ -190,8 +348,7 @@ const hasContent = (root) =>
  */
 export function define(tag, { props = {}, template = '', shadow = false, setup }) {
   if (customElements.get(tag)) return customElements.get(tag);
-  const blueprint = document.createElement('template');
-  blueprint.innerHTML = template;
+  const componentTemplate = blueprint({ template });
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
   class MnxElement extends HTMLElement {
@@ -269,13 +426,14 @@ export function define(tag, { props = {}, template = '', shadow = false, setup }
         try { parts = setup ? setup($p) : []; } finally { current = previous; }
 
         const server = hasContent(root);
-        let nodes = server ? locate(root, parts) : null;
+        let nodes = server ? locate(childRange(root), parts) : null;
+        const hydrated = nodes !== null;
         if (!nodes) {
           if (server) console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh`);
-          root.replaceChildren(blueprint.content.cloneNode(true));
-          nodes = locate(root, parts);
+          root.replaceChildren(componentTemplate.content.cloneNode(true));
+          nodes = locate(childRange(root), parts);
         }
-        parts.forEach((part, index) => bind(part, nodes[index]));
+        parts.forEach((part, index) => bind(part, nodes[index], hydrated));
       });
     }
   }

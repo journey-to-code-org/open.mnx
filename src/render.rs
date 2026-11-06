@@ -34,6 +34,8 @@ fn render_node(node: &Node, output: &mut String) {
     match node {
         Node::Text(parts) => render_parts(parts, output),
         Node::Anchor => output.push_str("<!---->"),
+        Node::Open => output.push_str("<!--[-->"),
+        Node::Close => output.push_str("<!--]-->"),
         Node::Element(element) => {
             output.push('<');
             output.push_str(&element.name);

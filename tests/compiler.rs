@@ -514,11 +514,11 @@ const people = [{ name: "Ada", role: "<admin>" }, { name: "Linus", role: "dev" }
 </mnx-team>"#;
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<mnx-team>\n<ul><li data-n=\"1\">Ada (&lt;admin&gt;)</li><li data-n=\"2\">Linus (dev)</li></ul>\n</mnx-team>"
+        "<mnx-team>\n<ul><!--[--><!--[--><li data-n=\"1\">Ada (&lt;admin&gt;)</li><!--]--><!--[--><li data-n=\"2\">Linus (dev)</li><!--]--><!--]--></ul>\n</mnx-team>"
     );
     assert!(compile(source, r#"{"people":[]}"#)
         .unwrap()
-        .contains("<ul></ul>"));
+        .contains("<ul><!--[--><!--]--></ul>"));
     assert_error(source, r#"{"people":{"a":1}}"#, "must be an array");
 }
 
@@ -527,7 +527,7 @@ fn loop_variables_shadow_props_and_stay_scoped() {
     let source = "<mnx-x name=\"outer\" items={[\"inner\"]}><p><mnx-each items={items} as=\"name\">{name}</mnx-each>/{name}</p></mnx-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<mnx-x><p>inner<!---->/outer</p></mnx-x>"
+        "<mnx-x><p><!--[--><!--[--><!---->inner<!--]--><!--]--><!---->/outer</p></mnx-x>"
     );
     assert_error(
         "<mnx-x items={[1]}><p><mnx-each items={items} as=\"item\" index=\"item\">x</mnx-each></p></mnx-x>",
@@ -663,8 +663,15 @@ fn js_output_keeps_props_without_defaults_and_kebab_attributes() {
 
 #[test]
 fn js_output_rejects_what_it_cannot_do_yet() {
-    let directive = compile_js("<mnx-x items={[]}><ul><mnx-each items={items} as=\"i\"><li>{i}</li></mnx-each></ul></mnx-x>", "r", "t").unwrap_err();
-    assert!(directive.message.contains("arrive in v0.5"));
+    let slot = compile_js(
+        "<mnx-x><main><mnx-slot><p>fallback</p></mnx-slot></main></mnx-x>",
+        "r",
+        "t",
+    )
+    .unwrap_err();
+    assert!(slot
+        .message
+        .contains("mnx-slot in the JavaScript output is not supported yet"));
     let reserved = compile_js(
         "<script>const $p = 1</script><mnx-x><p></p></mnx-x>",
         "r",
@@ -683,4 +690,32 @@ fn both_backends_agree_on_anchors() {
         .unwrap()
         .contains("<b>there</b><!----> Ada!"));
     assert!(js(source).contains("<b>there</b><!---->"));
+}
+
+#[test]
+fn js_output_compiles_regions_to_nested_blocks() {
+    let module = js(r#"<mnx-x items={["a"]} show={true}>
+<section><mnx-if test={show}><ul><mnx-each items={items} as="item" index="i"><li data-i={i}>{item}</li></mnx-each></ul><mnx-else><p>none</p></mnx-else></mnx-if><footer>{items.length}</footer></section>
+</mnx-x>"#);
+    // The region is one position in its parent, so the footer's path doesn't depend on it.
+    assert!(
+        module.contains(r#"template: "\n<section><!--[--><!--]--><footer></footer></section>\n","#)
+    );
+    assert!(module.contains(r#"{ path: [0, 1], text: () => $t($p.items.length) }"#));
+    assert!(module.contains(r#"{ path: [0, 0], when: () => $p.show, blocks: [{ template: "<ul><!--[--><!--]--></ul>", parts: () => [{ path: [0, 0], each: () => $p.items, block: { template: "<li></li>", parts: (item, i) => [{ path: [0], attribute: "data-i", value: () => $r(i) }, { path: [0], text: () => $t($r(item)) }] } }] }, { template: "<p>none</p>", parts: () => [] }] }"#), "{module}");
+}
+
+#[test]
+fn loop_variables_shadow_props_in_js_output_too() {
+    let module = js(
+        r#"<mnx-x name="outer" names={["a"]}><p><mnx-each items={names} as="name">{name}</mnx-each>{name}</p></mnx-x>"#,
+    );
+    assert!(
+        module.contains(r#"parts: (name, $index) => [{ path: [0], anchor: () => $t($r(name)) }]"#),
+        "{module}"
+    );
+    assert!(
+        module.contains(r#"{ path: [0, 1], anchor: () => $t($p.name) }"#),
+        "{module}"
+    );
 }
