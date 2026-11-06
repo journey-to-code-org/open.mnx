@@ -454,22 +454,192 @@ function bind(part, node, hydrating, context) {
  */
 function bindSlot(part, open, hydrating, context) {
   const close = matchingClose(open);
-  if (hydrating && open.data === '[!') {
-    // The server already put supplied content here; remember it in case the region re-renders.
-    const nodes = [];
-    for (let node = open.nextSibling; node !== close; node = node.nextSibling) nodes.push(node);
-    context.slots.set(part.slot, nodes);
-    return;
+  const slot = slotRecord(context, part.slot);
+  if (hydrating && open.data === '[!' && !slot.nodes.length) {
+    // The server already put supplied content here.
+    for (let node = open.nextSibling; node !== close; node = node.nextSibling) slot.nodes.push(node);
   }
-  const provided = context.slots.get(part.slot);
-  if (provided?.length) {
-    clearBetween(open, close);
-    open.data = '[!';
-    close.before(...provided);
-  } else if (part.fallback) {
-    open.data = '[';
-    mountBlock(part.fallback, [], open, close, hydrating, context);
+  const holder = scope(); // owns the fallback while it shows
+  let fallback = null;
+  let first = hydrating;
+  const region = {
+    open,
+    close,
+    update() {
+      const hydrate = first;
+      first = false;
+      if (slot.nodes.length) {
+        if (fallback) { fallback.dispose(); fallback = null; clearBetween(open, close); }
+        open.data = '[!';
+        place(slot.nodes, open);
+      } else if (part.fallback) {
+        if (fallback) return;
+        if (!hydrate || open.data !== '[') clearBetween(open, close);
+        open.data = '[';
+        fallback = holder.run(() => scope(() => mountBlock(part.fallback, [], open, close, hydrate, context)));
+      } else {
+        clearBetween(open, close);
+        open.data = '[';
+      }
+    },
+  };
+  // The region exists while this effect does (an mnx-if branch switching away disposes it):
+  // then the slotted nodes are parked, to come back when the branch does.
+  effect(() => {
+    slot.region = region;
+    return () => {
+      if (slot.region !== region) return;
+      slot.region = null;
+      slot.park.append(...slot.nodes);
+      holder.dispose();
+    };
+  });
+  region.update();
+}
+
+// ---- slotted content (light DOM) -------------------------------------------------------------
+//
+// In light DOM the host's children are the template, so content given to the element lives in
+// its slot regions instead. Frameworks keep managing that content through the host — React
+// calls host.insertBefore(node, sibling) and host.removeChild(node), Vue sets textContent — so
+// the host's child methods are routed to the slots, and a MutationObserver notices content
+// removed through its real parent. Each slot keeps its nodes in order; while its region isn't
+// rendered (inside an mnx-if branch that's off) they're parked in a fragment.
+
+function slotRecord(context, name) {
+  let slot = context.slots.get(name);
+  if (!slot) {
+    slot = { name, nodes: [], region: null, park: document.createDocumentFragment() };
+    context.slots.set(name, slot);
+    context.observer?.observe(slot.park, { childList: true });
   }
+  return slot;
+}
+
+/**
+ * Put `nodes` right after `open`, in order, moving only what's out of place. (Anything that left
+ * the slot was removed from the region as it left, so nothing else is there.)
+ */
+function place(nodes, open) {
+  const parent = open.parentNode;
+  let cursor = open.nextSibling;
+  for (const node of nodes) {
+    if (node === cursor) cursor = cursor.nextSibling;
+    else move(parent, node, cursor);
+  }
+}
+
+function move(parent, node, before) {
+  try {
+    if (parent.moveBefore && node.isConnected && parent.isConnected) return parent.moveBefore(node, before);
+  } catch { /* not movable atomically (different document, …): insert instead */ }
+  parent.insertBefore(node, before);
+}
+
+const slotName = (node) => (node.nodeType === 1 && node.getAttribute('slot')) || 'default';
+const nativeText = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+const nativeHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+
+/** Route the host's child methods to its slots (see above). */
+function routeChildren(host, context, slots, tag) {
+  const holding = (node) => {
+    for (const slot of context.slots.values()) if (slot.nodes.includes(node)) return slot;
+    return null;
+  };
+  const show = (slot) => {
+    if (slot.region) slot.region.update();
+    else slot.park.append(...slot.nodes);
+  };
+  const take = (node) => {
+    const slot = holding(node);
+    if (slot) slot.nodes.splice(slot.nodes.indexOf(node), 1);
+    return slot;
+  };
+  const insert = (node, before) => {
+    if (node.nodeType === 11) {
+      for (const child of [...node.childNodes]) insert(child, before);
+      return;
+    }
+    const from = take(node);
+    const name = slotName(node);
+    if (!slots.includes(name)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
+    const slot = slotRecord(context, name);
+    const at = before ? slot.nodes.indexOf(before) : -1;
+    if (at >= 0) slot.nodes.splice(at, 0, node);
+    else slot.nodes.push(node);
+    if (from && from !== slot) show(from);
+    show(slot);
+  };
+  const remove = (node) => {
+    const slot = take(node);
+    if (!slot) return false;
+    node.remove();
+    show(slot);
+    return true;
+  };
+  const clear = () => {
+    for (const slot of context.slots.values()) {
+      for (const node of slot.nodes.splice(0)) node.remove();
+      show(slot);
+    }
+  };
+  const asNodes = (items) => items.map((item) => (item instanceof Node ? item : document.createTextNode(String(item))));
+  Object.defineProperties(host, {
+    insertBefore: { value(node, before) { insert(node, before ?? null); return node; }, configurable: true },
+    appendChild: { value(node) { insert(node, null); return node; }, configurable: true },
+    append: { value(...items) { for (const node of asNodes(items)) insert(node, null); }, configurable: true },
+    removeChild: {
+      value(node) {
+        if (!remove(node)) Node.prototype.removeChild.call(host, node); // throws as natively
+        return node;
+      },
+      configurable: true,
+    },
+    replaceChild: {
+      value(node, old) {
+        if (!holding(old)) return Node.prototype.replaceChild.call(host, node, old);
+        insert(node, old);
+        remove(old);
+        return old;
+      },
+      configurable: true,
+    },
+    replaceChildren: { value(...items) { clear(); for (const node of asNodes(items)) insert(node, null); }, configurable: true },
+    textContent: {
+      get() { return nativeText.get.call(host); },
+      set(value) { clear(); if (value != null && value !== '') insert(document.createTextNode(String(value)), null); },
+      configurable: true,
+    },
+    innerHTML: {
+      get() { return nativeHTML.get.call(host); },
+      set(value) {
+        clear();
+        const template = document.createElement('template');
+        template.innerHTML = value;
+        insert(document.importNode(template.content, true), null);
+      },
+      configurable: true,
+    },
+  });
+
+  // Content removed or moved away through its real parent (Vue removes via child.parentNode),
+  // and content whose `slot` attribute changed (it moves to that slot, as with native slots).
+  context.observer = new MutationObserver((records) => {
+    for (const record of records) {
+      const slot = record.type === 'attributes' && holding(record.target);
+      if (slot && slotName(record.target) !== slot.name) insert(record.target, null);
+    }
+    for (const slot of context.slots.values()) {
+      const home = slot.region ? slot.region.open.parentNode : slot.park;
+      const kept = slot.nodes.filter((node) => node.parentNode === home);
+      if (kept.length !== slot.nodes.length) {
+        slot.nodes = kept;
+        show(slot);
+      }
+    }
+  });
+  context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
+  for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
 }
 
 function bindAttribute(part, node) {
@@ -562,14 +732,7 @@ function bindEach(part, open, hydrating, context) {
   };
   const placeRow = (row, before) => {
     const parent = close.parentNode;
-    for (const node of nodesOf(row)) {
-      try {
-        if (parent.moveBefore && node.isConnected && parent.isConnected) parent.moveBefore(node, before);
-        else parent.insertBefore(node, before);
-      } catch {
-        parent.insertBefore(node, before);
-      }
-    }
+    for (const node of nodesOf(row)) move(parent, node, before);
   };
   const keysOf = (list) => {
     const seen = new Set();
@@ -794,9 +957,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
             // Not server markup: the page's own children for this element, to be slotted.
             for (const node of [...root.childNodes]) {
               if (node.nodeType === TEXT && node.data.trim() === '') continue;
-              const name = (node.nodeType === 1 && node.getAttribute('slot')) || 'default';
-              if (!context.slots.has(name)) context.slots.set(name, []);
-              context.slots.get(name).push(node);
+              slotRecord(context, slotName(node)).nodes.push(node);
             }
             for (const name of context.slots.keys()) {
               if (!slots.includes(name)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
@@ -809,6 +970,11 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
           const fresh = locate(childRange(fragment), parts);
           parts.forEach((part, index) => bind(part, fresh[index], false, context));
           root.replaceChildren(fragment);
+        }
+        if (!shadow) {
+          // Content for slots that aren't rendered now waits in their park.
+          for (const slot of context.slots.values()) if (!slot.region) slot.park.append(...slot.nodes);
+          routeChildren(this, context, slots, tag);
         }
       });
       // Disabled (e.g. inside a disabled <fieldset>) before setup registered its hooks. Chromium
