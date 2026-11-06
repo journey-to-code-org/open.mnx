@@ -546,7 +546,17 @@ function routeChildren(host, context, slots, tag) {
     for (const slot of context.slots.values()) if (slot.nodes.includes(node)) return slot;
     return null;
   };
-  const show = (slot) => {
+  // Drop content that left through its real parent (or was moved elsewhere), except `keep`,
+  // which is arriving now.
+  const prune = (slot, keep) => {
+    const home = slot.region ? slot.region.open.parentNode : slot.park;
+    const kept = slot.nodes.filter((node) => node === keep || node.parentNode === home);
+    const changed = kept.length !== slot.nodes.length;
+    slot.nodes = kept;
+    return changed;
+  };
+  const show = (slot, keep) => {
+    prune(slot, keep);
     if (slot.region) slot.region.update();
     else slot.park.append(...slot.nodes);
   };
@@ -568,7 +578,7 @@ function routeChildren(host, context, slots, tag) {
     if (at >= 0) slot.nodes.splice(at, 0, node);
     else slot.nodes.push(node);
     if (from && from !== slot) show(from);
-    show(slot);
+    show(slot, node);
   };
   const remove = (node) => {
     const slot = take(node);
@@ -629,14 +639,7 @@ function routeChildren(host, context, slots, tag) {
       const slot = record.type === 'attributes' && holding(record.target);
       if (slot && slotName(record.target) !== slot.name) insert(record.target, null);
     }
-    for (const slot of context.slots.values()) {
-      const home = slot.region ? slot.region.open.parentNode : slot.park;
-      const kept = slot.nodes.filter((node) => node.parentNode === home);
-      if (kept.length !== slot.nodes.length) {
-        slot.nodes = kept;
-        show(slot);
-      }
-    }
+    for (const slot of context.slots.values()) if (prune(slot)) show(slot);
   });
   context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
   for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
@@ -832,6 +835,16 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
   let internals; // (element) => its ElementInternals; set in the static block below
   class MnxElement extends HTMLElement {
     static observedAttributes = Object.keys(byAttribute);
+    /** What adapters and tools need: the tag, each prop's attribute and default, the events. */
+    static mnx = Object.freeze({
+      tag,
+      props: Object.freeze(Object.fromEntries(Object.entries(props).map(([name, spec]) =>
+        [name, Object.freeze({ attribute: spec.attribute, default: spec.default, required: !!spec.required })]))),
+      events: Object.freeze([...events]),
+      slots: Object.freeze([...slots]),
+      shadow,
+      form,
+    });
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
     #signals = {};

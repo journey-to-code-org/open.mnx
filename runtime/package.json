@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.js",
     "./signal": "./src/signal.js",
-    "./effect": "./src/effect.js"
+    "./effect": "./src/effect.js",
+    "./react": "./src/react.js",
+    "./vue": "./src/vue.js"
   },
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
@@ -17,10 +19,28 @@
   "engines": {
     "node": ">=20"
   },
+  "peerDependencies": {
+    "react": ">=18",
+    "vue": "^3.3"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "ajv": "^8.20.0",
     "custom-elements-manifest": "^2.1.0",
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-dom18": "npm:react-dom@18.3.1",
+    "react18": "npm:react@18.3.1",
     "signal-polyfill": "0.2.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vue": "3.5.45"
   }
 }

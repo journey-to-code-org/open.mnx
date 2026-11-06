@@ -269,3 +269,15 @@ test('content present at startup for a slot that is not rendered can be removed 
   assert.deepEqual(messages, []);
   await page.close();
 });
+
+test('content removed through its real parent stays out when the host gets new content at once', async () => {
+  // Vue's update order: remove the old child via parentNode, then insert the new one via the host.
+  const { page } = await open('<mnx-card><p id="old">old</p></mnx-card>', { modules: ['card'] });
+  const card = await change(page, (el) => {
+    const old = document.getElementById('old');
+    old.parentNode.removeChild(old);
+    el.insertBefore(document.createTextNode('new'), null);
+  });
+  assert.equal(card.section, 'new');
+  await page.close();
+});
