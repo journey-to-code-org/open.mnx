@@ -1,6 +1,6 @@
 {
   "name": "@mnx/runtime",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Browser runtime for mnx compiled components, built on the TC39 Signals API",
   "type": "module",

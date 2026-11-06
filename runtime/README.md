@@ -8,9 +8,12 @@ ships one, this package deletes code instead of components being rewritten.
 |---|---|---|
 | `src/signal.js` | [TC39 Signals](https://github.com/tc39/proposal-signals) (`Signal.State`, `Signal.Computed`, `Signal.subtle`) | Done. Uses native `globalThis.Signal` when present, otherwise `src/signal-impl.js` |
 | `src/effect.js` | Not a proposal — the Signals proposal leaves effects to libraries. Built only on `Signal.subtle.Watcher` and microtasks | Done |
-| `src/element.js` parts (`walk`/`bind`) | [DOM Parts](https://github.com/WICG/webcomponents/blob/gh-pages/proposals/DOM-Parts.md): a template plus the locations of its dynamic parts | Done for text, attributes, events, and `mnx-if`/`mnx-each` regions; paths count elements and comments only, and a region counts once |
+| `src/element.js` parts (`walk`/`bind`) | [DOM Parts](https://github.com/WICG/webcomponents/blob/gh-pages/proposals/DOM-Parts.md): a template plus the locations of its dynamic parts | Done: text, attributes, properties, events, `mnx-if`/`mnx-each` regions (keyed rows move with `moveBefore()`), slots; paths count elements and comments only, and a region counts once |
 | `src/element.js` `define` | Custom elements, light DOM by default, shadow opt-in | Done: signal-backed props, typed attributes, pre-upgrade capture, hydration without re-rendering, pause on detach |
-| `src/element.js` hooks | Plain functions (see the project's hooks decision) | `state`, `computed`, `watch`, `onMount`, `onUnmount`, `id` |
+| `src/element.js` hooks | Plain functions (see the project's hooks decision) | `state`, `computed`, `watch`, `onMount`, `onUnmount`, `id`, `props`, `host`, `emit` |
+| `src/element.js` slots | Light-DOM slotting with the host's child methods routed to the slots, so frameworks can keep managing the children; native `<slot>` in shadow DOM | Done |
+| `src/react.js`, `src/vue.js` | Adapters: an element as a React (18, 19) or Vue 3 component | Done |
+| `types/` | TypeScript declarations for every entry point | Done |
 | `src/element.js` forms | Form-associated custom elements (`ElementInternals`) | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled`; native control API on the element |
 | `src/element.js` context | [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md) (`context-request` / `context-provider` events) | `createContext`, `provide`, `inject`; interoperates with any protocol implementation |
 
@@ -83,3 +86,5 @@ The browser tests compile real `.mnx` files with the Rust CLI and check fresh re
 
 The effect tests were mutation-checked: removing the parent-first sort, the `untrack` around
 child runs, child disposal on re-run, or unwatching on pause each makes at least one test fail.
+
+Later suites cover composition (`composition.test.js`: props passed as values, slotted content from the parent's scope, keyed child components, hydration of nested server markup, other libraries' elements getting properties once defined), events (`events.test.js`: `CustomEvent` shape, cancelable `before…` events, inner same-named events stopped at the host, shadow components' composed events, a parent re-firing a child's event), slots under framework-style DOM calls (`slots.test.js`), and the adapters in real React 19, React 18 and Vue 3 apps (`adapters.test.js`). Each was mutation-checked the same way; mutations that turned out equivalent were removed from the code or documented where they are.

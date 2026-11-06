@@ -1,10 +1,10 @@
 [package]
 name = "mnix-compiler"
-version = "0.3.0-dev"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.97"
 publish = false
-description = "Build-time compiler for MNIX HTML-first components"
+description = "Compiler for mnx Web Components: HTML-first components to server-rendered HTML and hydrating custom elements"
 
 [[bin]]
 name = "mnix"
