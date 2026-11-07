@@ -260,16 +260,35 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
     // The body's top-level statements: where hooks are called.
     let mut setters: HashMap<SymbolId, String> = HashMap::new();
     let mut refs: HashSet<SymbolId> = HashSet::new();
+    // A `useState` value's initial expression (its span), by state name.
+    let mut inits: HashMap<String, (u32, u32)> = HashMap::new();
     if let Some(body) = &function.body {
         for statement in &body.statements {
             match statement {
                 Statement::VariableDeclaration(declaration) => {
                     convert_declaration(declaration, &hook_of, &mut work, &mut setters, &mut refs);
+                    record_inits(declaration, &hook_of, &mut inits);
                 }
                 Statement::ExpressionStatement(expression) => {
                     if let Expression::CallExpression(call) = &expression.expression {
                         if let Some(hook) = hook_of(&call.callee) {
-                            convert_effect(call, &hook, &mut work);
+                            let setter_of = |callee: &Expression<'_>| match callee {
+                                Expression::Identifier(identifier) => scoping
+                                    .get_reference(identifier.reference_id())
+                                    .symbol_id()
+                                    .and_then(|symbol| setters.get(&symbol).cloned()),
+                                _ => None,
+                            };
+                            if !convert_reset(
+                                call,
+                                &hook,
+                                statement.span(),
+                                &setter_of,
+                                &inits,
+                                &mut work,
+                            ) {
+                                convert_effect(call, &hook, &mut work);
+                            }
                         }
                     }
                 }
@@ -641,6 +660,137 @@ fn convert_declaration<'a>(
             }
         }
     }
+}
+
+/// Where each `useState(x)` starts: `x`'s span, by the state's name (not for a lazy initializer).
+fn record_inits<'a>(
+    declaration: &VariableDeclaration<'a>,
+    hook_of: &dyn Fn(&Expression<'a>) -> Option<String>,
+    inits: &mut HashMap<String, (u32, u32)>,
+) {
+    for declarator in &declaration.declarations {
+        let Some(Expression::CallExpression(call)) = &declarator.init else {
+            continue;
+        };
+        if hook_of(&call.callee).as_deref() != Some("useState") {
+            continue;
+        }
+        let BindingPattern::ArrayPattern(pattern) = &declarator.id else {
+            continue;
+        };
+        let Some(Some(BindingPattern::BindingIdentifier(state))) =
+            pattern.elements.first().map(|element| element.as_ref())
+        else {
+            continue;
+        };
+        if let [argument] = call.arguments.as_slice() {
+            if !argument.is_spread()
+                && !matches!(
+                    argument,
+                    Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+                )
+            {
+                let span = argument.span();
+                inits.insert(state.name.to_string(), (span.start, span.end));
+            }
+        }
+    }
+}
+
+/// State reset when a prop changes: `useEffect(() => { setLeft(seconds) }, [seconds])`, where
+/// each setter puts its state back to what `useState` started it with, becomes
+/// `let left = from(seconds)` (or `from(seconds, false)` for another starting value), and the
+/// effect goes. Whether it applied.
+fn convert_reset(
+    call: &CallExpression<'_>,
+    hook: &str,
+    statement: oxc_span::Span,
+    setter_of: &dyn Fn(&Expression<'_>) -> Option<String>,
+    inits: &HashMap<String, (u32, u32)>,
+    work: &mut Work<'_>,
+) -> bool {
+    if hook != "useEffect" && hook != "useLayoutEffect" {
+        return false;
+    }
+    let [Argument::ArrowFunctionExpression(arrow), Argument::ArrayExpression(deps)] =
+        call.arguments.as_slice()
+    else {
+        return false;
+    };
+    let [key] = deps.elements.as_slice() else {
+        return false;
+    };
+    if key.is_spread() || key.is_elision() || !arrow.params.items.is_empty() {
+        return false;
+    }
+    let text = |span: oxc_span::Span| {
+        work.source[span.start as usize..span.end as usize]
+            .trim()
+            .to_owned()
+    };
+    let key = text(key.span());
+    let mut expressions = Vec::new();
+    match (&arrow.body, arrow.get_expression()) {
+        (_, Some(expression)) => expressions.push(expression),
+        (oxc_ast::ast::ArrowFunctionBody::FunctionBody(body), None) => {
+            for body_statement in &body.statements {
+                let Statement::ExpressionStatement(expression) = body_statement else {
+                    return false;
+                };
+                expressions.push(&expression.expression);
+            }
+        }
+        _ => return false,
+    }
+    let mut resets = Vec::new();
+    for expression in expressions {
+        let Expression::CallExpression(set) = expression.without_parentheses() else {
+            return false;
+        };
+        let (Some(state), [value]) = (setter_of(&set.callee), set.arguments.as_slice()) else {
+            return false;
+        };
+        if value.is_spread() {
+            return false;
+        }
+        let Some(&(start, end)) = inits.get(&state) else {
+            return false;
+        };
+        let value = text(value.span());
+        if work.source[start as usize..end as usize].trim() != value {
+            return false;
+        }
+        resets.push((start, end, value));
+    }
+    if resets.is_empty() {
+        return false;
+    }
+    for (start, end, value) in resets {
+        let linked = if value == key {
+            format!("from({key})")
+        } else {
+            format!("from({key}, {value})")
+        };
+        work.edit(start, end, &linked);
+    }
+    // The whole line, when the effect is alone on its lines.
+    let bytes = work.source.as_bytes();
+    let mut start = statement.start as usize;
+    while start > 0 && matches!(bytes[start - 1], b' ' | b'\t') {
+        start -= 1;
+    }
+    let mut end = statement.end as usize;
+    if (start == 0 || bytes[start - 1] == b'\n') && bytes.get(end) == Some(&b'\n') {
+        end += 1;
+    } else {
+        start = statement.start as usize;
+    }
+    work.remove(start as u32, end as u32);
+    work.used.insert("from");
+    work.changes.push(format!(
+        "`{hook}` that reset state when `{key}` changed became `from({key})`: the state follows it until assigned, and starts over when it changes"
+    ));
+    true
 }
 
 /// `useEffect(fn, [])` → `onMount(fn)`; `useEffect(fn, deps)` or `useEffect(fn)` →

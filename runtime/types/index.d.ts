@@ -65,6 +65,13 @@ export declare function signal<T>(value: T): T;
 export declare function hasSlot(name?: string): Signal.State<boolean>;
 /** False while the element's markup is the server's (and on the server); true once it has started. The host also gets `:state(hydrated)`. */
 export declare function hydrated(): Signal.State<boolean>;
+/**
+ * State that follows a prop until it's assigned, and starts over when the prop changes:
+ * `let left = from(seconds)` in a `.mnx` script. With a second argument, it starts as that
+ * value instead: `let running = from(seconds, false)`. Elsewhere, pass functions or signals.
+ */
+export declare function from<T>(source: T | (() => T) | Signal.State<T> | Signal.Computed<T>): Signal.Computed<T> & { set(value: T): void };
+export declare function from<T>(source: unknown, start: T | (() => T) | Signal.State<T> | Signal.Computed<T>): Signal.Computed<T> & { set(value: T): void };
 
 /**
  * In a JSX component's parameters, `value = model(0)` makes `value` two-way: assigning it fires

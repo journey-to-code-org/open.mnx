@@ -24,6 +24,7 @@ useBrowser({
   'pick-list': join(here, 'fixtures/pick-list.mnx'),
   'slot-card': join(here, 'fixtures/slot-card.mnx'),
   'slot-card-shadow': join(here, 'fixtures/slot-card-shadow.mnx'),
+  countdown: join(here, 'fixtures/countdown.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -507,6 +508,25 @@ test('an empty URL leaves the attribute off, quietly; "[object Object]" from a f
   // element keeps its default meanwhile, without a warning.
   assert.deepEqual(await page.$$eval('mnx-header li', (items) => items.map((item) => item.textContent)), ['sample data', 'additional data']);
   assert.deepEqual(messages.filter((message) => !message.includes('blocked an unsafe URL')), []);
+  await page.close();
+});
+
+test('from(): state that follows a prop until it is assigned, and starts over when the prop changes', async () => {
+  const html = compiler(join(here, 'fixtures/countdown.mnx'));
+  assert.match(html, /<output>10<\/output>/, 'the server renders the prop');
+  const { page, messages } = await open(html, { modules: ['countdown'] });
+  const step = (code) => page.evaluate(async (code) => {
+    const element = document.querySelector('mnx-countdown');
+    new Function('element', code)(element);
+    await element.updateComplete;
+    return element.querySelector('output').textContent;
+  }, code);
+  assert.equal(await step('element.querySelector("button").click(); element.querySelector("button").click()'), '8');
+  assert.equal(await step('element.seconds = 8'), '8', 'a new length starts over');
+  assert.equal(await step('element.querySelector("button").click()'), '7');
+  assert.equal(await step('element.seconds = 8'), '7', 'setting the same length changes nothing');
+  assert.equal(await step('element.seconds = 5'), '5');
+  assert.deepEqual(messages, []);
   await page.close();
 });
 

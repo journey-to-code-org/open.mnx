@@ -3,7 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { useBrowser, open, here } from './harness.js';
+import { useBrowser, open, here, production } from './harness.js';
+
+const skip = production && 'the production build has no hot reloading';
 
 useBrowser({
   'hot-v1': join(here, 'fixtures/hot/v1.mnx'),
@@ -13,7 +15,7 @@ useBrowser({
   'hot-shadow-v2': join(here, 'fixtures/hot/shadow-v2.mnx'),
 });
 
-test('a new version of a component keeps its state, props and slotted content', async () => {
+test('a new version of a component keeps its state, props and slotted content', { skip }, async () => {
   const { page, messages } = await open('<hot-box label="B"><b>given</b></hot-box>', {
     beforeModules: 'globalThis.__MNX_HOT__ = true;',
     modules: ['hot-v1'],
@@ -45,7 +47,7 @@ test('a new version of a component keeps its state, props and slotted content', 
   await page.close();
 });
 
-test('a shadow-DOM component reloads in its shadow root', async () => {
+test('a shadow-DOM component reloads in its shadow root', { skip }, async () => {
   const { page, messages } = await open('<hot-shadow label="S"><b>given</b></hot-shadow>', {
     beforeModules: 'globalThis.__MNX_HOT__ = true;',
     modules: ['hot-shadow-v1'],
@@ -65,7 +67,7 @@ test('a shadow-DOM component reloads in its shadow root', async () => {
   await page.close();
 });
 
-test('without hot module replacement, a second definition is ignored', async () => {
+test('without hot module replacement, a second definition is ignored', { skip }, async () => {
   const { page, messages } = await open('<hot-box></hot-box>', { modules: ['hot-v1', 'hot-v2'] });
   assert.equal(await page.textContent('hot-box button'), 'A: 0');
   assert.deepEqual(messages, []);

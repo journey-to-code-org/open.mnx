@@ -306,6 +306,7 @@ fn lower_uncached(
     let mut components: HashMap<String, (String, u32)> = HashMap::new(); // local → (specifier, at)
     let mut function = None;
     let mut export_start = 0;
+    let mut from_names: Vec<String> = Vec::new(); // `from` from the runtime, by local name
     for statement in &program.body {
         let span = statement.span();
         match statement {
@@ -314,6 +315,9 @@ fn lower_uncached(
                 if specifier == crate::script::RUNTIME {
                     for item in import.specifiers.iter().flatten() {
                         if let ImportDeclarationSpecifier::ImportSpecifier(named) = item {
+                            if named.imported.name().as_str() == "from" {
+                                from_names.push(named.local.name.to_string());
+                            }
                             if named.imported.name().as_str() == "emit" {
                                 return Err(error_at(
                                     source,
@@ -449,6 +453,7 @@ fn lower_uncached(
         loader,
         tags: HashMap::new(),
         props: Vec::new(),
+        from: from_names,
     };
     lowering.parameters(function)?;
     let body = function
@@ -689,6 +694,8 @@ struct Lowering<'s, 'l> {
     loader: Option<Loader<'l>>,
     tags: HashMap<String, String>,
     props: Vec<PropOut>,
+    /// The local names of the runtime's `from` (`let left = from(seconds)`).
+    from: Vec<String>,
 }
 
 impl Lowering<'_, '_> {
@@ -1347,5 +1354,8 @@ impl reactive::Names for JsxNames<'_, '_, '_> {
     }
     fn in_script(&self) -> bool {
         self.context == Context::Script
+    }
+    fn is_from(&self, name: &str) -> bool {
+        self.lowering.from.iter().any(|from| from == name)
     }
 }

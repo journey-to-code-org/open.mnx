@@ -12,22 +12,27 @@
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
+      "production": "./dist/production/index.js",
       "default": "./src/index.js"
     },
     "./signal": {
       "types": "./types/signal.d.ts",
+      "production": "./dist/production/signal.js",
       "default": "./src/signal.js"
     },
     "./effect": {
       "types": "./types/effect.d.ts",
+      "production": "./dist/production/effect.js",
       "default": "./src/effect.js"
     },
     "./react": {
       "types": "./types/react.d.ts",
+      "production": "./dist/production/react.js",
       "default": "./src/react.js"
     },
     "./vue": {
       "types": "./types/vue.d.ts",
+      "production": "./dist/production/vue.js",
       "default": "./src/vue.js"
     },
     "./angular": {
@@ -36,13 +41,15 @@
     },
     "./server": {
       "types": "./types/server.d.ts",
+      "production": "./dist/production/server.js",
       "default": "./src/server.js"
     }
   },
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
     "test:browser": "node --test \"test/browser/*.test.js\"",
-    "test:tools": "node --test \"test/tools/*.test.js\""
+    "test:tools": "node --test \"test/tools/*.test.js\"",
+    "build:production": "node scripts/build-production.js"
   },
   "engines": {
     "node": ">=20"
@@ -93,6 +100,7 @@
   },
   "files": [
     "src",
+    "dist",
     "fesm2022",
     "types"
   ]

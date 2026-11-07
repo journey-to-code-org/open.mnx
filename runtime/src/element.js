@@ -87,16 +87,54 @@ function hooks(name) {
 export const signal = (value) => value;
 
 export const state = (value, options) => {
+  // @hot (left out of the production build: scripts/build-production.js)
   // During a hot reload, a component's state keeps its value: by position, like hooks, unless
   // the edit changed what kind of value it holds.
   const kept = current?.kept;
   const at = current?.states?.length ?? 0;
   if (kept && at < kept.length && kind(kept[at]) === kind(value)) value = kept[at];
+  // @hot-end
   const signal = new Signal.State(value, options);
   current?.states?.push(signal);
   return signal;
 };
+/**
+ * State that follows a prop until it's assigned, and starts over when the prop changes:
+ *
+ *   let left = from(seconds)          // a timer's time left: counts down, resets on a new length
+ *   let running = from(seconds, false) // false, and false again whenever `seconds` changes
+ *
+ * With a second argument, the state starts as that value instead, each time the first changes.
+ * In a `.mnx` script the compiler passes both as functions (`from(() => seconds)`), so the state
+ * can follow them. Outside one, pass a function or a signal.
+ */
+export function from(source, start) {
+  const read = (value) => (typeof value === 'function' ? value() : isSignal(value) ? value.get() : value);
+  // A fresh box each time the source changes, so an assignment made against one value of the
+  // source is dropped once it moves on (even back to the same value).
+  const latest = new Signal.Computed(() => {
+    const value = read(source);
+    return { value: start === undefined ? value : read(start) };
+  });
+  const assigned = new Signal.State(null);
+  const linked = new Signal.Computed(() => {
+    const base = latest.get();
+    const own = assigned.get();
+    return own && own.base === base ? own.value : base.value;
+  });
+  linked.set = (value) => assigned.set({ base: untrack(() => latest.get()), value });
+  // @hot (left out of the production build: scripts/build-production.js)
+  // A hot reload keeps an assigned value, by position, like state().
+  const kept = current?.kept;
+  const at = current?.states?.length ?? 0;
+  if (kept && at < kept.length && kind(kept[at]) === kind(untrack(() => linked.get()))) linked.set(kept[at]);
+  // @hot-end
+  current?.states?.push(linked);
+  return linked;
+}
+// @hot
 const kind = (value) => (value === null || value === undefined ? 'empty' : Array.isArray(value) ? 'array' : typeof value);
+// @hot-end
 export const computed = (fn, options) => new Signal.Computed(fn, options);
 
 /**
@@ -1314,9 +1352,11 @@ export function $define(tag, definition) {
   return defineElement(tag, definition);
 }
 
+// @hot (left out of the production build: scripts/build-production.js)
 /** What a hot reload can't change without a full page reload: the element's interface. */
 const shape = ({ props = {}, shadow = false, form = false, events = [], styled = false, inPage = false }) => JSON.stringify([props, shadow, form, events, styled, inPage]);
 const HOT = Symbol('mnx.hot');
+// @hot-end
 
 function defineElement(tag, definition) {
   const { props = {}, shadow = false, form = false, events = [], styled = false, inPage = false } = definition;
@@ -1328,15 +1368,19 @@ function defineElement(tag, definition) {
   const ownSheets = () => (styles == null ? [] : [(sheet ??= toSheet(styles))]);
   const existing = customElements.get(tag);
   if (existing) {
+    // @hot (left out of the production build: scripts/build-production.js)
     // The same tag again: in development (with hot module replacement), a new version of the
     // component, swapped into the live elements; otherwise the first definition stands.
     if (globalThis.__MNX_HOT__ && existing[HOT]) existing.hotReloaded = existing[HOT](definition);
+    // @hot-end
     return existing;
   }
   const componentTemplate = { content: blueprint({ template }) };
   let templateSignature = signature(childRange(componentTemplate.content));
   let instances = 0;
+  // @hot (left out of the production build: scripts/build-production.js)
   const live = new Set(); // WeakRefs to the elements, kept only for hot reloads
+  // @hot-end
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
   let internals; // (element) => its ElementInternals; set in the static block below
@@ -1345,6 +1389,7 @@ function defineElement(tag, definition) {
     static mnx = describe(tag, { props, shadow, form, slots, events, styled });
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
+    // @hot
     /** Swap in a new version of the component (see above); false if its interface changed. */
     static [HOT](next) {
       if (shape(next) !== shape(definition)) return false;
@@ -1363,6 +1408,7 @@ function defineElement(tag, definition) {
       }
       return true;
     }
+    // @hot-end
     #context = null;
     #signals = {};
     #given = new Set(); // props set from outside (property, attribute, or before upgrade)
@@ -1474,6 +1520,7 @@ function defineElement(tag, definition) {
       for (const fn of this.#hooks?.formDisabled ?? []) fn(disabled);
     }
 
+    // @hot
     /** Re-run the (new) script and template, keeping props, state and slotted content. */
     #reload() {
       if (!this.#scope) return;
@@ -1497,6 +1544,7 @@ function defineElement(tag, definition) {
         this.#started();
       }
     }
+    // @hot-end
 
     #boot(kept = null, reloading = false) {
       const element = this;
@@ -1508,7 +1556,9 @@ function defineElement(tag, definition) {
       // The server's stand-in for this control's value, for submitting before JavaScript
       // (@mnx/server's injectShadowRoots): the element's own form value takes over now.
       if (form) for (const child of this.querySelectorAll(':scope>input[data-mnx-fallback]')) child.remove();
+      // @hot (left out of the production build: scripts/build-production.js)
       if (globalThis.__MNX_HOT__ && !reloading) live.add(new WeakRef(this));
+      // @hot-end
       const root = shadow ? (this.shadowRoot ?? this.attachShadow({ mode: 'open' })) : this;
       if (shadow) {
         adopt(root, [...globalSheets, ...ownSheets()]);

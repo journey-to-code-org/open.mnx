@@ -113,6 +113,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         &component.script.body,
         &prop_names,
         &makers,
+        &component.script.from,
         component
             .script
             .start

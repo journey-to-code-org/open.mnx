@@ -7,7 +7,10 @@ import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import * as playwright from 'playwright';
+
+// MNX_BROWSER picks the engine: chromium (the default), firefox or webkit.
+const launcher = playwright[process.env.MNX_BROWSER || 'chromium'];
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const examples = join(here, '..');
@@ -23,7 +26,7 @@ before(async () => {
   // The component library the React and Vue apps import (ui/), which `npm test` builds first
   // (test/build-ui.mjs); built here only when a test file runs on its own without it.
   if (!existsSync(join(examples, 'ui/dist/package.json'))) await import('./build-ui.mjs');
-  browser = await chromium.launch();
+  browser = await launcher.launch();
 });
 after(async () => {
   await browser?.close();

@@ -49,6 +49,8 @@ export interface MnxOptions {
   prefix?: string;
   /** Keep compiled output (default true); false recompiles on every request, for development. */
   cache?: boolean;
+  /** Serve the runtime's production build, without hot reloading (default: `NODE_ENV` is `production`). */
+  production?: boolean;
 }
 
 export declare function createMnx(options?: MnxOptions): Mnx;

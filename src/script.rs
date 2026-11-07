@@ -67,6 +67,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
     let mut hydrated_names: Vec<String> = Vec::new();
     let mut calls: Vec<(usize, String)> = Vec::new();
+    // `from` imported from @mnx/runtime, and `let x = from(arg)` bindings: (binding, callee,
+    // the argument's text, whether it's a `let`, where it is).
+    let mut from_names: Vec<String> = Vec::new();
+    let mut linked: Vec<(usize, String, String, bool, u32)> = Vec::new();
     for statement in &parsed.program.body {
         match statement {
             Statement::VariableDeclaration(declaration) => {
@@ -97,8 +101,30 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         (Some(identifier), Some(init)) => {
                             let text =
                                 &source[init.span().start as usize..init.span().end as usize];
-                            if matches!(init, oxc_ast::ast::Expression::CallExpression(_)) {
+                            if let oxc_ast::ast::Expression::CallExpression(call) = init {
                                 calls.push((script.bindings.len(), text.to_owned()));
+                                if let (
+                                    oxc_ast::ast::Expression::Identifier(callee),
+                                    [argument] | [_, argument],
+                                ) = (&call.callee, call.arguments.as_slice())
+                                {
+                                    // `from(() => …)` is already compiled (JSX lowering).
+                                    let compiled = matches!(
+                                        argument,
+                                        oxc_ast::ast::Argument::ArrowFunctionExpression(_)
+                                    );
+                                    if !argument.is_spread() && !compiled {
+                                        let span = argument.span();
+                                        linked.push((
+                                            script.bindings.len(),
+                                            callee.name.to_string(),
+                                            source[span.start as usize..span.end as usize]
+                                                .to_owned(),
+                                            mutable,
+                                            call.span.start,
+                                        ));
+                                    }
+                                }
                             }
                             script.bindings.push(Binding {
                                 name: identifier.name.to_string(),
@@ -145,6 +171,11 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             && named.imported.name().as_str() == "hydrated"
                         {
                             hydrated_names.push(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(RUNTIME)
+                            && named.imported.name().as_str() == "from"
+                        {
+                            from_names.push(named.local.name.to_string());
                         }
                     }
                 }
@@ -220,6 +251,25 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             script.bindings[index].init = Some(expression::Expression::Boolean(false));
         }
     }
+    // `let x = from(prop)` starts as `prop`, so on the server it's the argument's value.
+    for (index, callee, argument, mutable, offset) in linked {
+        if !from_names.contains(&callee) {
+            continue;
+        }
+        if !mutable {
+            return Err(Diagnostic::new(
+                at(offset),
+                format!("`{callee}()` makes state that follows a prop until it's assigned; declare it with `let`"),
+            )
+            .with_help(format!(
+                "a `const` that reads the prop already follows it: `const {} = {argument}`",
+                script.bindings[index].name
+            )));
+        }
+        script.bindings[index].init = expression::parse(&argument).ok();
+        script.bindings[index].source = Some(argument);
+    }
+    script.from = from_names;
     Ok(script)
 }
 

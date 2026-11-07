@@ -7,7 +7,10 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { build } from 'esbuild';
-import { useBrowser, open, here, site } from './harness.js';
+import { useBrowser, open, here, site, engine } from './harness.js';
+
+// The DevTools protocol is Chromium's.
+const skip = engine !== 'chromium' && 'counting live objects needs Chromium';
 
 useBrowser({
   shared: join(here, 'fixtures/shared.mnx'),
@@ -86,7 +89,7 @@ const settle = (page) => page.evaluate(async () => {
   await Promise.all([...document.querySelectorAll('*')].filter((el) => el.localName.startsWith('mnx-')).map((el) => el.updateComplete));
 });
 
-test('removed elements are collected, even when they read a signal that outlives them', async () => {
+test('removed elements are collected, even when they read a signal that outlives them', { skip }, async () => {
   const { page, messages } = await open('<div id="box"></div>', { modules: ['shared', 'card', 'badge', 'inbox'] });
   await page.evaluate(() => {
     const box = document.getElementById('box');

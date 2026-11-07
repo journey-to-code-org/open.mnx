@@ -91,6 +91,8 @@ pub struct Script {
     pub components: Vec<ComponentImport>,
     /// Everything else, verbatim: it runs once per component instance, during setup.
     pub body: String,
+    /// The local names of `from` imported from `@mnx/runtime` (`let x = from(prop)`).
+    pub from: Vec<String>,
     /// The local name of `emit` imported from `@mnx/runtime`, if the script imports it.
     pub emit: Option<String>,
     /// Every `emit("name", detail)` call, in source order.

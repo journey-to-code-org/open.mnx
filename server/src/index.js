@@ -34,12 +34,15 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 /**
  * `components`: the folder of `.mnx` (and `.mnx.jsx`/`.mnx.tsx`) files. `prefix`: the URL path
  * the browser modules are served under. `cache`: keep compiled output (turn it off in
- * development to pick up edits).
+ * development to pick up edits). `production`: serve the runtime's production build, without hot
+ * reloading (by default when `NODE_ENV` is `production`).
  */
-export function createMnx({ components = 'components', prefix = '/_mnx', cache = true } = {}) {
+export function createMnx({ components = 'components', prefix = '/_mnx', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@mnx/server: no components folder at ${root}`);
-  const runtimeDir = dirname(fileURLToPath(import.meta.resolve('@mnx/runtime')));
+  const sourceDir = dirname(fileURLToPath(import.meta.resolve('@mnx/runtime')));
+  const productionDir = join(sourceDir, '..', 'dist', 'production');
+  const runtimeDir = production && existsSync(productionDir) ? productionDir : sourceDir;
   const base = prefix.replace(/\/$/, '');
 
   // name (the path without its extension, "/"-separated) → file

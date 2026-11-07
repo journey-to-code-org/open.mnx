@@ -6,13 +6,13 @@
   @fires running - It started or paused; `detail` is whether it's running.
 -->
 <script>
-  import { effect, emit, onMount } from '@mnx/runtime'
+  import { emit, from, onMount } from '@mnx/runtime'
   import './progress-ring.mnx'
 
-  let left = seconds
-  let running = false
+  // A new length (the app switched modes) starts over, stopped.
+  let left = from(seconds)
+  let running = from(seconds, false)
   let ends = 0
-  let length = seconds
   const minutes = String(Math.floor(left / 60)).padStart(2, '0')
   const rest = String(left % 60).padStart(2, '0')
 
@@ -38,17 +38,7 @@
   }
   onMount(() => {
     const timer = setInterval(tick, 250)
-    // A new length (the app switched modes) starts over.
-    const stop = effect(() => {
-      if (seconds === length) return
-      length = seconds
-      running = false
-      left = seconds
-    })
-    return () => {
-      clearInterval(timer)
-      stop?.()
-    }
+    return () => clearInterval(timer)
   })
 </script>
 <style>

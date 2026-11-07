@@ -56,6 +56,11 @@ pub trait Names {
     fn error(&self, offset: u32, message: String) -> Diagnostic;
     /// In script code, props are read through `$p`; in templates, the template maps them.
     fn in_script(&self) -> bool;
+    /// Whether `name` is `from` from the runtime: `let x = from(prop)` passes the prop as a
+    /// function, so the state can follow it.
+    fn is_from(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 /// A replacement of `range` (empty for an insertion) in the source.
@@ -142,6 +147,24 @@ pub fn rewrite_statement(
                 for declarator in &declaration.declarations {
                     match &declarator.init {
                         Some(init) => {
+                            // `let x = from(prop)`: `from(() => (prop))`, already state.
+                            if let Expression::CallExpression(call) = init.without_parentheses() {
+                                if let Expression::Identifier(callee) = &call.callee {
+                                    let arguments = call.arguments.as_slice();
+                                    if names.is_from(&callee.name)
+                                        && (1..=2).contains(&arguments.len())
+                                        && !arguments.iter().any(|argument| argument.is_spread())
+                                    {
+                                        for argument in arguments {
+                                            let span = argument.span();
+                                            rewriter.insert(span.start, "() => (".to_owned());
+                                            rewriter.insert(span.end, ")".to_owned());
+                                        }
+                                        rewriter.visit_expression(init);
+                                        continue;
+                                    }
+                                }
+                            }
                             let span = init.span();
                             rewriter.insert(span.start, format!("{STATE}("));
                             rewriter.visit_expression(init);
@@ -409,10 +432,14 @@ struct ScriptNames<'s> {
     scoping: &'s oxc_semantic::Scoping,
     kinds: std::collections::HashMap<oxc_syntax::symbol::SymbolId, Kind>,
     props: &'s [String],
+    from: &'s [String],
     start: crate::diagnostic::Span,
 }
 
 impl Names for ScriptNames<'_> {
+    fn is_from(&self, name: &str) -> bool {
+        self.from.iter().any(|from| from == name)
+    }
     fn kind(&self, identifier: &IdentifierReference<'_>) -> Option<Kind> {
         let reference = self.scoping.get_reference(identifier.reference_id());
         match reference.symbol_id() {
@@ -451,6 +478,7 @@ pub fn rewrite_script(
     body: &str,
     props: &[String],
     makers: &[String],
+    from: &[String],
     start: crate::diagnostic::Span,
 ) -> Result<ScriptCode, Diagnostic> {
     let allocator = oxc_allocator::Allocator::default();
@@ -464,6 +492,7 @@ pub fn rewrite_script(
         scoping: semantic.scoping(),
         kinds: std::collections::HashMap::new(),
         props,
+        from,
         start,
     };
     let mut code = ScriptCode::default();

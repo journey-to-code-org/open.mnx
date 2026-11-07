@@ -44,11 +44,54 @@ jobs:
         working-directory: runtime
       - run: npm run test:browser
         working-directory: runtime
+      # The same suite on the production build (no hot reloading).
+      - run: npm run test:browser
+        working-directory: runtime
+        env:
+          MNX_RUNTIME: production
       - run: npm run test:tools
         working-directory: runtime
       # The component registry: keyboard and screen-reader behaviour of each component, and its index.
       - run: node --test "registry/test/*.test.js"
       - run: node registry/build-index.mjs --check
+
+  engines:
+    name: Runtime and React/Vue apps in ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    env:
+      MNX_BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            runtime/package-lock.json
+            plugin/package-lock.json
+            examples/frameworks/package-lock.json
+      - run: npm ci
+        working-directory: runtime
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: runtime
+      - run: npm run test:browser
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npm ci
+        working-directory: examples/frameworks
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: examples/frameworks
+      - run: node --test test/react.test.js test/vue.test.js
+        working-directory: examples/frameworks
 
   plugin:
     name: Build plugin (Vite, React, Vue) and @mnx/server

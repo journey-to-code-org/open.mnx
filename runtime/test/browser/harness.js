@@ -12,9 +12,12 @@ import { fileURLToPath } from 'node:url';
 
 export const here = dirname(fileURLToPath(import.meta.url));
 export const repo = join(here, '../../..');
-const { chromium } = createRequire(import.meta.url)('playwright');
+// MNX_BROWSER picks the engine: chromium (the default), firefox or webkit.
+export const engine = process.env.MNX_BROWSER || 'chromium';
+const launcher = createRequire(import.meta.url)('playwright')[engine];
 
 export let site;
+export const production = process.env.MNX_RUNTIME === 'production';
 let server, origin, browser;
 const pages = new Map();
 
@@ -30,7 +33,8 @@ export function useBrowser(components, files = {}) {
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   site = mkdtempSync(join(tmpdir(), 'mnx-browser-'));
-  cpSync(join(here, '../../src'), join(site, 'runtime'), { recursive: true });
+  // MNX_RUNTIME=production runs the suite against the production build (no hot reloading).
+  cpSync(join(here, production ? '../../dist/production' : '../../src'), join(site, 'runtime'), { recursive: true });
   for (const [path, contents] of Object.entries(files)) writeFileSync(join(site, path), contents);
   for (const [name, path] of Object.entries(components)) {
     writeFileSync(join(site, `${name}.js`), compiler(path, '--emit', 'js'));
@@ -51,7 +55,7 @@ before(async () => {
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
-  browser = await chromium.launch();
+  browser = await launcher.launch();
 });
 
 after(async () => {
