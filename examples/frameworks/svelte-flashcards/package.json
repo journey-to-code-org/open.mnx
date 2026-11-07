@@ -1,0 +1,20 @@
+{
+  "name": "mnx-example-svelte-flashcards",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mnx/runtime": "file:../../../runtime",
+    "svelte": "5.57.3"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "file:../../../compiler",
+    "@mnx/unplugin": "file:../../../plugin",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "vite": "8.3.6"
+  }
+}

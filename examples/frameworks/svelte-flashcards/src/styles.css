@@ -1,0 +1,16 @@
+@layer base {
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfaf8; --sidebar: #f1efeb; --surface: #fff; --ink: #1f1d1a; --muted: #77716a; --line: #e6e2dc;
+    --accent: #b5482a; --card-front: #fff; --card-back: #fff8ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --sidebar: #1f1d1b; --surface: #26231f; --ink: #f0ebe4; --muted: #a59e95; --line: #35312c; --accent: #f08a62; --card-front: #2a2622; --card-back: #2f2a22; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); }
+  button, input { font: inherit; color: inherit; }
+  input { padding: 0.55rem 0.7rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); }
+  button { padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: transparent; color: white; }
+}
