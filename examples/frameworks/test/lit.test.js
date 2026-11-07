@@ -8,7 +8,7 @@ import { launch, settle, texts } from './harness.js';
 
 test('lit-chat: a team chat built from mnx elements inside a Lit app', async () => {
   const { page, messages, url } = await launch('lit-chat');
-  await page.goto(`${url}/?fast`);
+  await page.goto(`${url}/?delay=300`);
   await page.waitForSelector('chat-message article');
   await settle(page);
   const go = async (selector) => { await page.click(selector); await settle(page); };
@@ -53,15 +53,23 @@ test('lit-chat: a team chat built from mnx elements inside a Lit app', async () 
   await field.pressSequentially('of text');
   await settle(page);
   assert.equal(await field.inputValue(), 'Two lines\nof text');
+  // Record who shows as typing, however briefly.
+  await page.evaluate(() => {
+    window.typed = [];
+    const dots = document.querySelector('team-chat').shadowRoot.querySelector('typing-dots');
+    new MutationObserver(() => {
+      const who = dots.querySelector('.who')?.textContent;
+      if (who && !window.typed.includes(who)) window.typed.push(who);
+    }).observe(dots, { subtree: true, childList: true, characterData: true });
+  });
   await field.press('Enter');
   await settle(page);
   assert.equal(await field.inputValue(), '', 'sent and cleared');
   assert.equal(await message(3).locator('p').textContent(), 'Two lines\nof text');
   // Someone answers, typing first.
-  await page.waitForSelector('typing-dots .who');
-  assert.equal(await page.textContent('typing-dots .who'), 'Grace Hopper is typing');
   await page.waitForFunction(() => document.querySelector('team-chat').shadowRoot.querySelectorAll('chat-message').length === 5);
   await settle(page);
+  assert.deepEqual(await page.evaluate(() => window.typed), ['Grace Hopper is typing']);
   assert.equal(await message(4).locator('.author').textContent(), 'Grace Hopper');
   assert.equal(await message(4).locator('.quote').textContent(), 'Ada Lovelace: Two lines\nof text');
   assert.equal(await page.locator('typing-dots .who').count(), 0);

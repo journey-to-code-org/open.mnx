@@ -11,8 +11,9 @@ const minutes = (n) => Date.now() - n * 60000;
 let next = 1;
 const message = (author, text, time, extra = {}) => ({ id: `m${next++}`, author, text, time, reactions: {}, replyTo: null, ...extra });
 
-// Replies from the rest of the team, so the room feels alive. `?fast` in the URL makes them quick.
-const DELAY = new URLSearchParams(location.search).has('fast') ? 60 : 1400;
+// Replies from the rest of the team, so the room feels alive. `?delay=<ms>` in the URL changes
+// how long they take (the tests make them quick).
+const DELAY = Number(new URLSearchParams(location.search).get('delay')) || 1400;
 const ANSWERS = {
   'Ada Lovelace': ['Agreed. I can take the first pass.', 'Let me sketch the analysis and share it.'],
   'Grace Hopper': ['Ship it, then make it better.', "It's easier to ask forgiveness than permission."],

@@ -111,8 +111,9 @@ fn javascript_inlines_the_stylesheet_or_imports_it_through_the_bundler() {
         "{light}"
     );
     assert!(
-        light.contains("  styled: true,\n  template"),
-        "the bundler adds the CSS to the page: {light}"
+        light.contains("import $styles from \"/card.mnx?mnx=style&inline&lang.css\";")
+            && light.contains("  styled: true,\n  styles: $styles,\n  inPage: true,\n  template"),
+        "the bundler adds the CSS to the page, and the text comes for shadow roots: {light}"
     );
     let shadow = compile_js_for_bundler(
         "<style>p{}</style><mnx-panel shadow><p>x</p></mnx-panel>",
