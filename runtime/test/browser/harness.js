@@ -80,7 +80,9 @@ export async function open(body, { modules = [], beforeModules = '' } = {}) {
 </script>`);
   const page = await browser.newPage();
   const messages = [];
-  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  // React's development build marks its performance tracks with console.timeStamp(), which
+  // Firefox reports as console messages.
+  page.on('console', (message) => message.type() !== 'timeStamp' && messages.push(`${message.type()}: ${message.text()}`));
   page.on('pageerror', (error) => messages.push(`pageerror: ${error.message}`));
   await page.goto(origin + path);
   await page.waitForFunction(() => window.ready === true);

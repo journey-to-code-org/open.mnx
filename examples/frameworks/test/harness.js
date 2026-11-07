@@ -66,7 +66,9 @@ export async function launch(name, options = {}) {
   const url = await serve(await build(name));
   const page = await browser.newPage(options);
   const messages = [];
-  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
+  // React's development build marks its performance tracks with console.timeStamp(), which
+  // Firefox reports as console messages.
+  page.on('console', (message) => message.type() !== 'timeStamp' && messages.push(`${message.type()}: ${message.text()}`));
   page.on('pageerror', (error) => messages.push(`pageerror: ${error.message}`));
   await page.goto(url);
   return { page, messages, url };

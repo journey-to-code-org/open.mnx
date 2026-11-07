@@ -110,7 +110,7 @@ test('removed elements are collected, even when they read a signal that outlives
 });
 
 for (const framework of ['React', 'Vue']) {
-  test(`elements ${framework} unmounts are collected`, async () => {
+  test(`elements ${framework} unmounts are collected`, { skip }, async () => {
     const { page, messages } = await open('', { modules: ['card', 'rating', 'leak-apps'] });
     await page.evaluate((name) => { window.unmount = window[`mount${name}`](100); }, framework);
     await settle(page);

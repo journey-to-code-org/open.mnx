@@ -58,6 +58,24 @@ Now, whenever the component assigns `checked`, the element fires `checkedchange`
 | Svelte | `<toggle-switch checked={enabled} oncheckedchange={(event) => (enabled = event.detail)}>` |
 | Angular | `<toggle-switch mnxModel="checked" [(ngModel)]="enabled">` with `MnxModel` |
 
+## State that starts from a prop
+
+`let left = seconds` reads the prop once: if the app later sets a new `seconds`, `left` keeps counting from the old one. For state that should start over when a prop changes, use `from()`:
+
+```html
+<script>
+  import { from } from '@mnx/runtime'
+  let left = from(seconds)            // follows `seconds`, until the timer counts down
+  let running = from(seconds, false)  // `false`, and `false` again on a new length
+</script>
+<focus-timer seconds={1500}>
+  <button onclick={() => (running = !running)}>{running ? 'Pause' : 'Start'}</button>
+  <time>{left}</time>
+</focus-timer>
+```
+
+Assigning `left` works like any `let`. When `seconds` changes, the assignment is dropped and `left` is the new `seconds`. On the server it renders as the prop's value.
+
 ## Typing props
 
 A prop's type comes from its default: `count={0}` is a `number`, `label="Hi"` a `string`. When the default doesn't say enough (`null`, `[]`), declare the type in a TypeScript script:

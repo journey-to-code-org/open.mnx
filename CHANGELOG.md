@@ -2,6 +2,21 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.9.0 — 2026-11-07
+
+The additive part of 3.0, early (`plan/roadmap-3.0.md`, 2.9). Nothing changes meaning.
+
+### Added
+
+- **`from()`** from `@mnx/runtime`: `let left = from(seconds)` is state that follows a prop until it's assigned, and starts over when the prop changes. `let running = from(seconds, false)` starts as `false` instead, again on each change. It works in `.mnx` scripts and JSX components, renders on the server as the prop's value, and a `const` with `from()` is an error that suggests the plain `const`. `mnx convert` turns React's `useState(prop)` plus a `useEffect` that resets it on `[prop]` into `from()`, and drops the effect.
+- **A production build of the runtime** (`dist/production/`), without hot reloading. Bundlers pick it through the `production` export condition (Vite and webpack do in production builds), and `@mnx/server` serves it when `NODE_ENV` is `production` (or `production: true`). It's 12.2 KB gzipped, against 12.7 KB for the development build.
+- **Firefox and WebKit in CI:** the runtime's browser suite and the React and Vue example apps run in both, through Playwright (`MNX_BROWSER=firefox|webkit`). The runtime's browser suite also runs on the production build (`MNX_RUNTIME=production`).
+
+### Examples and docs
+
+- The Electron focus timer uses `from()` for its time left and running flag, and drops a saved length and a five-line effect.
+- The README, the guide's props page and the runtime README cover `from()` and the production build; `docs/browser-support.md` covers the engines tested.
+
 ## 2.8.0 — 2026-11-07
 
 Server-first (`plan/roadmap-server.md`, 2.8). All additive.

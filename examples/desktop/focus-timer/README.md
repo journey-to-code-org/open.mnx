@@ -33,10 +33,10 @@ app through Playwright's Electron support, with a fake clock so 25 minutes take 
 - **`window.focus` is taken.** The first name for the preload's API was `focus`, which is
   `window.focus()`, so `contextBridge` refused it. (Not an mnx problem, but worth knowing in an
   app called Focus.)
-- **A prop that seeds state needs an effect to follow changes.** `let left = seconds` reads
-  `seconds` once. When the app switches modes, the timer has to notice the new length with an
-  `effect()`. That's the same pattern `mnx convert` produces for React's
-  `useState(prop)` + `useEffect`, and it suggests sugar such as a `let` that resets when a prop
-  changes.
+- **A prop that seeds state needed an effect to follow changes** (fixed in 2.9). `let left =
+  seconds` reads `seconds` once, so when the app switched modes, the timer noticed the new length
+  with a saved copy and an `effect()`. Now it's `let left = from(seconds)` and
+  `let running = from(seconds, false)`: both start over on a new length. `mnx convert` writes the
+  same for React's `useState(prop)` plus a reset effect.
 - **The renderer's `document.title` isn't the window's title.** Tests read the window's title
   from the main process.
