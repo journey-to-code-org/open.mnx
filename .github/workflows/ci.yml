@@ -145,12 +145,12 @@ jobs:
           MONGODB_URI: mongodb://localhost:27017
 
   meta:
-    name: Meta-framework examples (Next.js, Nuxt, SvelteKit)
+    name: Meta-framework examples (${{ matrix.app }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        app: [next-conference, nuxt-bookshop, sveltekit-workouts]
+        app: [next-conference, nuxt-bookshop, sveltekit-workouts, react-router-trips, solidstart-potluck, eleventy-trails]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master

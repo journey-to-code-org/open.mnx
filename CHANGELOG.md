@@ -2,6 +2,21 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.7 — 2026-11-07
+
+### Examples
+
+Three more framework apps in `examples/meta/`, each with a Chromium test in CI:
+- **`react-router-trips/`**: a shared trip budget in React Router 8's framework mode. It imports `.mnx` files as React components through the Vite plugin, and uses form-associated controls in `<Form>` with a server `action` and a `useFetcher` delete.
+- **`solidstart-potluck/`**: a potluck sign-up in SolidStart 2. It uses elements directly with `prop:` and `on:`, as form controls posting to a server `action`.
+- **`eleventy-trails/`**: a static trail guide in Eleventy 3. A shortcode renders the components at build time, and a transform adds their CSS and modules, with no bundler. The tests also build it minified, both keeping mnx's markers and not.
+
+What they found (in `examples/meta/README.md`):
+- Solid's hydration tolerates light-DOM components, unlike React, Vue and Svelte.
+- React Router renders only the host tags, as the other frameworks do, and so does SolidStart.
+- An HTML minifier that removes comments removes the hydration markers. html-minifier-terser's `ignoreCustomComments: [/^[[\]?!]*$/]` keeps them.
+- The plugin doesn't recognise React Router as a React project, so it needs `mnx({ framework: 'react' })`.
+
 ## 2.6.6 — 2026-11-07
 
 ### Fixed

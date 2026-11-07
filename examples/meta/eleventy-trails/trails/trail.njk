@@ -1,0 +1,19 @@
+---
+layout: layout.njk
+pagination:
+  data: trails
+  size: 1
+  alias: trail
+permalink: "trails/{{ trail.slug }}/"
+eleventyComputed:
+  title: "{{ trail.name }}"
+---
+<p><a href="/">← All trails</a></p>
+<h1>{{ trail.name }} {% mnx "difficulty-badge", { level: trail.difficulty } %}</h1>
+<p class="lede">{{ trail.summary }}</p>
+<dl class="stats">
+  <div><dt>Length</dt><dd>{{ trail.km }} km ({{ trail.mi }} mi)</dd></div>
+  <div><dt>Climb</dt><dd>{{ trail.climb }} m</dd></div>
+  <div><dt>Highest</dt><dd>{{ trail.high }} m</dd></div>
+</dl>
+{% mnx "elevation-profile", { points: trail.points, low: trail.low, high: trail.high, label: "Elevation along " + trail.name } %}

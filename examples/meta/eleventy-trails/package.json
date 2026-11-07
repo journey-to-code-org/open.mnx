@@ -1,0 +1,21 @@
+{
+  "name": "mnx-example-eleventy-trails",
+  "private": true,
+  "type": "module",
+  "description": "A static trail guide built with Eleventy: mnx components rendered to HTML at build time by a shortcode, and hydrated in the browser with no bundler.",
+  "scripts": {
+    "build": "eleventy",
+    "start": "eleventy --serve",
+    "pretest": "eleventy --quiet",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@11ty/eleventy": "3.1.8",
+    "@mnx/compiler": "file:../../../compiler",
+    "@mnx/runtime": "file:../../../runtime"
+  },
+  "devDependencies": {
+    "html-minifier-terser": "7.2.0",
+    "playwright": "1.63.0"
+  }
+}

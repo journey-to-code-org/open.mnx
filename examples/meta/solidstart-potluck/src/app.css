@@ -1,0 +1,13 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: #2b2720; background: #faf7f2; }
+main { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; display: grid; gap: 1.2rem; }
+h1, h2 { margin: 0; }
+h2 { font-size: 1rem; margin-bottom: 0.6rem; }
+.lede { margin: 0; color: #6b6457; }
+section { padding: 1rem; background: white; border: 1px solid #e6e1d8; border-radius: 0.7rem; }
+.signup { display: grid; gap: 0.8rem; }
+.signup > label { display: grid; gap: 0.2rem; font-weight: 600; }
+.signup input { padding: 0.45rem 0.6rem; font: inherit; font-weight: 400; border: 1px solid #d8d2c6; border-radius: 0.4rem; }
+.signup > button { justify-self: start; padding: 0.5rem 1.1rem; font: inherit; font-weight: 600; color: white; background: #b35c1e; border: 0; border-radius: 0.4rem; cursor: pointer; }
+.error { margin: 0; color: #b42318; }
+.notice { margin: 0 0 0.6rem; padding: 0.6rem 0.8rem; background: #eef7e9; border-radius: 0.5rem; }

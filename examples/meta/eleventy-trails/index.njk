@@ -1,0 +1,17 @@
+---
+layout: layout.njk
+title: Trails
+---
+<h1>Trails</h1>
+<p class="lede">{{ trails | length }} trails in the highlands, from a boardwalk to a ridge walk.</p>
+<div class="tools">
+  {% mnx "trail-filter", { max: 40 } %}
+  {% mnx "segmented-control", { value: "km", label: "Units", options: [{ value: "km", label: "km" }, { value: "mi", label: "miles" }] } %}
+</div>
+<ul class="trails">
+{% for trail in trails %}
+  <li data-level="{{ trail.difficulty }}" data-km="{{ trail.km }}">{% mnx "trail-card", { name: trail.name, href: trail.url, difficulty: trail.difficulty, km: trail.km, mi: trail.mi, climb: trail.climb, summary: trail.summary } %}</li>
+{% endfor %}
+</ul>
+<p class="none" hidden>No trails match.</p>
+<script type="module" src="/list.js"></script>

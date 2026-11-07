@@ -1,0 +1,20 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: #1d2130; background: #f4f5f8; }
+main { max-width: 44rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; display: grid; gap: 1.2rem; }
+h1, h2 { margin: 0; }
+h2 { font-size: 1rem; margin-bottom: 0.6rem; }
+section { padding: 1rem; background: white; border: 1px solid #e2e5ec; border-radius: 0.7rem; }
+.lede { margin: 0; color: #5b6275; }
+.expenses { display: grid; gap: 0.4rem; margin: 0; padding: 0; list-style: none; }
+.expenses li { display: grid; grid-template-columns: 1fr auto auto; gap: 0.8rem; align-items: center; }
+.expenses small { color: #7a8091; text-transform: capitalize; }
+.expenses form { margin: 0; }
+.expenses button { border: 0; background: none; color: #7a8091; cursor: pointer; }
+.add { display: grid; gap: 0.7rem; }
+.add > label { display: grid; gap: 0.2rem; font-weight: 600; }
+.add input[name=what], .add select { padding: 0.45rem 0.6rem; font: inherit; font-weight: 400; border: 1px solid #cfd3dd; border-radius: 0.4rem; }
+.add fieldset { display: flex; gap: 1rem; border: 0; padding: 0; margin: 0; }
+.add legend { font-weight: 600; margin-bottom: 0.2rem; }
+.add > button { justify-self: start; padding: 0.5rem 1rem; font: inherit; font-weight: 600; border: 0; border-radius: 0.4rem; background: #3341c4; color: white; cursor: pointer; }
+.add > button:disabled { opacity: 0.6; }
+.error { margin: -0.4rem 0 0; color: #c92a2a; font-size: 0.85rem; }

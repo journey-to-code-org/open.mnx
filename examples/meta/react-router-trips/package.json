@@ -1,0 +1,29 @@
+{
+  "name": "mnx-example-react-router-trips",
+  "private": true,
+  "type": "module",
+  "description": "A shared trip budget in React Router 8 (framework mode): loaders, actions and <Form>, with mnx components imported straight from .mnx files by the Vite plugin.",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "pretest": "react-router build",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@mnx/runtime": "file:../../../runtime",
+    "@react-router/node": "8.5.1",
+    "@react-router/serve": "8.5.1",
+    "isbot": "5.1.36",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.1"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "file:../../../compiler",
+    "@mnx/unplugin": "file:../../../plugin",
+    "@react-router/dev": "8.5.1",
+    "playwright": "1.63.0",
+    "vite": "8.3.6"
+  }
+}

@@ -1,0 +1,10 @@
+<!-- A trail's difficulty, as a small coloured label. -->
+<style>
+  span { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; text-transform: capitalize; }
+  span[data-level=easy] { background: #dcf2e3; color: #1f6b3a; }
+  span[data-level=moderate] { background: #fdf0d2; color: #8a5a00; }
+  span[data-level=hard] { background: #fbe0de; color: #a1251f; }
+</style>
+<difficulty-badge level="easy">
+  <span data-level={level}>{level}</span>
+</difficulty-badge>

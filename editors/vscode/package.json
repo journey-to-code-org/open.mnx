@@ -2,7 +2,7 @@
   "name": "mnx",
   "displayName": "mnx",
   "description": "Language support for mnx Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
-  "version": "2.6.6",
+  "version": "2.6.7",
   "publisher": "journey-to-code",
   "license": "ISC",
   "repository": {
