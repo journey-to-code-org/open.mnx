@@ -14,8 +14,7 @@
     draft = text
     editing = true
   }
-  function save(event) {
-    event?.preventDefault()
+  function save() {
     if (!editing) return
     editing = false
     const next = draft.trim()
@@ -33,13 +32,13 @@
 </style>
 <todo-item text done={false}>
   <mnx-if test={editing}>
-    <form onsubmit={save}>
+    <form onsubmit.prevent={save}>
       <input aria-label="Edit item" value={draft} oninput={(event) => (draft = event.target.value)} onblur={save}>
     </form>
     <mnx-else>
       <label>
         <input type="checkbox" checked={done} onchange={() => emit('toggle')}>
-        <span class={done ? "done" : ""} ondblclick={edit}>{text}</span>
+        <span class:done ondblclick={edit}>{text}</span>
       </label>
       <button type="button" class="remove" aria-label="Remove {text}" onclick={() => emit('remove')}>×</button>
     </mnx-else>

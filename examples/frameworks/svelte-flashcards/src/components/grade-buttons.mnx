@@ -3,7 +3,7 @@
   @fires grade - A grade was chosen; `detail` is 0 (Again) to 3 (Easy).
 -->
 <script>
-  import { emit, onMount } from '@mnx/runtime'
+  import { emit } from '@mnx/runtime'
 
   const GRADES = [
     { label: "Again", detail: "Didn't know it", tone: "again" },
@@ -12,15 +12,11 @@
     { label: "Easy", detail: "Instantly", tone: "easy" },
   ]
 
-  onMount(() => {
-    const listener = (event) => {
-      if (!keys || disabled || event.target.closest?.('input, textarea, select, [contenteditable]')) return
-      const index = Number(event.key) - 1
-      if (index >= 0 && index < 4) emit('grade', index)
-    }
-    document.addEventListener('keydown', listener)
-    return () => document.removeEventListener('keydown', listener)
-  })
+  // Keys 1–4 anywhere on the page, except while typing.
+  function key(event, grade) {
+    if (!keys || disabled || event.target.closest?.('input, textarea, select, [contenteditable]')) return
+    emit('grade', grade)
+  }
 </script>
 <style>
   :host { display: block; }
@@ -33,6 +29,7 @@
   .again b { color: #d0403a; } .hard b { color: #c47f00; } .good b { color: #1b8a52; } .easy b { color: #2c6fd8; }
 </style>
 <grade-buttons disabled={false} keys={true}>
+  <mnx-document onkeydown.1={(event) => key(event, 0)} onkeydown.2={(event) => key(event, 1)} onkeydown.3={(event) => key(event, 2)} onkeydown.4={(event) => key(event, 3)}></mnx-document>
   <div role="group" aria-label="How well did you know it?">
     <mnx-each items={GRADES} as="grade" index="index" key={grade.label}>
       <button type="button" class={grade.tone} disabled={disabled} onclick={() => emit('grade', index)}><b>{grade.label}</b><small>{grade.detail}</small><kbd>{index + 1}</kbd></button>

@@ -4,16 +4,15 @@
   @fires close - Closed without saving (Cancel or Escape).
 -->
 <script>
-  import { emit, host, watch, id } from '@mnx/runtime'
+  import { emit, watch, id } from '@mnx/runtime'
   import { CATEGORIES } from '../store.js'
 
   const ids = { title: id(), day: id(), start: id(), end: id(), location: id(), category: id(), budget: id(), notes: id() }
   let problem = ""
   const heading = event?.id ? "Edit event" : "New event"
 
-  const element = host()
+  let dialog = null
   watch(() => event, (next) => {
-    const dialog = element.querySelector('dialog')
     problem = ""
     if (next && !dialog.open) {
       dialog.showModal()
@@ -22,7 +21,6 @@
   })
 
   function submit(submitEvent) {
-    submitEvent.preventDefault()
     const form = submitEvent.target
     const data = Object.fromEntries(new FormData(form))
     const end = form.elements.end
@@ -48,8 +46,8 @@
   .actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
 </style>
 <event-dialog event={null}>
-  <dialog aria-labelledby={ids.title + "-h"} onclose={cancel}>
-    <form onsubmit={submit} novalidate>
+  <dialog ref={dialog} aria-labelledby={ids.title + "-h"} onclose={cancel}>
+    <form onsubmit.prevent={submit} novalidate>
       <h2 id={ids.title + "-h"}>{heading}</h2>
       <label class="wide" for={ids.title}>Title
         <input id={ids.title} name="title" required maxlength="80" value={event?.title ?? ""}>

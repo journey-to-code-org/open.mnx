@@ -6,20 +6,16 @@
   @fires replycancel - The reply was cancelled.
 -->
 <script>
-  import { emit, host } from '@mnx/runtime'
+  import { emit } from '@mnx/runtime'
 
   const EMOJI = ["😀", "😂", "😍", "🤔", "👍", "🙏", "🎉", "🔥", "🚀", "✅", "👀", "☕"]
-  const element = host()
+  let box = null
   let text = ""
   let picking = false
   let lastTyping = 0
   const empty = text.trim() === ""
 
-  function field() {
-    return element.querySelector('textarea')
-  }
   function grow() {
-    const box = field()
     box.style.height = "auto"
     box.style.height = `${Math.min(box.scrollHeight, 160)}px`
   }
@@ -38,16 +34,13 @@
     lastTyping = 0
     queueMicrotask(grow)
   }
-  function key(event) {
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-      event.preventDefault()
-      send()
-    } else if (event.key === "Escape" && replyto) {
-      emit('replycancel')
-    }
+  function enter(event) {
+    // (While an input method is composing, Enter belongs to it.)
+    if (event.isComposing) return
+    event.preventDefault()
+    send()
   }
   function insert(emoji) {
-    const box = field()
     const at = box.selectionStart ?? text.length
     text = text.slice(0, at) + emoji + text.slice(box.selectionEnd ?? at)
     picking = false
@@ -80,7 +73,7 @@
     <div class="reply"><span>Replying to <b>{replyto?.author}</b>: {replyto?.text}</span><button type="button" class="cancel-reply" aria-label="Cancel reply" onclick={() => emit('replycancel')}>×</button></div>
   </mnx-if>
   <div class="box">
-    <textarea rows="1" aria-label={placeholder} placeholder={placeholder} disabled={disabled} value={text} oninput={input} onkeydown={key}></textarea>
+    <textarea rows="1" aria-label={placeholder} placeholder={placeholder} disabled={disabled} value={text} ref={box} oninput={input} onkeydown.enter={enter} onkeydown.escape={() => replyto && emit('replycancel')}></textarea>
     <button type="button" class="icon emoji" aria-label="Insert emoji" aria-expanded={picking ? "true" : "false"} onclick={() => (picking = !picking)}>☺</button>
     <button type="button" class="send" aria-label="Send" disabled={empty || disabled} onclick={send}>➤</button>
     <mnx-if test={picking}>

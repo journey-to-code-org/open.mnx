@@ -925,7 +925,7 @@ fn unknown_modifier(modifier: &str) -> String {
 
 /// `class={{ … }}` and `style={{ … }}` become one `class:name`/`style:name` attribute per entry;
 /// bare `class:active` means `class:active={active}`. Checks that `class:` and `style:` are well
-/// formed, and don't meet a dynamic `class` that would overwrite them.
+/// formed.
 fn expand_directives(attributes: Vec<Attribute>) -> Result<Vec<Attribute>, Diagnostic> {
     let mut out = Vec::with_capacity(attributes.len());
     for attribute in attributes {
@@ -1042,27 +1042,6 @@ fn expand_directives(attributes: Vec<Attribute>) -> Result<Vec<Attribute>, Diagn
             continue;
         }
         out.push(attribute);
-    }
-    let toggles = out
-        .iter()
-        .any(|attribute| attribute.name.starts_with("class:"));
-    if toggles {
-        if let Some(dynamic) = out.iter().find(|attribute| {
-            attribute.name.eq_ignore_ascii_case("class")
-                && match &attribute.value {
-                    AttributeValue::Expression(..) => true,
-                    AttributeValue::Text(parts) => parts
-                        .iter()
-                        .any(|part| matches!(part, Part::Expression { .. })),
-                    AttributeValue::None => false,
-                }
-        }) {
-            return Err(Diagnostic::new(
-                dynamic.span,
-                "a computed `class` would overwrite the class: toggles on the same element",
-            )
-            .with_help("keep `class` static text, and toggle the rest with class:name={…}"));
-        }
     }
     Ok(out)
 }

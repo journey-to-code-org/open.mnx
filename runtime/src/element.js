@@ -551,6 +551,15 @@ function bind(part, node, hydrating, context) {
     // The handler is read when the event fires, so swapping it never re-subscribes.
     const [listener, options] = listen(part, node);
     node.addEventListener(part.on, listener, options);
+  } else if (part.classes) {
+    // A computed class beside class: toggles: token by token, leaving the toggles' alone.
+    let previous = [];
+    effect(() => {
+      const next = String($r(part.classes()) ?? '').split(/\s+/).filter(Boolean);
+      for (const token of previous) if (!next.includes(token)) node.classList.remove(token);
+      for (const token of next) node.classList.add(token);
+      previous = next;
+    });
   } else if (part.toggle) {
     effect(() => {
       node.classList.toggle(part.toggle, !!$r(part.value()));

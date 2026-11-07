@@ -5,9 +5,9 @@
   @fires daytoggle - A day was chosen; `detail` is the day.
 -->
 <script>
-  import { emit, host } from '@mnx/runtime'
+  import { emit } from '@mnx/runtime'
 
-  const element = host()
+  let grid = null
   const day = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
   const parse = (text) => new Date(`${text}T12:00`)
   const names = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" })
@@ -27,13 +27,11 @@
     }),
   }))
 
-  function key(event, key) {
-    const step = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 }[event.key]
-    if (!step) return
-    event.preventDefault()
+  // Arrow keys: a day up or down, a week left or right.
+  function move(key, step) {
     const date = parse(key)
     date.setDate(date.getDate() + step)
-    element.querySelector(`[data-day="${day(date)}"]:not([disabled])`)?.focus()
+    grid.querySelector(`[data-day="${day(date)}"]:not([disabled])`)?.focus()
   }
 </script>
 <style>
@@ -49,10 +47,10 @@
   button:disabled { visibility: hidden; }
 </style>
 <streak-grid log={{}} goal={1} today="" weeks={12} label="History">
-  <div class="grid" role="group" aria-label={label}>
+  <div class="grid" role="group" aria-label={label} ref={grid}>
     <mnx-each items={columns} as="column" key={column.week}>
       <mnx-each items={column.days} as="cell" key={cell.key}>
-        <button type="button" data-day={cell.key} data-level={cell.level} data-today={cell.key === today ? "" : null} disabled={cell.level < 0} title={cell.label} aria-label={cell.label} aria-pressed={cell.count >= goal ? "true" : "false"} tabindex={cell.key === today ? "0" : "-1"} onclick={() => emit('daytoggle', cell.key)} onkeydown={(event) => key(event, cell.key)}></button>
+        <button type="button" data-day={cell.key} data-level={cell.level} data-today={cell.key === today ? "" : null} disabled={cell.level < 0} title={cell.label} aria-label={cell.label} aria-pressed={cell.count >= goal ? "true" : "false"} tabindex={cell.key === today ? "0" : "-1"} onclick={() => emit('daytoggle', cell.key)} onkeydown.up.prevent={() => move(cell.key, -1)} onkeydown.down.prevent={() => move(cell.key, 1)} onkeydown.left.prevent={() => move(cell.key, -7)} onkeydown.right.prevent={() => move(cell.key, 7)}></button>
       </mnx-each>
     </mnx-each>
   </div>

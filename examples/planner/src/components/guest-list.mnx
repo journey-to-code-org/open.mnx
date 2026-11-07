@@ -14,8 +14,7 @@
   const headcount = event.guests.filter((guest) => guest.rsvp === "yes").reduce((sum, guest) => sum + (guest.plusOne ? 2 : 1), 0)
   const shown = event.guests.filter((guest) => filter === "all" || guest.rsvp === filter)
 
-  function invite(submitEvent) {
-    submitEvent.preventDefault()
+  function invite() {
     const address = email.trim().toLowerCase()
     if (address && event.guests.some((guest) => guest.email.toLowerCase() === address)) {
       problem = `${address} is already invited`
@@ -43,9 +42,9 @@
 </style>
 <guest-list event={{ id: "", guests: [] }}>
   <div class="counts" role="group" aria-label="Show">
-    <button type="button" class={filter === "all" ? "pill on" : "pill"} onclick={() => (filter = "all")}>All {event.guests.length}</button>
+    <button type="button" class="pill" class:on={filter === "all"} onclick={() => (filter = "all")}>All {event.guests.length}</button>
     <mnx-each items={RSVPS} as="rsvp" key={rsvp}>
-      <button type="button" class={filter === rsvp ? "pill on" : "pill"} data-filter={rsvp} onclick={() => (filter = rsvp)}>{rsvp} {counts[rsvp]}</button>
+      <button type="button" class="pill" class:on={filter === rsvp} data-filter={rsvp} onclick={() => (filter = rsvp)}>{rsvp} {counts[rsvp]}</button>
     </mnx-each>
     <span class="headcount">Headcount: {headcount}</span>
   </div>
@@ -69,7 +68,7 @@
     </table>
     <mnx-else><p class="empty">{event.guests.length ? "No one with that RSVP." : "No guests yet."}</p></mnx-else>
   </mnx-if>
-  <form onsubmit={invite}>
+  <form onsubmit.prevent={invite}>
     <input required placeholder="Name" aria-label="Guest name" value={name} oninput={(e) => (name = e.target.value)}>
     <input type="email" placeholder="Email (optional)" aria-label="Guest email" value={email} oninput={(e) => ((email = e.target.value), (problem = ""))}>
     <button type="submit" class="primary">Invite</button>

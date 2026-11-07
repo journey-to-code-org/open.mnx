@@ -97,7 +97,9 @@
     },
     "attributes": {
       "patterns": [
-        { "match": "\\b(on[a-z]+)(?=\\s*=)", "name": "entity.other.attribute-name.event.mnx" },
+        { "match": "\\b(on[a-z]+)((?:\\.[a-z0-9]+)*)(?=\\s*=)", "captures": { "1": { "name": "entity.other.attribute-name.event.mnx" }, "2": { "name": "keyword.other.modifier.mnx" } } },
+        { "match": "\\b(class|style)(:)([^\\s\"'<>/=]+)", "captures": { "1": { "name": "entity.other.attribute-name.html" }, "2": { "name": "punctuation.separator.directive.mnx" }, "3": { "name": "entity.other.attribute-name.directive.mnx" } } },
+        { "match": "\\bref(?=\\s*=)", "name": "entity.other.attribute-name.ref.mnx" },
         { "match": "[^\\s\"'<>/=]+", "name": "entity.other.attribute-name.html" },
         { "match": "=", "name": "punctuation.separator.key-value.html" },
         { "include": "#expression" },

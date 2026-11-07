@@ -22,7 +22,7 @@
   <nav aria-label="Progress">
     <ol>
       <mnx-each items={steps} as="step" index="index" key={step}>
-        <li class={index < current ? "done" : index === current ? "current" : ""}>
+        <li class:done={index < current} class:current={index === current}>
           <button type="button" disabled={index >= current} aria-current={index === current ? "step" : "false"} onclick={() => emit('stepselect', index)}><span class="label">{step}</span></button>
         </li>
       </mnx-each>

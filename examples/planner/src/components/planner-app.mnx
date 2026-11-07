@@ -3,7 +3,7 @@
   (`#/` or `#/events/<id>`) and the dialog that creates and edits events.
 -->
 <script>
-  import { provide, onMount } from '@mnx/runtime'
+  import { provide } from '@mnx/runtime'
   import { Planner, createPlanner, blankEvent } from '../store.js'
   import './month-calendar.mnx'
   import './upcoming-list.mnx'
@@ -18,11 +18,6 @@
     return match ? match[1] : ""
   }
   let eventId = read()
-  onMount(() => {
-    const follow = () => (eventId = read())
-    addEventListener('hashchange', follow)
-    return () => removeEventListener('hashchange', follow)
-  })
 
   let editing = null
   const create = (day) => (editing = blankEvent(day))
@@ -48,6 +43,7 @@
   @media (max-width: 52rem) { .home { grid-template-columns: 1fr; } }
 </style>
 <planner-app>
+  <mnx-window onhashchange={() => (eventId = read())}></mnx-window>
   <header>
     <a href="#/">mnx <span>planner</span></a>
     <button type="button" class="primary new-event" onclick={() => create()}>New event</button>

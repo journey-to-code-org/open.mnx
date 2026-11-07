@@ -11,8 +11,7 @@
   const done = event.tasks.filter((task) => task.done).length
   const shown = hideDone ? event.tasks.filter((task) => !task.done) : event.tasks
 
-  function add(submitEvent) {
-    submitEvent.preventDefault()
+  function add() {
     act('tasks.add', event.id, { title: title.trim(), done: false })
     title = ""
   }
@@ -41,14 +40,14 @@
     <ul>
       <mnx-each items={shown} as="task" key={task.id}>
         <li>
-          <label><input type="checkbox" checked={task.done} onchange={(e) => act('tasks.update', event.id, task.id, { done: e.target.checked })}><span class={task.done ? "done" : ""}>{task.title}</span></label>
+          <label><input type="checkbox" checked={task.done} onchange={(e) => act('tasks.update', event.id, task.id, { done: e.target.checked })}><span class:done={task.done}>{task.title}</span></label>
           <button type="button" class="icon" aria-label={`Remove ${task.title}`} onclick={() => act('tasks.remove', event.id, task.id)}>✕</button>
         </li>
       </mnx-each>
     </ul>
     <mnx-else><p class="empty">{event.tasks.length ? "Everything's done." : "Nothing to do yet."}</p></mnx-else>
   </mnx-if>
-  <form onsubmit={add}>
+  <form onsubmit.prevent={add}>
     <input required placeholder="Add a task" aria-label="Add a task" value={title} oninput={(e) => (title = e.target.value)}>
     <button type="submit" class="primary">Add</button>
   </form>

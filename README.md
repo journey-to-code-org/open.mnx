@@ -96,6 +96,34 @@ In the HTML output, directives are expanded at build time and wrapped in `<!--[-
 - `mnx-each` without a key updates rows in place by position. Each row holds its item and index as signals, so changing one item updates only that row. Rows are added and removed at the end.
 - With `key`, rows follow their key. Reordering moves the existing rows with their DOM state (a half-typed input, focus), using `moveBefore()` where the browser has it. Inserting or removing in the middle touches only those rows.
 
+## Classes, styles, events and references
+
+```html
+<script>
+  let open = false
+  let panel = null                                         // ref={panel} assigns the element
+  function save() { … }
+</script>
+<mnx-panel tone="teal" size={12}>
+  <mnx-document onkeydown.escape={() => (open = false)}></mnx-document>
+  <section ref={panel} class="panel" class:open class:big={size > 20}
+           style:--tone={tone} style:font-size={size + "px"}>
+    <form onsubmit.prevent={save}>
+      <input onkeydown.enter={save} onkeydown.shift.enter={() => …}>
+    </form>
+  </section>
+  <mnx-if test={size > 20}>Big<mnx-else-if test={size > 10}>Medium</mnx-else-if><mnx-else>Small</mnx-else></mnx-if>
+</mnx-panel>
+```
+
+- **`class:name={…}`** adds the class while the value is truthy; bare `class:open` reads `open`. `class={{ open, big: size > 20 }}` is the same as one toggle per entry. They combine with a static `class`, and with a computed one, whose classes are then added and removed token by token.
+- **`style:property={…}`** sets one property: lowercase CSS names or `--custom-properties`; `null` or `false` removes it. `style={{ fontSize: …, "--tone": … }}` sets several (camelCase names become kebab-case). Values are set through the CSSOM (`style.setProperty`), so a value can't add declarations; on the server, a value with `;`, braces, `<`, a backslash or `url()` is refused. A static `style="…"` attribute is allowed; interpolating into one isn't.
+- **Event modifiers**: `onsubmit.prevent`, `.stop`, `.once`, `.self` (only events on the element itself), `.capture`, `.passive`. Key filters on `keydown`/`keyup`/`keypress`: `.enter`, `.escape` (`.esc`), `.space`, `.tab`, `.up`/`.down`/`.left`/`.right` (or `.arrowup`, …), `.delete`, `.backspace`, `.home`, `.end`, `.pageup`, `.pagedown`, and any single letter or digit. Several keys mean any of them (`onkeydown.enter.space`). With a key filter, `.shift`, `.ctrl`, `.alt` and `.meta` must be held and the others not, so `onkeydown.enter` and `onkeydown.shift.enter` don't overlap. They work on child components' events too (`onvaluechange.stop`).
+- **`ref={name}`** assigns the element to a `let` once rendered, and `null` when it's removed. `ref={(element) => …}` calls a function instead.
+- **`<mnx-window>` and `<mnx-document>`** take event listeners (with modifiers), added while they're rendered and removed after. They render nothing.
+- **`<mnx-else-if test={…}>`** goes between `mnx-if` and its `mnx-else`.
+- **In scripts and JSX**, the modifiers are functions from `@mnx/runtime`: `prevent(fn)`, `stop(fn)`, `selfOnly(fn)` and `keys('shift+enter', fn)`. In JSX, `className={{ … }}`, `style={{ … }}`, `class:open={…}` and `ref={panel}` work as in `.mnx`.
+
 ## Script, state and hooks
 
 ```html

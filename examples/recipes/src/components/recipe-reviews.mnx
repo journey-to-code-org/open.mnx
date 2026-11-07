@@ -16,7 +16,6 @@
   const average = all.length ? all.reduce((sum, review) => sum + review.stars, 0) / all.length : 0
 
   function post(event) {
-    event.preventDefault()
     const form = event.target
     const data = new FormData(form)
     const review = { id: `added-${added.length}`, name: data.get("name"), stars: Number(data.get("stars")), text: data.get("text") }
@@ -52,7 +51,7 @@
     </mnx-then>
     <mnx-catch as="error"><p class="error">{error.message}</p></mnx-catch>
   </mnx-await>
-  <form onsubmit={post}>
+  <form onsubmit.prevent={post}>
     <input name="name" required aria-label="Your name" placeholder="Your name">
     <star-rating name="stars" required={true} label="Your rating"></star-rating>
     <textarea name="text" required aria-label="Your review" placeholder="How did it go?"></textarea>

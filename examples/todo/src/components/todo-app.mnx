@@ -17,8 +17,7 @@
     items = next
     emit('change', items)
   }
-  function add(event) {
-    event.preventDefault()
+  function add() {
     const text = draft.trim()
     if (!text) return
     const id = Math.max(0, ...items.map((item) => item.id)) + 1
@@ -43,7 +42,7 @@
   .empty { padding: 1rem 0.75rem; opacity: 0.6; }
 </style>
 <todo-app items={[{ id: 1, text: "Try mnx 2.0", done: true }, { id: 2, text: "Write a component", done: false }]}>
-  <form onsubmit={add}>
+  <form onsubmit.prevent={add}>
     <input aria-label="New item" placeholder="What needs doing?" value={draft} oninput={(event) => (draft = event.target.value)}>
     <button type="submit">Add</button>
   </form>
@@ -59,9 +58,9 @@
   </mnx-if>
   <footer>
     <span class="count">{remaining} left</span>
-    <button type="button" class={filter === "all" ? "on" : ""} onclick={() => (filter = "all")}>All</button>
-    <button type="button" class={filter === "open" ? "on" : ""} onclick={() => (filter = "open")}>Open</button>
-    <button type="button" class={filter === "done" ? "on" : ""} onclick={() => (filter = "done")}>Done</button>
+    <button type="button" class:on={filter === "all"} onclick={() => (filter = "all")}>All</button>
+    <button type="button" class:on={filter === "open"} onclick={() => (filter = "open")}>Open</button>
+    <button type="button" class:on={filter === "done"} onclick={() => (filter = "done")}>Done</button>
     <button type="button" onclick={clearDone}>Clear done</button>
   </footer>
 </todo-app>

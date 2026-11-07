@@ -10,18 +10,8 @@
 
   let dragging = false
   const initials = card.assignee ? card.assignee.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() : "?"
-  const tone = [...(card.assignee || "?")].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6
+  const hue = [...(card.assignee || "?")].reduce((sum, char) => sum + char.charCodeAt(0) * 47, 0) % 360
 
-  function key(event) {
-    if (event.key === 'Enter') return emit('cardopen')
-    if (!event.shiftKey) return
-    const move = { ArrowLeft: -1, ArrowRight: 1 }[event.key]
-    const reorder = { ArrowUp: -1, ArrowDown: 1 }[event.key]
-    if (move) emit('cardmove', move)
-    else if (reorder) emit('cardreorder', reorder)
-    else return
-    event.preventDefault()
-  }
   function dragstart(event) {
     event.dataTransfer.setData('application/x-card', card.id)
     event.dataTransfer.effectAllowed = 'move'
@@ -42,17 +32,10 @@
   footer { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--muted); }
   .points { padding: 0 0.4rem; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; }
   .avatar { margin-left: auto; display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; color: white; font-size: 0.65rem; font-weight: 800; }
-  .avatar { background: #8a90a0; }
-  .avatar[data-tone="0"] { background: #c2410c; }
-  .avatar[data-tone="1"] { background: #0f766e; }
-  .avatar[data-tone="2"] { background: #6d28d9; }
-  .avatar[data-tone="3"] { background: #be185d; }
-  .avatar[data-tone="4"] { background: #1d4ed8; }
-  .avatar[data-tone="5"] { background: #4d7c0f; }
-  .avatar[data-tone="5"][title=Unassigned], .avatar[title=Unassigned] { background: #8a90a0; }
+  .avatar.unassigned { background: #8a90a0; }
 </style>
 <task-card card={{ id: "", title: "", points: 0, assignee: "", tags: [], priority: "normal" }}>
-  <article draggable="true" tabindex="0" class={dragging ? "dragging" : ""} data-priority={card.priority} aria-label={`${card.title}, ${card.points} points${card.assignee ? `, ${card.assignee}` : ""}`} onclick={() => emit('cardopen')} onkeydown={key} ondragstart={dragstart} ondragend={() => (dragging = false)}>
+  <article draggable="true" tabindex="0" class:dragging data-priority={card.priority} aria-label={`${card.title}, ${card.points} points${card.assignee ? `, ${card.assignee}` : ""}`} onclick={() => emit('cardopen')} onkeydown.enter={() => emit('cardopen')} onkeydown.shift.left.prevent={() => emit('cardmove', -1)} onkeydown.shift.right.prevent={() => emit('cardmove', 1)} onkeydown.shift.up.prevent={() => emit('cardreorder', -1)} onkeydown.shift.down.prevent={() => emit('cardreorder', 1)} ondragstart={dragstart} ondragend={() => (dragging = false)}>
     <h3>{card.title}</h3>
     <mnx-if test={card.tags.length > 0}>
       <ul><mnx-each items={card.tags} as="tag" key={tag}><li>{tag}</li></mnx-each></ul>
@@ -60,7 +43,7 @@
     <footer>
       <span class="points" title="Story points">{card.points}</span>
       <span>{card.priority === "normal" ? "" : `${card.priority} priority`}</span>
-      <span class="avatar" data-tone={tone} title={card.assignee || "Unassigned"} aria-hidden="true">{initials}</span>
+      <span class="avatar" class:unassigned={!card.assignee} style:background={card.assignee ? `hsl(${hue} 55% 40%)` : null} title={card.assignee || "Unassigned"} aria-hidden="true">{initials}</span>
     </footer>
   </article>
 </task-card>

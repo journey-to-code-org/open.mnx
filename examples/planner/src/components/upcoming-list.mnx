@@ -46,8 +46,8 @@
     </select>
   </div>
   <div class="tabs" role="group" aria-label="When">
-    <button type="button" class={past ? "pill" : "pill on"} aria-pressed={past ? "false" : "true"} onclick={() => (past = false)}>Upcoming</button>
-    <button type="button" class={past ? "pill on" : "pill"} aria-pressed={past ? "true" : "false"} onclick={() => (past = true)}>Past</button>
+    <button type="button" class="pill" class:on={!past} aria-pressed={past ? "false" : "true"} onclick={() => (past = false)}>Upcoming</button>
+    <button type="button" class="pill" class:on={past} aria-pressed={past ? "true" : "false"} onclick={() => (past = true)}>Past</button>
   </div>
   <mnx-if test={shown.get().length > 0}>
     <ul>

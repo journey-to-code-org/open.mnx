@@ -94,3 +94,12 @@ test('the extension manifest points at the grammar and language configuration', 
   const [grammarEntry] = manifest.contributes.grammars;
   assert.equal(JSON.parse(readFileSync(join(here, '..', grammarEntry.path), 'utf8')).scopeName, grammarEntry.scopeName);
 });
+
+test('event modifiers, class:/style: directives and ref get their own scopes', async () => {
+  const all = await tokens('<mnx-x>\n  <form onsubmit.prevent={add} class:open={open} style:--tone={tone} ref={form}></form>\n</mnx-x>');
+  assert.ok(scopesOf(all, 'onsubmit').includes('entity.other.attribute-name.event.mnx'));
+  assert.ok(scopesOf(all, '.prevent').includes('keyword.other.modifier.mnx'));
+  assert.ok(scopesOf(all, 'open').some((scope) => scope.includes('directive.mnx')) || all.some((t) => t.text === 'open' && t.scopes.includes('entity.other.attribute-name.directive.mnx')));
+  assert.ok(all.some((token) => token.text === '--tone' && token.scopes.includes('entity.other.attribute-name.directive.mnx')));
+  assert.ok(scopesOf(all, 'ref').includes('entity.other.attribute-name.ref.mnx'));
+});

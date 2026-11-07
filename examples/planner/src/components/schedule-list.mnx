@@ -15,7 +15,6 @@
     clashes.has(item.id) ? "Same time as another item" : item.time < event.start || item.time > event.end ? "Outside the event's hours" : ""
 
   function add(submitEvent) {
-    submitEvent.preventDefault()
     act('schedule.add', event.id, { time, title: title.trim() })
     title = ""
     submitEvent.target.querySelector('input[type=time]').focus()
@@ -42,7 +41,7 @@
     </ol>
     <mnx-else><p class="empty">No schedule yet. Add the first item below.</p></mnx-else>
   </mnx-if>
-  <form onsubmit={add}>
+  <form onsubmit.prevent={add}>
     <input type="time" required aria-label="Time" value={time} oninput={(e) => (time = e.target.value)}>
     <input required placeholder="What happens" aria-label="What happens" value={title} oninput={(e) => (title = e.target.value)}>
     <button type="submit" class="primary">Add</button>

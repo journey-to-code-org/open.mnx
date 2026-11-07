@@ -57,6 +57,22 @@ fn class_and_style_directives_render_merged_and_bind_one_by_one() {
 }
 
 #[test]
+fn a_computed_class_beside_toggles_is_bound_token_by_token() {
+    let source = r#"<mnx-x tone="t1" on={true}><p class="base {tone}" class:on>x</p><i class={tone}>y</i></mnx-x>"#;
+    let out = html(source);
+    assert!(out.contains(r#"<p class="base t1 on">x</p>"#), "{out}");
+    let code = js(source);
+    assert!(
+        code.contains(r#"{ path: [0], classes: () => "base " + $t($p.tone) }"#),
+        "{code}"
+    );
+    assert!(
+        code.contains(r#"{ path: [1], attribute: "class", value: () => $p.tone }"#),
+        "without toggles it's an attribute: {code}"
+    );
+}
+
+#[test]
 fn style_values_that_could_add_css_are_refused_on_the_server() {
     for value in [
         "red; background: blue",
@@ -89,10 +105,6 @@ fn directive_mistakes_are_explained() {
         (
             r#"<mnx-x c="a"><p style={c}>x</p></mnx-x>"#,
             "object literal",
-        ),
-        (
-            r#"<mnx-x c="a"><p class={c} class:on={true}>x</p></mnx-x>"#,
-            "would overwrite",
         ),
         (
             r#"<mnx-x><p class:on="yes">x</p></mnx-x>"#,

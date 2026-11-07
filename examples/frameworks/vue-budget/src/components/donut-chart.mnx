@@ -46,7 +46,7 @@
     <svg viewBox="0 0 42 42" role="img" aria-label={label}>
       <circle class="track" cx="21" cy="21" r={R}></circle>
       <mnx-each items={arcs} as="arc" key={arc.label}>
-        <circle class={`t${arc.tone} ${value && value !== arc.label ? "dim" : ""} ${value === arc.label ? "on" : ""}`} cx="21" cy="21" r={R} stroke-dasharray={`${arc.length} ${100 - arc.length}`} stroke-dashoffset={-arc.start} data-label={arc.label} onclick={() => select(arc.label)}><title>{arc.label}: {percent(arc)}</title></circle>
+        <circle class={`t${arc.tone}`} class:dim={value && value !== arc.label} class:on={value === arc.label} cx="21" cy="21" r={R} stroke-dasharray={`${arc.length} ${100 - arc.length}`} stroke-dashoffset={-arc.start} data-label={arc.label} onclick={() => select(arc.label)}><title>{arc.label}: {percent(arc)}</title></circle>
       </mnx-each>
     </svg>
     <div class="middle"><mnx-slot><strong>{total}</strong></mnx-slot></div>

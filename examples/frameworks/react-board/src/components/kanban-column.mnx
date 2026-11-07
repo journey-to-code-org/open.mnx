@@ -6,15 +6,15 @@
   @fires carddrop - A card was dropped here; `detail` is `{ id, index }` (where among the cards).
 -->
 <script>
-  import { emit, host } from '@mnx/runtime'
+  import { emit } from '@mnx/runtime'
 
-  const element = host()
+  let list = null
   let over = false
   const full = limit > 0 && count > limit
 
   /** Where among this column's cards a drop at `y` lands. */
   function indexAt(y) {
-    const cards = [...element.querySelectorAll('task-card')]
+    const cards = [...list.querySelectorAll('task-card')]
     const after = cards.findIndex((card) => {
       const box = card.getBoundingClientRect()
       return y < box.top + box.height / 2
@@ -49,13 +49,13 @@
   .empty { display: grid; place-items: center; flex: 1; min-height: 4rem; border: 2px dashed var(--line); border-radius: 0.7rem; color: var(--muted); font-size: 0.8125rem; }
 </style>
 <kanban-column heading="" count={0} limit={0}>
-  <section class={(over ? "over " : "") + (full ? "full" : "")} aria-label={heading} ondragover={dragover} ondragleave={(event) => event.currentTarget.contains(event.relatedTarget) || (over = false)} ondrop={drop}>
+  <section class:over class:full aria-label={heading} ondragover={dragover} ondragleave={(event) => event.currentTarget.contains(event.relatedTarget) || (over = false)} ondrop={drop}>
     <header>
       <h2>{heading}</h2>
       <span class="count">{count}</span>
       <mnx-if test={limit > 0}><span class="limit">{full ? `over the limit of ${limit}` : `limit ${limit}`}</span></mnx-if>
     </header>
-    <div class="cards">
+    <div class="cards" ref={list}>
       <mnx-slot><div class="empty">Drop cards here</div></mnx-slot>
     </div>
     <mnx-slot name="actions"></mnx-slot>

@@ -12,11 +12,6 @@
     flipped = !flipped
     emit('flippedchange', flipped)
   }
-  function key(event) {
-    if (event.key !== ' ' && event.key !== 'Enter') return
-    event.preventDefault()
-    flip()
-  }
 </script>
 <style>
   :host { display: block; perspective: 1400px; }
@@ -29,7 +24,7 @@
   @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
 </style>
 <flip-card shadow flipped={false} hint="Click or press Space to flip">
-  <div class={flipped ? "card flipped" : "card"} role="button" tabindex="0" aria-pressed={flipped ? "true" : "false"} aria-label={flipped ? "Answer (flip back)" : "Question (flip to see the answer)"} onclick={flip} onkeydown={key}>
+  <div class="card" class:flipped role="button" tabindex="0" aria-pressed={flipped ? "true" : "false"} aria-label={flipped ? "Answer (flip back)" : "Question (flip to see the answer)"} onclick={flip} onkeydown.space.enter.prevent={flip}>
     <div class="face front" aria-hidden={flipped ? "true" : "false"}><mnx-slot name="front"></mnx-slot></div>
     <div class="face back" aria-hidden={flipped ? "false" : "true"}><mnx-slot name="back"></mnx-slot></div>
     <span class="hint">{hint}</span>

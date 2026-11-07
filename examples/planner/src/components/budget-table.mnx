@@ -18,8 +18,7 @@
     .filter((group) => group.total > 0)
     .sort((a, b) => b.total - a.total)
 
-  function add(submitEvent) {
-    submitEvent.preventDefault()
+  function add() {
     act('expenses.add', event.id, { label: label.trim(), category: kind, amount: Math.round(Number(amount) * 100) / 100, paid: false })
     label = ""
     amount = ""
@@ -44,13 +43,13 @@
   .empty { color: var(--muted); }
 </style>
 <budget-table event={{ id: "", budget: 0, expenses: [] }}>
-  <div class={left < 0 ? "totals over" : "totals"}>
+  <div class="totals" class:over={left < 0}>
     <div><b class="budget">{money.format(event.budget)}</b><span>budget</span></div>
     <div><b class="spent">{money.format(spent)}</b><span>{money.format(paid)} paid</span></div>
     <div><b class="left">{money.format(left)}</b><span>{left < 0 ? "over budget" : "left"}</span></div>
   </div>
   <mnx-if test={event.budget > 0}>
-    <progress class={left < 0 ? "over" : ""} max={event.budget} value={Math.min(spent, event.budget)} aria-label="Budget used"></progress>
+    <progress class:over={left < 0} max={event.budget} value={Math.min(spent, event.budget)} aria-label="Budget used"></progress>
   </mnx-if>
   <mnx-if test={byKind.length > 0}>
     <div class="kinds">
@@ -76,7 +75,7 @@
     </table>
     <mnx-else><p class="empty">No expenses yet.</p></mnx-else>
   </mnx-if>
-  <form onsubmit={add}>
+  <form onsubmit.prevent={add}>
     <input required placeholder="Expense" aria-label="Expense" value={label} oninput={(e) => (label = e.target.value)}>
     <select aria-label="Category" value={kind} onchange={(e) => (kind = e.target.value)}>
       <mnx-each items={KINDS} as="name" key={name}><option value={name}>{name}</option></mnx-each>

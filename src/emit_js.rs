@@ -810,6 +810,23 @@ impl<'a> Emitter<'a> {
                     let body = format!("ref: () => {}", self.js(expression));
                     self.parts.push(JsPart::at(path, body));
                 }
+                value
+                    if lower == "class"
+                        && element
+                            .attributes
+                            .iter()
+                            .any(|other| other.name.to_ascii_lowercase().starts_with("class:")) =>
+                {
+                    // A computed class next to class: toggles: its tokens are added and removed
+                    // one by one, so the toggles' classes stay.
+                    let compute = match value {
+                        AttributeValue::Text(parts) => self.text_js(parts),
+                        AttributeValue::Expression(expression, _) => self.js(expression),
+                        AttributeValue::None => unreachable!("handled above"),
+                    };
+                    self.parts
+                        .push(JsPart::at(path, format!("classes: () => {compute}")));
+                }
                 value => {
                     let compute = match value {
                         AttributeValue::Text(parts) => self.text_js(parts),

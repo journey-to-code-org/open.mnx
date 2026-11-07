@@ -62,7 +62,7 @@
       <mnx-each items={weeks} as="week" key={week[0]}>
         <tr>
           <mnx-each items={week} as="day" key={day}>
-            <td class={(monthOf(day) === month ? "" : "other ") + (day === now ? "today" : "")} data-day={day}>
+            <td class:other={monthOf(day) !== month} class:today={day === now} data-day={day}>
               <div class="day" role="button" tabindex="0" aria-label={`Add an event on ${formatDay(day)}`} onclick={(e) => e.target.closest('a') || emit('daypick', day)} onkeydown={(e) => e.key === "Enter" && e.target === e.currentTarget && emit('daypick', day)}>
                 <span class="num">{Number(day.slice(8))}</span>
                 <mnx-each items={byDay.get()[day] ?? []} as="event" key={event.id}>
