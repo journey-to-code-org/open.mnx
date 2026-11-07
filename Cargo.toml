@@ -1,6 +1,6 @@
 [package]
 name = "mnix-compiler"
-version = "1.6.0"
+version = "1.7.0"
 edition = "2021"
 rust-version = "1.97"
 license = "ISC"
@@ -10,6 +10,10 @@ description = "Compiler for mnx Web Components: HTML-first components to server-
 [[bin]]
 name = "mnix"
 path = "src/main.rs"
+
+[[bin]]
+name = "mnx"
+path = "src/bin/mnx.rs"
 
 [dependencies]
 html-escape = "0.2"

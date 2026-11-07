@@ -2,6 +2,16 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the `.mnx` format, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 1.7.0 — 2026-11-06
+
+The runway to 2.0: everything 2.0 changes for `.mnx` files now warns, with a migration tool. See `docs/migrating-to-2.0.md`.
+
+### Added
+
+- **`mnix migrate <files…> [--check]`**: rewrites `.mnx` files for 2.0. A script binding that shares a prop's name (the `title={title}` default pattern) is renamed, with its uses in the script and in host defaults. It also lists `let`s that will start updating the template. `--check` only reports, and fails if anything would change.
+- **Deprecation warnings** (in `mnix check`, the plugin and the language server): a script binding that will clash with a prop in 2.0, and a `let` the script changes and the template reads.
+- **The `mnx` binary**, the CLI's 2.0 name, installed alongside `mnix`.
+
 ## 1.6.0 — 2026-11-06
 
 ### Added

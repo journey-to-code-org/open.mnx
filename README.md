@@ -301,6 +301,7 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 
 ```sh
 mnix check <component.mnx>... [--format human|json] [--stdin]
+mnix migrate <component.mnx>... [--check]
 mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial]
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue|svelte|solid]
                              [--css-import <specifier> --css-import-inline <specifier>]
@@ -322,7 +323,7 @@ mnx is meant to be absorbed by the platform. These reports give the standards di
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Planned: deprecation warnings and `mnix migrate` for 2.0 (1.7). Streaming server rendering (sending resolved `mnx-await` content as it arrives) is planned after 2.0. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
+2.0 makes props names in the script, makes `let` state, and renames the CLI to `mnx`. 1.7 warns about each change, and `mnix migrate` rewrites what needs it; see `docs/migrating-to-2.0.md`. Streaming server rendering (sending resolved `mnx-await` content as it arrives) is planned after 2.0. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
 
 ## Repository and tests
 

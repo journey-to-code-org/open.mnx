@@ -191,3 +191,44 @@ fn slots_html_takes_server_rendered_content() {
     assert!(!ok);
     assert!(stderr.contains("apply to --emit html"), "{stderr}");
 }
+
+#[test]
+fn migrate_rewrites_in_place_and_check_reports() {
+    let dir = temp_dir("migrate");
+    let file = dir.join("x.mnx");
+    let jsx = dir.join("y.mnx.jsx");
+    fs::write(
+        &file,
+        "<script>const name = \"a\"</script>\n<mnx-x name={name}><p>{name}</p></mnx-x>\n",
+    )
+    .unwrap();
+    fs::write(&jsx, "export default function MnxY() { return <p /> }\n").unwrap();
+    let (ok, _, stderr) = mnix(&["migrate", file.to_str().unwrap(), "--check"]);
+    assert!(!ok);
+    assert!(stderr.contains("1 file would change"), "{stderr}");
+    let (ok, _, stderr) = mnix(&["migrate", file.to_str().unwrap(), jsx.to_str().unwrap()]);
+    assert!(ok, "{stderr}");
+    assert!(
+        stderr.contains("renamed the script's `name` to `nameDefault`"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("y.mnx.jsx: skipped"), "{stderr}");
+    assert!(fs::read_to_string(&file)
+        .unwrap()
+        .contains("name={nameDefault}"));
+    let (ok, _, _) = mnix(&["migrate", file.to_str().unwrap(), "--check"]);
+    assert!(ok, "nothing left to migrate");
+}
+
+#[test]
+fn mnx_is_the_same_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mnx"))
+        .args(["compile", "--help-me"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("missing component source path")
+            || String::from_utf8_lossy(&output.stderr).contains("unable to read")
+    );
+}

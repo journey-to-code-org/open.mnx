@@ -13,6 +13,7 @@ mod events;
 mod expression;
 mod ir;
 mod jsx;
+mod migrate;
 mod parser;
 mod render;
 mod request;
@@ -28,6 +29,7 @@ pub use components::{filesystem, Loader};
 pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
 pub use emit_js::StyleImports;
+pub use migrate::{migrate, Migration};
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {
     serde_json::from_str(text).map_err(|error| {
@@ -426,7 +428,13 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
     let Some((component, lowered)) = parsed else {
         return Vec::new();
     };
-    component
+    // 1.x code that 2.0 changes (JSX components already have 2.0's semantics).
+    let deprecations = if lowered.is_none() {
+        migrate::deprecations(source, &component)
+    } else {
+        Vec::new()
+    };
+    let mut warnings: Vec<Diagnostic> = component
         .props
         .iter()
         .filter_map(|prop| {
@@ -451,7 +459,9 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
             Some(lowered) => lowered.remap(source, diagnostic),
             None => diagnostic,
         })
-        .collect()
+        .collect();
+    warnings.extend(deprecations);
+    warnings
 }
 
 /// `HTMLElement` properties a prop would shadow, and what the attribute does on its own.

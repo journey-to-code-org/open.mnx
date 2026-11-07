@@ -24,6 +24,9 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("check") {
         return check(arguments.collect());
     }
+    if command.as_deref() == Some("migrate") {
+        return migrate(arguments.collect());
+    }
     // `mnix request`: one JSON request on stdin, the JSON response on stdout (what the
     // WebAssembly build exposes, for anything embedding the native compiler instead).
     if command.as_deref() == Some("request") {
@@ -37,7 +40,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix request < request.json\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix migrate <component.mnx>... [--check]\n       mnix request < request.json\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -347,4 +350,59 @@ fn entry(
         "message": diagnostic.message,
         "help": diagnostic.help,
     })
+}
+
+/// `mnix migrate`: rewrite `.mnx` files for 2.0 in place (`--check`: only report, and fail if
+/// anything would change).
+fn migrate(arguments: Vec<String>) -> Result<(), String> {
+    let check = arguments.iter().any(|argument| argument == "--check");
+    let files: Vec<&String> = arguments
+        .iter()
+        .filter(|argument| !argument.starts_with("--"))
+        .collect();
+    if let Some(unknown) = arguments
+        .iter()
+        .find(|argument| argument.starts_with("--") && *argument != "--check")
+    {
+        return Err(format!("unexpected argument `{unknown}`"));
+    }
+    if files.is_empty() {
+        return Err("usage: mnix migrate <component.mnx>... [--check]".into());
+    }
+    let mut pending = 0;
+    for path in files {
+        if mnix_compiler::component_extension(path) != Some(".mnx") {
+            eprintln!("{path}: skipped (JSX components already have 2.0's semantics)");
+            continue;
+        }
+        let source = fs::read_to_string(path)
+            .map_err(|error| format!("{path}: unable to read source: {error}"))?;
+        let migration = mnix_compiler::migrate(&source)
+            .map_err(|diagnostic| diagnostic.render_in(&source, path))?;
+        for change in &migration.changes {
+            eprintln!("{path}: {change}");
+        }
+        for note in &migration.notes {
+            eprint!("{}", note.render_warning(&source, path));
+        }
+        if migration.output != source {
+            pending += 1;
+            if !check {
+                write_atomically(path, migration.output.as_bytes())?;
+            }
+        }
+    }
+    if check && pending > 0 {
+        return Err(format!(
+            "{pending} file{} would change; run `mnix migrate` without --check",
+            if pending == 1 { "" } else { "s" }
+        ));
+    }
+    if !check {
+        eprintln!(
+            "migrated: {pending} file{} changed",
+            if pending == 1 { "" } else { "s" }
+        );
+    }
+    Ok(())
 }
