@@ -23,7 +23,8 @@
 // framework.
 import { createUnplugin } from 'unplugin';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { addProps, mnxImports } from './props.js';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
 
 const VARIANTS = ['element', 'react', 'vue'];
@@ -198,6 +199,18 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     throw new Error(text);
   }
 
+  // Each component's tag and prop names, for `mnx-props` (by path, while its file is unchanged).
+  const interfaces = new Map();
+  function interfaceOf(path) {
+    const stamp = statSync(path).mtimeMs;
+    const known = interfaces.get(path);
+    if (known?.stamp === stamp) return known.value;
+    const description = JSON.parse(compile(path, '--emit', 'interface').code);
+    const value = { tag: description.tag, props: new Set(description.props.map((prop) => prop.name)) };
+    interfaces.set(path, { stamp, value });
+    return value;
+  }
+
   function writeTypings(path) {
     const framework = ['react', 'vue', 'svelte', 'solid'].includes(project) ? project : 'none';
     const target = resolve(dirname(path), `${basename(path, '.mnx')}.d.mnx.ts`);
@@ -306,6 +319,30 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       },
       configureServer() {
         dev = true;
+      },
+      // Svelte and Solid use the elements directly: in their server builds, the hosts get
+      // `mnx-props` (see props.js), for @mnx/server's injectShadowRoots().
+      async transform(code, id, transformOptions) {
+        const dialect = project === 'svelte' ? 'svelte' : project === 'solid' ? 'solid' : null;
+        if (!dialect) return null;
+        const server = transformOptions?.ssr === true || this?.environment?.config?.consumer === 'server';
+        const [path] = split(id);
+        if (!server || path.includes('/node_modules/') || COMPONENT.test(path)) return null;
+        if (dialect === 'svelte' ? !path.endsWith('.svelte') : !/\.[jt]sx$/.test(path)) return null;
+        const tags = new Map();
+        for (const specifier of mnxImports(code)) {
+          const resolved = specifier.startsWith('.') ? resolve(dirname(path), specifier) : (await this.resolve(specifier, id, { skipSelf: true }))?.id;
+          const file = resolved && split(resolved)[0];
+          if (!file || !existsSync(file)) continue;
+          try {
+            const { tag, props } = interfaceOf(file);
+            tags.set(tag, props);
+          } catch {
+            // A compile error shows when the component itself loads.
+          }
+        }
+        const code2 = addProps(code, tags, dialect);
+        return code2 == null ? null : { code: code2, map: null };
       },
     },
   };

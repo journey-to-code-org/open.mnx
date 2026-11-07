@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { useBrowser, open, here, compiler } from './harness.js';
+import { useBrowser, open, here, compiler, engine } from './harness.js';
 
 useBrowser({ stepper: join(here, 'fixtures/stepper.mnx'), choose: join(here, 'fixtures/select-value.mnx'), amount: join(here, 'fixtures/amount-field.mnx') });
 
@@ -96,7 +96,10 @@ test('submitting a form with an invalid control focuses the input inside it, in 
       focused: document.activeElement.closest('mnx-amount') !== null && document.activeElement.localName,
     }));
     assert.deepEqual(result, { submitted: false, focused: 'input' }, how);
-    assert.deepEqual(messages, [], `${how}: no "invalid form control is not focusable" error`);
+    // Firefox focuses the input too, but also logs that the control "is not focusable"
+    // (docs/browser-support.md).
+    const noise = (message) => engine === 'firefox' && /The invalid form control with name=.* is not focusable/.test(message);
+    assert.deepEqual(messages.filter((message) => !noise(message)), [], `${how}: no "invalid form control is not focusable" error`);
     await page.close();
   }
 });

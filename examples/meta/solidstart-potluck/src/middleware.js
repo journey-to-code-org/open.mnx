@@ -1,5 +1,5 @@
-// The SSR bridge: Solid renders the mnx elements' host tags (with `mnx-props`, since `prop:`
-// values are properties); @mnx/server gives each shadow-DOM one its server-rendered shadow
+// The SSR bridge: Solid renders the mnx elements' host tags (the mnx plugin adds `mnx-props` in
+// the server build, since `prop:` values are properties); @mnx/server gives each shadow-DOM one its server-rendered shadow
 // root, and form controls a hidden input, so the board shows and the sign-up form submits
 // before JavaScript.
 import { createMiddleware } from '@solidjs/start/middleware';

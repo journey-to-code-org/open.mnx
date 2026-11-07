@@ -19,5 +19,5 @@ The browser suites run in Chromium. Since 2.9, CI also runs the runtime's browse
 
 Known engine issues:
 - **Firefox before 159** can apply a light-DOM component's `<style>` to content slotted into it, when that content sits beside the component's own elements of the same kind. Firefox shares styles between siblings that differ only in an attribute an `@scope` rule depends on ([bug 2075194](https://bugzilla.mozilla.org/show_bug.cgi?id=2075194), fixed in 159). Shadow components are unaffected.
-- **Firefox** doesn't focus an invalid form-associated element's validation anchor when a form won't submit: it tries the element itself, which isn't focusable, and logs "The invalid form control … is not focusable". The form still refuses to submit. Chromium and WebKit focus the input inside.
+- **Firefox** logs "The invalid form control … is not focusable" when a form with an invalid mnx control won't submit. It's only a message: Firefox does focus the input inside (the validation anchor), as Chromium and WebKit do, and the form is refused. `form.reportValidity()` logs nothing.
 - **WebKit** clears long lists more slowly relative to building them than Chromium does (2,000 rows cleared in about 2.8× the time of creating 1,000). It isn't the quadratic case the benchmark guards against, so the ratio checks run in Chromium only.

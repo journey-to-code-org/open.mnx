@@ -17,8 +17,9 @@ export const examples = join(here, '..');
 
 /**
  * A known engine difference, recorded rather than failed on: when a form won't submit, Firefox
- * tries to focus the invalid form-associated element itself, not its validation anchor (the
- * input inside), and logs that it's "not focusable". `docs/browser-support.md` lists it.
+ * focuses an invalid form-associated element's validation anchor (the input inside), as the
+ * other engines do, but also logs that the element is "not focusable".
+ * `docs/browser-support.md` lists it.
  */
 export const engineNoise = (message) => (process.env.MNX_BROWSER === 'firefox' && /The invalid form control with name=.* is not focusable/.test(message));
 const repo = join(examples, '../..');

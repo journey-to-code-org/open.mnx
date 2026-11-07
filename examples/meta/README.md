@@ -26,7 +26,7 @@ Each app's README has the details, and the project's server roadmap (`plan/roadm
    there (`solidstart-potluck/`). The apps use shadow DOM components, which hydrate cleanly in
    every framework.
 2. **The elements' own markup wasn't in the server HTML** (fixed in 2.8, except in Next.js). Each framework renders only the host tag, so without JavaScript the elements were empty, and form-associated controls couldn't submit. Now `@mnx/server`'s `injectShadowRoots` renders each host's shadow root into the page (`<template shadowrootmode>`), from its `mnx-props` attribute, and a hidden input stands in for each named form control until its element starts. Each app's no-JavaScript test now submits the form.
-   - React and Vue adapters write `mnx-props` themselves; in Svelte and Solid the app writes `mnx-props={JSON.stringify({…})}` on the host.
+   - React and Vue adapters write `mnx-props` themselves; in Svelte and Solid the mnx plugin adds it in the server build (since 2.10; the apps wrote it by hand in 2.8 and 2.9).
    - Next.js streams Server Components and has no hook for its HTML, so its elements still draw in the browser.
    - A text field's edits can't be submitted before JavaScript (the hidden input carries the server's value).
    - A component that needs `Date` or `Intl` (the workout streak grid) is left for the browser.

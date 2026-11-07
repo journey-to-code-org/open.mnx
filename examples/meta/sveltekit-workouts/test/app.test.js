@@ -47,11 +47,11 @@ test('the stats and the list: mnx elements with Svelte props, including an objec
   await page.waitForSelector('workout-row .row');
   assert.equal(await page.locator('workout-row').count(), 8);
   assert.equal(await page.getByRole('img', { name: 'Effort 4 of 5' }).count() >= 1, true);
-  // The streak grid's `log` is an object: Svelte's server HTML says "[object Object]", so the page
-  // also gives it as mnx-props, which the element starts with. No warning, and the grid shows
-  // the logged days.
+  // The streak grid's `log` is an object: Svelte's server HTML says "[object Object]", so the mnx
+  // plugin adds mnx-props to the host in the server build, which the element starts with. No
+  // warning, and the grid shows the logged days.
   const html = await (await fetch(`${base}/`)).text();
-  assert.match(html, /<streak-grid log="\[object Object\]" mnx-props="/);
+  assert.match(html, /<streak-grid mnx-props="\{&quot;log&quot;:\{&quot;20\d\d-[^"]*" log="\[object Object\]"/);
   assert.ok(await page.locator('streak-grid button[aria-pressed=true]').count() >= 6);
   assert.match(await page.getByRole('img', { name: /^Days trained this week: \d+%$/ }).getAttribute('aria-label'), /%$/);
   assert.deepEqual(messages, []);

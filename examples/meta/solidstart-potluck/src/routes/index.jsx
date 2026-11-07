@@ -23,7 +23,7 @@ export default function Home() {
       <h1>Saturday potluck</h1>
       <Show when={potluck()}>
         <p class="lede">{potluck().signups.length} households, {potluck().guests} people so far.</p>
-        <dish-board prop:courses={potluck().courses} mnx-props={JSON.stringify({ courses: potluck().courses })} />
+        <dish-board prop:courses={potluck().courses} />
       </Show>
       <section>
         <h2>Sign up</h2>
@@ -33,8 +33,8 @@ export default function Home() {
         <form action={signUp} method="post" class="signup">
           <label>Your name <input name="name" autocomplete="name" /></label>
           <label>Bringing <input name="dish" placeholder="What dish?" /></label>
-          <choice-cards name="course" label="Course" prop:items={items} prop:value={course()} mnx-props={JSON.stringify({ items, value: course() })} on:valuechange={(event) => setCourse(event.detail)} />
-          <quantity-stepper name="guests" label="People coming" prop:min={1} prop:max={6} prop:value={guests()} mnx-props={JSON.stringify({ min: 1, max: 6, value: guests() })} on:valuechange={(event) => setGuests(event.detail)} />
+          <choice-cards name="course" label="Course" prop:items={items} prop:value={course()} on:valuechange={(event) => setCourse(event.detail)} />
+          <quantity-stepper name="guests" label="People coming" prop:min={1} prop:max={6} prop:value={guests()} on:valuechange={(event) => setGuests(event.detail)} />
           <For each={submission.result?.errors ?? []}>{(error) => <p class="error">{error}</p>}</For>
           <button disabled={submission.pending}>{submission.pending ? 'Signing up…' : 'Sign up'}</button>
         </form>

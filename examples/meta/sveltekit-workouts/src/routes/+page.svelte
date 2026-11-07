@@ -20,7 +20,7 @@
     </div>
     <div class="panel">
       <h2>Last 8 weeks</h2>
-      <streak-grid log={data.log} mnx-props={JSON.stringify({ log: data.log })} today={data.today} weeks={8} goal={1} label="Workout days"></streak-grid>
+      <streak-grid log={data.log} today={data.today} weeks={8} goal={1} label="Workout days"></streak-grid>
     </div>
   </section>
 
