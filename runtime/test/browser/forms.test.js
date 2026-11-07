@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { useBrowser, open, here, compiler } from './harness.js';
 
-useBrowser({ stepper: join(here, 'fixtures/stepper.mnx'), choose: join(here, 'fixtures/select-value.mnx') });
+useBrowser({ stepper: join(here, 'fixtures/stepper.mnx'), choose: join(here, 'fixtures/select-value.mnx'), amount: join(here, 'fixtures/amount-field.mnx') });
 
 const FORM = `<form id="order"><fieldset id="set"><label id="lbl">Qty <mnx-stepper name="qty"></mnx-stepper></label></fieldset>
   <input name="note" value="x"><button type="reset">Reset</button></form>`;
@@ -78,6 +78,27 @@ test('reporting an invalid control focuses an element inside it', async () => {
   assert.deepEqual(reported, { valid: false, focused: 'button' });
   assert.deepEqual(messages, [], 'no "invalid form control is not focusable" error');
   await page.close();
+});
+
+test('submitting a form with an invalid control focuses the input inside it, in every engine', async () => {
+  const forms = {
+    // In the page's HTML, and created by a framework (set up, then given its props).
+    html: '<form id="f"><mnx-amount name="amount" required></mnx-amount><button>Add</button></form>',
+    created: '<form id="f"><button>Add</button></form><script type="module">const el = document.createElement("mnx-amount"); el.name = "amount"; el.required = true; document.getElementById("f").prepend(el);</script>',
+  };
+  for (const [how, html] of Object.entries(forms)) {
+    const { page, messages } = await open(html, { modules: ['amount'] });
+    await page.evaluate(() => customElements.whenDefined('mnx-amount').then(() => document.querySelector('mnx-amount')?.updateComplete));
+    await page.waitForSelector('mnx-amount input');
+    await page.click('#f button');
+    const result = await page.evaluate(() => ({
+      submitted: location.search !== '',
+      focused: document.activeElement.closest('mnx-amount') !== null && document.activeElement.localName,
+    }));
+    assert.deepEqual(result, { submitted: false, focused: 'input' }, how);
+    assert.deepEqual(messages, [], `${how}: no "invalid form control is not focusable" error`);
+    await page.close();
+  }
 });
 
 test('a disabled fieldset disables the control and leaves it out of the form data', async () => {
