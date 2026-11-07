@@ -2,6 +2,22 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.1.0 — 2026-11-07
+
+Who this is for (`plan/roadmap-4.0.md`, 3.1). The first release whose evidence is what people who don't use web components said, rather than what building the examples took. Nothing in the compiler or runtime changed; the positioning did.
+
+### Added
+
+- **`docs/who-this-is-for.md`**: where a compiled web component earns its place (a library or design system with consumers on more than one stack, components handed to other people's stacks, a CMS or an older app, a server that isn't JavaScript) and where it doesn't (one app on one framework, a container of the app's own components, one button on one page). The honest objections, with where mnx stands on each.
+- **`docs/what-crosses-the-boundary.md`**: what crosses a custom element (props, events, two-way binding, slots, form participation, the Context Protocol, host refs, server rendering, outside styling) and what doesn't (render props, framework context, Suspense and transitions, framework hooks, the consumer's components by name), with the rule of thumb: a leaf fits, a container belongs in the framework.
+- **`docs/server-rendering.md`**: the server story in plain terms, with what renders where, what works without JavaScript, and the four gaps that remain (light DOM inside hydrating frameworks, Next.js elements with React children, no streaming, `Date`/`Intl` browser-only).
+- `scripts/bump-version.sh`.
+
+### Changed
+
+- **The README's first screen** is the copy button from the conversation that started this roadmap, next to the same element written by hand (about 55 lines, in a `<details>`), then `let count = 0` updating one text node, then "who it's for" with the Astro line: Astro lets frameworks coexist on a page; mnx lets one component be used by all of them. The framework matrix moves below.
+- The guide's first page says in one sentence that the button renders in light DOM and shadow DOM is a flag.
+
 ## 3.0.0 — 2026-11-07
 
 The first major version since 2.0 (`plan/roadmap-3.0.md`). One change in meaning, one removal; `docs/migrating-to-3.0.md` has the upgrade. Compiled code is unchanged (`abi: 2`), so components built with 2.x run on the 3.0 runtime.

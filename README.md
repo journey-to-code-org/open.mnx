@@ -9,34 +9,105 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 **Status: 3.x.** The `.mnx` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 4.0. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
 ```html
-<!-- header.mnx -->
+<!-- copy-button.mnx -->
 <script>
-  const titleDefault = "Mikey Nichols"
-  const dataDefault = { sample: "sample data", sampleTwo: "additional data" }
+  let copied = false                               // state: assigning it updates the DOM
+
+  async function copy() {
+    await navigator.clipboard.writeText(text)      // `text` is a prop, by name
+    copied = true
+    setTimeout(() => (copied = false), 1500)
+  }
 </script>
-<mnx-header title={titleDefault} data={dataDefault}>
-  <header>
-    <nav>
-      <h1>{title}</h1>
-      <menu>
-        <li>{data.sample}</li>
-        <li>{data.sampleTwo}</li>
-      </menu>
-    </nav>
-  </header>
-</mnx-header>
+<style>
+  button.done { color: green; }                    /* scoped to this component, in light DOM */
+</style>
+<copy-button text label="Copy">                    <!-- the host tag: the element and its props -->
+  <button type="button" onclick={copy} class:done={copied}>
+    {copied ? "Copied!" : label}
+  </button>
+</copy-button>
 ```
 
 ```sh
-mnx compile header.mnx                 # server-rendered HTML
-mnx compile header.mnx --emit js       # the custom element
+mnx compile copy-button.mnx --props props.json   # the HTML a server sends, for {"text":"npm create mnx"}:
+#   <copy-button text="npm create mnx"><button type="button">Copy</button></copy-button>
+mnx compile copy-button.mnx --emit js             # the custom element that hydrates it
 ```
 
-```tsx
-// In a Vite app with @mnx/unplugin: a React component in .tsx files, a Vue component in .vue files.
-import Header from './header.mnx';
-<Header title="Journey to Code" data={{ sample: "a", sampleTwo: "b" }} />
+```html
+<copy-button text="npm create mnx"></copy-button>      <!-- plain HTML -->
 ```
+```tsx
+<CopyButton text="npm create mnx" />                   // React or Vue, through @mnx/unplugin: same file, typed
+```
+
+<details>
+<summary>The same element written by hand (about 55 lines)</summary>
+
+```js
+const template = document.createElement("template");
+template.innerHTML = `<style>button.done { color: green; }</style><button type="button"></button>`;
+
+class CopyButton extends HTMLElement {
+  static observedAttributes = ["text", "label"];
+  #copied = false;
+  #timer = null;
+  #button;
+  #onClick = () => this.copy();              // a stored reference, so removeEventListener works
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" }).append(template.content.cloneNode(true));
+    this.#button = this.shadowRoot.querySelector("button");
+  }
+  get text() { return this.getAttribute("text") ?? ""; }
+  set text(v) { this.setAttribute("text", v); }
+  get label() { return this.getAttribute("label") ?? "Copy"; }
+  set label(v) { this.setAttribute("label", v); }
+
+  connectedCallback() {
+    this.#button.addEventListener("click", this.#onClick);
+    this.#render();
+  }
+  disconnectedCallback() {
+    this.#button.removeEventListener("click", this.#onClick);
+    clearTimeout(this.#timer);
+  }
+  attributeChangedCallback() { this.#render(); }
+
+  async copy() {
+    await navigator.clipboard.writeText(this.text);
+    this.#copied = true;
+    this.#render();                           // every state change has to remember this
+    clearTimeout(this.#timer);
+    this.#timer = setTimeout(() => { this.#copied = false; this.#render(); }, 1500);
+  }
+  #render() {
+    this.#button.textContent = this.#copied ? "Copied!" : this.label;
+    this.#button.classList.toggle("done", this.#copied);
+  }
+}
+customElements.define("copy-button", CopyButton);
+```
+
+It needs shadow DOM to scope one style rule, has no server HTML, and has the two bugs most hand-written elements have (a forgotten `#render()`, a listener removed with a different reference). The compiler writes all of it.
+</details>
+
+The reactivity is the point, not a feature. `let` is state, and the template is bound to it:
+
+```html
+<script>
+  let count = 0
+</script>
+<click-counter>
+  <button onclick={() => count++}>Clicked {count} times</button>
+</click-counter>
+```
+
+Nothing re-renders: `count++` updates one text node. The script runs once per element, the way Solid and Svelte 5 work, on the TC39 Signals API.
+
+**Who it's for.** One component with more than one consumer: a component library or design system used from more than one framework, components handed to other people's stacks, anything that has to live in a CMS, an older app or a static site, and servers that aren't JavaScript. If one app on one framework is the only consumer, you don't need it; [Who mnx is for](docs/who-this-is-for.md) says why, and [What crosses the boundary](docs/what-crosses-the-boundary.md) says which components fit through an element and which belong in the framework. Astro lets frameworks coexist on a page; mnx lets one component be used by all of them.
 
 ## Writing a component
 
@@ -321,6 +392,8 @@ The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated)
 
 ## Server rendering and hydration
 
+`docs/server-rendering.md` is the plain account: what renders where, what works without JavaScript, and the gaps that remain.
+
 The HTML output is the server rendering: static, deterministic, escaped markup. Props that differ from their defaults are written onto the host (JSON for arrays and objects). When the element starts in the browser, it first checks that the markup has its template's shape. If it does, it binds to the existing DOM: nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match is replaced, with a warning.
 
 ### Hydration markers
@@ -561,6 +634,7 @@ Upgrading from 1.x: `mnx migrate` rewrites what 2.0 needs; see `docs/migrating-t
 - `create/`: `create-mnx`, the starter (`npm create mnx`), with a template per framework.
 - `playground/`: the in-browser playground, published to GitHub Pages by `.github/workflows/pages.yml`.
 - `docs/guide/`: the tutorial.
+- `docs/who-this-is-for.md`, `docs/what-crosses-the-boundary.md`, `docs/server-rendering.md`: where mnx fits, which components fit through an element, and the server story with its gaps.
 - `registry/`: the components `mnx add` copies, with their accessibility tests.
 
 Install Rust 1.97 or newer and Node 20 or newer.

@@ -24,6 +24,8 @@ Read it top to bottom:
 - **`{label}`** in the template reads it. Only the text node that shows it updates when it changes. Nothing re-renders, and the script runs once per element.
 - **`<style>`** applies to this component only. The selectors are scoped to it, even in light DOM.
 
+The button renders in **light DOM**: it's a real page element, your page's CSS reaches it, and inside a form it submits like any button. Shadow DOM is a flag (`<like-button shadow>`) for when you want the encapsulation, not the price of entry.
+
 ## Use it
 
 In a page, import the module and write the tag:

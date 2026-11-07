@@ -32,6 +32,9 @@ Each step builds on the last, in about ten minutes each.
 
 ## Topics
 
+- [Who mnx is for](../who-this-is-for.md): where a compiled web component earns its place, and where your framework is the right tool.
+- [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms do; render props, framework context and Suspense don't.
+- [Server rendering, honestly](../server-rendering.md): what renders where, without JavaScript, and the gaps that remain.
 - [mnx on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
 
 ## Reference
