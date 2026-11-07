@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
-import TagInput from './components/tag-input.mnx';
-import { PEOPLE } from './board.js';
+import { onMount } from '@mnx/runtime';
+// The tag input is an element from the library (built with `mnx build --lib`, see ../../ui).
+import '@mnx-examples/ui/tag-input';
+import { PEOPLE } from '../board.js';
 
-/** Edit a card (or a new one) in a modal dialog. */
-export function CardEditor({ card, isNew, suggestions, onSave, onDelete, onClose }) {
-  const dialog = useRef(null);
-  const [draft, setDraft] = useState(card);
-  const set = (key) => (event) => setDraft({ ...draft, [key]: key === 'points' ? Number(event.target.value) : event.target.value });
+/**
+ * Edit a card (or a new one) in a modal dialog. Converted from a React component with
+ * `mnx convert` (see ../../CONVERTED.md).
+ */
+export default function CardEditor({ card, isNew, suggestions, onSave, onDelete, onClose }) {
+  let dialog = null;
+  let draft = card;
+  const set = (key) => (event) => (draft = { ...draft, [key]: key === 'points' ? Number(event.target.value) : event.target.value });
 
-  useEffect(() => {
-    dialog.current.showModal();
-  }, []);
+  onMount(() => {
+    dialog.showModal();
+  });
 
   function submit(event) {
     event.preventDefault();
@@ -18,12 +22,12 @@ export function CardEditor({ card, isNew, suggestions, onSave, onDelete, onClose
   }
 
   return (
-    <dialog ref={dialog} className="editor" onClose={onClose} aria-labelledby="editor-title">
+    <dialog ref={dialog} className="editor" onClose={() => onClose()} aria-labelledby="editor-title">
       <form onSubmit={submit}>
         <h2 id="editor-title">{isNew ? 'New card' : 'Edit card'}</h2>
         <label>
           Title
-          <input name="title" required value={draft.title} onChange={set('title')} autoFocus />
+          <input name="title" required value={draft.title} onInput={set('title')} autoFocus />
         </label>
         <div className="row">
           <label>
@@ -50,13 +54,12 @@ export function CardEditor({ card, isNew, suggestions, onSave, onDelete, onClose
         </div>
         <div className="field">
           <span>Tags</span>
-          {/* An mnx form control, controlled like any React input: value + onValueChange. */}
-          <TagInput value={draft.tags} suggestions={suggestions} max={5} onValueChange={(event) => setDraft({ ...draft, tags: event.detail })} />
+          <tag-input value={draft.tags} suggestions={suggestions} max={5} onValueChange={(event) => (draft = { ...draft, tags: event.detail })} />
         </div>
         <div className="actions">
-          {!isNew && <button type="button" className="danger" onClick={onDelete}>Delete</button>}
+          {!isNew && <button type="button" className="danger" onClick={() => onDelete()}>Delete</button>}
           <span className="spacer" />
-          <button type="button" onClick={() => dialog.current.close()}>Cancel</button>
+          <button type="button" onClick={() => dialog.close()}>Cancel</button>
           <button type="submit" className="primary">Save</button>
         </div>
       </form>

@@ -3,8 +3,9 @@
 //   import Rating from './rating.mnx'          // the build plugin wraps it for React files
 //   <Rating value={stars} onValueChange={(event) => setStars(event.detail)} />
 //
-// - Props are set as properties (objects and arrays arrive as values, not JSON). A prop that's
-//   left out, or was given and then removed, is the component's default.
+// - Props are set as properties (objects and arrays arrive as values, not JSON), already when
+//   React 19 creates the element, so its script sees them. A prop that's left out, or was given
+//   and then removed, is the component's default.
 // - `on<Event>` subscribes to the component's event of that name, in any casing: `valuechange`
 //   is `onValueChange`, `onValuechange` or `onvaluechange`. The handler gets the DOM event (the
 //   value is in `event.detail`) and can change between renders without re-subscribing.
@@ -83,7 +84,11 @@ export function wrap(Element) {
       else if (forwarded) forwarded.current = node;
     }, [forwarded]);
 
-    return React.createElement(tag, { ...attributes(rest), ref }, all.children);
+    // React 19 also sets the props itself when it creates the element, before inserting it, so
+    // the component's script sees them when it runs (`let draft = card`). (React 18 would write
+    // them as attributes; there, and for later changes and removals, the effect above sets them.)
+    const early = legacy || typeof window === 'undefined' ? {} : values;
+    return React.createElement(tag, { ...early, ...attributes(rest), ref }, all.children);
   });
   Component.displayName = pascal(tag);
   Component.element = Element;

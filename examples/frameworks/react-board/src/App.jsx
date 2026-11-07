@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
-import KanbanColumn from './components/kanban-column.mnx';
+// The column comes from a library (built with `mnx build --lib`, see ../ui), as a React
+// component; the card and the editor are this app's own components.
+import { KanbanColumn } from '@mnx-examples/ui/react';
 import TaskCard from './components/task-card.mnx';
-import { CardEditor } from './CardEditor.jsx';
+// The editor was a React component; `mnx convert` made it an mnx one (see ../CONVERTED.md).
+import CardEditor from './components/card-editor.mnx.jsx';
 import { COLUMNS, PEOPLE, load, reducer, save } from './board.js';
 
 export function App() {
@@ -81,7 +84,7 @@ export function App() {
           isNew={editing.isNew}
           suggestions={allTags}
           onClose={() => setEditing(null)}
-          onSave={(card) => { dispatch({ type: 'save', card, column: editing.column }); setEditing(null); }}
+          onSave={(event) => { dispatch({ type: 'save', card: event.detail, column: editing.column }); setEditing(null); }}
           onDelete={() => { dispatch({ type: 'remove', id: editing.card.id }); setEditing(null); }}
         />
       )}

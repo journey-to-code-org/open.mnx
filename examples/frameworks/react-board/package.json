@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "npm run build --prefix ../ui",
     "dev": "vite",
+    "prebuild": "npm run build --prefix ../ui",
     "build": "vite build",
     "preview": "vite preview"
   },

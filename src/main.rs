@@ -388,6 +388,25 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
             .to_string_lossy()
             .into_owned()
     });
+    // Written elsewhere: relative imports still point at what they did.
+    let mut conversion = conversion;
+    let from_dir = std::path::Path::new(&path)
+        .parent()
+        .unwrap_or(std::path::Path::new(""));
+    let to_dir = std::path::Path::new(&target)
+        .parent()
+        .unwrap_or(std::path::Path::new(""));
+    if !stdout && from_dir != to_dir {
+        let (output, moved) = rebase_imports(&conversion.output, from_dir, to_dir);
+        if moved > 0 {
+            conversion.output = output;
+            conversion.changes.push(format!(
+                "adjusted {moved} relative import{} for {}",
+                if moved == 1 { "" } else { "s" },
+                to_dir.display()
+            ));
+        }
+    }
     for change in &conversion.changes {
         eprintln!("{path}: {change}");
     }
@@ -412,6 +431,75 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
         "{left} thing{} to finish by hand (above)",
         if left == 1 { "" } else { "s" }
     ))
+}
+
+/// Rewrite `from './x'` / `import './x'` specifiers written relative to `from` to be relative
+/// to `to`. Returns the text and how many changed.
+fn rebase_imports(text: &str, from: &std::path::Path, to: &std::path::Path) -> (String, usize) {
+    use std::path::{Component, Path, PathBuf};
+    let absolute = |path: &Path| -> PathBuf {
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            env::current_dir().unwrap_or_default().join(path)
+        };
+        let mut out = PathBuf::new();
+        for component in path.components() {
+            match component {
+                Component::ParentDir => {
+                    out.pop();
+                }
+                Component::CurDir => {}
+                other => out.push(other.as_os_str()),
+            }
+        }
+        out
+    };
+    let (from, to) = (absolute(from), absolute(to));
+    let relative = |target: &Path| -> String {
+        let target: Vec<_> = target.components().collect();
+        let base: Vec<_> = to.components().collect();
+        let common = target.iter().zip(&base).take_while(|(a, b)| a == b).count();
+        let mut parts: Vec<String> = vec!["..".into(); base.len() - common];
+        parts.extend(
+            target[common..]
+                .iter()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned()),
+        );
+        let joined = parts.join("/");
+        if joined.starts_with("..") {
+            joined
+        } else {
+            format!("./{joined}")
+        }
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut moved = 0;
+    let mut rest = text;
+    while let Some(at) = rest.find(['\'', '"']) {
+        let quote = rest.as_bytes()[at] as char;
+        let before = rest[..at].trim_end();
+        let is_import =
+            before.ends_with(" from") || before.ends_with("import") || before.ends_with("import(");
+        let Some(len) = rest[at + 1..].find(quote) else {
+            break;
+        };
+        let specifier = &rest[at + 1..at + 1 + len];
+        out.push_str(&rest[..=at]);
+        if is_import && (specifier.starts_with("./") || specifier.starts_with("../")) {
+            let rebased = relative(&absolute(&from.join(specifier)));
+            if rebased != specifier {
+                moved += 1;
+            }
+            out.push_str(&rebased);
+        } else {
+            out.push_str(specifier);
+        }
+        out.push(quote);
+        rest = &rest[at + 2 + len..];
+    }
+    out.push_str(rest);
+    (out, moved)
 }
 
 /// `mnx migrate`: rewrite `.mnx` files for 2.0 in place (`--check`: only report, and fail if

@@ -12,6 +12,7 @@ useBrowser({
   rating: join(here, 'fixtures/rating.mnx'),
   card: join(here, 'fixtures/card.mnx'),
   badge: join(here, 'fixtures/badge.mnx'),
+  seeded: join(here, 'fixtures/seeded.mnx'),
 });
 
 const src = join(here, '../../src');
@@ -24,8 +25,9 @@ import { wrap } from '${src}/react.js';
 import RatingElement from '/rating.js';
 import CardElement from '/card.js';
 import BadgeElement from '/badge.js';
+import SeededElement from '/seeded.js';
 
-const Rating = wrap(RatingElement), Card = wrap(CardElement), Badge = wrap(BadgeElement);
+const Rating = wrap(RatingElement), Card = wrap(CardElement), Badge = wrap(BadgeElement), Seeded = wrap(SeededElement);
 window.log = [];
 
 function App() {
@@ -53,6 +55,7 @@ function App() {
         {items.map((item) => <p key={item}>{item}</p>)}
       </Card>
       <Badge {...(labelled ? { label: 'x' } : {})} info={info} />
+      <Seeded start={5} />
     </>
   );
 }
@@ -162,6 +165,9 @@ for (const version of ['react19', 'react18']) {
     assert.deepEqual(await page.$eval('mnx-rating', (el) => [el.id, el.className, el === window.ratingRef]), ['r', 'big', true],
       'other props and the ref reach the element');
     assert.equal(await page.evaluate(() => window.cardRef.current === document.querySelector('mnx-card')), true, 'object refs too');
+    // React 19 sets the props as it creates the element, so a script that seeds state from a
+    // prop sees it. (React 18 sets them after insertion: the script saw the default.)
+    assert.equal(await page.textContent('mnx-seeded output'), version === 'react19' ? '5' : '0');
 
     await page.click('mnx-rating .two');
     await settle(page);

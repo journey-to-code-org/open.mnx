@@ -1,0 +1,5 @@
+<!-- State seeded from a prop when the script runs (what `useState(prop)` converts to). -->
+<script>
+  let draft = start
+</script>
+<mnx-seeded start={0}><output>{draft}</output></mnx-seeded>

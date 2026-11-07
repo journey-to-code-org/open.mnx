@@ -20,6 +20,10 @@ before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   // The CLI, unless the WebAssembly build is there.
   process.env.MNX_COMPILER ??= join(repo, 'target/debug/mnx');
+  // The component library the React and Vue apps import (ui/: `mnx build --lib` over the
+  // registry), as its own `npm run build` makes it.
+  const { buildLibrary } = await import('../../../compiler/library.js');
+  buildLibrary(join(repo, 'registry/components'), { out: join(examples, 'ui/dist'), name: '@mnx-examples/ui', version: '1.0.0' });
   browser = await chromium.launch();
 });
 after(async () => {

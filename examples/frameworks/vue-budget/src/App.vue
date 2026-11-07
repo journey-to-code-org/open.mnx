@@ -1,8 +1,8 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
-import MoneyInput from './components/money-input.mnx';
-import SegmentedControl from './components/segmented-control.mnx';
-import DonutChart from './components/donut-chart.mnx';
+// Shared components come from a library (built with `mnx build --lib`, see ../ui), as Vue
+// components; the app's own are .mnx files next to it.
+import { MoneyInput, SegmentedControl, DonutChart } from '@mnx-examples/ui/vue';
 import BudgetBar from './components/budget-bar.mnx';
 import { CATEGORIES, INCOME, load, save, monthOf, shiftMonth, money } from './data.js';
 

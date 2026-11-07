@@ -355,7 +355,7 @@ The package needs no bundler or mnx tooling on the consumer's side:
 - `custom-elements.json`, the [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest), referenced from `package.json`'s `customElements` field for IDEs, documentation tools and Storybook;
 - `package.json` with `exports` for each of the above, and `@mnx/runtime` as a peer dependency.
 
-`buildLibrary(dir, options)` from `@mnx/compiler/library` does the same from a script.
+`buildLibrary(dir, options)` from `@mnx/compiler/library` does the same from a script. `examples/frameworks/ui/` is one, built from the registry, and the React and Vue example apps import it like a package from npm.
 
 **Start from the registry.** `npx mnx add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty, from form controls to a modal dialog and charts, each tested from the keyboard and by role and accessible name. `npx mnx add --list` lists them; `registry/README.md` has the details and the theme properties.
 
@@ -398,7 +398,9 @@ Preact's hooks (`preact/hooks`) convert the same way. Comments and formatting ar
 - props taken as one object rather than destructured;
 - spread attributes and `dangerouslySetInnerHTML`.
 
-The result is compiled as part of the conversion, and a compile error is shown at its place in the output.
+The result is compiled as part of the conversion, and a compile error is shown at its place in the output. With `--out` in another folder, relative imports are adjusted to it.
+
+`examples/frameworks/react-board/CONVERTED.md` walks through a real one: the board's card editor, converted from React, with what was finished by hand.
 
 ## Editors and tooling without Rust
 

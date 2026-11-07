@@ -2,6 +2,18 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.1 — 2026-11-07
+
+### Fixed
+
+- **The React adapter sets props before the component's script runs** (React 19). It used to set them after React inserted the element, so a script that seeds state from a prop (`let draft = card`, which is what `mnx convert` makes of `useState(card)`) saw `undefined`. React 19 now sets them as it creates the element. Under React 18 the script still sees the default.
+- **`mnx convert --out` into another folder** adjusts the output's relative imports to it.
+
+### Examples
+
+- The React board and the Vue budget take their shared components from a library, `examples/frameworks/ui/`, built from the registry with `mnx build --lib`. They import it like a package from npm (`@mnx-examples/ui/react`, `@mnx-examples/ui/vue`). Their app-specific components stay `.mnx` files compiled by the plugin.
+- The React board's card editor was converted from React with `mnx convert`. `react-board/CONVERTED.md` has the before and after, and what was finished by hand.
+
 ## 2.6.0 — 2026-11-07
 
 Move in, and the 3.0 runway (`plan/roadmap-adoption.md`). The last release of the adoption roadmap.

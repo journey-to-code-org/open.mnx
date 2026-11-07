@@ -6,13 +6,16 @@ any element: no wrappers written by hand, no glue code.
 
 | App | Framework | What it is | What it shows |
 | --- | --- | --- | --- |
-| [`react-board/`](react-board/) | React 19 | A sprint board | `.mnx` imports as React components; React-managed children in an element's slots (reordered, filtered, added); drag and drop; an mnx form control as a controlled input (`value` + `onValueChange`); undo |
-| [`vue-budget/`](vue-budget/) | Vue 3 | A budget tracker | `v-model` on mnx elements, including form controls inside `v-for`; slot content from a Vue template; an SVG donut chart built from Vue's computed state |
+| [`react-board/`](react-board/) | React 19 | A sprint board | `.mnx` imports as React components; React-managed children in an element's slots (reordered, filtered, added); drag and drop; a column from a component library (`mnx build --lib`); a card editor converted from React with `mnx convert` ([how](react-board/CONVERTED.md)); undo |
+| [`vue-budget/`](vue-budget/) | Vue 3 | A budget tracker | `v-model` on mnx elements, including form controls inside `v-for`, from a component library's Vue entry (`mnx build --lib`); slot content from a Vue template; an SVG donut chart built from Vue's computed state |
 | [`svelte-flashcards/`](svelte-flashcards/) | Svelte 5 | A spaced-repetition trainer | A shadow-DOM element with named slots filled from Svelte markup; `{#key}` re-creation; an element listening on the document (1–4 keys) and cleaning up |
 | [`solid-markets/`](solid-markets/) | Solid | A live market dashboard | `prop:`/`on:` bindings updated on every tick; nested mnx elements (a tile's spark line); an SVG chart with pointer events; price alerts and a portfolio |
 | [`lit-chat/`](lit-chat/) | Lit 3 | A team chat | Light-DOM mnx elements inside a LitElement's shadow root, with their styles adopted there; the signed-in user provided by `@lit/context` and read by mnx's `inject()` (the context protocol) |
 | [`preact-habits/`](preact-habits/) | Preact 10 | A habit tracker | Objects as props; a colour from Preact's `style` prop reaching into elements as a custom property; a contribution-style grid with keyboard navigation; an mnx form control in a Preact form |
 | [`angular-booking/`](angular-booking/) | Angular 22 | A booking wizard | Reactive forms whose controls are mnx elements (`mnxModel` with `formControlName`), validation, a step indicator; compiled ahead of time in Vite with Analog's plugin |
+
+[`ui/`](ui/) is a component library built from the registry with `mnx build --lib`, which the
+React and Vue apps import like any package from npm.
 
 Astro is covered by [`../recipes/`](../recipes/), and plain HTML by [`../todo/`](../todo/) and
 [`../planner/`](../planner/).
