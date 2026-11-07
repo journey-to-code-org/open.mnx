@@ -15,6 +15,8 @@ useBrowser({
   clock: join(here, 'fixtures/clock.mnx'),
   inline: join(here, 'fixtures/inline.mnx'),
   state: join(here, 'fixtures/state.mnx'),
+  'row-counter': join(here, 'fixtures/row-counter.mnx'),
+  'row-list': join(here, 'fixtures/row-list.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -342,6 +344,23 @@ test("2.0's script: a let is state, a derived const follows it, and props are na
   assert.deepEqual(await read(), ['big: 6', '16', '6'], 'the script assigned a prop by its name');
   assert.equal(await page.evaluate(() => document.querySelector('mnx-state').label), 'big');
   assert.deepEqual(await page.evaluate(() => window.counts), [1, 6]);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('an element a list adds keeps working when the list changes again, and value follows its state', async () => {
+  const { page, messages } = await open('<row-list></row-list>', { modules: ['row-counter', 'row-list'] });
+  const settle = () => page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve));
+    await Promise.all([...document.querySelectorAll('row-list, row-counter')].map((el) => el.updateComplete));
+  });
+  const add = async (name) => { await page.fill('row-list input', name); await page.press('row-list input', 'Enter'); await settle(); };
+  await add('b');
+  assert.equal(await page.inputValue('row-list input'), '', 'assigning the state cleared what was typed');
+  await add('c'); // the list effect re-runs: the element it added for `b` must not be disposed with it
+  await page.locator('row-counter button').nth(1).click();
+  await settle();
+  assert.deepEqual(await page.$$eval('row-counter button', (buttons) => buttons.map((button) => button.textContent)), ['a 0', 'b 1', 'c 0']);
   assert.deepEqual(messages, []);
   await page.close();
 });

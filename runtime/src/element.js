@@ -9,7 +9,7 @@
 // Paths count element and comment children only. The browser merges and drops text nodes, so
 // text is reached through its element (an only child) or through an empty-comment anchor.
 import { Signal } from './signal.js';
-import { effect, scope, tick, batch } from './effect.js';
+import { effect, scope, root as rootScope, tick, batch } from './effect.js';
 import { RESOURCE } from './resource.js';
 
 const { untrack } = Signal.subtle;
@@ -552,11 +552,14 @@ function place(nodes, open, tag) {
   }
 }
 
+// The native methods: a light-DOM host routes its own insertBefore to its slots (for content a
+// framework adds), and a row of its own list isn't such content.
+const nativeMoveBefore = typeof Element !== 'undefined' ? Element.prototype.moveBefore : undefined;
 function move(parent, node, before) {
   try {
-    if (parent.moveBefore && node.isConnected && parent.isConnected) return parent.moveBefore(node, before);
+    if (nativeMoveBefore && node.isConnected && parent.isConnected) return nativeMoveBefore.call(parent, node, before);
   } catch { /* not movable atomically (different document, …): insert instead */ }
-  parent.insertBefore(node, before);
+  Node.prototype.insertBefore.call(parent, node, before);
 }
 
 const slotName = (node) => (node.nodeType === 1 && node.getAttribute('slot')) || 'default';
@@ -720,6 +723,9 @@ const LIVE = new Set(['input.value', 'textarea.value', 'select.value', 'input.ch
 
 function bindAttribute(part, node) {
   const name = part.attribute;
+  // For live state: the last value written, so the property is written only when the bound
+  // value changes (what the user typed stays until then).
+  let written;
   effect(() => {
     const value = $r(part.value());
     // Another library's custom element: a property when it has one (React 19's rule).
@@ -735,7 +741,7 @@ function bindAttribute(part, node) {
       // A control's live state is its property (the attribute is only the default once the
       // user has touched it).
       if (LIVE.has(`${node.localName}.${name}`)) {
-        if (node[name] !== value) node[name] = value;
+        if (value !== written) node[name] = written = value;
         return;
       }
       node.toggleAttribute(name, value);
@@ -743,7 +749,7 @@ function bindAttribute(part, node) {
     }
     if (LIVE.has(`${node.localName}.${name}`)) {
       const text = value == null ? '' : String(value);
-      if (node[name] !== text) node[name] = text;
+      if (text !== written) node[name] = written = text;
       return;
     }
     if (value == null) return node.removeAttribute(name);
@@ -1209,7 +1215,9 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
         mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0,
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
-      this.#scope = scope(() => {
+      // The element's own root: an effect that inserted it (a list row) doesn't own it, so
+      // re-running that effect can't dispose the element's effects.
+      this.#scope = rootScope(() => {
         const previous = current;
         current = this.#hooks;
         let parts;

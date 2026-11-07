@@ -194,6 +194,17 @@ export function scope(fn) {
   return s;
 }
 
+/**
+ * Like `scope`, but owned by nothing and untracked: for something whose life isn't the running
+ * effect's (an element, which lives as long as it's in the document, even when an effect's run
+ * inserted it).
+ */
+export function root(fn) {
+  const s = new Scope(null);
+  if (fn) untrack(() => s.run(fn));
+  return s;
+}
+
 /** Apply all pending re-runs synchronously, parents before children. */
 export function flush() {
   if (flushing) return;

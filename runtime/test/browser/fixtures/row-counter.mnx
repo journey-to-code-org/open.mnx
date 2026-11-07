@@ -1,0 +1,6 @@
+<script>
+  let clicks = 0
+</script>
+<row-counter label="">
+  <button type="button" onclick={() => clicks++}>{label} {clicks}</button>
+</row-counter>
