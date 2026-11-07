@@ -4,7 +4,9 @@
   "type": "module",
   "description": "A help-desk ticket tracker: Express, EJS and MongoDB, with mnx components rendered on the server and hydrated in the browser.",
   "scripts": {
+    "prestart": "node scripts/ensure-compiler.js",
     "start": "node server.js",
+    "pretest": "node scripts/ensure-compiler.js",
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {

@@ -23,7 +23,15 @@ MONGODB_URI=mongodb://localhost:27017/helpdesk npm start   # with MongoDB (seede
 
 Sign in as anyone on the list: Ada and Sam are agents; Lena, Raj and Tom are customers.
 
-Inside this repository, the compiler is `@mnx/compiler`'s WebAssembly build if it's built (`npm run build` in `compiler/`). Otherwise it's the CLI from `cargo build` at the root, which `src/mnx.js` finds. Installed from npm, it's just `@mnx/compiler`.
+### The compiler
+
+The server renders components with `@mnx/compiler`, which includes the compiler when it's installed from npm. Inside this repository it has to be built first, and `npm start` checks for it (`scripts/ensure-compiler.js`):
+
+- **With Rust installed**, `npm start` runs `cargo build` at the repository root the first time, and uses that CLI (`target/debug/mnx`, or `mnx.exe` on Windows).
+- **Without Rust**, download `mnx.wasm` instead: GitHub → Actions → CI → the latest run on `main` → Artifacts → `mnx-wasm`. Unzip it into `compiler/` (as `compiler/mnx.wasm`), then `npm start`.
+- `MNX_COMPILER=/path/to/mnx` points at a CLI anywhere else.
+
+If none of these is there, `npm start` stops and says so, rather than serving error pages.
 
 ## How it fits together
 

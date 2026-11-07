@@ -210,7 +210,9 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
   app.use(async (error, req, res, next) => {
     console.error(error);
     if (res.headersSent) return next(error);
-    res.status(500).type('text').send('Something went wrong.');
+    // In development, say what: it's usually something to fix in a view or a component.
+    const detail = process.env.NODE_ENV === 'production' ? '' : `\n\n${error.stack ?? error}`;
+    res.status(500).type('text').send(`Something went wrong.${detail}`);
   });
   return app;
 }

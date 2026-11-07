@@ -5,17 +5,15 @@
 //   Each page records which components it used.
 // - `/components/<name>.js` is each component compiled to a browser module, and
 //   `/vendor/mnx/…` is @mnx/runtime, which an import map in the layout points to.
-import { existsSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { available, compileFile, request, sources } from '@mnx/compiler';
+import { compileFile, request, sources } from '@mnx/compiler';
+import { HOW_TO, useCompiler } from './compiler.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-// The compiler: @mnx/compiler's WebAssembly build. Inside this repository it may not be built
-// (that needs Rust's wasm target); then the CLI built by `cargo build` answers instead.
-const cli = join(here, '../../../target/debug/mnx');
-if (!available() && !process.env.MNX_COMPILER && existsSync(cli)) process.env.MNX_COMPILER = cli;
+const compiler = useCompiler();
 export const COMPONENTS = join(here, '../components');
 // The runtime's ES modules (its entry is src/index.js), served as they are.
 const runtimeDir = dirname(fileURLToPath(import.meta.resolve('@mnx/runtime')));
@@ -34,6 +32,7 @@ export function createMnx({ cache = true } = {}) {
     if (!response.ok) throw new Error(response.error);
     return response.output;
   };
+  if (!compiler) throw new Error(`mnx: no compiler found.\n${HOW_TO}`);
 
   /** Everything a page needs: what it rendered, and the CSS of those components. */
   function page() {
