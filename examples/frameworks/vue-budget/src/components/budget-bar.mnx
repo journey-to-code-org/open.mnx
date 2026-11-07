@@ -1,0 +1,28 @@
+<!--
+  Spending against a limit for one category: a bar that turns amber near the limit and red over it.
+-->
+<script>
+  const ratio = limit > 0 ? spent / limit : 0
+  const state = ratio > 1 ? "over" : ratio > 0.85 ? "near" : "ok"
+  const money = (amount) => amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+</script>
+<style>
+  :host { display: block; }
+  .top { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.875rem; margin-bottom: 0.3rem; }
+  .numbers { color: var(--muted); font-variant-numeric: tabular-nums; }
+  progress { display: block; width: 100%; height: 0.5rem; appearance: none; border: 0; background: var(--sunken); border-radius: 999px; overflow: hidden; }
+  progress::-webkit-progress-bar { background: var(--sunken); }
+  progress::-webkit-progress-value { background: var(--ok); border-radius: 999px; }
+  progress::-moz-progress-bar { background: var(--ok); }
+  .near progress::-webkit-progress-value { background: var(--warn); }
+  .over progress::-webkit-progress-value { background: var(--danger); }
+  .near progress::-moz-progress-bar { background: var(--warn); }
+  .over progress::-moz-progress-bar { background: var(--danger); }
+  .over .numbers { color: var(--danger); font-weight: 700; }
+</style>
+<budget-bar label="" spent={0} limit={0}>
+  <div class={state} data-state={state}>
+    <div class="top"><span>{label}</span><span class="numbers">{money(spent)} / {money(limit)}{state === "over" ? ` · ${money(spent - limit)} over` : ""}</span></div>
+    <progress max={limit || 1} value={Math.min(spent, limit || 1)} aria-label={`${label}: ${money(spent)} of ${money(limit)}`}></progress>
+  </div>
+</budget-bar>

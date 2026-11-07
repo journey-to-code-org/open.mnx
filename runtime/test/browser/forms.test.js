@@ -68,6 +68,18 @@ test('an invalid value blocks submission and reports its message', async () => {
   await page.close();
 });
 
+test('reporting an invalid control focuses an element inside it', async () => {
+  const { page, messages } = await open(FORM, { modules: ['stepper'] });
+  await click(page, 'mnx-stepper .down');
+  const reported = await page.evaluate(() => ({
+    valid: document.getElementById('order').reportValidity(),
+    focused: document.activeElement.closest('mnx-stepper') !== null && document.activeElement.localName,
+  }));
+  assert.deepEqual(reported, { valid: false, focused: 'button' });
+  assert.deepEqual(messages, [], 'no "invalid form control is not focusable" error');
+  await page.close();
+});
+
 test('a disabled fieldset disables the control and leaves it out of the form data', async () => {
   const { page } = await open(FORM, { modules: ['stepper'] });
   await click(page, 'mnx-stepper .up');

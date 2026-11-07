@@ -149,13 +149,29 @@ export function formValue(source) {
  * Validation: `check()` returns an error message, or '' / null when the value is valid. Re-runs
  * when what it reads changes; the form won't submit while it reports an error.
  */
+const FOCUSABLE = 'input:not([type=hidden]), select, textarea, button, [tabindex]:not([tabindex="-1"]), [contenteditable]';
+
 export function validity(check) {
-  const { internals, host } = formHooks('validity');
-  effect(() => {
-    const message = $r(check());
-    if (message) internals.setValidity({ customError: true }, String(message), host);
+  const component = formHooks('validity');
+  const { internals, host } = component;
+  // The browser shows the message at the anchor and focuses it when a form won't submit: the
+  // first focusable element the component rendered (the host itself isn't focusable).
+  const anchor = () => {
+    for (const node of (host.shadowRoot ?? host).querySelectorAll(FOCUSABLE)) {
+      if (!node.closest('[data-mnx-slotted]')) return node;
+    }
+    return host;
+  };
+  let message = '';
+  const apply = () => {
+    if (message) internals.setValidity({ customError: true }, message, anchor());
     else internals.setValidity({});
+  };
+  effect(() => {
+    message = String($r(check()) || '');
+    apply();
   });
+  component.mount.push(apply); // once rendered, the anchor is inside
 }
 
 /** The form was reset. */
@@ -368,14 +384,36 @@ function locate(range, parts, hydrating = false) {
 // ---- blocks: the contents of an mnx-if branch or an mnx-each row ----------------------------
 
 const blueprints = new WeakMap();
-function blueprint(source) {
-  let element = blueprints.get(source);
-  if (!element) {
-    element = document.createElement('template');
-    element.innerHTML = source.template;
-    blueprints.set(source, element);
+const SVG = 'http://www.w3.org/2000/svg';
+const MATHML = 'http://www.w3.org/1998/Math/MathML';
+
+/**
+ * A block's template, parsed once per context. Inside `<svg>` (or `<math>`), the markup is
+ * parsed inside that element, so `<circle>` and friends get their namespace: parsed alone, they
+ * would be unknown HTML elements.
+ */
+// The element a fragment's nodes will go into, for fragments assembled before they're placed.
+const fragmentParents = new WeakMap();
+/** The element `node` is in, or will be in once its fragment is placed. */
+function parentOf(node) {
+  const parent = node.parentNode;
+  return parent?.nodeType === 11 ? fragmentParents.get(parent) ?? null : parent;
+}
+
+function blueprint(source, parent = null) {
+  const ns = parent?.namespaceURI;
+  const context = ns === SVG && parent.localName !== 'foreignObject' ? 'svg' : ns === MATHML ? 'math' : '';
+  let byContext = blueprints.get(source);
+  if (!byContext) blueprints.set(source, (byContext = {}));
+  let content = byContext[context];
+  if (!content) {
+    const element = document.createElement('template');
+    element.innerHTML = context ? `<${context}>${source.template}</${context}>` : source.template;
+    content = element.content;
+    if (context) content.replaceChildren(...content.firstChild.childNodes);
+    byContext[context] = content;
   }
-  return element;
+  return content;
 }
 
 function clearBetween(open, close) {
@@ -408,7 +446,9 @@ function mountBlock(block, args, open, close, hydrating, context) {
   // their props from the start, and can't move slotted nodes before they're found.
   // importNode, not cloneNode: defined custom elements upgrade now, so their properties exist
   // before parts bind (a clone stays in the template's inert document).
-  const fragment = document.importNode(blueprint(block).content, true);
+  const parent = parentOf(close);
+  const fragment = document.importNode(blueprint(block, parent), true);
+  fragmentParents.set(fragment, parent);
   const fresh = locate(childRange(fragment), parts);
   parts.forEach((part, index) => bind(part, fresh[index], false, context));
   close.before(fragment);
@@ -750,7 +790,9 @@ function bindAttribute(part, node) {
     if (LIVE.has(`${node.localName}.${name}`)) {
       const text = value == null ? '' : String(value);
       if (text !== written) {
-        node[name] = written = text;
+        // Unchanged text isn't written: that would move the caret and lose a selection.
+        if (node[name] !== text) node[name] = text;
+        written = text;
         // A <select>'s options may come from a list inside it that renders after this part:
         // until the option exists the value doesn't take, so set it again once they're there.
         if (node.localName === 'select' && node.value !== text) {
@@ -857,7 +899,9 @@ function bindEach(part, open, hydrating, context) {
       // A new row is assembled in a fragment, then placed.
       rowOpen = document.createComment('[');
       rowClose = document.createComment(']');
-      new DocumentFragment().append(rowOpen, rowClose);
+      const fragment = new DocumentFragment();
+      fragmentParents.set(fragment, parentOf(open));
+      fragment.append(rowOpen, rowClose);
     }
     const item = new Signal.State(value);
     const position = new Signal.State(index);
@@ -1096,7 +1140,7 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
   let sheet; // created on first use, so define() needs no document
   const ownSheets = () => (styles == null ? [] : [(sheet ??= toSheet(styles))]);
   if (customElements.get(tag)) return customElements.get(tag);
-  const componentTemplate = blueprint({ template });
+  const componentTemplate = { content: blueprint({ template }) };
   const templateSignature = signature(childRange(componentTemplate.content));
   let instances = 0;
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));

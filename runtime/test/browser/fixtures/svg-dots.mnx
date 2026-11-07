@@ -1,0 +1,11 @@
+<script>
+  let dots = [10, 20]
+  let framed = false
+</script>
+<svg-dots>
+  <svg viewBox="0 0 100 20">
+    <mnx-each items={dots} as="x" key={x}><circle cx={x} cy="10" r="4"></circle></mnx-each>
+    <mnx-if test={framed}><rect width="100" height="20" fill="none" stroke="black"></rect></mnx-if>
+  </svg>
+  <button type="button" onclick={() => ((dots = [...dots, 30]), (framed = true))}>more</button>
+</svg-dots>

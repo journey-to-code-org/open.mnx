@@ -17,6 +17,7 @@ useBrowser({
   state: join(here, 'fixtures/state.mnx'),
   'row-counter': join(here, 'fixtures/row-counter.mnx'),
   'row-list': join(here, 'fixtures/row-list.mnx'),
+  'svg-dots': join(here, 'fixtures/svg-dots.mnx'),
   'pick-list': join(here, 'fixtures/pick-list.mnx'),
 });
 
@@ -380,6 +381,18 @@ test('a <select> bound to a value takes it when its options come from a list ins
   await page.click('pick-list button');
   await settle();
   assert.equal(await page.inputValue('pick-list select'), 'medium');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('list rows and branches inside <svg> are SVG elements', async () => {
+  const { page, messages } = await open('<svg-dots></svg-dots>', { modules: ['svg-dots'] });
+  const shapes = () => page.$$eval('svg-dots svg > *', (els) => els.map((el) => `${el.localName}:${el.namespaceURI === 'http://www.w3.org/2000/svg'}`));
+  assert.deepEqual(await shapes(), ['circle:true', 'circle:true']);
+  await page.click('svg-dots button');
+  await page.evaluate(() => document.querySelector('svg-dots').updateComplete);
+  assert.deepEqual(await shapes(), ['circle:true', 'circle:true', 'circle:true', 'rect:true']);
+  assert.ok(await page.$eval('svg-dots circle:last-of-type', (el) => el.getBBox().width > 0), 'it renders');
   assert.deepEqual(messages, []);
   await page.close();
 });

@@ -12,7 +12,7 @@
 //   `v-model:<prop>`, and `v-model` binds the `value` pair (or the only pair, if there's one).
 // - Other attributes and listeners (class, style, @click, …) go to the element; slots become its
 //   children, named slots with `slot="name"`.
-import { defineComponent, h, Text, Comment, Fragment } from 'vue';
+import { defineComponent, h, withDirectives, Text, Comment, Fragment } from 'vue';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 const pascal = (tag) => tag.split(/[-.]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('');
@@ -33,6 +33,20 @@ function named(name, nodes) {
     return [h(node, { slot: name })];
   });
 }
+
+const same = (a, b) => Object.is(a, b);
+
+// Props are set by a directive, after Vue creates the element and before it's inserted (so before
+// the element starts) and before each update. Not as `.name` DOM props: Vue turns `null` into
+// `0`, `''` or `false` there, by the property's current type, and a prop's null is meaningful.
+const setProps = {
+  beforeMount(element, { value }) {
+    for (const name of Object.keys(value)) element[name] = value[name];
+  },
+  beforeUpdate(element, { value }) {
+    for (const name of Object.keys(value)) if (!same(element[name], value[name])) element[name] = value[name];
+  },
+};
 
 export function wrap(Element) {
   const meta = Element?.mnx;
@@ -68,23 +82,21 @@ export function wrap(Element) {
         }];
       }));
       let element = null;
+      const defaults = {}; // one copy per instance, so re-rendering doesn't set a new one
       expose({ get element() { return element; } });
       return () => {
-        // `.name` makes Vue set a DOM property, at creation (before the element starts) and on
-        // every update. (Current Vue would also pick a property for a defined element that has
-        // it; the prefix doesn't depend on that check.)
-        const domProps = {};
+        const values = {};
         for (const name of Object.keys(props)) {
           let value = given[name];
           if (primary && name === primary.prop && given.modelValue !== undefined) value = given.modelValue;
-          domProps[`.${name}`] = value === undefined ? clone(props[name].default) : value;
+          values[name] = value === undefined ? (defaults[name] ??= clone(props[name].default)) : value;
         }
         const children = [];
         for (const [name, slot] of Object.entries(slots)) {
           const nodes = slot() ?? [];
           children.push(...(name === 'default' ? nodes : named(name, nodes)));
         }
-        return h(tag, { ...attrs, ...domProps, ...listeners, ref: (node) => { element = node; } }, children);
+        return withDirectives(h(tag, { ...attrs, ...listeners, ref: (node) => { element = node; } }, children), [[setProps, values]]);
       };
     },
   });

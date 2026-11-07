@@ -236,6 +236,11 @@ test('vue3: props, events, v-model and slots through the Vue adapter', async () 
     rating: '2', stars: '2', header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer', color: 'blue', label: 'x',
   });
 
+  // null is a value the element gets as is (Vue's own DOM-prop path would make it 0 here).
+  await page.evaluate(() => window.update((state) => { state.stars.value = null; }));
+  await settle(page);
+  assert.equal(await page.$eval('mnx-rating', (el) => el.value), null);
+
   await page.evaluate(() => window.unmount());
   assert.equal(await page.$('mnx-card'), null);
   assert.deepEqual(messages.filter((message) => !/You are running a development build of Vue|Vue Devtools/.test(message)), []);
