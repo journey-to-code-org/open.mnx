@@ -1,8 +1,13 @@
 {
   "name": "@mnx/runtime",
   "version": "1.0.0",
-  "private": true,
   "description": "Browser runtime for mnx compiled components, built on the TC39 Signals API",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "directory": "runtime"
+  },
   "type": "module",
   "exports": {
     ".": {

@@ -217,3 +217,7 @@ cargo clippy --all-targets --locked -- -D warnings
 ```
 
 The browser and plugin suites need Playwright's Chromium (`npx playwright install chromium`). `.github/workflows/ci.yml` runs every suite on each push. Behaviour is mutation-checked: each feature's code was deliberately broken in turn to confirm a test fails.
+
+## License
+
+ISC. See `LICENSE`.

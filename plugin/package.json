@@ -1,8 +1,13 @@
 {
   "name": "@mnx/unplugin",
   "version": "1.0.0",
-  "private": true,
   "description": "Compile .mnx components in Vite, Rollup, webpack, esbuild and Rspack, with React and Vue wrappers picked automatically",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "directory": "plugin"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.js",
@@ -39,5 +44,9 @@
     "typescript": "7.0.2",
     "vite": "8.3.6",
     "vue": "3.5.45"
-  }
+  },
+  "files": [
+    "src",
+    "client.d.ts"
+  ]
 }

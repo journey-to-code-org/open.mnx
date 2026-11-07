@@ -4,7 +4,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## 1.0.0 — 2026-11-06
 
-The first stable release: the `.mnx` format is frozen until 2.0, and both outputs support everything in it. Covers the compiler crate and CLI (`mnix`), `@mnx/runtime` and `@mnx/unplugin`.
+The first stable release: the `.mnx` format is frozen until 2.0, and both outputs support everything in it. Covers the compiler crate and CLI (`mnix`), `@mnx/runtime` and `@mnx/unplugin`. Licensed under ISC.
 
 ### Format
 
