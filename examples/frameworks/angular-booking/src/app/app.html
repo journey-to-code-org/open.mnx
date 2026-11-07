@@ -1,0 +1,96 @@
+<header>
+  <span class="brand">stay<b>finder</b></span>
+  <span class="powered">Angular reactive forms + mnx elements</span>
+</header>
+
+@if (booked(); as reference) {
+  <section class="card confirmation">
+    <h1>You're booked</h1>
+    <p>Confirmation <strong class="reference">{{ reference }}</strong> is on its way to {{ value().details?.email }}.</p>
+    <p class="muted">{{ room()?.title }} at {{ place()?.title }}, {{ nights() }} nights for {{ guests() }}. Total {{ usd.format(total()) }}.</p>
+    <button type="button" class="primary" (click)="restart()">Plan another trip</button>
+  </section>
+} @else {
+  <step-indicator [steps]="steps" [current]="step()" (stepselect)="step.set($any($event).detail)"></step-indicator>
+
+  <div class="layout">
+    <form [formGroup]="form" (ngSubmit)="next()" class="card" novalidate>
+      @switch (step()) {
+        @case (0) {
+          <fieldset formGroupName="trip">
+            <legend><h2>Where and when</h2></legend>
+            <choice-cards mnxModel formControlName="place" [items]="placeCards" [required]="true" label="Destination"></choice-cards>
+            @if (form.controls.trip.controls.place.touched && form.controls.trip.controls.place.invalid) {
+              <p class="error" role="alert">Choose a destination.</p>
+            }
+            <date-range mnxModel formControlName="dates" [min]="today"></date-range>
+            @if (form.controls.trip.controls.dates.invalid) {
+              <p class="error" role="alert">Check-out must be at least a night after check-in.</p>
+            }
+            <div class="guests">
+              <div><span>Adults</span><quantity-stepper mnxModel formControlName="adults" [min]="1" [max]="8" label="adults"></quantity-stepper></div>
+              <div><span>Children</span><quantity-stepper mnxModel formControlName="children" [min]="0" [max]="6" label="children"></quantity-stepper></div>
+            </div>
+          </fieldset>
+        }
+        @case (1) {
+          <h2>Pick a room at {{ place()?.title }}</h2>
+          <choice-cards mnxModel formControlName="room" [items]="roomCards()" [required]="true" label="Room"></choice-cards>
+          @if (form.controls.room.touched && form.controls.room.invalid) {
+            <p class="error" role="alert">Choose a room that sleeps {{ guests() }}.</p>
+          }
+        }
+        @case (2) {
+          <fieldset formGroupName="extras">
+            <legend><h2>Make it yours</h2></legend>
+            <div class="extras">
+              @for (extra of extras; track extra.id) {
+                <toggle-switch mnxModel="checked" [formControlName]="extra.id" [label]="extra.label" [description]="extra.description + ' · ' + extra.per" [extra]="extraPrice(extra.id)"></toggle-switch>
+              }
+            </div>
+          </fieldset>
+        }
+        @case (3) {
+          <fieldset formGroupName="details">
+            <legend><h2>Who's coming</h2></legend>
+            <label>Full name <input formControlName="name" autocomplete="name" /></label>
+            @if (form.controls.details.controls.name.touched && form.controls.details.controls.name.invalid) {
+              <p class="error" role="alert">Enter your name.</p>
+            }
+            <label>Email <input formControlName="email" type="email" autocomplete="email" /></label>
+            @if (form.controls.details.controls.email.touched && form.controls.details.controls.email.invalid) {
+              <p class="error" role="alert">Enter a valid email address.</p>
+            }
+            <label>Anything we should know? <textarea formControlName="requests" rows="3"></textarea></label>
+          </fieldset>
+        }
+      }
+      <div class="actions">
+        @if (step() > 0) {
+          <button type="button" class="back" (click)="back()">Back</button>
+        }
+        <button type="submit" class="primary next">{{ step() === steps.length - 1 ? 'Book for ' + usd.format(total()) : 'Continue' }}</button>
+      </div>
+    </form>
+
+    <aside class="card summary" aria-label="Your stay">
+      <h2>Your stay</h2>
+      <dl>
+        <dt>Where</dt><dd class="where">{{ place()?.title ?? 'Not chosen yet' }}</dd>
+        <dt>When</dt><dd class="when">{{ when() }}</dd>
+        <dt>Guests</dt><dd class="who">{{ who() }}</dd>
+      </dl>
+      @if (lines().length) {
+        <table>
+          @for (line of lines(); track line.label) {
+            <tr><td>{{ line.label }}</td><td class="num">{{ usd.format(line.amount) }}</td></tr>
+          }
+          <tr class="muted"><td>Taxes (12%)</td><td class="num">{{ usd.format(taxes()) }}</td></tr>
+          <tr class="total"><td>Total</td><td class="num">{{ usd.format(total()) }}</td></tr>
+        </table>
+      } @else {
+        <p class="muted">Pick a room to see the price.</p>
+      }
+    </aside>
+  </div>
+}

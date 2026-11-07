@@ -1,0 +1,40 @@
+{
+  "name": "mnx-framework-examples",
+  "private": true,
+  "type": "module",
+  "description": "The toolchains for the framework examples, installed once, and the test that builds each one and uses it in a browser.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "@analogjs/vite-plugin-angular": "2.9.6",
+    "@angular/build": "22.2.6",
+    "@angular/common": "22.2.5",
+    "@angular/compiler": "22.2.5",
+    "@angular/compiler-cli": "22.2.5",
+    "@angular/core": "22.2.5",
+    "@angular/forms": "22.2.5",
+    "@angular/platform-browser": "22.2.5",
+    "@babel/core": "7.29.13",
+    "@mnx/compiler": "file:../../compiler",
+    "@mnx/runtime": "file:../../runtime",
+    "@mnx/unplugin": "file:../../plugin",
+    "@preact/preset-vite": "2.10.6",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@vitejs/plugin-react": "6.2.1",
+    "@vitejs/plugin-vue": "6.0.10",
+    "lit": "3.3.3",
+    "playwright": "1.63.0",
+    "preact": "10.29.8",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "rxjs": "7.8.2",
+    "solid-js": "1.9.18",
+    "svelte": "5.57.3",
+    "tslib": "2.8.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.6",
+    "vite-plugin-solid": "2.11.15",
+    "vue": "3.5.45"
+  }
+}

@@ -18,12 +18,13 @@
 // instead (ngModel, formControl, formControlName), using the `<prop>` + `<prop>change` pair:
 // `mnxModel` alone picks the `value` pair (or the only pair), `mnxModel="checked"` names one.
 //
-// The class is published the way Angular libraries are (partial declarations), so the Angular
-// CLI's linker compiles it in AOT builds, and JIT compiles it at runtime.
+// The class is published the way Angular libraries are (partial declarations, in a `fesm2022/`
+// file as the Angular Package Format lays out), so the linker of the Angular CLI and of
+// Vite-based builds (Analog) compiles it in AOT builds, and JIT compiles it at runtime.
 import * as i0 from '@angular/core';
 import { ChangeDetectorRef, DestroyRef, ElementRef, forwardRef, inject } from '@angular/core';
 import { NG_VALUE_ACCESSOR } from '@angular/forms';
-import { models } from './vue.js';
+import { models } from '../src/vue.js';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 

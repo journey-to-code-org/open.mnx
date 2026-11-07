@@ -21,7 +21,7 @@ import '@angular/compiler';
 import { Component, CUSTOM_ELEMENTS_SCHEMA, signal, provideZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { FormsModule, ReactiveFormsModule, FormControl } from '@angular/forms';
-import { MnxModel } from '${src}/angular.js';
+import { MnxModel } from '${src}/../fesm2022/mnx-runtime-angular.mjs';
 import '/rating.js';
 import '/card.js';
 import '/badge.js';

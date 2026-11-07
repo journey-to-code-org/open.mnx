@@ -1,0 +1,38 @@
+<!--
+  A check-in and check-out date, as one value `{ start, end }` ("YYYY-MM-DD" strings). A form
+  control: invalid until both are set and `end` is after `start`.
+  @fires valuechange - Either date changed; `detail` is the new `{ start, end }`.
+-->
+<script>
+  import { emit, formValue, validity, id } from '@mnx/runtime'
+
+  const startId = id()
+  const endId = id()
+  const nights = value.start && value.end ? Math.round((Date.parse(value.end) - Date.parse(value.start)) / 86400000) : 0
+  const nextDay = (day) => (day ? new Date(Date.parse(day) + 86400000).toISOString().slice(0, 10) : min)
+
+  formValue(() => (value.start && value.end ? `${value.start}/${value.end}` : null))
+  validity(() => (!value.start || !value.end ? "Choose both dates" : nights < 1 ? "Check-out must be after check-in" : ""))
+
+  function set(part, day) {
+    const next = { ...value, [part]: day }
+    if (part === "start" && next.end && next.end <= day) next.end = nextDay(day)
+    value = next
+    emit('valuechange', next)
+  }
+</script>
+<style>
+  :host { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end; }
+  label { display: grid; gap: 0.3rem; font-size: 0.8125rem; font-weight: 600; color: var(--muted, #667); }
+  input { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid var(--line, #ccd); border-radius: 0.6rem; background: var(--surface, #fff); color: var(--ink, #111); }
+  .nights { padding: 0.55rem 0.8rem; border-radius: 999px; background: var(--chip, #eef); font-weight: 700; white-space: nowrap; }
+</style>
+<date-range form-associated value={{ start: "", end: "" }} min="">
+  <label for={startId}>Check-in
+    <input id={startId} type="date" class="start" min={min} value={value.start} onchange={(event) => set("start", event.target.value)}>
+  </label>
+  <label for={endId}>Check-out
+    <input id={endId} type="date" class="end" min={nextDay(value.start)} value={value.end} onchange={(event) => set("end", event.target.value)}>
+  </label>
+  <span class="nights" aria-live="polite">{nights > 0 ? `${nights} night${nights === 1 ? "" : "s"}` : "—"}</span>
+</date-range>

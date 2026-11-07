@@ -1,0 +1,11 @@
+@layer base {
+  :root {
+    color-scheme: light dark;
+    --bg: #eef2f6; --surface: #fff; --ink: #0f1a2b; --muted: #5e6b7d; --line: #d9e0e8;
+    --accent: #0f7b6c; --danger: #c43d3d; --chip: #e2f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d141c; --surface: #16202b; --ink: #e6edf5; --muted: #93a1b3; --line: #2a3644; --accent: #3cc3ad; --chip: #18343a; }
+  }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); }
+}

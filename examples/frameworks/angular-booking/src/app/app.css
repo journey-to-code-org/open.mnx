@@ -1,0 +1,36 @@
+:host { display: block; max-width: 68rem; margin: 0 auto; padding: 0 1.25rem 3rem; }
+header { display: flex; align-items: baseline; justify-content: space-between; padding: 1.25rem 0 1rem; }
+.brand { font-size: 1.375rem; font-weight: 300; letter-spacing: -0.02em; }
+.brand b { font-weight: 800; color: var(--accent); }
+.powered { font-size: 0.8125rem; color: var(--muted); }
+step-indicator { display: block; margin-bottom: 1.25rem; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: 1.25rem; align-items: start; }
+@media (max-width: 52rem) { .layout { grid-template-columns: 1fr; } }
+.card { padding: 1.5rem; border-radius: 1.1rem; background: var(--surface); box-shadow: 0 1px 2px #0b1b3314, 0 10px 30px #0b1b330f; }
+fieldset { display: grid; gap: 1rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+legend { padding: 0; margin-bottom: 0.25rem; }
+h2 { margin: 0 0 0.75rem; font-size: 1.25rem; }
+form > h2 { margin-bottom: 1rem; }
+.guests { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+.guests div { display: flex; align-items: center; gap: 0.75rem; }
+.guests span { font-weight: 600; }
+.extras { display: grid; gap: 0.6rem; }
+label { display: grid; gap: 0.3rem; font-weight: 600; font-size: 0.875rem; }
+input, textarea { font: inherit; font-weight: 400; padding: 0.6rem 0.7rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); color: inherit; }
+input.ng-touched.ng-invalid { border-color: var(--danger); }
+.error { margin: -0.5rem 0 0; color: var(--danger); font-size: 0.8125rem; }
+.actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.5rem; }
+button { font: inherit; font-weight: 600; padding: 0.65rem 1.2rem; border: 1px solid var(--line); border-radius: 0.7rem; background: var(--surface); color: inherit; cursor: pointer; }
+button.primary { border-color: transparent; background: var(--accent); color: white; }
+.summary h2 { font-size: 1.0625rem; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.75rem; margin: 0 0 1rem; font-size: 0.875rem; }
+dt { color: var(--muted); }
+dd { margin: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+td { padding: 0.4rem 0; border-top: 1px solid var(--line); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.total td { font-weight: 800; font-size: 1rem; border-top-width: 2px; }
+.muted { color: var(--muted); }
+.confirmation { text-align: center; padding: 3rem 1.5rem; }
+.confirmation h1 { margin: 0 0 0.5rem; }
+.reference { font-family: ui-monospace, monospace; color: var(--accent); }

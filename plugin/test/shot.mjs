@@ -1,0 +1,30 @@
+// node test/shot.mjs <example path> [script.js]: build an example and run a script against it.
+import { join } from 'node:path';
+import { mkdirSync, rmSync, symlinkSync, cpSync, existsSync, statSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+const plugin = '/home/claude/open.mnx/plugin';
+const work = join(plugin, 'test/.tmp-shot');
+rmSync(work, { recursive: true, force: true });
+mkdirSync(join(work, 'node_modules/@mnx'), { recursive: true });
+symlinkSync(plugin, join(work, 'node_modules/@mnx/unplugin'), 'dir');
+const path = process.argv[2];
+const root = join(work, path.replaceAll('/', '-'));
+cpSync(join('/home/claude/open.mnx/examples', path), root, { recursive: true, filter: (p) => !/[\\/](node_modules|dist)([\\/]|$)/.test(p) });
+process.env.MNX_COMPILER = '/home/claude/open.mnx/target/debug/mnx';
+const { build } = await import('vite');
+await build({ root, configFile: join(root, 'vite.config.js'), configLoader: 'native', logLevel: 'warn' });
+const dist = join(root, 'dist');
+const types = { js: 'text/javascript', css: 'text/css', html: 'text/html', json: 'application/json' };
+const srv = createServer((q, r) => { let p = join(dist, new URL(q.url, 'http://x').pathname); if (existsSync(p) && statSync(p).isDirectory()) p = join(p, 'index.html'); try { r.writeHead(200, { 'content-type': types[p.split('.').pop()] ?? 'text/plain' }).end(readFileSync(p)); } catch { r.writeHead(404).end(); } }).listen(4793);
+const { chromium } = await import('playwright');
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1200, height: 860 } });
+page.on('console', (m) => console.log('console', m.type(), m.text()));
+page.on('pageerror', (e) => console.log('pageerror', e.message));
+await page.goto('http://127.0.0.1:4793/');
+await page.waitForTimeout(800);
+const name = path.split('/').pop();
+await page.screenshot({ path: `/tmp/claude-0/${name}.png`, fullPage: true });
+if (process.argv[3]) { const mod = await import(process.argv[3]); await mod.default(page, browser); }
+await browser.close(); srv.close();
+console.log('shot done');

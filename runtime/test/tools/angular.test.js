@@ -10,7 +10,7 @@ import linker from '@angular/compiler-cli/linker/babel';
 const here = dirname(fileURLToPath(import.meta.url));
 
 test('the Angular linker compiles MnxModel ahead of time', () => {
-  const { code } = transformFileSync(join(here, '../../src/angular.js'), { plugins: [linker], babelrc: false, configFile: false });
+  const { code } = transformFileSync(join(here, '../../fesm2022/mnx-runtime-angular.mjs'), { plugins: [linker], babelrc: false, configFile: false });
   assert.doesNotMatch(code, /ɵɵngDeclare/, 'every partial declaration was linked');
   assert.match(code, /ɵɵdefineDirective\(\{[^]*selectors: \[\["", "mnxModel", ""\]\]/);
   assert.match(code, /inputs: \{\s*mnxModel: "mnxModel"\s*\}/);

@@ -32,7 +32,7 @@
     },
     "./angular": {
       "types": "./types/angular.d.ts",
-      "default": "./src/angular.js"
+      "default": "./fesm2022/mnx-runtime-angular.mjs"
     },
     "./server": {
       "types": "./types/server.d.ts",
@@ -93,6 +93,7 @@
   },
   "files": [
     "src",
+    "fesm2022",
     "types"
   ]
 }

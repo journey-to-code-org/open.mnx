@@ -1,75 +1,13 @@
 // The example projects in examples/, built the way their READMEs say and used in Chromium, so
 // they keep working as mnx changes. Each is copied inside plugin/ to resolve its packages from
 // here (their own package.json points at the repository's packages). `npm test` in plugin/.
-import { test, before, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { createRequire } from 'node:module';
-import { extname, join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { useExamples, serve, open, settle } from './example-harness.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const repo = join(here, '../..');
-const work = join(here, '.tmp-examples');
-const { chromium } = createRequire(import.meta.url)('playwright');
-let browser;
-const servers = [];
-
-before(async () => {
-  execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
-  // The CLI, unless the WebAssembly build is there.
-  process.env.MNX_COMPILER ??= join(repo, 'target/debug/mnx');
-  rmSync(work, { recursive: true, force: true });
-  // What `npm install` gives an example: the plugin itself, next to the packages it uses.
-  mkdirSync(join(work, 'node_modules/@mnx'), { recursive: true });
-  symlinkSync(join(here, '..'), join(work, 'node_modules/@mnx/unplugin'), 'dir');
-  browser = await chromium.launch();
-});
-after(async () => {
-  await browser?.close();
-  for (const server of servers) server.close();
-  rmSync(work, { recursive: true, force: true });
-});
-
-function copy(name) {
-  const root = join(work, name);
-  cpSync(join(repo, 'examples', name), root, { recursive: true, filter: (path) => !/[\\/](node_modules|dist|\.astro)([\\/]|$)/.test(path) });
-  return root;
-}
-
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
-
-async function serve(dir) {
-  const server = createServer((request, response) => {
-    let path = join(dir, decodeURIComponent(new URL(request.url, 'http://x').pathname));
-    if (existsSync(path) && statSync(path).isDirectory()) path = join(path, 'index.html');
-    try {
-      response.writeHead(200, { 'content-type': TYPES[extname(path)] ?? 'text/plain' }).end(readFileSync(path));
-    } catch {
-      response.writeHead(404).end();
-    }
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  servers.push(server);
-  return `http://127.0.0.1:${server.address().port}`;
-}
-
-async function open(url) {
-  const page = await browser.newPage();
-  const messages = [];
-  page.on('console', (message) => messages.push(`${message.type()}: ${message.text()}`));
-  page.on('pageerror', (error) => messages.push(`pageerror: ${error.message}`));
-  await page.goto(url);
-  return { page, messages };
-}
-
-const settle = (page) => page.evaluate(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  const all = (root) => [...root.querySelectorAll('*')].flatMap((el) => [el, ...(el.shadowRoot ? all(el.shadowRoot) : [])]);
-  await Promise.all(all(document).filter((el) => el.localName.includes('-') && el.updateComplete).map((el) => el.updateComplete));
-});
+const { copy } = useExamples('examples');
 
 test('todo: add, complete, edit, filter, clear, and keep the list across reloads', async () => {
   const { build } = await import('vite');
