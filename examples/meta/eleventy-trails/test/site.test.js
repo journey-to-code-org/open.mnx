@@ -91,12 +91,12 @@ test('minified, keeping the markers (ignoreCustomComments): the elements still h
   await page.done();
 });
 
-test('minified naively (every comment removed): no markers, so the elements render afresh, with a warning each', async () => {
+test('minified naively (every comment removed): the elements put their markers back and hydrate in place (2.10)', async () => {
   const html = readFileSync(join(root, builds.naive, 'index.html'), 'utf8');
   assert.doesNotMatch(html, /<!--/);
   const page = await open('naive', '/');
   await page.getByRole('button', { name: 'miles' }).click();
   assert.equal((await texts(page, 'trail-card .length'))[0], '2.6 mi', 'still right');
-  assert.ok(page.errors.length > 0 && page.errors.every((error) => /hydration markers .* are missing, so it's rendered fresh/.test(error)), page.errors.join('\n'));
+  assert.deepEqual(page.errors, [], 'no "markers are missing" warnings: nothing rendered fresh');
   await page.done();
 });

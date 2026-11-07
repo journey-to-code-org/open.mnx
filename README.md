@@ -325,7 +325,12 @@ The HTML output is the server rendering: static, deterministic, escaped markup. 
 
 ### Hydration markers
 
-The markers are HTML comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`, `<!--[!-->`). Anything that removes comments makes the element render fresh instead of hydrating, with a warning that says the markers are missing. That includes HTML minifiers, some sanitizers, and htmx in some browsers. Keep them:
+The markers are HTML comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`, `<!--[!-->`). Some tools remove comments: HTML minifiers, some sanitizers, and htmx in some browsers. Since 2.10, an element whose markup lost every comment puts them back by structure and hydrates in place anyway. It walks its template against the markup:
+- a text anchor's text runs up to the next element;
+- an `mnx-if` holds the branch the current values choose, and an `mnx-each` one row per item, checked element by element;
+- a light-DOM slot that ends its range holds the rest (its fallback, if it has the fallback's shape).
+
+The code that does this (`remark.js`) is loaded only when an element meets such markup. Where the shape can't be placed for sure (an `mnx-await`, content projected into a child component), the element renders fresh as before, with a warning that the markers are missing. Every registry component hydrates in place this way (`registry/test/stripped.test.js`). Keeping the markers is still the fast path:
 - **html-minifier-terser:** `ignoreCustomComments: [MNX_MARKER_COMMENT]`, imported from `@mnx/compiler` (it's `/^[[\]?!]*$/`).
 - **htmx 2:** it parses fragments with `Document.parseHTMLUnsafe()` where it exists, and in some Chromium versions that drops comments. When it does, `delete Document.parseHTMLUnsafe` before htmx loads, so htmx uses `DOMParser`. `examples/hypermedia/hono-bikes/` checks for it first.
 

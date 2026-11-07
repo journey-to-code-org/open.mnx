@@ -298,6 +298,17 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       return dev && meta.framework === 'vite' ? hot(output.code) : output.code;
     },
 
+    rollup: {
+      // The runtime loads remark.js (stripped markup) with a dynamic import, which is a second
+      // chunk; a single-file build (`output.file`) inlines it instead of failing.
+      outputOptions(outputOptions) {
+        if (outputOptions.file && !outputOptions.dir && outputOptions.inlineDynamicImports === undefined) {
+          return { ...outputOptions, inlineDynamicImports: true };
+        }
+        return null;
+      },
+    },
+
     vite: {
       config() {
         // One copy of each framework, even when @mnx/runtime is linked from elsewhere.

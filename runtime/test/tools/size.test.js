@@ -22,8 +22,9 @@ const BUDGETS = {
 
 for (const [entry, budget] of Object.entries(BUDGETS)) {
   test(`${entry} fits its budget`, async (t) => {
-    const result = await build({ entryPoints: [join(here, '../..', entry)], bundle: true, minify: true, format: 'esm', write: false, logLevel: 'silent' });
-    const code = result.outputFiles[0].contents;
+    // Split as a bundler would: remark.js (stripped markup) is imported only when needed.
+    const result = await build({ entryPoints: { entry: join(here, '../..', entry) }, bundle: true, splitting: true, outdir: '/out', minify: true, format: 'esm', write: false, logLevel: 'silent' });
+    const code = result.outputFiles.find((file) => file.path.endsWith('/entry.js')).contents;
     const gzip = gzipSync(code).length;
     t.diagnostic(`${entry}: ${code.length} B minified, ${gzip} B gzip, ${brotliCompressSync(code).length} B brotli`);
     assert.ok(gzip <= budget.gzip, `${gzip} B gzip > ${budget.gzip} B`);

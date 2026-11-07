@@ -1,0 +1,8 @@
+<!-- An mnx-await can't be placed without its markers: it renders fresh, with the warning. -->
+<script>
+  const data = Promise.resolve("done")
+</script>
+<mnx-stripped-await>
+  <p>Data</p>
+  <mnx-await value={data}><span>waiting</span><mnx-then as="value"><span>{value}</span></mnx-then></mnx-await>
+</mnx-stripped-await>

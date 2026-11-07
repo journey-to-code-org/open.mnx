@@ -25,6 +25,8 @@ useBrowser({
   'slot-card': join(here, 'fixtures/slot-card.mnx'),
   'slot-card-shadow': join(here, 'fixtures/slot-card-shadow.mnx'),
   countdown: join(here, 'fixtures/countdown.mnx'),
+  stripped: join(here, 'fixtures/stripped-card.mnx'),
+  'stripped-await': join(here, 'fixtures/stripped-await.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -551,11 +553,59 @@ test('hydrated(): false in the server HTML (rendered, not left for the browser),
   await page.close();
 });
 
-test('server markup whose comments were stripped: a warning that says so, and a fresh render', async () => {
-  const html = compiler(join(here, 'fixtures/live-filters.mnx')).replace(/<!--[^]*?-->/g, '');
-  const { page, messages } = await open(html, { modules: ['filters'] });
-  await page.waitForFunction(() => document.querySelector('.hint')?.textContent === 'Filters apply as you type');
+const strip = (html) => html.replace(/<!--[^]*?-->/g, '');
+// Every node of the server markup, kept by the page before the element starts.
+const keepNodes = (selector) => `window.kept = [...document.querySelectorAll(${JSON.stringify(selector)})].flatMap((host) => [...host.querySelectorAll('*')]);`;
+
+test('server markup whose comments were stripped hydrates in place: anchors, mnx-if, mnx-each and slots are put back by structure', async () => {
+  const html = strip(compiler(join(here, 'fixtures/stripped-card.mnx')));
+  assert.doesNotMatch(html, /<!--/);
+  const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('mnx-stripped') });
+  await page.evaluate(() => document.querySelector('mnx-stripped').updateComplete);
+  const kept = await page.evaluate(() => window.kept.length > 0 && window.kept.every((node) => node.isConnected));
+  assert.equal(kept, true, 'every server node is still in the page: nothing was rendered fresh');
+  assert.equal(await page.textContent('mnx-stripped h2'), 'Today: Drinks, 2 picks!');
+  await page.click('mnx-stripped button');
+  await page.evaluate(() => document.querySelector('mnx-stripped').updateComplete);
+  assert.equal(await page.textContent('mnx-stripped h2'), 'Today: Drinks, 3 picks!', 'the anchored text updates');
+  assert.equal(await page.evaluate(() => window.kept.includes(document.querySelector('mnx-stripped h2 b'))), true);
+  // The regions work as regions afterwards.
+  const after = await page.evaluate(async () => {
+    const el = document.querySelector('mnx-stripped');
+    el.open = false;
+    await el.updateComplete;
+    return [el.querySelector('p').className, [...el.querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' ')).join('|'), el.querySelector('footer').textContent];
+  });
+  assert.deepEqual(after, ['closed', 'tea hot|juice', 'No notes']);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('stripped markup with content given to a slot keeps that content', async () => {
+  writeFileSync(join(site, 'stripped-slots.json'), JSON.stringify({ default: '<span class="note">Bring cups</span>' }));
+  const html = strip(compiler(join(here, 'fixtures/stripped-card.mnx'), '--slots', join(site, 'stripped-slots.json'), '--slots-html'));
+  assert.match(html, /<footer><span class="note"[^>]*>Bring cups<\/span><\/footer>/);
+  const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('mnx-stripped') });
+  await page.evaluate(() => document.querySelector('mnx-stripped').updateComplete);
+  assert.equal(await page.evaluate(() => window.kept.every((node) => node.isConnected)), true);
+  assert.equal(await page.textContent('mnx-stripped footer'), 'Bring cups');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('stripped markup that cannot be placed for sure (an mnx-await) renders fresh, with a warning that says why', async () => {
+  const html = strip(compiler(join(here, 'fixtures/stripped-await.mnx')));
+  const { page, messages } = await open(html, { modules: ['stripped-await'] });
+  await page.waitForFunction(() => document.querySelector('mnx-stripped-await span')?.textContent === 'done');
   assert.equal(messages.length, 1, messages.join('\n'));
   assert.match(messages[0], /hydration markers .* are missing.*removed the comments/);
+  await page.close();
+});
+
+test('stripped markup of a progressive-enhancement component hydrates in place too', async () => {
+  const html = strip(compiler(join(here, 'fixtures/live-filters.mnx')));
+  const { page, messages } = await open(html, { modules: ['filters'] });
+  await page.waitForFunction(() => document.querySelector('.hint')?.textContent === 'Filters apply as you type');
+  assert.deepEqual(messages, []);
   await page.close();
 });

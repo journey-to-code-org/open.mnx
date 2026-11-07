@@ -532,6 +532,29 @@ function mountBlock(block, args, open, close, hydrating, context) {
   close.before(fragment);
 }
 
+// Markup whose comments were stripped is put back by `remark.js`, loaded only when an element
+// meets such markup (see connectedCallback).
+let remarker = null; // the module, once loaded
+let remarking = null; // its import
+const loadRemark = () => (remarking ??= import('./remark.js').then(
+  (module) => (remarker = module),
+  () => (remarker = { remark: () => false }),
+));
+/** Whether `root`'s server markup lost the comments `template` has (its top-level elements are there). */
+function lostComments(root, template) {
+  if (!root || !hasContent(root) || !hasComment(template) || hasComment(root)) return false;
+  // The page's own children for a slot aren't server markup: the template's top-level elements
+  // must be there, in order.
+  const children = [...root.children];
+  let at = 0;
+  for (const node of positions(template.firstChild, null)) {
+    if (node.nodeType !== 1) continue;
+    while (at < children.length && children[at].localName !== node.localName) at++;
+    if (at++ >= children.length) return false;
+  }
+  return true;
+}
+
 /** A range's shape: its top-level positions as tag names and region markers. */
 const hasComment = (root) => !!document.createTreeWalker(root, NodeFilter.SHOW_COMMENT).nextNode();
 const signature = (range) =>
@@ -1472,7 +1495,11 @@ function defineElement(tag, definition) {
         if (root.adoptedStyleSheets && !(inPage && root === document)) adopt(root, ownSheets());
       }
       if (this.#scope) this.#scope.resume();
-      else this.#boot();
+      else if (!remarker && lostComments(shadow ? this.shadowRoot : this, componentTemplate.content)) {
+        // Server markup without its comments: start once the code that puts them back is here.
+        loadRemark().then(() => { if (this.isConnected && !this.#scope) this.connectedCallback(); });
+        return;
+      } else this.#boot();
       this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
       this.#started();
     }
@@ -1484,6 +1511,7 @@ function defineElement(tag, definition) {
     }
 
     disconnectedCallback() {
+      if (!this.#scope) return; // (not started: waiting for remark.js)
       for (const cleanup of this.#cleanups.splice(0)) cleanup();
       for (const fn of this.#hooks.unmount) fn();
       // Paused, not disposed: long-lived signals stop holding this element, and if it comes
@@ -1622,6 +1650,9 @@ function defineElement(tag, definition) {
         const context = { slots: new Map(), slotted: styled && !shadow ? tag : null, filled: this.#hooks.filled };
         this.#context = context;
         const server = hasContent(root);
+        // Server markup whose comments were stripped: put them back, where the template says.
+        const stripped = server && !reloading && hasComment(componentTemplate.content) && !hasComment(root);
+        const restored = stripped && !!remarker?.remark(root, componentTemplate.content, parts, { blueprint, isOpen, isClose, read: $r, untrack, State: Signal.State });
         // Server markup has the template's shape; anything else is the page's own children.
         const nodes = server && !reloading && signature(childRange(root)) === templateSignature
           ? locate(childRange(root), parts, true)
@@ -1637,9 +1668,9 @@ function defineElement(tag, definition) {
               if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
             }
           } else if (server) {
-            // No comments at all where the template has markers: something stripped them.
-            const stripped = hasComment(componentTemplate.content) && !hasComment(root);
-            console.warn(stripped
+            // No comments at all where the template has markers: something stripped them, and
+            // they couldn't be put back for sure.
+            console.warn(stripped && !restored
               ? `mnx: <${tag}>'s hydration markers (<!--[-->, <!--]-->, …) are missing, so it's rendered fresh. An HTML minifier, a sanitizer or a fragment parser (htmx in some browsers) removed the comments; keep them (MNX_MARKER_COMMENT in @mnx/compiler)${see('hydration-markers')}`
               : `mnx: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
           }

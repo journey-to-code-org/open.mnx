@@ -43,7 +43,10 @@ CLI from `cargo build` stands in for it, as in `examples/helpdesk/`.
     `parseHTMLUnsafe`, so htmx falls back to `DOMParser`, which keeps them. A test checks both
     paths.
   - Anything that strips comments (HTML minifiers, some sanitizers, CDNs' "optimizers") has the
-    same effect. This is evidence for the 3.0 question of markers.
+    same effect.
+  - Since 2.10 the workaround is optional: an element whose markers were stripped puts them back
+    by structure and hydrates in place. The test without the parser fix now expects no
+    warnings.
 - **Custom elements can't be table rows.** `<inventory-row>` in a `<tbody>` is moved out of the
   table by the HTML parser. So the rows are plain `<tr>`s in Hono's templates, with components
   in their cells, and each row costs three renders.

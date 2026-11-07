@@ -1,0 +1,17 @@
+<!-- Everything that has to survive its comments being stripped: text anchors, an mnx-if, an
+     mnx-each whose rows have their own mnx-if, an attribute, and a slot with a fallback. -->
+<script>
+  let count = 2
+  const items = [{ name: "tea", hot: true }, { name: "juice", hot: false }]
+</script>
+<mnx-stripped heading="Drinks" open={true}>
+  <h2 title={heading}>Today: {heading}, <b>{count}</b> picks!</h2>
+  <mnx-if test={open}><p class="open">Open</p><mnx-else><p class="closed">Closed</p></mnx-else></mnx-if>
+  <ul>
+    <mnx-each items={items} as="item">
+      <li>{item.name} <mnx-if test={item.hot}><i>hot</i></mnx-if></li>
+    </mnx-each>
+  </ul>
+  <button onclick={() => count++}>more</button>
+  <footer><mnx-slot><em>No notes</em></mnx-slot></footer>
+</mnx-stripped>

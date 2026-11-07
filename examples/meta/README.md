@@ -30,7 +30,7 @@ Each app's README has the details, and the project's server roadmap (`plan/roadm
    - Next.js streams Server Components and has no hook for its HTML, so its elements still draw in the browser.
    - A text field's edits can't be submitted before JavaScript (the hidden input carries the server's value).
    - A component that needs `Date` or `Intl` (the workout streak grid) is left for the browser.
-3. **Comment-stripping breaks hydration markers.** An HTML minifier with `removeComments` deletes mnx's markers. The elements still come out right (they render afresh), but each logs a warning and in-place hydration is lost. `eleventy-trails/` shows the one-line fix for html-minifier-terser. (htmx hit the same thing in `../hypermedia/`.)
+3. **Comment-stripping broke hydration markers** (fixed in 2.10). An HTML minifier with `removeComments` deletes mnx's markers. The elements came out right (they rendered afresh), but each logged a warning and in-place hydration was lost. Since 2.10 they put the markers back by structure and hydrate in place. `eleventy-trails/` still shows the one-line way to keep them for html-minifier-terser. (htmx hit the same thing in `../hypermedia/`.)
 4. **Plugin detection missed React Router** (fixed in 2.7). It looked only for `@vitejs/plugin-react`. The plugin now recognises React Router, and warns when a light-DOM component is server-rendered there, in Nuxt or in SvelteKit.
 5. **Small things, fixed while building them:**
    - library mode's React entry now has `'use client'` (Next.js);

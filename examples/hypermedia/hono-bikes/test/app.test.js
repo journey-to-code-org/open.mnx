@@ -127,16 +127,17 @@ for (const runtime of ['node', 'bun']) {
       await close();
     });
 
-    test('htmx without the parser fix: if the browser drops comments, swapped elements still come out right', async () => {
+    test('htmx without the parser fix: if the browser drops comments, swapped elements still hydrate in place', async () => {
       const { page, errors, close } = await open('/?parser=native');
       const drops = await page.evaluate(() => 'parseHTMLUnsafe' in Document && !Document.parseHTMLUnsafe('<p><!--x--></p>').body.firstChild.firstChild);
       await page.click('#item-1 button:text("Sell one")');
       await page.waitForFunction(() => document.querySelector('#item-1 stock-gauge span').textContent.trim() === '3');
       assert.equal(await page.text('#item-1 price-tag'), '$1,299.00');
       assert.deepEqual(await page.locator('#item-1 tag-list li').allTextContents(), ['mtb', '29"']);
-      // Rendered fresh (with mnx's warning) where the markers were lost; hydrated where not.
-      if (drops) assert.ok(errors.length > 0 && errors.every((error) => /hydration markers .* are missing, so it's rendered fresh/.test(error)), errors.join('\n'));
-      else assert.deepEqual(errors, []);
+      // Where the browser dropped the markers, the elements put them back and hydrate in place
+      // (since 2.10), so there's no warning either way.
+      assert.equal(typeof drops, 'boolean');
+      assert.deepEqual(errors, []);
       await close();
     });
 

@@ -2,6 +2,30 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.10.0 — 2026-11-07
+
+Hydrating stripped pages, and props for Svelte and Solid (`plan/roadmap-3.0.md`, 2.10). All additive.
+
+### Added
+
+- **Server markup whose comments were stripped hydrates in place.** HTML minifiers (`removeComments`), some sanitizers and htmx in some browsers remove mnx's hydration markers. Before, such an element rendered fresh with a warning, losing focus and input state. Now it puts the markers back by structure and hydrates the markup it has:
+  - a text anchor's text runs up to the next element;
+  - an `mnx-if` holds the branch the current values choose, and an `mnx-each` one row per item, each checked element by element;
+  - a light-DOM slot that ends its range holds the rest: its fallback if it has the fallback's shape, the supplied content otherwise;
+  - an empty region followed by what follows it in the template is one the server left to the browser.
+
+  Where that can't be placed for sure (an `mnx-await`, content projected into a child component), the element renders fresh as before, with the warning. The code is a separate module, `remark.js`, loaded only when an element meets such markup, so the runtime's size is unchanged where it isn't needed. All 20 registry components hydrate in place from stripped markup (`registry/test/stripped.test.js`), and so do the Eleventy guide's naively minified build and the bike shop's htmx swaps without the parser fix.
+- **`mnx-props` for Svelte and Solid.** `@mnx/unplugin` adds it to mnx hosts in Svelte and Solid server builds, from the attributes that set the element's props (`log={…}`, `{log}`, `bind:value={…}`, Solid's `prop:items={…}`). The SvelteKit and SolidStart apps drop their hand-written ones.
+
+### Fixed
+
+- 2.9.0 said Firefox doesn't focus an invalid mnx form control's input when a form won't submit. It does; it only logs "The invalid form control … is not focusable" as it goes. A new test checks the focus in every engine, and `docs/browser-support.md` is corrected.
+
+### Changed
+
+- **The runtime has a second module, `remark.js`, loaded with a dynamic import.** Bundlers split it into its own chunk. A single-file Rollup build (`output.file`) can't, so `@mnx/unplugin` sets `inlineDynamicImports` there; a Rollup build of the runtime without the plugin needs it set, or `output.dir`.
+- The runtime's size test measures the entry the way a bundler splits it (`remark.js` apart). The development build is 12.9 KB gzipped and the production build 12.5 KB, within their budgets.
+
 ## 2.9.1 — 2026-11-07
 
 `from()` across the examples and docs.

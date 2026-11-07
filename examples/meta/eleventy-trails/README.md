@@ -40,7 +40,8 @@ miles on every card. The choice is remembered.
 
   html-minifier-terser's `ignoreCustomComments: [/^[[\]?!]*$/]` keeps them, and nothing else.
   `MINIFY=1 npm run build` does that, and the tests build it both ways. This is the second
-  example to lose markers, after htmx (`examples/hypermedia/`).
+  example to lose markers, after htmx (`examples/hypermedia/`). Since 2.10 the naive build
+  hydrates in place too: the elements put their markers back by structure, with no warning.
 - **Precomputed data, again.** The elevation profile's SVG points, both units, and the climb in
   feet are worked out in `_data/trails.js` or with `%` arithmetic. The build-time renderer
   evaluates arithmetic, not `.map()`, `Math.round()` or `toFixed()`. Eleventy runs in Node.js,
