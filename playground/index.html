@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mnx playground</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <strong class="brand">mnx <span>playground</span></strong>
+    <label>Example
+      <select id="example"></select>
+    </label>
+    <span class="status" id="status" role="status">Loading the compiler…</span>
+    <button type="button" id="share">Copy link</button>
+    <a href="https://github.com/journey-to-code-org/open.mnx/blob/main/docs/guide/README.md">Tutorial</a>
+  </header>
+  <main>
+    <section class="pane source" aria-label="Source">
+      <div class="label"><span>component.mnx</span></div>
+      <textarea id="source" spellcheck="false" aria-label="Component source"></textarea>
+      <div class="label"><span>page.html</span><small>where the element is used, in the plain HTML preview</small></div>
+      <textarea id="page" spellcheck="false" aria-label="Page markup" class="short"></textarea>
+    </section>
+    <section class="pane output" aria-label="Output">
+      <div role="tablist" aria-label="Output" id="tabs">
+        <button type="button" role="tab" data-tab="preview" aria-selected="true">Preview</button>
+        <button type="button" role="tab" data-tab="js">JavaScript</button>
+        <button type="button" role="tab" data-tab="html">Server HTML</button>
+        <button type="button" role="tab" data-tab="dts">Typings</button>
+        <button type="button" role="tab" data-tab="manifest">Manifest</button>
+      </div>
+      <div id="error" class="error" hidden></div>
+      <div class="panel" data-panel="preview">
+        <div class="previews" id="previews"></div>
+      </div>
+      <pre class="panel code" data-panel="js" hidden><code id="out-js"></code></pre>
+      <pre class="panel code" data-panel="html" hidden><code id="out-html"></code></pre>
+      <pre class="panel code" data-panel="dts" hidden><code id="out-dts"></code></pre>
+      <pre class="panel code" data-panel="manifest" hidden><code id="out-manifest"></code></pre>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

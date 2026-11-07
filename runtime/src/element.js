@@ -21,6 +21,9 @@ const COMMENT = 8;
 const isSignal = (value) => value instanceof Signal.State || value instanceof Signal.Computed;
 
 /** Unwrap a signal, so templates can read `{count}` for `const count = state(0)`. */
+/** Where a message's topic is documented. */
+const see = (section) => ` (see https://github.com/journey-to-code-org/open.mnx#${section})`;
+
 export const $r = (value) => (isSignal(value) ? value.get() : value);
 
 /** Text for a `{…}` in content: null/undefined render nothing; objects are an error. */
@@ -69,11 +72,21 @@ function parseAttribute(spec, raw) {
 let current = null; // lifecycle hooks of the component whose setup is running
 
 function hooks(name) {
-  if (!current) throw new Error(`mnx: ${name}() must be called while a component is setting up`);
+  if (!current) throw new Error(`mnx: ${name}() must be called while a component is setting up${see('script-state-and-hooks')}`);
   return current;
 }
 
-export const state = (value, options) => new Signal.State(value, options);
+export const state = (value, options) => {
+  // During a hot reload, a component's state keeps its value: by position, like hooks, unless
+  // the edit changed what kind of value it holds.
+  const kept = current?.kept;
+  const at = current?.states?.length ?? 0;
+  if (kept && at < kept.length && kind(kept[at]) === kind(value)) value = kept[at];
+  const signal = new Signal.State(value, options);
+  current?.states?.push(signal);
+  return signal;
+};
+const kind = (value) => (value === null || value === undefined ? 'empty' : Array.isArray(value) ? 'array' : typeof value);
 export const computed = (fn, options) => new Signal.Computed(fn, options);
 
 /** Run when the element is connected; may return a cleanup for when it is disconnected. */
@@ -131,7 +144,7 @@ export function id() {
 function formHooks(name) {
   const component = hooks(name);
   if (!component.internals) {
-    throw new Error(`mnx: ${name}() needs form-associated on the component's host tag`);
+    throw new Error(`mnx: ${name}() needs form-associated on the component's host tag${see('forms')}`);
   }
   return component;
 }
@@ -442,7 +455,7 @@ function mountBlock(block, args, open, close, hydrating, context) {
     parts.forEach((part, index) => bind(part, nodes[index], true, context));
     return;
   }
-  if (hydrating) console.warn('mnx: server markup for a region does not match its template; rendering it fresh');
+  if (hydrating) console.warn(`mnx: server markup for a region does not match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
   clearBetween(open, close);
   // Find and bind the parts in the fragment, then insert it: child components inside see
   // their props from the start, and can't move slotted nodes before they're found.
@@ -741,6 +754,8 @@ function assignSlots(nodes) {
 }
 let nativeText, nativeHTML; // looked up on first use, so the module loads without a DOM
 
+const ROUTED = ['insertBefore', 'appendChild', 'append', 'removeChild', 'replaceChild', 'replaceChildren', 'textContent', 'innerHTML'];
+
 /** Route the host's child methods to its slots (see above). */
 function routeChildren(host, context, slots, tag) {
   const holding = (node) => {
@@ -776,7 +791,7 @@ function routeChildren(host, context, slots, tag) {
     const from = take(node);
     // A marker or whitespace goes in the slot of what it's inserted before.
     const name = isContent(node) ? slotName(node) : (before && holding(before)?.name) || 'default';
-    if (!slots.includes(name) && isContent(node)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
+    if (!slots.includes(name) && isContent(node)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
     const slot = slotRecord(context, name);
     const at = before ? slot.nodes.indexOf(before) : -1;
     if (at >= 0) slot.nodes.splice(at, 0, node);
@@ -931,7 +946,7 @@ function bindAttribute(part, node) {
     }
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
     if (part.url && !isSafeUrl(text)) {
-      console.error(`mnx: blocked an unsafe URL in "${name}":`, text);
+      console.error(`mnx: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
       return node.removeAttribute(name);
     }
     if (node.getAttribute(name) !== text) node.setAttribute(name, text);
@@ -1049,7 +1064,7 @@ function bindEach(part, open, hydrating, context) {
     return list.map((value, index) => {
       let key = part.key(value, index);
       if (seen.has(key)) {
-        console.error('mnx: duplicate mnx-each key', key, `(row ${index + 1}); that row is not keyed`);
+        console.error('mnx: duplicate mnx-each key', key, `(row ${index + 1}); that row is not keyed${see('directives')}`);
         key = Symbol('duplicate');
       }
       seen.add(key);
@@ -1075,7 +1090,7 @@ function bindEach(part, open, hydrating, context) {
             createRow(list[index], index, keys?.[index], rowOpen, matchingClose(rowOpen), true));
           return;
         }
-        console.warn('mnx: server markup for a list does not match its items; rendering it fresh');
+        console.warn(`mnx: server markup for a list does not match its items; rendering it fresh${see('server-rendering-and-hydration')}`);
         clearBetween(open, close);
       }
 
@@ -1254,16 +1269,29 @@ export function $define(tag, definition) {
   return defineElement(tag, definition);
 }
 
-function defineElement(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, inPage = false, setup }) {
+/** What a hot reload can't change without a full page reload: the element's interface. */
+const shape = ({ props = {}, shadow = false, form = false, events = [], styled = false, inPage = false }) => JSON.stringify([props, shadow, form, events, styled, inPage]);
+const HOT = Symbol('mnx.hot');
+
+function defineElement(tag, definition) {
+  const { props = {}, shadow = false, form = false, events = [], styled = false, inPage = false } = definition;
+  let { template = '', slots = [], styles = null, setup } = definition;
   // On a server (no DOM), a stand-in with the same `mnx` description, so a module that imports a
   // component loads there: adapters render the host tag, and `@mnx/runtime/server` renders it.
   if (typeof HTMLElement === 'undefined') return serverElement(tag, { props, shadow, form, slots, events, styled });
   let sheet; // created on first use, so define() needs no document
   const ownSheets = () => (styles == null ? [] : [(sheet ??= toSheet(styles))]);
-  if (customElements.get(tag)) return customElements.get(tag);
+  const existing = customElements.get(tag);
+  if (existing) {
+    // The same tag again: in development (with hot module replacement), a new version of the
+    // component, swapped into the live elements; otherwise the first definition stands.
+    if (globalThis.__MNX_HOT__ && existing[HOT]) existing.hotReloaded = existing[HOT](definition);
+    return existing;
+  }
   const componentTemplate = { content: blueprint({ template }) };
-  const templateSignature = signature(childRange(componentTemplate.content));
+  let templateSignature = signature(childRange(componentTemplate.content));
   let instances = 0;
+  const live = new Set(); // WeakRefs to the elements, kept only for hot reloads
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
   let internals; // (element) => its ElementInternals; set in the static block below
@@ -1272,6 +1300,25 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
     static mnx = describe(tag, { props, shadow, form, slots, events, styled });
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
+    /** Swap in a new version of the component (see above); false if its interface changed. */
+    static [HOT](next) {
+      if (shape(next) !== shape(definition)) return false;
+      ({ template = '', slots = [], setup } = next);
+      componentTemplate.content = blueprint({ template });
+      templateSignature = signature(childRange(componentTemplate.content));
+      const nextStyles = next.styles ?? null;
+      if (nextStyles !== styles) {
+        styles = nextStyles;
+        sheet?.replaceSync(styles ?? '');
+      }
+      for (const ref of [...live]) {
+        const element = ref.deref();
+        if (element) element.#reload();
+        else live.delete(ref);
+      }
+      return true;
+    }
+    #context = null;
     #signals = {};
     #given = new Set(); // props set from outside (property, attribute, or before upgrade)
     #scope = null;
@@ -1372,8 +1419,30 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
       for (const fn of this.#hooks?.formDisabled ?? []) fn(disabled);
     }
 
-    #boot() {
+    /** Re-run the (new) script and template, keeping props, state and slotted content. */
+    #reload() {
+      if (!this.#scope) return;
+      const connected = this.isConnected;
+      if (connected) {
+        for (const cleanup of this.#cleanups.splice(0)) cleanup();
+        for (const fn of this.#hooks.unmount) fn();
+      }
+      const kept = this.#hooks.states.map((signal) => untrack(() => signal.get()));
+      const slotted = shadow ? [] : [...this.#context.slots.values()].flatMap((slot) => slot.nodes);
+      this.#context.observer?.disconnect();
+      // The host's child methods are routed to the old slots (see routeChildren); back to native.
+      for (const key of ROUTED) delete this[key];
+      this.#scope.dispose();
+      this.#scope = null;
+      if (shadow) this.shadowRoot.replaceChildren();
+      else Element.prototype.replaceChildren.call(this, ...slotted);
+      this.#boot(kept, true);
+      if (connected) this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
+    }
+
+    #boot(kept = null, reloading = false) {
       const element = this;
+      if (globalThis.__MNX_HOT__ && !reloading) live.add(new WeakRef(this));
       const root = shadow ? (this.shadowRoot ?? this.attachShadow({ mode: 'open' })) : this;
       if (shadow) {
         adopt(root, [...globalSheets, ...ownSheets()]);
@@ -1400,7 +1469,7 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
         });
       }
       this.#hooks = {
-        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(),
+        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(), states: [], kept,
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
       // The element's own root: an effect that inserted it (a list row) doesn't own it, so
@@ -1435,9 +1504,10 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
         }
 
         const context = { slots: new Map(), slotted: styled && !shadow ? tag : null, filled: this.#hooks.filled };
+        this.#context = context;
         const server = hasContent(root);
         // Server markup has the template's shape; anything else is the page's own children.
-        const nodes = server && signature(childRange(root)) === templateSignature
+        const nodes = server && !reloading && signature(childRange(root)) === templateSignature
           ? locate(childRange(root), parts, true)
           : null;
         if (nodes) {
@@ -1448,10 +1518,10 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
             const children = [...root.childNodes];
             assignSlots(children).forEach((name, i) => slotRecord(context, name).nodes.push(children[i]));
             for (const [name, slot] of context.slots) {
-              if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
+              if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
             }
           } else if (server) {
-            console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh`);
+            console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
           }
           // Find and bind the parts before inserting (see mountBlock).
           const fragment = document.importNode(componentTemplate.content, true);

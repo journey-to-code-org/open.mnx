@@ -134,7 +134,7 @@ test('hooks called outside setup explain themselves', async () => {
     const { inject, createContext } = await import('@mnx/runtime');
     try { inject(createContext(1)); } catch (error) { return error.message; }
   });
-  assert.equal(message, 'mnx: inject() must be called while a component is setting up');
+  assert.equal(message, 'mnx: inject() must be called while a component is setting up (see https://github.com/journey-to-code-org/open.mnx#script-state-and-hooks)');
   await page.close();
 });
 

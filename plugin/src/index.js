@@ -65,6 +65,23 @@ function dependencies(path, seen = new Set()) {
 }
 
 /**
+ * A component module in Vite's dev server: it accepts its own updates, which the runtime swaps
+ * into the live elements (keeping their state). An update that changes the element's interface
+ * (its props, events, shadow or form setting) reloads the page instead.
+ */
+function hot(code) {
+  // On the first line, so line numbers in errors stay the compiler's.
+  return `globalThis.__MNX_HOT__ = true; ${code}
+if (import.meta.hot) {
+  import.meta.hot.accept((next) => {
+    // (A reload, not invalidate(): a framework wrapper above accepts its own updates.)
+    if (!next || next.default?.hotReloaded === false) location.reload();
+  });
+}
+`;
+}
+
+/**
  * What a server build appends to a component: its renderer, registered by tag. It renders with
  * @mnx/compiler from the component's sources, embedded (keyed by path below their common
  * directory), so the server bundle needs nothing from the build machine.
@@ -118,6 +135,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   // that out: the elements then render on the client only).
   const serverRendering = options.ssr ?? true;
   const compilerModule = options.compilerModule ?? '@mnx/compiler';
+  let dev = false; // Vite's dev server: components hot-reload
 
   /** CLI flags → a request for the WebAssembly compiler. */
   function asRequest(args) {
@@ -152,6 +170,24 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     }
     if (result.status !== 0) throw new Error(result.stderr.trim() || `mnx: the compiler exited with ${result.status}`);
     return { code: result.stdout, warnings: result.stderr.trim() };
+  }
+
+  /**
+   * A compile error for the bundler: with Vite, `loc` and `frame` put it in the dev overlay with
+   * the source line and the compiler's help.
+   */
+  function fail(context, error, id) {
+    const text = String(error.message ?? error);
+    const at = text.match(/-->\s+(.+?):(\d+):(\d+)/);
+    const message = text.split('\n')[0].replace(/^error:\s*/, '');
+    if (!at) return context.error(text);
+    context.error({
+      message: `${message}\n\n${text}`,
+      id,
+      loc: { file: at[1], line: Number(at[2]), column: Number(at[3]) },
+      frame: text.split('\n').slice(1).join('\n'),
+      plugin: 'mnx',
+    });
   }
 
   function writeTypings(path) {
@@ -205,13 +241,15 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         try {
           return compile(path, '--emit', 'css', '--no-imports').code;
         } catch (error) {
-          this.error(error.message);
+          fail(this, error, path);
         }
       }
       if (variant === 'react' || variant === 'vue') {
         const element = JSON.stringify(`${path}${QUERY}element`);
+        // In development the wrapper accepts its updates: the element it wraps hot-reloads itself.
         return `import Element from ${element};\nimport { wrap } from ${JSON.stringify(`${runtime}/${variant}`)};\n`
-          + `export { tag } from ${element};\nexport default wrap(Element);\n`;
+          + `export { tag } from ${element};\nexport default wrap(Element);\n`
+          + (dev && meta.framework === 'vite' ? 'if (import.meta.hot) import.meta.hot.accept(() => {});\n' : '');
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
       // (A JSX component is typed by its own source: TypeScript reads the function.)
@@ -226,16 +264,17 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       try {
         output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles);
       } catch (error) {
-        this.error(error.message);
+        fail(this, error, path);
       }
       if (output.warnings) this.warn(output.warnings);
-      return server && serverRendering ? output.code + serverRenderer(path, compilerModule, runtime) : output.code;
+      if (server) return serverRendering ? output.code + serverRenderer(path, compilerModule, runtime) : output.code;
+      return dev && meta.framework === 'vite' ? hot(output.code) : output.code;
     },
 
     vite: {
       config() {
         // One copy of each framework, even when @mnx/runtime is linked from elsewhere.
-        return { resolve: { dedupe: ['react', 'react-dom', 'vue'] } };
+        return { resolve: { dedupe: ['react', 'react-dom', 'vue', '@angular/core', '@angular/common', '@angular/forms'] } };
       },
       configResolved(config) {
         if (project) return;
@@ -247,10 +286,8 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         else if (names.some((name) => name.startsWith('vite-plugin-svelte'))) project = 'svelte';
         else project = 'element';
       },
-      handleHotUpdate({ file, server }) {
-        if (!COMPONENT.test(file)) return;
-        server.ws.send({ type: 'full-reload' });
-        return [];
+      configureServer() {
+        dev = true;
       },
     },
   };

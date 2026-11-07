@@ -1,0 +1,25 @@
+{
+  "name": "create-mnx",
+  "version": "2.4.0",
+  "description": "Start an app with mnx web components: `npm create mnx`",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "directory": "create"
+  },
+  "type": "module",
+  "bin": {
+    "create-mnx": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "templates"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

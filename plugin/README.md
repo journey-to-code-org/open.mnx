@@ -99,7 +99,9 @@ Next to each component the plugin writes `rating.d.mnx.ts`, typed for the projec
 
 ## Development
 
-Compile errors fail the build and show in Vite's overlay, with the source line and a suggestion. Editing a component reloads the page, because the platform can't redefine a custom element. Components that import it are recompiled too.
+In Vite's dev server, editing a component **updates it in place**: the elements on the page get the new template, script and styles, and keep their props, state (by the order of the script's `let`s, as long as a value's kind doesn't change) and slotted content. A change to the element's interface (its props, events, `shadow` or `form-associated`) reloads the page instead. A compile error appears in Vite's overlay with the line, a code frame and the compiler's suggestion.
+
+Components that import the edited one are recompiled too. Other bundlers' watch modes (Rollup, webpack) recompile on change.
 
 ## Tests
 

@@ -1,0 +1,20 @@
+{
+  "name": "{{name}}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@mnx/runtime": "^{{version}}",
+    "astro": "^7.4.7"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "^{{version}}",
+    "@mnx/unplugin": "^{{version}}",
+    "playwright": "^1.63.0"
+  }
+}

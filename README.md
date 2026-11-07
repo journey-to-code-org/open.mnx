@@ -4,7 +4,9 @@ mnx is a compiler for Web Components. You write a component as HTML with `{expr}
 
 The runtime is built on what the web platform is standardizing: the TC39 Signals API, template parts in the shape of DOM Parts, the Context Protocol, form-associated custom elements and declarative shadow DOM. The aim is for the platform to absorb what mnx proves, so the runtime shrinks as native features ship. See `runtime/README.md`.
 
-**Status: 2.0.** The `.mnx` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 3.0. See `CHANGELOG.md`, `docs/migrating-to-2.0.md` for components written for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
+**Start here:** `npm create mnx@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/open.mnx/) runs mnx in your browser, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. This README is the reference.
+
+**Status: 2.x.** The `.mnx` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 3.0. See `CHANGELOG.md`, `docs/migrating-to-2.0.md` for components written for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
 ```html
 <!-- header.mnx -->
@@ -392,6 +394,9 @@ Upgrading from 1.x: `mnx migrate` rewrites what 2.0 needs; see `docs/migrating-t
 - `plugin/`: `@mnx/unplugin`, with the Astro integration.
 - `compiler/`: `@mnx/compiler`, the compiler as WebAssembly; `wasm/` is its Rust shim.
 - `editors/`: the language server and the VS Code extension.
+- `create/`: `create-mnx`, the starter (`npm create mnx`), with a template per framework.
+- `playground/`: the in-browser playground, published to GitHub Pages by `.github/workflows/pages.yml`.
+- `docs/guide/`: the tutorial.
 
 Install Rust 1.97 or newer and Node 20 or newer.
 
@@ -404,6 +409,9 @@ cargo clippy --all-targets --locked -- -D warnings
 (cd runtime && npm run test:tools)       # manifest schema, TypeScript checks, size budgets
 (cd plugin && npm ci && npm test)        # real apps: React, Vue, Svelte, Solid, Lit, Astro, Tailwind; Rollup, webpack, esbuild
 (cd compiler && npm test)                # render API (and, with mnx.wasm built, parity with the CLI)
+(cd create && npm test)                  # the starter's command line
+(cd examples/frameworks && npm ci && npm test)  # the framework apps, and every starter's own browser test
+node --test "playground/test/*.test.js"  # the playground in Chromium
 ```
 
 The browser and plugin suites need Playwright's Chromium (`npx playwright install chromium`). `.github/workflows/ci.yml` runs every suite on each push. Behaviour is mutation-checked: each feature's code was deliberately broken in turn to confirm a test fails.

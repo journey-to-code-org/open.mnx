@@ -213,7 +213,7 @@ test('a missing compiler is explained', async () => {
   }), /couldn't run the compiler/);
 });
 
-test('dev server: components compile on demand; editing one reloads the page and recompiles its importers', async () => {
+test('dev server: components compile on demand; editing one updates it in place, and recompiles its importers', async () => {
   const { createServer: createViteServer } = await import('vite');
   const root = app('react');
   const server = await createViteServer({
@@ -232,12 +232,31 @@ test('dev server: components compile on demand; editing one reloads the page and
     const before = (await inbox()).match(/hydrate: \[[\d, ]+\]/)?.[0];
     assert.ok(before, 'the parent has a hydrate path into the child');
 
-    // Edit the card: the page reloads with the new template.
+    // Edit the card: the live elements get the new template, without a page reload.
     await page.evaluate(() => { window.stale = true; });
     const card = join(root, 'components/card.mnx');
     writeFileSync(card, readFileSync(card, 'utf8').replace('{heading} footer', '{heading} footer, edited'));
+    await page.waitForFunction(() => document.querySelector('mnx-card:not(#from-html) footer')?.textContent === 'React footer, edited', null, { timeout: 15000 });
+    assert.equal(await page.evaluate(() => window.stale), true, 'no page reload');
+
+    // A change to its interface (a new prop) can't be swapped in: the page reloads. (After a
+    // pause: the file watcher folds writes that close together into one.)
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    writeFileSync(card, readFileSync(card, 'utf8').replace(/<mnx-card /, '<mnx-card extra="x" '));
     await page.waitForFunction(() => window.stale !== true && window.ready === true, null, { timeout: 15000 });
     assert.equal(await page.$eval('mnx-card:not(#from-html) footer', (footer) => footer.textContent), 'React footer, edited');
+
+    // A compile error shows in Vite's overlay, with the source line and where it is.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const good = readFileSync(card, 'utf8');
+    writeFileSync(card, good.replace('<footer>', '<footer onclick={oops(}>'));
+    const overlay = await page.waitForFunction(() => document.querySelector('vite-error-overlay')?.shadowRoot?.textContent, null, { timeout: 15000 });
+    const text = await overlay.jsonValue();
+    assert.match(text, /unterminated \{ expression/);
+    assert.match(text, /card\.mnx:\d+:\d+/);
+    assert.match(text, /onclick=\{oops\(\}/, 'the code frame');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    writeFileSync(card, good);
 
     // Edit the badge (a child of the inbox) so its slot moves: the inbox is recompiled too.
     const badge = join(root, 'components/badge.mnx');

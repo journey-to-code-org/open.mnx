@@ -1,0 +1,23 @@
+---
+import HelloCounter from '../components/hello-counter.mnx';
+import '../style.css';
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+  </head>
+  <body>
+    <main>
+      <h1>{{title}}</h1>
+      <HelloCounter label="Clicks" client:load />
+      <p>The page sees <span id="seen">0</span></p>
+    </main>
+    <script>
+      document.querySelector('hello-counter').addEventListener('countchange', (event) => {
+        document.querySelector('#seen').textContent = event.detail;
+      });
+    </script>
+  </body>
+</html>

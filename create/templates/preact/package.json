@@ -1,0 +1,22 @@
+{
+  "name": "{{name}}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@mnx/runtime": "^{{version}}",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "^{{version}}",
+    "@mnx/unplugin": "^{{version}}",
+    "@preact/preset-vite": "^2.10.6",
+    "playwright": "^1.63.0",
+    "vite": "^8.3.6"
+  }
+}

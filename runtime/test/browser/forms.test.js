@@ -128,7 +128,7 @@ test('form hooks in a component without form-associated explain themselves', asy
     document.body.append(document.createElement('plain-thing'));
     return error;
   });
-  assert.equal(message, 'mnx: formValue() needs form-associated on the component\'s host tag');
+  assert.equal(message, 'mnx: formValue() needs form-associated on the component\'s host tag (see https://github.com/journey-to-code-org/open.mnx#forms)');
   await page.close();
 });
 

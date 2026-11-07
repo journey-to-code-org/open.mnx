@@ -96,6 +96,11 @@ jobs:
         working-directory: examples/frameworks
       - run: npm test
         working-directory: examples/frameworks
+      # npm create mnx: its command line (the apps it writes ran in the step above).
+      - run: npm test
+        working-directory: create
+      # The playground, compiling through the native CLI, with React and Vue previews.
+      - run: node --test "playground/test/*.test.js"
 
   wasm:
     name: WebAssembly compiler
@@ -127,6 +132,8 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # The playground compiling with mnx.wasm in the page.
+      - run: node --test "playground/test/*.test.js"
 
   editors:
     name: Editor support (language server, VS Code grammar)

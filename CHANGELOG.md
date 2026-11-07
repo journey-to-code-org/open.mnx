@@ -2,6 +2,24 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.4.0 — 2026-11-07
+
+Start in a minute (`plan/roadmap-adoption.md`).
+
+### Added
+
+- **`npm create mnx`** (`create/`, the `create-mnx` package). It asks for a framework (none, React, Vue, Svelte, Solid, Preact, Lit, Angular or Astro) and writes a working app: one component, the plugin wired up, typings, and a browser test (`npm test`). CI writes every starter and runs its own test.
+- **Hot reloading that keeps state.** In Vite's dev server, an edited component is swapped into the live elements, which keep their props, state and slotted content (light and shadow DOM). A change to the element's interface reloads the page instead.
+- **Compile errors in Vite's overlay**, with the location, the code frame and the compiler's suggestion.
+- **The playground** (`playground/`): the WebAssembly compiler in the page, the component running in plain HTML, React and Vue side by side, the JavaScript, server HTML, typings and manifest in tabs, and the example in a shareable link. Published to GitHub Pages by `.github/workflows/pages.yml`.
+- **The guide** (`docs/guide/`): a seven-step tutorial from a first component to server rendering, and pages for React, Vue and Svelte developers. The README is now the reference.
+- **Runtime messages link to the docs**: slot, hydration, list-key, hook, form and URL-safety warnings and errors name the README section that explains them.
+
+### Changed
+
+- `@mnx/unplugin` dedupes Angular's packages too, as it does React and Vue, so a linked `@mnx/runtime` doesn't bring a second Angular.
+- The runtime is 12.0 KB gzipped (hot reloading and the doc links), within its 12 KB budget.
+
 ## 2.3.0 — 2026-11-07
 
 Components that say less (`plan/roadmap-adoption.md`). Rewritten with these, the example components went from 1,913 lines to 1,882, with no hand-fired `<prop>change` events (was 11) and 6 `.get()` calls left of 30 (`node examples/stats.mjs`).

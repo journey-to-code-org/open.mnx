@@ -1,0 +1,3 @@
+<hot-box label="A" extra={1}>
+  <p>{extra}</p>
+</hot-box>

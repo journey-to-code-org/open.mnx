@@ -1,0 +1,11 @@
+<script>
+  let count = 0
+  let note = "new"
+</script>
+<style>
+  p { color: rgb(0, 0, 255); }
+</style>
+<hot-box label="A">
+  <button type="button" onclick={() => (count += 10)}>{label} = {count} ({note})</button>
+  <p class="v2"><mnx-slot></mnx-slot></p>
+</hot-box>
