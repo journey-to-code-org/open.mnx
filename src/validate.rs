@@ -104,6 +104,47 @@ fn partial() -> bool {
     PARTIAL.with(std::cell::Cell::get)
 }
 
+thread_local! {
+    /// While `mnx check --server` runs: where partial rendering left something for the browser,
+    /// and, for an attribute, which one.
+    static GAPS: std::cell::RefCell<Option<Vec<(Span, Option<String>)>>> = const { std::cell::RefCell::new(None) };
+}
+
+thread_local! {
+    /// Which of GAPS the latest gap was (a list row repeats the same one).
+    static LAST_GAP: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
+}
+
+fn gap(span: Span) {
+    GAPS.with(|gaps| {
+        if let Some(gaps) = gaps.borrow_mut().as_mut() {
+            let at = gaps.iter().position(|(at, _)| *at == span).unwrap_or_else(|| {
+                gaps.push((span, None));
+                gaps.len() - 1
+            });
+            LAST_GAP.with(|last| last.set(at));
+        }
+    });
+}
+
+/// The latest gap was this attribute's value.
+fn gap_attribute(name: &str) {
+    GAPS.with(|gaps| {
+        let at = LAST_GAP.with(std::cell::Cell::get);
+        if let Some((_, attribute)) = gaps.borrow_mut().as_mut().and_then(|gaps| gaps.get_mut(at)) {
+            attribute.get_or_insert_with(|| name.to_owned());
+        }
+    });
+}
+
+/// Run `render` (a partial HTML render) recording what it leaves for the browser.
+pub fn record_gaps<T>(render: impl FnOnce() -> T) -> (T, Vec<(Span, Option<String>)>) {
+    let previous = GAPS.with(|gaps| gaps.replace(Some(Vec::new())));
+    let result = render();
+    let gaps = GAPS.with(|gaps| gaps.replace(previous)).unwrap_or_default();
+    (result, gaps)
+}
+
 /// Like [`validate`], but what only the browser can compute (runtime-only values, JavaScript
 /// expressions, defaults computed in the browser) is left for the element instead of being an
 /// error: text renders empty, attributes are left out, and conditionals and lists render as
@@ -883,10 +924,47 @@ impl Context<'_> {
                 runtime |= matches!(self.binding(name, state), Some(Binding::Runtime));
             });
             if runtime {
+                // `live && …` / `!live || …`: a known first operand can decide it alone (the
+                // progressive-enhancement pattern, where `live` is hydrated()'s false).
+                if let Expression::Runtime { source, .. } = expression {
+                    if let Some(value) = self.short_circuit(source, state) {
+                        return Ok(Some(value));
+                    }
+                }
+                gap(span);
                 return Ok(None);
             }
         }
         self.evaluate(expression, span, state).map(Some)
+    }
+
+    /// `name && rest`, `!name && rest`, `name || rest`, `!name || rest`, where `name` is known
+    /// at render time and decides the result without `rest`.
+    fn short_circuit(&self, source: &str, state: &LowerState) -> Option<Value> {
+        let text = source.trim_start();
+        let (negated, text) = match text.strip_prefix('!') {
+            Some(rest) if !rest.starts_with('=') => (true, rest.trim_start()),
+            _ => (false, text),
+        };
+        let length = text
+            .char_indices()
+            .take_while(|(_, character)| character.is_alphanumeric() || *character == '_' || *character == '$')
+            .map(|(index, character)| index + character.len_utf8())
+            .last()?;
+        let (name, rest) = text.split_at(length);
+        if name.chars().next().is_some_and(|first| first.is_ascii_digit()) {
+            return None;
+        }
+        let rest = rest.trim_start();
+        let and = rest.starts_with("&&") && !rest.starts_with("&&=");
+        let or = rest.starts_with("||") && !rest.starts_with("||=");
+        if !and && !or {
+            return None;
+        }
+        let Some(Binding::Value(value)) = self.binding(name, state) else { return None };
+        let value = if negated { Value::Bool(!expression::is_truthy(value)) } else { value.clone() };
+        let truthy = expression::is_truthy(&value);
+        ((and && !truthy) || (or && truthy)).then_some(value)
     }
 
     fn evaluate(
@@ -997,11 +1075,13 @@ impl Context<'_> {
                     }
                 }
                 self.lower_directives(element, &mut attributes, state)?;
-                Ok(vec![Node::Element(ir::Element {
+                let mut lowered = ir::Element {
                     name: element.name.clone(),
                     attributes,
                     children: self.lower_nodes(&element.children, state)?,
-                })])
+                };
+                form_value_as_html(&mut lowered);
+                Ok(vec![Node::Element(lowered)])
             }
             ast::Node::If {
                 test,
@@ -1444,6 +1524,7 @@ impl Context<'_> {
             AttributeValue::None => None,
             AttributeValue::Text(parts) => {
                 let Some(lowered) = self.lower_known_parts(parts, state)? else {
+                    gap_attribute(&attribute.name);
                     return Ok(None); // set by the element
                 };
                 let dynamic = parts
@@ -1456,6 +1537,7 @@ impl Context<'_> {
             }
             AttributeValue::Expression(expression, span) => {
                 let Some(value) = self.evaluate_known(expression, *span, state)? else {
+                    gap_attribute(&attribute.name);
                     return Ok(None); // set by the element
                 };
                 if is_boolean {
@@ -1494,6 +1576,64 @@ impl Context<'_> {
             value,
         }))
     }
+}
+
+/// HTML ignores a `value` attribute on `<select>` and `<textarea>`, so before JavaScript the
+/// page would show the wrong choice or an empty box. In the HTML output, a select's value
+/// marks the matching `<option selected>` (by its `value`, or its text when it has none), and a
+/// textarea's value becomes its content. (The element sets the `value` property when it starts.)
+fn form_value_as_html(element: &mut ir::Element) {
+    let name = element.name.to_ascii_lowercase();
+    if name != "select" && name != "textarea" {
+        return;
+    }
+    let Some(position) = element
+        .attributes
+        .iter()
+        .position(|attribute| attribute.name.eq_ignore_ascii_case("value"))
+    else {
+        return;
+    };
+    let value = element.attributes.remove(position).value.map(|parts| joined(&parts)).unwrap_or_default();
+    if name == "textarea" {
+        element.children = vec![Node::Text(vec![Part::Escaped(value)])];
+        return;
+    }
+    fn text(nodes: &[Node]) -> String {
+        nodes
+            .iter()
+            .map(|node| match node {
+                Node::Text(parts) => joined(parts),
+                Node::Element(element) => text(&element.children),
+                _ => String::new(),
+            })
+            .collect()
+    }
+    fn mark(nodes: &mut [Node], value: &str) {
+        for node in nodes {
+            let Node::Element(element) = node else { continue };
+            match element.name.to_ascii_lowercase().as_str() {
+                "optgroup" => mark(&mut element.children, value),
+                "option" => {
+                    let own = element
+                        .attributes
+                        .iter()
+                        .find(|attribute| attribute.name.eq_ignore_ascii_case("value"))
+                        .map(|attribute| attribute.value.as_deref().map(joined).unwrap_or_default());
+                    let matches = match own {
+                        Some(own) => own == value,
+                        None => text(&element.children).split_whitespace().collect::<Vec<_>>().join(" ") == value,
+                    };
+                    element.attributes.retain(|attribute| !attribute.name.eq_ignore_ascii_case("selected"));
+                    if matches {
+                        element.attributes.push(ir::Attribute { name: "selected".into(), value: None });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    mark(&mut element.children, &value);
 }
 
 fn joined_parts(parts: &[Part]) -> String {

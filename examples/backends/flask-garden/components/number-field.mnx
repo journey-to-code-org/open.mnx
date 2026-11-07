@@ -5,10 +5,9 @@
   @fires valuechange - The number changed; `detail` is the new one.
 -->
 <script>
-  import { onMount } from '@mnx/runtime'
+  import { hydrated } from '@mnx/runtime'
 
-  let live = false
-  onMount(() => (live = true))
+  const live = hydrated()
   const round = (number) => Math.round(number * 100) / 100
   const nudge = (by) => (value = round(Math.min(max, Math.max(min, Number(value) + by))))
 </script>

@@ -120,11 +120,12 @@ In the HTML output, directives are expanded at build time and wrapped in `<!--[-
 
 - **`class:name={…}`** adds the class while the value is truthy; bare `class:open` reads `open`. `class={{ open, big: size > 20 }}` is the same as one toggle per entry. They combine with a static `class`, and with a computed one, whose classes are then added and removed token by token.
 - **`style:property={…}`** sets one property: lowercase CSS names or `--custom-properties`; `null` or `false` removes it. `style={{ fontSize: …, "--tone": … }}` sets several (camelCase names become kebab-case). Values are set through the CSSOM (`style.setProperty`), so a value can't add declarations; on the server, a value with `;`, braces, `<`, a backslash or `url()` is refused. A static `style="…"` attribute is allowed; interpolating into one isn't.
-- **Event modifiers**: `onsubmit.prevent`, `.stop`, `.once`, `.self` (only events on the element itself), `.capture`, `.passive`. Key filters on `keydown`/`keyup`/`keypress`: `.enter`, `.escape` (`.esc`), `.space`, `.tab`, `.up`/`.down`/`.left`/`.right` (or `.arrowup`, …), `.delete`, `.backspace`, `.home`, `.end`, `.pageup`, `.pagedown`, and any single letter or digit. Several keys mean any of them (`onkeydown.enter.space`). With a key filter, `.shift`, `.ctrl`, `.alt` and `.meta` must be held and the others not, so `onkeydown.enter` and `onkeydown.shift.enter` don't overlap. They work on child components' events too (`onvaluechange.stop`).
+- **Event modifiers**: `onsubmit.prevent`, `.stop`, `.once`, `.self` (only events on the element itself), `.capture`, `.passive`. Key filters on `keydown`/`keyup`/`keypress`: `.enter`, `.escape` (`.esc`), `.space`, `.tab`, `.up`/`.down`/`.left`/`.right` (or `.arrowup`, …), `.delete`, `.backspace`, `.home`, `.end`, `.pageup`, `.pagedown`, and any single letter or digit. Several keys mean any of them (`onkeydown.enter.space`). With a key filter, `.shift`, `.ctrl`, `.alt` and `.meta` must be held and the others not, so `onkeydown.enter` and `onkeydown.shift.enter` don't overlap. `.mod` is ⌘ on Apple platforms and Ctrl elsewhere (`onkeydown.mod.enter`). `.submit` submits the element's form after any handler, with `requestSubmit()`, so validation and `submit` listeners run: `<select onchange.submit>` needs no handler at all. They work on child components' events too (`onvaluechange.stop`).
+- **`value:bind={color}`** on a child custom element keeps a two-way (`:model`) prop and a `let` (or prop) in step: it's `value={color}` plus `onvaluechange={(event) => (color = event.detail)}`.
 - **`ref={name}`** assigns the element to a `let` once rendered, and `null` when it's removed. `ref={(element) => …}` calls a function instead.
 - **`<mnx-window>` and `<mnx-document>`** take event listeners (with modifiers), added while they're rendered and removed after. They render nothing.
 - **`<mnx-else-if test={…}>`** goes between `mnx-if` and its `mnx-else`.
-- **In scripts and JSX**, the modifiers are functions from `@mnx/runtime`: `prevent(fn)`, `stop(fn)`, `selfOnly(fn)` and `keys('shift+enter', fn)`. In JSX, `className={{ … }}`, `style={{ … }}`, `class:open={…}` and `ref={panel}` work as in `.mnx`.
+- **In scripts and JSX**, the modifiers are functions from `@mnx/runtime`: `prevent(fn)`, `stop(fn)`, `selfOnly(fn)`, `submit(fn)` and `keys('shift+enter', fn)` (`keys('mod+enter', fn)` for ⌘/Ctrl). In JSX, `className={{ … }}`, `style={{ … }}`, `class:open={…}` and `ref={panel}` work as in `.mnx`.
 
 ## Script, state and hooks
 
@@ -295,6 +296,23 @@ Light-DOM components need no setup: utility classes in templates are just classe
 
 The element gets the native control API (`form`, `name`, `labels`, `validity`, `validationMessage`, `willValidate`, `checkValidity()`, `reportValidity()`), and its typings declare it.
 
+In the HTML output, `<select value={…}>` marks the matching `<option selected>` (by its `value`, or its text), and `<textarea value={…}>` becomes the textarea's content, since HTML ignores a `value` attribute on both. Before JavaScript, the page shows the right choice.
+
+**Progressive enhancement.** `hydrated()` from `@mnx/runtime` is a signal that's `false` in the server's HTML and `true` once the element has started. Use it for what only works with JavaScript:
+
+```html
+<script>
+  import { hydrated } from '@mnx/runtime'
+  const live = hydrated()
+</script>
+<my-filters>
+  <form><select name="status" value={status} onchange.submit>…</select>
+    <mnx-if test={!live}><button>Apply</button></mnx-if></form>
+</my-filters>
+```
+
+The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone.
+
 ## Context
 
 `createContext(default)`, `provide(context, value)` and `inject(context)` follow the Web Components Community Group [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md). `inject` returns a signal that follows the nearest provider above the element. A consumer defined before its provider still connects; one that's moved asks again; one that's removed unsubscribes. Because the protocol is plain DOM events, mnx components share context with other implementations such as Lit's `@lit/context`.
@@ -302,6 +320,20 @@ The element gets the native control API (`form`, `name`, `labels`, `validity`, `
 ## Server rendering and hydration
 
 The HTML output is the server rendering: static, deterministic, escaped markup. Props that differ from their defaults are written onto the host (JSON for arrays and objects). When the element starts in the browser, it first checks that the markup has its template's shape. If it does, it binds to the existing DOM: nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match is replaced, with a warning.
+
+### Hydration markers
+
+The markers are HTML comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`, `<!--[!-->`). Anything that removes comments makes the element render fresh instead of hydrating, with a warning that says the markers are missing. That includes HTML minifiers, some sanitizers, and htmx in some browsers. Keep them:
+- **html-minifier-terser:** `ignoreCustomComments: [MNX_MARKER_COMMENT]`, imported from `@mnx/compiler` (it's `/^[[\]?!]*$/`).
+- **htmx 2:** it parses fragments with `Document.parseHTMLUnsafe()` where it exists, and in some Chromium versions that drops comments. When it does, `delete Document.parseHTMLUnsafe` before htmx loads, so htmx uses `DOMParser`. `examples/hypermedia/hono-bikes/` checks for it first.
+
+### In frameworks that hydrate
+
+In Next.js, React Router, Nuxt and SvelteKit, the framework hydrates the server's HTML around the elements. A light-DOM component renders its template into its host before the framework hydrates, and the framework then finds children it didn't render: React redoes the page, Vue removes them, and Svelte fails. Use `shadow` for components those apps server-render. `@mnx/unplugin` warns when a light-DOM component is server-rendered in React Router, Nuxt or SvelteKit. Solid doesn't mind. See `examples/meta/README.md`.
+
+### What the server can render
+
+The HTML output evaluates literals, props, member access, arithmetic, comparisons, logic and ternaries. A call (`.includes()`, `Math.round()`), a template literal or a runtime-only value is left for the browser. `mnx check --server` lists those places, rendering with the defaults. It's an error for `checked`, `selected`, `value` and `disabled`, because without JavaScript the form would be wrong.
 
 **Partial rendering.** A component may use what only the browser can compute: JavaScript expressions, runtime-only script values, or defaults computed in the browser. `--partial` (or `partial: true` in a request) renders everything else and leaves those parts for the element. Their text renders empty, their attributes are left out, and their conditionals and lists become empty `<!--[?-->` regions that the element renders when it starts, without a hydration warning. Without it, the HTML output reports the first such part as an error. `@mnx/compiler`'s `render()` and the plugin's server builds render partially, so every component (JSX ones with state included) can be server-rendered.
 
@@ -346,6 +378,8 @@ Lit apps put mnx elements in their shadow roots: a light-DOM component's styles 
 npx mnx build --lib src/components --out dist   # name and version from ./package.json, or --name/--version
 cd dist && npm publish
 ```
+
+`--watch` rebuilds after each change (a compile error keeps the last good build), for an app that imports the library while you work on it, such as Next.js, whose bundler takes no plugins.
 
 The package needs no bundler or mnx tooling on the consumer's side:
 
@@ -421,16 +455,17 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 ## The CLI
 
 ```sh
-mnx check <component.mnx>... [--format human|json] [--stdin]
+mnx check <component.mnx>... [--format human|json] [--server] [--stdin]
 mnx migrate <component.mnx>... [--check]
 mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial]
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue|svelte|solid]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
 mnx request < request.json
+mnx serve
 ```
 
-`mnx check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnx request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
+`mnx check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnx check --server` also reports what a server without JavaScript leaves out (see "What the server can render"). `mnx request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`). `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. `mnx serve` keeps running and answers one request (or batch) per line on stdin with one response per line on stdout, for servers in other languages that render often (`examples/backends/flask-garden/garden/mnx.py`).
 
 ## Standards
 

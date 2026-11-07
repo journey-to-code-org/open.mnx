@@ -63,6 +63,8 @@ export declare function signal<T>(value: T): T;
  * follows the content. Read it like a value in the template: `<mnx-if test={hasFooter}>`.
  */
 export declare function hasSlot(name?: string): Signal.State<boolean>;
+/** False while the element's markup is the server's (and on the server); true once it has started. The host also gets `:state(hydrated)`. */
+export declare function hydrated(): Signal.State<boolean>;
 
 /**
  * In a JSX component's parameters, `value = model(0)` makes `value` two-way: assigning it fires
@@ -79,6 +81,8 @@ export declare function prevent<E extends Event>(fn?: Handler<E>): Handler<E>;
 export declare function stop<E extends Event>(fn?: Handler<E>): Handler<E>;
 /** A handler that ignores events from inside the element (`.self`). */
 export declare function selfOnly<E extends Event>(fn?: Handler<E>): Handler<E>;
+/** A handler that submits the element's form after `fn` runs (`.submit`), with validation. */
+export declare function submit<E extends Event>(fn?: (event: E) => unknown): (event: E) => unknown;
 /**
  * A keyboard handler for `'enter'`, `'shift+enter'`, `'ctrl+k'`, … (several: `'enter, space'`).
  * The modifier keys named must be held, and the others not.

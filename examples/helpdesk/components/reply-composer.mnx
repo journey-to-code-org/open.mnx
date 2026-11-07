@@ -4,13 +4,10 @@
   Agents also get "internal note", a checkbox that submits with the form.
 -->
 <script>
-  import { onMount } from '@mnx/runtime'
+  import { hydrated } from '@mnx/runtime'
 
-  let box = null
   let text = ""
-  let live = false
-  onMount(() => (live = true))
-  const send = () => box.form.requestSubmit()
+  const live = hydrated()
 </script>
 <style>
   :host { display: grid; gap: 0.5rem; }
@@ -24,7 +21,7 @@
   label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.9rem; }
 </style>
 <reply-composer name="body" label="Reply" agent={false} max={4000}>
-  <textarea name={name} aria-label={label} required maxlength={max} placeholder="Write a reply…" ref={box} oninput={(event) => (text = event.target.value)} onkeydown.ctrl.enter.prevent={send} onkeydown.meta.enter.prevent={send}></textarea>
+  <textarea name={name} aria-label={label} required maxlength={max} placeholder="Write a reply…" oninput={(event) => (text = event.target.value)} onkeydown.mod.enter.prevent.submit></textarea>
   <div class="row">
     <mnx-if test={agent}><label><input type="checkbox" name="internal" value="on"> Internal note</label></mnx-if>
     <mnx-if test={live}><span class="count" class:over={text.length > max}>{text.length}/{max}</span></mnx-if>

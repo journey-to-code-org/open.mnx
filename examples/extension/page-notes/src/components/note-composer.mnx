@@ -27,9 +27,9 @@
 <note-composer color:model="#16a34a" colors={["#16a34a", "#2563eb", "#db2777", "#ea580c", "#7c3aed"]}>
   <textarea ref={box} aria-label="New note" placeholder="Write a note for this site…" value={text}
             oninput={(event) => (text = event.target.value)}
-            onkeydown.ctrl.enter.prevent={add} onkeydown.meta.enter.prevent={add}></textarea>
+            onkeydown.mod.enter.prevent={add}></textarea>
   <div>
-    <color-swatches value={color} onvaluechange={(event) => (color = event.detail)} colors={colors} label="Note colour"></color-swatches>
+    <color-swatches value:bind={color} colors={colors} label="Note colour"></color-swatches>
     <button type="button" disabled={empty} onclick={add}>Add note</button>
   </div>
 </note-composer>

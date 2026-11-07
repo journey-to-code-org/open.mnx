@@ -6,11 +6,10 @@
 <script>
   import './status-badge.mnx'
   import './sla-timer.mnx'
-  import { onMount } from '@mnx/runtime'
+  import { hydrated } from '@mnx/runtime'
 
   let active = -1
-  let live = false
-  onMount(() => (live = true))
+  const live = hydrated()
   function move(step) {
     if (tickets.length === 0) return
     active = Math.max(0, Math.min(tickets.length - 1, active + step))

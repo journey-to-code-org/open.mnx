@@ -1,0 +1,8 @@
+<mnx-choose status="pending" note="Hi">
+  <select value={status} onchange={(event) => (status = event.target.value)}>
+    <option value="open">Open</option>
+    <optgroup label="Later"><option value="pending">Pending</option><option>solved</option></optgroup>
+  </select>
+  <textarea value={note} oninput={(event) => (note = event.target.value)}></textarea>
+  <output>{status}|{note}</output>
+</mnx-choose>

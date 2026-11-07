@@ -28,9 +28,9 @@ Set `FLASK_DEBUG=1` to recompile components on every request while you edit them
 
 ## How it works
 
-`mnx.py` runs `mnx request`, the CLI's JSON interface. The request is sent on standard input and
-carries every component's source, so imports between components resolve without the CLI
-reading the disk:
+`mnx.py` keeps one `mnx serve` process: a JSON request per line on its standard input, and a
+JSON response per line back. Each request carries every component's source, so imports between
+components resolve without the CLI reading the disk:
 
 ```json
 { "emit": "html", "path": "/components/plot-map.mnx", "files": { "/components/plot-map.mnx": "…" },
@@ -67,13 +67,15 @@ so its gaps show up here first. `plan/roadmap-server.md` has the details and the
   means *unchecked* in the server's HTML, so a form re-rendered after an error would lose its
   choices without JavaScript. The app passes each option's `chosen` flag instead, and the chart
   gets each bar's `pct` from Python rather than computing `Math.max(…)` in the component.
-- **It's silent.** Nothing says that `checked={value.includes(o.value)}` won't render on the
-  server. In a form, that's a bug you only find with JavaScript off.
+- **It was silent** (2.7 reports it). Nothing said that `checked={value.includes(o.value)}` won't
+  render on the server. In a form, that's a bug you only find with JavaScript off. Now
+  `mnx check --server` reports it, as an error for form state (`checked`, `selected`, `value`,
+  `disabled`).
 - **A prop's default sets its type.** `max="3"` is a string, so `value.length >= max` is an
   error ("comparison requires two numbers or two strings"). It has to be `max={3}`. The error is
   right, but it's met on the server first, as a 500.
-- **One process per render.** Each `render()` starts the CLI: about 5 ms with a debug build, and
-  a page with three components takes about 15 ms. That's fine for a garden, but a long-lived mode
-  (`mnx serve`, JSON lines on stdin and stdout) would make it a fraction of that.
+- **One process per render** (fixed in 2.7). Each render used to start the CLI: about 5 ms with
+  a debug build, or about 15 ms for a page with three components. `mnx serve` keeps one
+  process, which cut pages by about 40%.
 - **`name` is a common prop and a common Python argument.** `mnx('crop-picker', name='crops')`
   works because `render`'s own argument is positional-only.

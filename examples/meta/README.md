@@ -27,7 +27,7 @@ Each app's README has the details, and the project's server roadmap (`plan/roadm
    every framework.
 2. **The elements' own markup isn't in the server HTML.** Each framework (React Router and SolidStart too) renders only the host tag. So without JavaScript the elements are empty, and form-associated controls can't submit: each app's no-JavaScript test shows the action refusing the form.
 3. **Comment-stripping breaks hydration markers.** An HTML minifier with `removeComments` deletes mnx's markers. The elements still come out right (they render afresh), but each logs a warning and in-place hydration is lost. `eleventy-trails/` shows the one-line fix for html-minifier-terser. (htmx hit the same thing in `../hypermedia/`.)
-4. **Plugin detection misses React Router.** It looks for `@vitejs/plugin-react`, so React Router needs `mnx({ framework: 'react' })`.
+4. **Plugin detection missed React Router** (fixed in 2.7). It looked only for `@vitejs/plugin-react`. The plugin now recognises React Router, and warns when a light-DOM component is server-rendered there, in Nuxt or in SvelteKit.
 5. **Small things, fixed while building them:**
    - library mode's React entry now has `'use client'` (Next.js);
    - an empty URL prop no longer logs an error (a prop's `""` default, before the app sets it);

@@ -134,6 +134,9 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   // Server builds render components with @mnx/compiler at request time (`ssr: false` leaves
   // that out: the elements then render on the client only).
   const serverRendering = options.ssr ?? true;
+  let ssrFramework = null; // React Router, SvelteKit or Nuxt (Vite): see the light-DOM warning
+  const warnedLight = new Set();
+  const relativePath = (path) => path.startsWith(process.cwd()) ? path.slice(process.cwd().length + 1) : path;
   const compilerModule = options.compilerModule ?? '@mnx/compiler';
   let dev = false; // Vite's dev server: components hot-reload
 
@@ -257,6 +260,12 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
           + (dev && meta.framework === 'vite' ? 'if (import.meta.hot) import.meta.hot.accept(() => {});\n' : '');
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
+      if (server && ssrFramework && path.endsWith('.mnx') && !warnedLight.has(path) && isLightDom(readFileSync(path, 'utf8'))) {
+        warnedLight.add(path);
+        this.warn(`${relativePath(path)} is a light-DOM component, and ${ssrFramework} hydrates the server's HTML: when the element renders into its host first, `
+          + `${ssrFramework === 'Nuxt' ? 'Vue removes what it finds there' : ssrFramework === 'SvelteKit' ? 'Svelte fails to hydrate the page' : 'React re-renders the page'}. `
+          + 'Add `shadow` to its host tag (see examples/meta/README.md).');
+      }
       // (A JSX component is typed by its own source: TypeScript reads the function.)
       if (typings && path.endsWith('.mnx')) writeTypings(path);
       // With Vite, a <style> goes through Vite's CSS pipeline; elsewhere it's inlined as written.
@@ -282,9 +291,13 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         return { resolve: { dedupe: ['react', 'react-dom', 'vue', '@angular/core', '@angular/common', '@angular/forms'] } };
       },
       configResolved(config) {
-        if (project) return;
         const names = config.plugins.map((plugin) => plugin.name);
-        if (names.some((name) => /^vite:react/.test(name))) project = 'react';
+        // Frameworks that hydrate the server's HTML around elements (Solid doesn't mind).
+        ssrFramework = names.includes('react-router') ? 'React Router'
+          : names.some((name) => name.startsWith('vite-plugin-sveltekit')) ? 'SvelteKit'
+            : names.some((name) => name.startsWith('nuxt:')) ? 'Nuxt' : null;
+        if (project) return;
+        if (names.some((name) => /^vite:react/.test(name) || name === 'react-router')) project = 'react';
         else if (names.includes('vite:vue')) project = 'vue';
         else if (names.includes('solid')) project = 'solid';
         else if (names.some((name) => name.startsWith('preact'))) project = 'preact';
@@ -297,5 +310,12 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     },
   };
 });
+
+/** Whether a `.mnx` component renders into light DOM (no `shadow` on its host tag). */
+export function isLightDom(source) {
+  const markup = source.replace(/<!--[^]*?-->/g, '').replace(/<(script|style)\b[^]*?<\/\1>/gi, '');
+  const host = markup.match(/<([a-z][a-z0-9]*-[a-z0-9-]*)\b([^>]*)>/i);
+  return !!host && !/(^|\s)shadow(\s|=|$|\/)/.test(host[2]);
+}
 
 export default unplugin;

@@ -26,11 +26,10 @@ npm run dev                 # or: npm run build && npm start
 
 ## What it found
 
-- **mnx can't tell this is a React project.** The plugin looks for `@vitejs/plugin-react`, and
-  React Router's Vite plugin is a different one. So `vite.config.js` says
-  `mnx({ framework: 'react' })`. Without it, importing an `.mnx` file gives the element class,
-  not a React component. Detection should recognise React Router (and other React frameworks on
-  Vite).
+- **mnx couldn't tell this was a React project** (fixed in 2.7). The plugin looked for
+  `@vitejs/plugin-react`, and React Router's Vite plugin is a different one, so the app needed
+  `mnx({ framework: 'react' })`. The plugin now recognises React Router. It also warns when a
+  light-DOM component is server-rendered here, since React would redo the page on hydration.
 - **The same three findings as Next.js** (`../README.md`):
   - the components are shadow DOM, because light DOM would make React redo the page on hydration;
   - the server HTML has the hosts only: no balances, no amount field;

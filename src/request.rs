@@ -16,6 +16,9 @@
 //! compiled text, `error` and `warnings` are rendered for a terminal, and `diagnostics` has
 //! each one as `{ file, line, column, severity, message, help }` for editors. `command: "check"`
 //! runs every check without producing output.
+//!
+//! `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. The CLI's
+//! `mnx serve` answers one request (or batch) per line, for a long-lived process.
 
 use std::collections::HashMap;
 
@@ -26,6 +29,21 @@ use crate::{Diagnostic, Framework, StyleImports};
 /// Handle a request (JSON text); always returns a response (JSON text), never panics on input.
 pub fn handle(request: &str) -> String {
     let response = match serde_json::from_str::<Value>(request) {
+        // `{ "requests": [ … ] }`: several at once, answered as `{ "ok", "responses": [ … ] }`
+        // (each response as if it were sent alone), so a server renders a page in one call.
+        Ok(Value::Object(request)) if request.contains_key("requests") => match request.get("requests") {
+            Some(Value::Array(requests)) => {
+                let responses: Vec<Value> = requests
+                    .iter()
+                    .map(|request| match request {
+                        Value::Object(request) => respond(request),
+                        _ => failure("each of `requests` must be a JSON object"),
+                    })
+                    .collect();
+                json!({ "ok": responses.iter().all(|response| response["ok"] == true), "responses": responses })
+            }
+            _ => failure("`requests` must be an array of requests"),
+        },
         Ok(Value::Object(request)) => respond(&request),
         Ok(_) => failure("the request must be a JSON object"),
         Err(error) => failure(&format!("the request isn't JSON: {error}")),
@@ -232,6 +250,37 @@ fn respond(request: &Map<String, Value>) -> Value {
             ))
         }
     };
+    // `"server": true` on a check: what a server without JavaScript leaves out.
+    let mut gap_errors = Vec::new();
+    let mut rendered_warnings = rendered_warnings;
+    if command == "check" && result.is_ok() && request.get("server").and_then(Value::as_bool) == Some(true) {
+        match crate::server_gaps(source, &path, &loader) {
+            Ok(gaps) => {
+                for (gap, error) in gaps {
+                    if error {
+                        diagnostics.push(entry(&path, &gap, "error"));
+                        gap_errors.push(gap.render_in(source, &path));
+                    } else {
+                        diagnostics.push(entry(&path, &gap, "warning"));
+                        rendered_warnings.push(gap.render_warning(source, &path));
+                    }
+                }
+            }
+            Err(error) => {
+                diagnostics.push(entry(&path, &error, "error"));
+                gap_errors.push(error.render_in(source, &path));
+            }
+        }
+    }
+    if !gap_errors.is_empty() {
+        return json!({
+            "ok": false,
+            "output": null,
+            "error": gap_errors.concat(),
+            "warnings": rendered_warnings,
+            "diagnostics": diagnostics,
+        });
+    }
     match result {
         Ok(output) => json!({
             "ok": true,

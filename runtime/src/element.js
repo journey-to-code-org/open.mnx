@@ -99,6 +99,21 @@ export const state = (value, options) => {
 const kind = (value) => (value === null || value === undefined ? 'empty' : Array.isArray(value) ? 'array' : typeof value);
 export const computed = (fn, options) => new Signal.Computed(fn, options);
 
+/**
+ * Whether the element has started: false while its markup is the server's (and on the server),
+ * true from when it hydrates (or renders) in the browser. A signal, read like a value in the
+ * template, for what only works with JavaScript:
+ *
+ *   const live = hydrated()
+ *   <mnx-if test={!live}><button>Apply</button></mnx-if>
+ *
+ * The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))`, or
+ * `my-filters:state(hydrated)` from the page.
+ */
+export function hydrated() {
+  return hooks('hydrated').hydrated;
+}
+
 /** Run when the element is connected; may return a cleanup for when it is disconnected. */
 export function onMount(fn) {
   hooks('onMount').mount.push(fn);
@@ -480,6 +495,7 @@ function mountBlock(block, args, open, close, hydrating, context) {
 }
 
 /** A range's shape: its top-level positions as tag names and region markers. */
+const hasComment = (root) => !!document.createTreeWalker(root, NodeFilter.SHOW_COMMENT).nextNode();
 const signature = (range) =>
   [...positions(range.first, range.stop)]
     .map((node) => (node.nodeType === 1 ? node.localName : isOpen(node) ? '[' : '#'))
@@ -501,6 +517,13 @@ export const prevent = (fn) => function (event) { event.preventDefault(); return
 export const stop = (fn) => function (event) { event.stopPropagation(); return fn?.call(this, event); };
 /** `selfOnly(fn)`: a handler that ignores events from inside the element (`.self`). */
 export const selfOnly = (fn) => function (event) { if (event.target === event.currentTarget) return fn?.call(this, event); };
+/** `submit(fn)`: after the handler, submit the element's form, with validation (`.submit`). */
+export const submit = (fn) => function (event) {
+  const result = fn?.call(this, event);
+  formOf(event.currentTarget)?.requestSubmit();
+  return result;
+};
+const formOf = (node) => node.form ?? node.closest('form') ?? node.getRootNode().host?.form;
 
 const KEY_NAMES = {
   enter: 'Enter', tab: 'Tab', space: ' ', esc: 'Escape', escape: 'Escape', up: 'ArrowUp', down: 'ArrowDown',
@@ -515,7 +538,9 @@ export function keys(combinations, fn) {
   const wanted = String(combinations).split(',').map((combination) => {
     const pieces = combination.trim().toLowerCase().split('+');
     const key = pieces.pop();
-    return { key: KEY_NAMES[key] ?? key, shift: pieces.includes('shift'), ctrl: pieces.includes('ctrl'), alt: pieces.includes('alt'), meta: pieces.includes('meta') };
+    // `mod` is ⌘ on Apple platforms and Ctrl elsewhere.
+    const mod = pieces.includes('mod');
+    return { key: KEY_NAMES[key] ?? key, shift: pieces.includes('shift'), ctrl: pieces.includes('ctrl') || (mod && !APPLE()), alt: pieces.includes('alt'), meta: pieces.includes('meta') || (mod && APPLE()) };
   });
   return function (event) {
     const key = event.key ?? '';
@@ -525,12 +550,18 @@ export function keys(combinations, fn) {
   };
 }
 
+let apple;
+const APPLE = () => (apple ??= /mac|iphone|ipad|ipod/i.test(navigator.userAgentData?.platform ?? navigator.platform ?? ''));
+
 /**
  * An event part's listener and its options: the handler, read when the event fires, behind the
  * modifiers' checks (`.self`, key filters) and effects (`.prevent`, `.stop`).
  */
 function listen(part, node) {
   const m = part.modifiers;
+  // `.mod` is ⌘ on Apple platforms and Ctrl elsewhere.
+  const ctrl = m && (m.ctrl || (m.mod && !APPLE()));
+  const meta = m && (m.meta || (m.mod && APPLE()));
   const listener = (event) => {
     if (m) {
       if (m.self && event.target !== node) return;
@@ -538,8 +569,8 @@ function listen(part, node) {
         const key = event.key ?? '';
         if (!m.keys.some((wanted) => (wanted.length === 1 ? key.toLowerCase() === wanted : key === wanted))) return;
         // With a key, the named modifier keys must be held and the others not.
-        if (!!m.shift !== event.shiftKey || !!m.ctrl !== event.ctrlKey || !!m.alt !== event.altKey || !!m.meta !== event.metaKey) return;
-      } else if ((m.shift && !event.shiftKey) || (m.ctrl && !event.ctrlKey) || (m.alt && !event.altKey) || (m.meta && !event.metaKey)) {
+        if (!!m.shift !== event.shiftKey || !!ctrl !== event.ctrlKey || !!m.alt !== event.altKey || !!meta !== event.metaKey) return;
+      } else if ((m.shift && !event.shiftKey) || (ctrl && !event.ctrlKey) || (m.alt && !event.altKey) || (meta && !event.metaKey)) {
         return;
       }
       if (m.prevent) event.preventDefault();
@@ -547,6 +578,8 @@ function listen(part, node) {
     }
     const handler = $r(part.handler());
     if (typeof handler === 'function') handler.call(node, event);
+    // `.submit`: the form the element belongs to (or, in a shadow root, the host's form).
+    if (m?.submit) formOf(node)?.requestSubmit();
   };
   const options = m && (m.once || m.capture || m.passive)
     ? { once: !!m.once, capture: !!m.capture, passive: !!m.passive }
@@ -1336,7 +1369,8 @@ function defineElement(tag, definition) {
     #scope = null;
     #hooks = null;
     #cleanups = [];
-    #internals = null;
+    #internals = null; // form-associated only
+    #states = null; // the custom states (CustomStateSet), for :state(hydrated)
     #disabled = false;
 
     static {
@@ -1352,7 +1386,9 @@ function defineElement(tag, definition) {
 
     constructor() {
       super();
-      if (form) this.#internals = this.attachInternals();
+      const internals = this.attachInternals();
+      if (form) this.#internals = internals;
+      this.#states = internals.states ?? null;
       // An event the component fires is its own: an inner element's event of the same name
       // (a native `change` bubbling out of light DOM, a nested component's `valuechange`) stops
       // here, so listeners outside see only the component's, as with a built-in element.
@@ -1392,6 +1428,13 @@ function defineElement(tag, definition) {
       if (this.#scope) this.#scope.resume();
       else this.#boot();
       this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
+      this.#started();
+    }
+
+    /** The element is live: hydrated() turns true, and the host gets :state(hydrated). */
+    #started() {
+      this.#hooks.hydrated.set(true);
+      this.#states?.add('hydrated');
     }
 
     disconnectedCallback() {
@@ -1449,7 +1492,10 @@ function defineElement(tag, definition) {
       if (shadow) this.shadowRoot.replaceChildren();
       else Element.prototype.replaceChildren.call(this, ...slotted);
       this.#boot(kept, true);
-      if (connected) this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
+      if (connected) {
+        this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
+        this.#started();
+      }
     }
 
     #boot(kept = null, reloading = false) {
@@ -1481,7 +1527,7 @@ function defineElement(tag, definition) {
         });
       }
       this.#hooks = {
-        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(), states: [], kept,
+        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(), states: [], kept, hydrated: new Signal.State(false),
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
       // The element's own root: an effect that inserted it (a list row) doesn't own it, so
@@ -1533,7 +1579,11 @@ function defineElement(tag, definition) {
               if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
             }
           } else if (server) {
-            console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
+            // No comments at all where the template has markers: something stripped them.
+            const stripped = hasComment(componentTemplate.content) && !hasComment(root);
+            console.warn(stripped
+              ? `mnx: <${tag}>'s hydration markers (<!--[-->, <!--]-->, …) are missing, so it's rendered fresh. An HTML minifier, a sanitizer or a fragment parser (htmx in some browsers) removed the comments; keep them (MNX_MARKER_COMMENT in @mnx/compiler)${see('hydration-markers')}`
+              : `mnx: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
           }
           // Find and bind the parts before inserting (see mountBlock).
           const fragment = document.importNode(componentTemplate.content, true);

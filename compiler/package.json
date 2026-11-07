@@ -1,6 +1,6 @@
 {
   "name": "@mnx/compiler",
-  "version": "2.6.7",
+  "version": "2.7.0",
   "description": "The mnx compiler as WebAssembly: compile .mnx components from Node without installing Rust",
   "license": "ISC",
   "repository": {

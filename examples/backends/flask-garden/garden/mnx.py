@@ -8,16 +8,19 @@ browser as ES modules it compiles too. The browser hydrates the server's markup 
     html = page.render("plot-map", plots=plots, selected="A3")
     page.styles(), page.modules            # for the layout's <head> and its closing <script>
 
-Each render is one `mnx request` call, a JSON request on standard input with every component's
-source, so `./other.mnx` imports resolve without touching the disk.
+Renders go to one long-lived `mnx serve` process: a JSON request per line on its standard input,
+with every component's source (so `./other.mnx` imports resolve without touching the disk), and
+a JSON response per line back.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[4]
@@ -50,6 +53,9 @@ class Mnx:
         if not self.compiler:
             raise MnxError(HOW_TO)
         self.cache = cache
+        self._process: subprocess.Popen | None = None
+        self._lock = threading.Lock()  # Flask serves requests on threads; one line at a time
+        atexit.register(self.close)
         self._sources: dict[str, str] | None = None
         self._css: dict[str, str] = {}
         self._js: dict[str, str] = {}
@@ -71,17 +77,21 @@ class Mnx:
         if name not in self.names:
             raise MnxError(f"no component {name!r} in {self.dir}")
         body = {"path": f"/components/{name}.mnx", "files": self._files(), **request}
-        result = subprocess.run(
-            [self.compiler, "request"],
-            input=json.dumps(body),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-        if result.returncode != 0:
-            raise MnxError(result.stderr.strip() or f"mnx exited with {result.returncode}")
-        response = json.loads(result.stdout)
+        with self._lock:
+            if self._process is None or self._process.poll() is not None:
+                self._process = subprocess.Popen(
+                    [self.compiler, "serve"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                )
+            self._process.stdin.write(json.dumps(body) + "\n")
+            self._process.stdin.flush()
+            line = self._process.stdout.readline()
+        if not line:
+            raise MnxError(f"{self.compiler} serve stopped (is it mnx 2.7 or later?)")
+        response = json.loads(line)
         if not response["ok"]:
             raise MnxError(response["error"])
         return response["output"]
@@ -101,6 +111,13 @@ class Mnx:
         if name not in self._js or not self.cache:
             self._js[name] = self.request(name, emit="js", runtime="@mnx/runtime")
         return self._js[name]
+
+    def close(self) -> None:
+        """Stop the compiler process (it also stops when this process exits)."""
+        if self._process is not None:
+            self._process.stdin.close()
+            self._process.wait()
+            self._process = None
 
     def page(self) -> "Page":
         return Page(self)

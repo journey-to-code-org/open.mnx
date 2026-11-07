@@ -195,6 +195,41 @@ pub struct HtmlOptions {
     pub partial: bool,
 }
 
+/// What a server without JavaScript (the CLI, or any renderer of the HTML output) leaves out of
+/// a component rendered with its defaults: each place partial rendering leaves for the browser,
+/// as `(diagnostic, error)`. An attribute that changes what a form submits or shows (`checked`,
+/// `selected`, `value`, `disabled`) is an error: without JavaScript, the form is wrong.
+pub fn server_gaps(source: &str, path: &str, loader: Loader<'_>) -> Result<Vec<(Diagnostic, bool)>, Diagnostic> {
+    let (rendered, gaps) = validate::record_gaps(|| {
+        compile_html_with_options(
+            source,
+            path,
+            "{}",
+            "{}",
+            HtmlOptions { slot_source: SlotSource::Template, partial: true },
+            loader,
+        )
+    });
+    rendered?;
+    let mut found: Vec<(Diagnostic, bool)> = gaps
+        .into_iter()
+        .map(|(span, attribute)| {
+            let form = attribute.as_deref().is_some_and(|name| {
+                matches!(name.to_ascii_lowercase().as_str(), "checked" | "selected" | "value" | "disabled")
+            });
+            let message = match &attribute {
+                Some(name) if form => format!("`{name}` is computed in the browser, so the server's HTML leaves it out: without JavaScript, the form shows (and submits) the wrong thing"),
+                Some(name) => format!("`{name}` is computed in the browser, so the server's HTML leaves it out"),
+                None => "this is computed in the browser, so the server's HTML leaves it empty".to_owned(),
+            };
+            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic and ternaries; compute the rest before rendering and pass it as a prop (or render from Node.js)";
+            (Diagnostic::new(span, message).with_help(help), form)
+        })
+        .collect();
+    found.sort_by_key(|(diagnostic, _)| (diagnostic.span.line, diagnostic.span.column));
+    Ok(found)
+}
+
 /// Static HTML, with options.
 pub fn compile_html_with_options(
     source: &str,

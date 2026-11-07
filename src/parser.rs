@@ -582,6 +582,17 @@ impl<'a> TemplateParser<'a> {
             } else {
                 AttributeValue::None
             };
+            // `onchange.submit` needs no handler: the modifier is what it does.
+            let value = match value {
+                AttributeValue::None
+                    if !self.html
+                        && is_event_attribute(&attribute_name.to_ascii_lowercase())
+                        && event_parts(&attribute_name.to_ascii_lowercase()).is_ok_and(|(_, modifiers)| modifiers.submit) =>
+                {
+                    AttributeValue::Expression(Expression::Null, attribute_span)
+                }
+                value => value,
+            };
             if !self.html {
                 check_attribute(&attribute_name, &value, attribute_span)?;
             }
@@ -595,7 +606,7 @@ impl<'a> TemplateParser<'a> {
         let attributes = if self.html {
             attributes
         } else {
-            expand_directives(attributes)?
+            expand_directives(attributes, &name)?
         };
         let raw_text = ["script", "style", "textarea", "title"]
             .iter()
@@ -833,6 +844,11 @@ pub struct Modifiers {
     pub ctrl: bool,
     pub alt: bool,
     pub meta: bool,
+    /// `.mod`: ⌘ on Apple platforms, Ctrl elsewhere (decided in the browser).
+    pub primary: bool,
+    /// `.submit`: after the handler, submit the element's form (`requestSubmit()`, so validation
+    /// and `submit` listeners run).
+    pub submit: bool,
 }
 
 pub const MODIFIERS: &[&str] = &[
@@ -846,6 +862,8 @@ pub const MODIFIERS: &[&str] = &[
     "ctrl",
     "alt",
     "meta",
+    "mod",
+    "submit",
     "enter",
     "tab",
     "space",
@@ -887,6 +905,8 @@ pub fn event_parts(lower: &str) -> Result<(String, Modifiers), String> {
             "ctrl" => modifiers.ctrl = true,
             "alt" => modifiers.alt = true,
             "meta" => modifiers.meta = true,
+            "mod" => modifiers.primary = true,
+            "submit" => modifiers.submit = true,
             _ if !key_event => {
                 return Err(if MODIFIERS.contains(&modifier) || modifier.len() == 1 {
                     format!(
@@ -914,6 +934,9 @@ pub fn event_parts(lower: &str) -> Result<(String, Modifiers), String> {
             other => return Err(unknown_modifier(other)),
         }
     }
+    if modifiers.primary && (modifiers.ctrl || modifiers.meta) {
+        return Err("`.mod` already means Ctrl, or ⌘ on Apple platforms: use it instead of `.ctrl` or `.meta`, not with them".to_owned());
+    }
     if modifiers.passive && modifiers.prevent {
         return Err("`.passive` and `.prevent` contradict each other: a passive listener can't prevent the default".to_owned());
     }
@@ -937,10 +960,41 @@ fn unknown_modifier(modifier: &str) -> String {
 /// `class={{ … }}` and `style={{ … }}` become one `class:name`/`style:name` attribute per entry;
 /// bare `class:active` means `class:active={active}`. Checks that `class:` and `style:` are well
 /// formed.
-fn expand_directives(attributes: Vec<Attribute>) -> Result<Vec<Attribute>, Diagnostic> {
+fn expand_directives(attributes: Vec<Attribute>, element: &str) -> Result<Vec<Attribute>, Diagnostic> {
     let mut out = Vec::with_capacity(attributes.len());
     for attribute in attributes {
         let lower = attribute.name.to_ascii_lowercase();
+        if let Some(prop) = attribute.name.strip_suffix(":bind") {
+            // `value:bind={color}` on a custom element with a two-way `value`: the prop, and its
+            // `valuechange` event assigning back.
+            if !element.contains('-') {
+                return Err(Diagnostic::new(
+                    attribute.span,
+                    format!("`{}` binds a custom element's two-way prop; a native <{element}> has none", attribute.name),
+                )
+                .with_help(format!("write the pair: {prop}={{…}} oninput={{(event) => (… = event.target.{prop})}}")));
+            }
+            let AttributeValue::Expression(Expression::Identifier(target), span) = &attribute.value else {
+                return Err(Diagnostic::new(
+                    attribute.span,
+                    format!("`{}` takes a `let` or a prop to keep in step: {}={{color}}", attribute.name, attribute.name),
+                ));
+            };
+            let source = format!("(event) => ({target} = event.detail)");
+            let names = crate::runtime_expression::parse(&source)
+                .map_err(|(_, message)| Diagnostic::new(*span, message))?;
+            out.push(Attribute {
+                name: prop.to_owned(),
+                value: AttributeValue::Expression(Expression::Identifier(target.clone()), *span),
+                span: attribute.span,
+            });
+            out.push(Attribute {
+                name: format!("on{}change", prop.to_ascii_lowercase()),
+                value: AttributeValue::Expression(Expression::Runtime { source, names }, *span),
+                span: attribute.span,
+            });
+            continue;
+        }
         if lower == "class" || lower == "style" {
             if let AttributeValue::Expression(Expression::Object(entries), span) = &attribute.value
             {

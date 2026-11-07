@@ -11,7 +11,7 @@
 //   react/…, vue/…                each element as a React or Vue component, typed
 //   custom-elements.json          the Custom Elements Manifest (Storybook, IDEs, docs tools)
 //   package.json                  exports for all of the above
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { compileFile } from './index.js';
 
@@ -33,12 +33,27 @@ const posix = (path) => path.split(sep).join('/');
  */
 export function buildLibrary(dir, options = {}) {
   const root = resolve(dir);
-  const out = resolve(options.out ?? 'dist');
+  const target = resolve(options.out ?? 'dist');
+  // Built next to the target and swapped in at the end, so a compile error leaves the last good
+  // build in place (`--watch`).
+  const out = `${target}.building`;
   const runtime = options.runtime ?? '@mnx/runtime';
   const sources = walk(root);
   if (!sources.length) throw new Error(`mnx build --lib: no components (.mnx, .mnx.jsx, .mnx.tsx) in ${dir}`);
-  if (out === root || root.startsWith(out + sep)) throw new Error('mnx build --lib: the output directory must not contain the components');
+  if (target === root || root.startsWith(target + sep)) throw new Error('mnx build --lib: the output directory must not contain the components');
   rmSync(out, { recursive: true, force: true });
+  try {
+    return finish(build());
+  } catch (error) {
+    rmSync(out, { recursive: true, force: true });
+    throw error;
+  }
+  function finish(result) {
+    rmSync(target, { recursive: true, force: true });
+    renameSync(out, target);
+    return result;
+  }
+  function build() {
 
   const write = (path, text) => {
     mkdirSync(dirname(join(out, path)), { recursive: true });
@@ -130,4 +145,5 @@ export default wrap(Element);
   };
   write('package.json', JSON.stringify(pkg, null, 2) + '\n');
   return { components, warnings };
+  }
 }

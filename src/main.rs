@@ -41,9 +41,30 @@ fn run() -> Result<(), String> {
         println!("{}", mnx_compiler::handle_request(&request));
         return Ok(());
     }
+    // `mnx serve`: one JSON request (or batch) per line on stdin, one JSON response per line on
+    // stdout, until stdin closes. For servers in other languages: one process, no start-up cost
+    // per render.
+    if command.as_deref() == Some("serve") {
+        if let Some(argument) = arguments.next() {
+            return Err(format!("unexpected argument `{argument}`"));
+        }
+        use std::io::{BufRead, Write};
+        let stdout = std::io::stdout();
+        for line in std::io::stdin().lock().lines() {
+            let line = line.map_err(|error| format!("unable to read standard input: {error}"))?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let mut out = stdout.lock();
+            writeln!(out, "{}", mnx_compiler::handle_request(&line))
+                .and_then(|()| out.flush())
+                .map_err(|error| format!("unable to write the response: {error}"))?;
+        }
+        return Ok(());
+    }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx serve   (JSON lines: a request per line in, a response per line out)\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -255,6 +276,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
     let mut files = Vec::new();
     let mut json = false;
     let mut stdin = false;
+    let mut server = false;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -270,6 +292,8 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             },
             // An editor's unsaved text, checked as if it were at the one path given.
             "--stdin" => stdin = true,
+            // What a server without JavaScript leaves out (rendered with the defaults).
+            "--server" => server = true,
             _ if argument.starts_with("--") => {
                 return Err(format!("unexpected argument `{argument}`"))
             }
@@ -277,7 +301,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
         }
     }
     if files.is_empty() || (stdin && files.len() != 1) {
-        return Err("usage: mnx check <component.mnx>... [--format human|json] [--stdin (one path; source from standard input)]".into());
+        return Err("usage: mnx check <component.mnx>... [--format human|json] [--server] [--stdin (one path; source from standard input)]".into());
     }
     let mut report = Vec::new();
     let mut errors = 0;
@@ -305,6 +329,25 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             errors += 1;
             human.push_str(&error.render_in(&source, path));
             report.push(entry(path, &source, &error, "error"));
+        } else if server {
+            match mnx_compiler::server_gaps(&source, path, &mnx_compiler::filesystem) {
+                Ok(gaps) => {
+                    for (gap, error) in gaps {
+                        if error {
+                            errors += 1;
+                            human.push_str(&gap.render_in(&source, path));
+                        } else {
+                            human.push_str(&gap.render_warning(&source, path));
+                        }
+                        report.push(entry(path, &source, &gap, if error { "error" } else { "warning" }));
+                    }
+                }
+                Err(error) => {
+                    errors += 1;
+                    human.push_str(&error.render_in(&source, path));
+                    report.push(entry(path, &source, &error, "error"));
+                }
+            }
         }
     }
     if json {

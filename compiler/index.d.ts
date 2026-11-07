@@ -43,6 +43,8 @@ export interface Request extends Options {
   files: Record<string, string>;
 }
 
+/** The text of mnx's hydration-marker comments, for tools that remove comments: keep these. */
+export declare const MNX_MARKER_COMMENT: RegExp;
 export declare function available(): boolean;
 export declare function request(request: Request): Response;
 export declare function sources(path: string, files?: Record<string, string>): Record<string, string>;

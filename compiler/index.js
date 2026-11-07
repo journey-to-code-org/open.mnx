@@ -12,6 +12,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
+/**
+ * The text of mnx's hydration-marker comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`,
+ * `<!--[!-->`), for tools that remove comments: keep the ones matching this. For example
+ * html-minifier-terser's `ignoreCustomComments: [MNX_MARKER_COMMENT]`.
+ */
+export const MNX_MARKER_COMMENT = /^[[\]?!]*$/;
+
 const wasmUrl = new URL('./mnx.wasm', import.meta.url);
 let exports = null;
 

@@ -232,3 +232,61 @@ fn mnix_is_still_the_same_cli() {
             || String::from_utf8_lossy(&output.stderr).contains("unable to read")
     );
 }
+
+#[test]
+fn serve_answers_a_request_per_line_and_batches() {
+    use std::io::{BufRead, BufReader, Write};
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mnx"))
+        .arg("serve")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    let request = serde_json::json!({
+        "emit": "html", "path": "/c/hi.mnx", "props": { "name": "Ada" },
+        "files": { "/c/hi.mnx": "<mnx-hi name=\"\"><p>Hi {name}</p></mnx-hi>" },
+    });
+    // One at a time: each answer comes back before the next question (a long-lived process).
+    for name in ["Ada", "Grace"] {
+        let mut request = request.clone();
+        request["props"]["name"] = name.into();
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        let response: serde_json::Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+        assert_eq!(response["ok"], true);
+        assert!(response["output"].as_str().unwrap().contains(&format!("<p>Hi {name}</p>")));
+    }
+    // A batch: one response per request, in order; `ok` only if all are.
+    writeln!(stdin, "\n{}", serde_json::json!({ "requests": [request, { "path": "/nope.mnx", "files": {} }] })).unwrap();
+    drop(stdin);
+    let response: serde_json::Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+    assert_eq!(response["ok"], false);
+    assert_eq!(response["responses"][0]["ok"], true);
+    assert_eq!(response["responses"][1]["ok"], false);
+    assert!(lines.next().is_none(), "it exits when stdin closes");
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn check_server_reports_what_the_servers_html_leaves_out() {
+    let dir = std::env::temp_dir().join(format!("mnx-check-server-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let picker = dir.join("picker.mnx");
+    fs::write(
+        &picker,
+        "<mnx-picker value={[\"kale\"]} options={[\"kale\", \"beans\"]}>\n  <mnx-each items={options} as=\"option\" key={option}>\n    <label><input type=\"checkbox\" name=\"crops\" checked={value.includes(option)}> {`${option}!`}</label>\n  </mnx-each>\n</mnx-picker>\n",
+    )
+    .unwrap();
+    let path = picker.to_str().unwrap();
+    // Without --server: fine (the browser computes them).
+    let (ok, _, _) = mnx(&["check", path]);
+    assert!(ok);
+    let (ok, stdout, stderr) = mnx(&["check", "--server", path]);
+    assert!(!ok, "a form's state left out is an error");
+    let text = format!("{stdout}{stderr}");
+    assert!(text.contains("`checked` is computed in the browser") && text.contains("picker.mnx:3:"), "{text}");
+    assert!(text.contains("warning: this is computed in the browser"), "the template literal: {text}");
+    fs::remove_dir_all(&dir).ok();
+}

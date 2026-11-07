@@ -4,13 +4,12 @@
   @fires filterchange - The filter changed; `detail` is `{ levels, longest }`.
 -->
 <script>
-  import { emit, onMount } from '@mnx/runtime'
+  import { emit, hydrated } from '@mnx/runtime'
 
   const LEVELS = ['easy', 'moderate', 'hard']
-  let live = false
   let levels = [...LEVELS]
   let longest = max
-  onMount(() => (live = true))
+  const live = hydrated()
   function toggle(level, on) {
     levels = on ? [...levels, level] : levels.filter((item) => item !== level)
     emit('filterchange', { levels, longest })

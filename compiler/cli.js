@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // `mnx` from npm (@mnx/compiler): the WebAssembly compiler on the command line, with no Rust.
 //
-//   mnx build --lib <dir> [--out dist] [--name <package>] [--version <x.y.z>]
+//   mnx build --lib <dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]
 //   mnx add <component>... [--dir src/components] [--force]     copy registry components in
 //   mnx add --list
 //   mnx compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
-//   mnx check <file>...
+//   mnx check <file>... [--server]          --server: what a server without JavaScript leaves out
 //   mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]   React → mnx JSX
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileFile, request } from './index.js';
@@ -71,7 +71,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) rest.push(arg);
-    else if (['--lib', '--force', '--list', '--partial', '--stdout'].includes(arg)) flags[arg.slice(2)] = true;
+    else if (['--lib', '--force', '--list', '--partial', '--stdout', '--server', '--watch'].includes(arg)) flags[arg.slice(2)] = true;
     else flags[arg.slice(2)] = args[++i];
   }
   return { flags, rest };
@@ -81,11 +81,31 @@ function main(argv) {
   const [command, ...args] = argv;
   const { flags, rest } = options(args);
   if (command === 'build') {
-    if (!flags.lib || rest.length !== 1) throw new Error('usage: mnx build --lib <components dir> [--out dist] [--name <package>] [--version <x.y.z>]');
+    if (!flags.lib || rest.length !== 1) throw new Error('usage: mnx build --lib <components dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]');
     const out = flags.out ?? 'dist';
-    const { components, warnings } = buildLibrary(rest[0], { out, name: flags.name, version: flags.version });
-    for (const warning of warnings) process.stderr.write(warning);
-    console.log(`mnx: built ${components.length} component${components.length === 1 ? '' : 's'} into ${relative(process.cwd(), resolve(out)) || '.'}: ${components.map(({ tag }) => `<${tag}>`).join(' ')}`);
+    const build = () => {
+      const { components, warnings } = buildLibrary(rest[0], { out, name: flags.name, version: flags.version });
+      for (const warning of warnings) process.stderr.write(warning);
+      console.log(`mnx: built ${components.length} component${components.length === 1 ? '' : 's'} into ${relative(process.cwd(), resolve(out)) || '.'}: ${components.map(({ tag }) => `<${tag}>`).join(' ')}`);
+    };
+    if (!flags.watch) return build();
+    // --watch: build, then again after each change to the components (a compile error is
+    // reported and the last good build stays).
+    const attempt = () => {
+      try {
+        build();
+      } catch (error) {
+        console.error(error.message);
+      }
+    };
+    attempt();
+    let timer = null;
+    watch(rest[0], { recursive: true }, (_event, file) => {
+      if (file && !/\.mnx(\.[jt]sx)?$/.test(file)) return;
+      clearTimeout(timer);
+      timer = setTimeout(attempt, 50);
+    });
+    console.log(`mnx: watching ${rest[0]} (Ctrl+C to stop)`);
   } else if (command === 'add') {
     if (flags.list) {
       for (const component of readRegistry().components) console.log(`${component.name.padEnd(20)} ${component.description}`);
@@ -116,7 +136,7 @@ function main(argv) {
     let failed = false;
     for (const file of command === 'check' ? rest : rest.slice(0, 1)) {
       const response = compileFile(file, {
-        command, emit: flags.emit ?? 'html', framework: flags.framework, runtime: flags.runtime, partial: flags.partial,
+        command, emit: flags.emit ?? 'html', framework: flags.framework, runtime: flags.runtime, partial: flags.partial, server: flags.server,
         props: flags.props ? JSON.parse(readFileSync(flags.props, 'utf8')) : undefined,
       });
       for (const warning of response.warnings) process.stderr.write(warning);

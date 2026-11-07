@@ -7,6 +7,6 @@ import { defineConfig } from 'vite';
 const cli = ['debug', 'release'].map((profile) => new URL(`../../../target/${profile}/mnx${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url).pathname).find(existsSync);
 if (cli) process.env.MNX_COMPILER ??= cli;
 
-// React Router's Vite plugin isn't @vitejs/plugin-react, so tell mnx this is a React project:
-// importing an .mnx file then gives a React component.
-export default defineConfig({ plugins: [mnx({ framework: 'react' }), reactRouter()] });
+// mnx recognises React Router as a React project (since 2.7): importing an .mnx file gives a
+// React component.
+export default defineConfig({ plugins: [mnx(), reactRouter()] });

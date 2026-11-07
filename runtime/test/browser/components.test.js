@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { useBrowser, open, compiler, here, repo, site } from './harness.js';
 
 useBrowser({
+  filters: join(here, 'fixtures/live-filters.mnx'),
   header: join(repo, 'examples/header.mnx'),
   counter: join(here, 'fixtures/counter.mnx'),
   link: join(here, 'fixtures/link.mnx'),
@@ -503,5 +504,35 @@ test('an empty URL leaves the attribute off, quietly; "[object Object]" from a f
   // element keeps its default meanwhile, without a warning.
   assert.deepEqual(await page.$$eval('mnx-header li', (items) => items.map((item) => item.textContent)), ['sample data', 'additional data']);
   assert.deepEqual(messages.filter((message) => !message.includes('blocked an unsafe URL')), []);
+  await page.close();
+});
+
+test('hydrated(): false in the server HTML (rendered, not left for the browser), true once the element starts', async () => {
+  const html = compiler(join(here, 'fixtures/live-filters.mnx'));
+  assert.match(html, /<button class="apply">Apply<\/button>/);
+  assert.match(html, /Press Apply/);
+  assert.doesNotMatch(html, /\[\?/, 'nothing is left for the browser');
+  const { page, messages } = await open(html, { modules: ['filters'] });
+  await page.waitForFunction(() => document.querySelector('.hint').textContent === 'Filters apply as you type');
+  assert.equal(await page.locator('.apply').count(), 0);
+  assert.equal(await page.evaluate(() => document.querySelector('.hint').classList.contains('on')), true);
+  assert.equal(await page.evaluate(() => document.querySelector('mnx-filters').matches(':state(hydrated)')), true);
+  assert.deepEqual(messages, [], 'it hydrated the server markup, then changed');
+  // Created in the browser, it's live from the start.
+  assert.equal(await page.evaluate(async () => {
+    const element = document.createElement('mnx-filters');
+    document.body.append(element);
+    await element.updateComplete;
+    return [element.matches(':state(hydrated)'), element.querySelector('.hint').textContent].join();
+  }), 'true,Filters apply as you type');
+  await page.close();
+});
+
+test('server markup whose comments were stripped: a warning that says so, and a fresh render', async () => {
+  const html = compiler(join(here, 'fixtures/live-filters.mnx')).replace(/<!--[^]*?-->/g, '');
+  const { page, messages } = await open(html, { modules: ['filters'] });
+  await page.waitForFunction(() => document.querySelector('.hint')?.textContent === 'Filters apply as you type');
+  assert.equal(messages.length, 1, messages.join('\n'));
+  assert.match(messages[0], /hydration markers .* are missing.*removed the comments/);
   await page.close();
 });

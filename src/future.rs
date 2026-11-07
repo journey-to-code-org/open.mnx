@@ -30,7 +30,7 @@ use crate::{
     scanner::span_after,
 };
 
-const MAKERS: &[&str] = &["state", "computed", "inject", "hasSlot"];
+const MAKERS: &[&str] = &["state", "computed", "inject", "hasSlot", "hydrated"];
 
 /// A use of a signal `const` that 3.0 reads as its value: where, and the name.
 struct Use {

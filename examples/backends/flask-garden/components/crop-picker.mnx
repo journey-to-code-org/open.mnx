@@ -7,10 +7,9 @@
   @fires valuechange - The chosen crops changed; `detail` is their values.
 -->
 <script>
-  import { onMount } from '@mnx/runtime'
+  import { hydrated } from '@mnx/runtime'
 
-  let live = false
-  onMount(() => (live = true))
+  const live = hydrated()
   function toggle(event, crop) {
     value = event.target.checked ? [...value, crop] : value.filter((item) => item !== crop)
   }

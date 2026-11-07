@@ -19,6 +19,7 @@ import { SegmentedControl, SessionCard } from '@ui/react';   // jsconfig.json ma
 ```sh
 npm install
 npm run dev        # builds ui/ first
+npm run ui:watch   # in a second terminal, to rebuild ui/ as you edit components/
 npm run build && npm start
 npm test           # builds, starts, and drives it in Chromium
 ```

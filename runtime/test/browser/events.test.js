@@ -10,6 +10,8 @@ useBrowser({
   rating: join(here, 'fixtures/rating.mnx'),
   survey: join(here, 'fixtures/survey.mnx'),
   ping: join(here, 'fixtures/ping.mnx'),
+  'swatch-pick': join(here, 'fixtures/swatch-pick.mnx'),
+  reply: join(here, 'fixtures/reply-box.mnx'),
 });
 
 // Record what reaches the document: name, detail, and how the event was made.
@@ -102,5 +104,52 @@ test('emit, props and host explain themselves outside a component', async () => 
   assert.match(errors[0], /bound to each element by the compiler/);
   assert.match(errors[1], /props\(\) must be called while a component is setting up/);
   assert.match(errors[2], /host\(\) must be called while a component is setting up/);
+  await page.close();
+});
+
+test('.submit submits the element\'s form with validation; .mod is Ctrl here (⌘ on Apple); submit() and keys("mod+…") for JSX; value:bind keeps a child in step', async () => {
+  const { page, messages } = await open('<mnx-reply></mnx-reply>', { modules: ['swatch-pick', 'reply'] });
+  await page.evaluate(() => {
+    window.sent = [];
+    document.addEventListener('send', (event) => window.sent.push(event.detail));
+  });
+  const output = () => page.textContent('output');
+  // The textarea is required: .submit uses requestSubmit(), so an empty form doesn't send.
+  await page.selectOption('select', 'old');
+  assert.deepEqual(await page.evaluate(() => window.sent), []);
+  await page.fill('textarea', 'Hello');
+  await page.selectOption('select', 'new');
+  assert.deepEqual(await page.evaluate(() => window.sent), ['#000']);
+  // Linux: .mod is Ctrl, and Meta isn't it.
+  await page.press('textarea', 'Meta+Enter');
+  assert.equal(await output(), '0 #000');
+  await page.press('textarea', 'Control+Enter');
+  assert.equal(await output(), '1 #000', 'the handler ran');
+  assert.equal(await page.evaluate(() => window.sent.length), 2, 'then the form was submitted');
+  await page.press('textarea', 'Control+k');
+  assert.equal(await output(), '101 #000', 'keys("mod+k")');
+  await page.click('.jsx-style');
+  assert.equal(await output(), '1101 #000', 'submit(fn) ran fn');
+  assert.equal(await page.evaluate(() => window.sent.length), 3, 'and submitted');
+  // value:bind: the child's change comes back to the parent's `let`.
+  await page.click('mnx-swatch .red');
+  assert.equal(await output(), '1101 #f00');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('.mod is ⌘ on Apple platforms (and Ctrl isn\'t)', async () => {
+  const { page, messages } = await open('<mnx-reply></mnx-reply>', {
+    modules: ['swatch-pick', 'reply'],
+    beforeModules: "Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }); Object.defineProperty(navigator, 'userAgentData', { get: () => undefined });",
+  });
+  await page.fill('textarea', 'Hello');
+  await page.press('textarea', 'Control+Enter');
+  assert.equal(await page.textContent('output'), '0 #000');
+  await page.press('textarea', 'Meta+Enter');
+  assert.equal(await page.textContent('output'), '1 #000');
+  await page.press('textarea', 'Meta+k');
+  assert.equal(await page.textContent('output'), '101 #000');
+  assert.deepEqual(messages, []);
   await page.close();
 });

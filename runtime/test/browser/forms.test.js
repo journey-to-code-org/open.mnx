@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { useBrowser, open, here } from './harness.js';
+import { useBrowser, open, here, compiler } from './harness.js';
 
-useBrowser({ stepper: join(here, 'fixtures/stepper.mnx') });
+useBrowser({ stepper: join(here, 'fixtures/stepper.mnx'), choose: join(here, 'fixtures/select-value.mnx') });
 
 const FORM = `<form id="order"><fieldset id="set"><label id="lbl">Qty <mnx-stepper name="qty"></mnx-stepper></label></fieldset>
   <input name="note" value="x"><button type="reset">Reset</button></form>`;
@@ -141,5 +141,27 @@ test('a control inserted into a disabled fieldset after it is defined starts dis
     return [...el.querySelectorAll('button')].map((button) => button.disabled);
   });
   assert.deepEqual(buttons, [true, true]);
+  await page.close();
+});
+
+test('<select value> and <textarea value> are right in the server HTML, before JavaScript, and hydrate', async () => {
+  const fixture = join(here, 'fixtures/select-value.mnx');
+  const html = compiler(fixture);
+  assert.match(html, /<option value="pending" selected>/);
+  assert.match(html, /<textarea>Hi<\/textarea>/);
+  assert.doesNotMatch(html, /<select value=/);
+  // The server's HTML alone (no modules): the browser shows the right choice and text.
+  let { page } = await open(html);
+  assert.deepEqual(await page.evaluate(() => [document.querySelector('select').value, document.querySelector('textarea').value]), ['pending', 'Hi']);
+  await page.close();
+  // Hydrated: no mismatch, and the controls stay bound both ways.
+  const opened = await open(html, { modules: ['choose'] });
+  page = opened.page;
+  await page.selectOption('select', 'solved');
+  await page.fill('textarea', 'Done');
+  await page.waitForFunction(() => document.querySelector('output').textContent === 'solved|Done');
+  await page.evaluate(() => { document.querySelector('mnx-choose').status = 'open'; });
+  await page.waitForFunction(() => document.querySelector('select').value === 'open');
+  assert.deepEqual(opened.messages, []);
   await page.close();
 });

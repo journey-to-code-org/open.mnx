@@ -5,10 +5,9 @@
   @fires valuechange - The count changed; `detail` is the new one.
 -->
 <script>
-  import { onMount } from '@mnx/runtime'
+  import { hydrated } from '@mnx/runtime'
 
-  let live = false
-  onMount(() => (live = true))
+  const live = hydrated()
   const nudge = (by) => (value = Math.min(max, Math.max(min, Number(value) + by)))
 </script>
 <style>

@@ -30,6 +30,10 @@ Each step builds on the last, in about ten minutes each.
 - [mnx for Vue developers](for-vue-developers.md)
 - [mnx for Svelte developers](for-svelte-developers.md)
 
+## Topics
+
+- [mnx on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
+
 ## Reference
 
 The [README](../../README.md) is the reference: every feature, option and rule. `docs/` has the rest (security, browser support, migrations).

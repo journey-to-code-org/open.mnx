@@ -63,6 +63,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         ..Script::default()
     };
     let mut import_ranges = Vec::new();
+    // `hydrated` imported from @mnx/runtime (its local names), and bindings initialized with a
+    // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
+    let mut hydrated_names: Vec<String> = Vec::new();
+    let mut calls: Vec<(usize, String)> = Vec::new();
     for statement in &parsed.program.body {
         match statement {
             Statement::VariableDeclaration(declaration) => {
@@ -93,6 +97,9 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         (Some(identifier), Some(init)) => {
                             let text =
                                 &source[init.span().start as usize..init.span().end as usize];
+                            if matches!(init, oxc_ast::ast::Expression::CallExpression(_)) {
+                                calls.push((script.bindings.len(), text.to_owned()));
+                            }
                             script.bindings.push(Binding {
                                 name: identifier.name.to_string(),
                                 init: expression::parse(text).ok(),
@@ -131,6 +138,11 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             && named.imported.name().as_str() == "emit"
                         {
                             script.emit = Some(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(RUNTIME)
+                            && named.imported.name().as_str() == "hydrated"
+                        {
+                            hydrated_names.push(named.local.name.to_string());
                         }
                     }
                 }
@@ -196,6 +208,13 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         body.replace_range(range.clone(), &blank);
     }
     script.body = body;
+    // `hydrated()` is false until the element starts, so on the server it's `false`.
+    for (index, text) in calls {
+        let call = text.split_whitespace().collect::<String>();
+        if hydrated_names.iter().any(|name| call == format!("{name}()")) {
+            script.bindings[index].init = Some(expression::Expression::Boolean(false));
+        }
+    }
     Ok(script)
 }
 

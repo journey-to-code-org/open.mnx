@@ -5,6 +5,7 @@
   "description": "A conference schedule in Next.js (App Router, Turbopack), with mnx components used through library mode.",
   "scripts": {
     "ui": "mnx build --lib components --out ui --name conference-ui",
+    "ui:watch": "mnx build --lib components --out ui --name conference-ui --watch",
     "predev": "npm run ui",
     "dev": "next dev",
     "prebuild": "npm run ui",

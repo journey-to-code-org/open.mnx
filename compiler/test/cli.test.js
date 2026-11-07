@@ -87,3 +87,34 @@ test('mnx convert: a React component becomes an mnx JSX component next to it; wh
   assert.match(run.stderr, /`useContext` isn't converted/);
   assert.match(run.stderr, /1 thing to finish by hand/);
 });
+
+test('mnx build --lib --watch rebuilds on a change, and keeps the last good build through an error', async () => {
+  const { spawn } = await import('node:child_process');
+  const { mkdirSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'mnx-watch-'));
+  mkdirSync(join(dir, 'components'));
+  const component = join(dir, 'components/hello-tag.mnx');
+  writeFileSync(component, '<hello-tag name="you"><p>Hello {name}</p></hello-tag>\n');
+  const child = spawn(process.execPath, [cli, 'build', '--lib', 'components', '--out', 'ui', '--watch'], { cwd: dir, env });
+  let output = '';
+  child.stdout.on('data', (data) => (output += data));
+  child.stderr.on('data', (data) => (output += data));
+  const until = async (test) => {
+    for (let tries = 0; tries < 100 && !test(); tries++) await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.ok(test(), output);
+  };
+  try {
+    await until(() => /watching/.test(output));
+    const built = () => readFileSync(join(dir, 'ui/hello-tag.js'), 'utf8');
+    assert.match(built(), /Hello /);
+    writeFileSync(component, '<hello-tag name="you"><p>Howdy {name}</p></hello-tag>\n');
+    await until(() => existsSync(join(dir, 'ui/hello-tag.js')) && /Howdy/.test(built()));
+    output = '';
+    writeFileSync(component, '<hello-tag name="you"><p>{nope}</p></hello-tag>\n');
+    await until(() => /nope/.test(output));
+    assert.match(built(), /Howdy/, 'the last good build is still there');
+    assert.equal(existsSync(join(dir, 'ui.building')), false);
+  } finally {
+    child.kill();
+  }
+});

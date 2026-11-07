@@ -2,6 +2,36 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.7.0 — 2026-11-07
+
+Progressive enhancement, said once (`plan/roadmap-server.md`, 2.7). All additive.
+
+### Added
+
+- **`hydrated()`** from `@mnx/runtime`: a signal that's `false` in the server's HTML (and on the server) and `true` once the element has started. The host also gets the custom state `hydrated`, for CSS (`:host(:state(hydrated))`, `my-filters:state(hydrated)`). It replaces `let live = false; onMount(() => (live = true))`.
+- **`<select value={…}>` and `<textarea value={…}>` in the HTML output.** A select's value marks the matching `<option selected>`, and a textarea's value becomes its content. HTML ignores a `value` attribute on both, so before JavaScript the page used to show the first option and an empty box.
+- **The `.submit` event modifier** submits the element's form after any handler, with `requestSubmit()`, so validation and `submit` listeners run. `<select onchange.submit>` needs no handler. In scripts and JSX it's `submit(fn)`.
+- **The `.mod` key modifier**: ⌘ on Apple platforms and Ctrl elsewhere (`onkeydown.mod.enter`, `keys('mod+enter', fn)`).
+- **`value:bind={x}`** on a child custom element keeps its two-way prop and a `let` (or prop) in step. It stands for `value={x}` plus `onvaluechange={(event) => (x = event.detail)}`.
+- **`mnx check --server`** lists what a server without JavaScript leaves out of a component rendered with its defaults (calls, template literals, runtime-only values). It's an error for `checked`, `selected`, `value` and `disabled`, which make a form wrong without JavaScript. It's also `"server": true` on a `check` request, and `npx mnx check --server`.
+- **`mnx serve`**: a long-lived process answering one JSON request per line, for servers in other languages. Requests can also be batches (`{ "requests": [ … ] }`). The Flask example uses it, and its pages got about 40% faster.
+- **`mnx build --lib --watch`** rebuilds after each change. A compile error keeps the last good build, because builds now go to a temporary directory and are swapped in. The Next.js example has `npm run ui:watch`.
+- **`MNX_MARKER_COMMENT`** from `@mnx/compiler`: the hydration markers' comment text, for minifiers' keep-lists.
+
+### Changed
+
+- **Partial rendering decides `live && …` and `!live || …`** (any known first operand of `&&` or `||` that settles the result), instead of leaving the whole expression for the browser.
+- **A host whose hydration markers were stripped** gets a warning that says so and names the usual causes (a minifier, a sanitizer, htmx), instead of the general "doesn't match its template".
+- **`@mnx/unplugin` recognises React Router as a React project,** so `framework: 'react'` is no longer needed there.
+- **`@mnx/unplugin` warns when a light-DOM component is server-rendered in React Router, Nuxt or SvelteKit**, whose hydration breaks around it.
+- **The runtime's size budget is 12.5 KB gzipped** (it was 12 KB) for the above.
+
+### Examples and docs
+
+- The help desk's filter bar drops its nine `selected=`, its `ref` and its `apply` function. The reply box drops a listener and its `ref`. Seven components across the help desk, Flask, Hono and Eleventy apps use `hydrated()` instead of the hand-written pattern. The note composer uses `value:bind`.
+- The scoreboard (`node examples/stats.mjs`) counts the server and client apps too, and the patterns these replace are now at zero.
+- The README covers hydration markers, frameworks that hydrate, and what the server can render. The guide's Forms page covers forms that work before JavaScript, and a new page covers mnx on other people's pages.
+
 ## 2.6.7 — 2026-11-07
 
 ### Examples

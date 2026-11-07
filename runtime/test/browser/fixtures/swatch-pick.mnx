@@ -1,0 +1,6 @@
+<!--
+  @fires valuechange - The colour changed.
+-->
+<mnx-swatch value:model="#000">
+  <button type="button" class="red" onclick={() => (value = "#f00")}>{value}</button>
+</mnx-swatch>
