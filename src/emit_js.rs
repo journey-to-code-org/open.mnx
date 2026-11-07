@@ -587,6 +587,44 @@ impl<'a> Emitter<'a> {
                         "mnx-else is only valid as a direct child of mnx-if",
                     ));
                 }
+                Node::Await {
+                    value,
+                    pending,
+                    then,
+                    catch,
+                    ..
+                } => {
+                    self.template.push_str("<!--[--><!--]-->");
+                    let region = next(path);
+                    let pending = self.block(pending, &[], &region)?;
+                    let mut settled = Vec::new();
+                    for (branch, unnamed) in [(then, "$value"), (catch, "$error")] {
+                        settled.push(match branch {
+                            Some(branch) => {
+                                let name =
+                                    branch.name.clone().unwrap_or_else(|| unnamed.to_owned());
+                                self.block(&branch.children, &[name], &region)?
+                            }
+                            None => "null".to_owned(),
+                        });
+                    }
+                    let body = format!(
+                        "await: () => {}, blocks: [{pending}, {}, {}]",
+                        self.js(value),
+                        settled[0],
+                        settled[1]
+                    );
+                    self.parts.push(JsPart::at(&region, body));
+                }
+                Node::Settled { caught, branch } => {
+                    return Err(Diagnostic::new(
+                        branch.span,
+                        format!(
+                            "mnx-{} is only valid as a direct child of mnx-await",
+                            if *caught { "catch" } else { "then" }
+                        ),
+                    ));
+                }
             }
         }
         Ok(())
@@ -773,8 +811,10 @@ fn content_units(nodes: &[Node]) -> Vec<(String, usize)> {
                     .unwrap_or_else(|| "default".to_owned());
                 push(slot);
             }
-            Node::If { .. } | Node::Each { .. } | Node::Slot { .. } => push("default".to_owned()),
-            Node::Else { .. } => {}
+            Node::If { .. } | Node::Each { .. } | Node::Slot { .. } | Node::Await { .. } => {
+                push("default".to_owned())
+            }
+            Node::Else { .. } | Node::Settled { .. } => {}
         }
     }
     units

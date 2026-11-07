@@ -196,7 +196,10 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
   };
   assert.equal(check('good', `
     import { state, computed, effect, scope, watch, onMount, props, host, emit, id, createContext, provide, inject,
-      formValue, validity, define, Signal, tick, adoptStyles, type MnxElementClass } from '@mnx/runtime';
+      formValue, validity, define, Signal, tick, adoptStyles, resource, type MnxElementClass } from '@mnx/runtime';
+    const user = resource(async ({ signal }) => { void signal; return { name: 'Ada' }; });
+    const userName: string | undefined = user.value?.name;
+    void userName;
     const sheets: CSSStyleSheet[] = adoptStyles('p { color: red }', new CSSStyleSheet());
     void sheets;
     import { wrap } from '@mnx/runtime/react';

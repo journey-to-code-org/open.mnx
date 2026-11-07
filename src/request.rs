@@ -9,7 +9,7 @@
 //!   "files": { "/app/inbox.mnx": "…", "/app/badge.mnx": "…" },
 //!   "runtime": "@mnx/runtime", "keepImports": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
-//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html" }
+//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true }
 //! ```
 //!
 //! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }`: `output` is the
@@ -130,7 +130,21 @@ fn respond(request: &Map<String, Value>) -> Value {
                     ))
                 }
             };
-            crate::compile_html_from(source, &path, &props, &slots, slot_source, &loader)
+            let partial = request
+                .get("partial")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            crate::compile_html_with_options(
+                source,
+                &path,
+                &props,
+                &slots,
+                crate::HtmlOptions {
+                    slot_source,
+                    partial,
+                },
+                &loader,
+            )
         }
         ("compile", "css")
             if request

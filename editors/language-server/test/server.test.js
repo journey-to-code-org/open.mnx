@@ -93,7 +93,7 @@ test('completion: directives and imported components, their props and events', a
   const text = "<script>\n  import './badge.mnx'\n</script>\n<mnx-page heading=\"\">\n  <mnx-\n  <mnx-badge \n  <p>{}</p>\n</mnx-page>\n";
   notify('textDocument/didOpen', { textDocument: { uri, languageId: 'mnx', version: 1, text } });
   const labels = async (line, character) => (await call('textDocument/completion', { textDocument: { uri }, position: { line, character } })).map((item) => item.label);
-  assert.deepEqual((await labels(4, 7)).sort(), ['mnx-badge', 'mnx-each', 'mnx-else', 'mnx-if', 'mnx-slot']);
+  assert.deepEqual((await labels(4, 7)).sort(), ['mnx-await', 'mnx-badge', 'mnx-catch', 'mnx-each', 'mnx-else', 'mnx-if', 'mnx-slot', 'mnx-then']);
   assert.deepEqual(await labels(5, 13), ['label', 'count', 'onpick']);
   assert.deepEqual(await labels(6, 6), ['heading'], 'props in expressions');
   const items = await call('textDocument/completion', { textDocument: { uri }, position: { line: 5, character: 13 } });

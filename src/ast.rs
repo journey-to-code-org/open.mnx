@@ -168,6 +168,29 @@ pub enum Node {
         children: Vec<Node>,
         span: Span,
     },
+    /// `<mnx-await value={promise}>`: the pending content, then the `mnx-then` block with the
+    /// resolved value (named by its `as`), or the `mnx-catch` block with the error.
+    Await {
+        value: Expression,
+        value_span: Span,
+        pending: Vec<Node>,
+        then: Option<Branch>,
+        catch: Option<Branch>,
+        span: Span,
+    },
+    /// `<mnx-then as="…">` / `<mnx-catch as="…">`, before they're attached to their `mnx-await`.
+    Settled {
+        caught: bool,
+        branch: Branch,
+    },
+}
+
+/// An `mnx-then` or `mnx-catch` block: the name it binds (if any) and its content.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Branch {
+    pub name: Option<String>,
+    pub children: Vec<Node>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -249,6 +272,21 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
             }
             Node::Slot { fallback, .. } => for_each_expression(fallback, visit),
             Node::Else { children, .. } => for_each_expression(children, visit),
+            Node::Await {
+                value,
+                value_span,
+                pending,
+                then,
+                catch,
+                ..
+            } => {
+                visit(value, *value_span);
+                for_each_expression(pending, visit);
+                for branch in then.iter().chain(catch) {
+                    for_each_expression(&branch.children, visit);
+                }
+            }
+            Node::Settled { branch, .. } => for_each_expression(&branch.children, visit),
         }
     }
 }

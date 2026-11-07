@@ -76,7 +76,7 @@
       ]
     },
     "directive": {
-      "begin": "(</?)(mnx-(?:if|else|each|slot))\\b",
+      "begin": "(</?)(mnx-(?:if|else|each|slot|await|then|catch))\\b",
       "beginCaptures": { "1": { "name": "punctuation.definition.tag.begin.html" }, "2": { "name": "keyword.control.directive.mnx" } },
       "end": "(/?>)",
       "endCaptures": { "1": { "name": "punctuation.definition.tag.end.html" } },

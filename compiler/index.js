@@ -95,12 +95,14 @@ export class CompileError extends Error {
  * and the scoped stylesheets of it and the components it uses. `props` are the host's values
  * (JSON), `slots` the supplied content by slot name (`default` for unnamed content): HTML,
  * kept as written (`slotSource: 'template'` reads it as mnx template syntax instead). `files`
- * supplies the sources instead of reading them from disk (see `sources`). Throws a `CompileError` on errors.
+ * supplies the sources instead of reading them from disk (see `sources`). What only the browser
+ * can compute (JavaScript expressions, runtime-only values) is left for the element to fill in
+ * when it starts; `partial: false` makes that an error instead. Throws a `CompileError` on errors.
  */
-export function render(path, { props = {}, slots = {}, slotSource = 'html', files } = {}) {
+export function render(path, { props = {}, slots = {}, slotSource = 'html', partial = true, files } = {}) {
   const absolute = resolve(path);
   const all = files ?? sources(absolute);
-  const html = request({ emit: 'html', path: absolute, files: all, props, slots, slotSource });
+  const html = request({ emit: 'html', path: absolute, files: all, props, slots, slotSource, partial });
   if (!html.ok) throw new CompileError(html);
   const css = request({ emit: 'css', path: absolute, files: all });
   if (!css.ok) throw new CompileError(css);

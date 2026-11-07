@@ -37,7 +37,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix request < request.json\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix request < request.json\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -46,6 +46,7 @@ fn run() -> Result<(), String> {
     let mut props_path = None;
     let mut slots_path = None;
     let mut slots_html = false;
+    let mut partial = false;
     let mut output_path = None;
     let mut emit = "html".to_owned();
     let mut runtime = "@mnx/runtime".to_owned();
@@ -87,6 +88,8 @@ fn run() -> Result<(), String> {
             "--slots" => slots_path = arguments.next(),
             // The --slots content is HTML a server already rendered, kept as written.
             "--slots-html" => slots_html = true,
+            // Leave what only the browser can compute for the element, instead of an error.
+            "--partial" => partial = true,
             "--output" => output_path = arguments.next(),
             _ => return Err(format!("unexpected argument `{argument}`")),
         }
@@ -97,9 +100,9 @@ fn run() -> Result<(), String> {
         eprint!("{}", warning.render_warning(&source, &source_path));
     }
     if emit != "html" {
-        if props_path.is_some() || slots_path.is_some() || slots_html {
+        if props_path.is_some() || slots_path.is_some() || slots_html || partial {
             return Err(format!(
-                "--props, --slots and --slots-html apply to --emit html, not --emit {emit}"
+                "--props, --slots, --slots-html and --partial apply to --emit html, not --emit {emit}"
             ));
         }
         let name = Path::new(&source_path)
@@ -173,12 +176,15 @@ fn run() -> Result<(), String> {
     } else {
         mnix_compiler::SlotSource::Template
     };
-    let html = mnix_compiler::compile_html_from(
+    let html = mnix_compiler::compile_html_with_options(
         &source,
         &source_path,
         &props,
         &slots,
-        slot_source,
+        mnix_compiler::HtmlOptions {
+            slot_source,
+            partial,
+        },
         &mnix_compiler::filesystem,
     )
     .map_err(|diagnostic| diagnostic.render_in(&source, &source_path))?;

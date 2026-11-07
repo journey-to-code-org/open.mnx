@@ -126,3 +126,37 @@ fn the_subset_still_comes_first_and_v02_syntax_is_still_caught() {
         compile_js("<mnx-x a={1}><p>{a +}</p></mnx-x>", "@mnx/runtime", "x.mnx").unwrap_err();
     assert!(!error.message.is_empty());
 }
+
+#[test]
+fn partial_html_leaves_browser_only_parts_to_the_element() {
+    use mnix_compiler::{compile_html_with_options, HtmlOptions, SlotSource};
+    let partial = |source: &str, props: &str| {
+        let loader = |_: &str, _: &str| -> Result<(String, String), String> { Err("none".into()) };
+        compile_html_with_options(
+            source,
+            "x.mnx",
+            props,
+            "{}",
+            HtmlOptions {
+                slot_source: SlotSource::Template,
+                partial: true,
+            },
+            &loader,
+        )
+    };
+    assert_eq!(
+        partial(SOURCE, "{}").unwrap(),
+        "<mnx-x>\n  <p></p>\n  <button>+</button>\n  <!--[?--><!--]-->\n</mnx-x>",
+        "the text, the list and the browser-computed default are left out"
+    );
+    assert_eq!(
+        partial(SOURCE, r#"{"stamp":5,"min":2}"#).unwrap(),
+        "<mnx-x min=\"2\" stamp=\"5\">\n  <p></p>\n  <button>+</button>\n  <!--[?--><!--]-->\n</mnx-x>"
+    );
+    assert_eq!(
+        partial("<script>const now = Date.now()</script>\n<mnx-x a=\"x\"><p title={now} class=\"c {now}\">{a}</p><mnx-if test={now > 0}><b>later</b></mnx-if></mnx-x>", "{}").unwrap(),
+        "<mnx-x><p>x</p><!--[?--><!--]--></mnx-x>"
+    );
+    // Everything else is still checked.
+    assert!(partial("<mnx-x><p>{nope()}</p></mnx-x>", "{}").is_err());
+}

@@ -25,6 +25,8 @@ pub enum Node {
     Open,
     /// `<!--[!-->`: the start of a slot region holding supplied (static) content.
     OpenProjected,
+    /// `<!--[?-->`: the start of a region the element renders (partial rendering left it empty).
+    OpenClient,
     Close,
 }
 

@@ -162,15 +162,64 @@ pub fn compile_html_from(
     slot_source: SlotSource,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
+    compile_html_with_options(
+        source,
+        path,
+        props_json,
+        slots_json,
+        HtmlOptions {
+            slot_source,
+            partial: false,
+        },
+        loader,
+    )
+}
+
+/// How the HTML output is rendered.
+#[derive(Clone, Copy, Debug)]
+pub struct HtmlOptions {
+    /// What slot content is written in.
+    pub slot_source: SlotSource,
+    /// Leave what only the browser can compute (JavaScript expressions, runtime-only values)
+    /// for the element to fill in, instead of reporting it: the rest is server-rendered.
+    pub partial: bool,
+}
+
+/// Static HTML, with options.
+pub fn compile_html_with_options(
+    source: &str,
+    path: &str,
+    props_json: &str,
+    slots_json: &str,
+    options: HtmlOptions,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
     front(source, Some(path), Some(loader), |source| {
         let component = load(source, path, Some(loader))?;
-        html(
-            component,
-            &parse_json(props_json, "props")?,
-            &parse_json(slots_json, "slots")?,
-            slot_source,
-        )
+        let props = parse_json(props_json, "props")?;
+        let slots = parse_json(slots_json, "slots")?;
+        if options.partial {
+            html_partial(component, &props, &slots, options.slot_source)
+        } else {
+            html(component, &props, &slots, options.slot_source)
+        }
     })
+}
+
+fn html_partial(
+    component: ast::ComponentAst,
+    props: &serde_json::Value,
+    slots: &serde_json::Value,
+    slot_source: SlotSource,
+) -> Result<String, Diagnostic> {
+    let previous = PARTIAL_HTML.with(|flag| flag.replace(true));
+    let result = html(component, props, slots, slot_source);
+    PARTIAL_HTML.with(|flag| flag.set(previous));
+    result
+}
+
+thread_local! {
+    static PARTIAL_HTML: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 fn html(
@@ -195,7 +244,11 @@ fn html(
             parser::parse_slot(source, slot_source == SlotSource::Html)?,
         );
     }
-    let component = validate::validate(component, props, &slot_nodes)?;
+    let component = if PARTIAL_HTML.with(std::cell::Cell::get) {
+        validate::validate_partial(component, props, &slot_nodes)?
+    } else {
+        validate::validate(component, props, &slot_nodes)?
+    };
     Ok(render::render(&component))
 }
 

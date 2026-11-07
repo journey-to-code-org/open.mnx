@@ -10,6 +10,7 @@
 // text is reached through its element (an only child) or through an empty-comment anchor.
 import { Signal } from './signal.js';
 import { effect, scope, tick } from './effect.js';
+import { RESOURCE } from './resource.js';
 
 const { untrack } = Signal.subtle;
 const TEXT = 3;
@@ -292,7 +293,10 @@ export function watch(source, callback) {
 // shifts the paths of what comes after it.
 
 // `<!--[!-->` opens a slot region holding supplied content (static, left alone on hydration).
-const isOpen = (node) => node.nodeType === COMMENT && (node.data === '[' || node.data === '[!');
+// `<!--[?-->` opens a region the server left for the element to render (partial rendering).
+const isOpen = (node) => node.nodeType === COMMENT && (node.data === '[' || node.data === '[!' || node.data === '[?');
+/** Whether to bind a region's server markup: not when the server left it to the element. */
+const hydratable = (open, hydrating) => hydrating && open.data !== '[?';
 const isClose = (node) => node.nodeType === COMMENT && node.data === ']';
 
 function matchingClose(open) {
@@ -352,7 +356,7 @@ function locate(range, parts, hydrating = false) {
     // In server markup, content given to a child component sits where the child projected it.
     const node = walk(range, hydrating && part.hydrate ? part.hydrate : part.path);
     const fits = !node ? false
-      : part.when || part.each || part.slot ? isOpen(node) && matchingClose(node) !== null
+      : part.when || part.each || part.slot || part.await ? isOpen(node) && matchingClose(node) !== null
       : part.anchor ? node.nodeType === COMMENT && node.data === ''
       : node.nodeType === 1;
     if (!fits) return null;
@@ -440,6 +444,8 @@ function bind(part, node, hydrating, context) {
     bindAttribute(part, node);
   } else if (part.when) {
     bindWhen(part, node, hydrating, context);
+  } else if (part.await) {
+    bindAwait(part, node, hydrating, context);
   } else if (part.each) {
     bindEach(part, node, hydrating, context);
   } else if (part.slot) {
@@ -732,6 +738,7 @@ function bindAttribute(part, node) {
 
 /** mnx-if: re-render only when the chosen branch changes, not whenever the test re-runs. */
 function bindWhen(part, open, hydrating, context) {
+  hydrating = hydratable(open, hydrating);
   const close = matchingClose(open);
   const branch = new Signal.Computed(() => ($r(part.when()) ? 0 : 1));
   let first = hydrating;
@@ -748,6 +755,47 @@ function bindWhen(part, open, hydrating, context) {
 }
 
 /**
+ * mnx-await: the pending block while the value is a promise (anything with `then`), then the
+ * `mnx-then` block with the resolved value, or the `mnx-catch` block with the error. A value
+ * that isn't a promise shows `mnx-then` at once. Only the latest value's outcome is shown. A
+ * `resource()` is followed through its states, so reloading it shows the pending content again.
+ */
+function bindAwait(part, open, hydrating, context) {
+  hydrating = hydratable(open, hydrating);
+  const close = matchingClose(open);
+  let first = hydrating; // the server rendered the pending block
+  let latest = null;
+  effect(() => {
+    const value = $r(part.await());
+    const token = (latest = {});
+    // Blocks mounted later (when the promise settles) still belong to this run.
+    const owner = scope();
+    const show = (index, payload) => untrack(() => owner.run(() => {
+      const block = part.blocks[index];
+      const hydrate = first && index === 0;
+      first = false;
+      if (block) mountBlock(block, index === 0 ? [] : [new Signal.State(payload)], open, close, hydrate, context);
+      else clearBetween(open, close);
+    }));
+    if (value?.[RESOURCE]) {
+      // A resource: follow its state, so a reload shows the pending content again.
+      const status = value.status;
+      if (status === 'pending') show(0);
+      else if (status === 'ready') show(1, value.value);
+      else show(2, value.error);
+    } else if (value !== null && (typeof value === 'object' || typeof value === 'function') && typeof value.then === 'function') {
+      show(0);
+      value.then(
+        (resolved) => { if (latest === token && !owner.disposed) show(1, resolved); },
+        (error) => { if (latest === token && !owner.disposed) show(2, error); },
+      );
+    } else {
+      show(1, value);
+    }
+  });
+}
+
+/**
  * mnx-each: one row per item. Each row holds its item and index as signals, so changing one
  * item updates only that row's parts.
  *
@@ -758,6 +806,7 @@ function bindWhen(part, open, hydrating, context) {
  *   focus and iframes survive the move.
  */
 function bindEach(part, open, hydrating, context) {
+  hydrating = hydratable(open, hydrating);
   const close = matchingClose(open);
   // Rows belong to this scope, not to the effect below, so re-running the effect (the list
   // changed) doesn't dispose them.

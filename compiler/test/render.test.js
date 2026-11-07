@@ -37,3 +37,12 @@ test('errors are CompileErrors with diagnostics', () => {
   });
   assert.throws(() => renderToString(join(fixtures, 'card.mnx'), { slots: { nope: '<p></p>' } }), /slot `nope` is not declared/);
 });
+
+test('what only the browser can compute is left for the element, unless partial is false', () => {
+  const html = renderToString(join(fixtures, 'inline.mnx'));
+  assert.match(html, /<p class="summary"><\/p>/);
+  assert.match(html, /<!--\[\?--><!--\]-->/);
+  assert.throws(() => renderToString(join(fixtures, 'inline.mnx'), { partial: false }), /only exists at runtime|runs in the browser only/);
+  // JSX components too.
+  assert.match(renderToString(join(fixtures, 'jsx/rating.mnx.jsx'), { props: { label: 'Stars' } }), /<span class="label">Stars<\/span>/);
+});

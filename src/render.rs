@@ -39,6 +39,7 @@ fn render_node(node: &Node, output: &mut String) {
         Node::Anchor => output.push_str("<!---->"),
         Node::Open => output.push_str("<!--[-->"),
         Node::OpenProjected => output.push_str("<!--[!-->"),
+        Node::OpenClient => output.push_str("<!--[?-->"),
         Node::Close => output.push_str("<!--]-->"),
         Node::Element(element) => {
             output.push('<');

@@ -52,6 +52,7 @@ const SOURCE = `<!-- A card.
 <mnx-card heading={heading} open={true} class="card {kind}" onpick={handle}>
   <mnx-if test={open}><h2>{heading.toUpperCase()}</h2></mnx-if>
   <mnx-each items={[{ id: 1 }]} as="item"><p>&amp; {item.id}</p></mnx-each>
+  <mnx-await value={load()}><p>…</p><mnx-then as="data">{data}</mnx-then></mnx-await>
 </mnx-card>`;
 
 test('script, style, directives, components, expressions and events get their scopes', async () => {
@@ -62,6 +63,7 @@ test('script, style, directives, components, expressions and events get their sc
   assert.ok(scopesOf(all, 'mnx-card').includes('entity.name.tag.custom.mnx'));
   assert.ok(scopesOf(all, 'mnx-if').includes('keyword.control.directive.mnx'));
   assert.ok(scopesOf(all, 'mnx-each').includes('keyword.control.directive.mnx'));
+  assert.ok(scopesOf(all, 'mnx-await').includes('keyword.control.directive.mnx'));
   assert.ok(scopesOf(all, 'onpick').includes('entity.other.attribute-name.event.mnx'));
   assert.ok(all.find((token) => token.text === 'h2' && token.scopes.includes('entity.name.tag.html')), 'plain HTML tags');
   for (const expression of ['heading.toUpperCase()', 'item.id', 'kind']) {

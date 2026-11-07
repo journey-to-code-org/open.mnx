@@ -1,0 +1,75 @@
+// Async data as signals: `resource(fetcher)`.
+//
+//   const user = resource(({ signal }) => fetch(`/api/users/${p.id}`, { signal }).then((r) => r.json()))
+//   <mnx-if test={user.loading}><p>Loading…</p><mnx-else><p>{user.value?.name}</p></mnx-else></mnx-if>
+//
+// The fetcher runs at once and again whenever a signal it read before its first `await`
+// changes (a prop, a state), like an effect. A new run aborts the previous one through the
+// `AbortSignal` it was given, and so does the element's removal; a result that arrives after a
+// newer run started is dropped, so the value is always the latest request's. While a new run is
+// pending the previous value stays (`loading` is true), so the UI doesn't flash empty.
+import { Signal } from './signal.js';
+import { effect } from './effect.js';
+
+const { untrack } = Signal.subtle;
+
+/** Marks a resource, so `<mnx-await>` follows its state instead of awaiting it once. */
+export const RESOURCE = Symbol.for('mnx.resource');
+
+/**
+ * A signal-backed view of async data. `value`, `error`, `loading` and `status` (`"pending"`,
+ * `"ready"`, `"error"`) are reactive reads; `refresh()` runs the fetcher again; `then()` makes
+ * it awaitable (resolving to the current run's value).
+ */
+export function resource(fetcher, { initial } = {}) {
+  if (typeof fetcher !== 'function') throw new TypeError('mnx: resource() takes a function that returns a value or a promise');
+  const value = new Signal.State(initial);
+  const error = new Signal.State(undefined);
+  const status = new Signal.State('pending');
+  const version = new Signal.State(0);
+  let current = null; // the latest run's promise
+
+  effect(() => {
+    version.get();
+    const controller = new AbortController();
+    let result;
+    try {
+      result = fetcher({ signal: controller.signal });
+    } catch (thrown) {
+      result = Promise.reject(thrown);
+    }
+    untrack(() => {
+      if (status.get() !== 'pending') status.set('pending');
+    });
+    const run = Promise.resolve(result).then(
+      (resolved) => {
+        if (run !== current) return resolved;
+        value.set(resolved);
+        error.set(undefined);
+        status.set('ready');
+        return resolved;
+      },
+      (thrown) => {
+        if (run !== current) throw thrown;
+        // An aborted run was replaced or the element left: not an error to show.
+        if (controller.signal.aborted) return untrack(() => value.get());
+        error.set(thrown);
+        status.set('error');
+        throw thrown;
+      },
+    );
+    run.catch(() => {}); // reported through `error`
+    current = run;
+    return () => controller.abort();
+  });
+
+  return {
+    [RESOURCE]: true,
+    get value() { return value.get(); },
+    get error() { return error.get(); },
+    get status() { return status.get(); },
+    get loading() { return status.get() === 'pending'; },
+    refresh() { version.set(untrack(() => version.get()) + 1); },
+    then(resolve, reject) { return current.then(resolve, reject); },
+  };
+}

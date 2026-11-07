@@ -90,6 +90,33 @@ struct Prop {
     attribute: String,
     default: Option<Value>,
     value: Value,
+    /// Partial rendering: the value is computed in the browser.
+    unknown: bool,
+}
+
+thread_local! {
+    /// Partial rendering: what only the browser can compute is left for it (see
+    /// [`validate_partial`]).
+    static PARTIAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn partial() -> bool {
+    PARTIAL.with(std::cell::Cell::get)
+}
+
+/// Like [`validate`], but what only the browser can compute (runtime-only values, JavaScript
+/// expressions, defaults computed in the browser) is left for the element instead of being an
+/// error: text renders empty, attributes are left out, and conditionals and lists render as
+/// empty regions marked `<!--[?-->`, which the element fills when it starts.
+pub fn validate_partial(
+    component: ast::ComponentAst,
+    values: &Value,
+    slot_values: &HashMap<String, Vec<ast::Node>>,
+) -> Result<ir::Component, Diagnostic> {
+    let previous = PARTIAL.with(|flag| flag.replace(true));
+    let result = validate(component, values, slot_values);
+    PARTIAL.with(|flag| flag.set(previous));
+    result
 }
 
 pub fn validate(
@@ -187,7 +214,7 @@ fn lower_component(
 
     let host_attributes = props
         .iter()
-        .filter(|prop| prop.default.as_ref() != Some(&prop.value))
+        .filter(|prop| !prop.unknown && prop.default.as_ref() != Some(&prop.value))
         .filter_map(|prop| host_attribute(prop).map(|value| (prop.attribute.clone(), value)))
         .collect();
 
@@ -258,6 +285,7 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
             attribute: kebab(&declaration.name),
             value: default.clone().unwrap_or(Value::Null),
             default,
+            unknown: false,
         });
     }
     let templates = HashMap::new();
@@ -432,6 +460,7 @@ fn evaluate_props(
             }
             (Some(value), _) => value.clone(),
             (None, Some(Ok(default))) => default.clone(),
+            (None, Some(Err(_))) if partial() => Value::Null,
             (None, Some(Err(runtime))) => {
                 return Err(Diagnostic::new(
                     declaration.span,
@@ -452,11 +481,13 @@ fn evaluate_props(
                 ));
             }
         };
+        let unknown = !overrides.contains_key(&declaration.name) && matches!(default, Some(Err(_)));
         props.push(Prop {
             name: declaration.name.clone(),
             attribute: kebab(&declaration.name),
             default: default.and_then(Result::ok),
             value,
+            unknown,
         });
     }
     for name in overrides.keys() {
@@ -713,6 +744,32 @@ impl Context<'_> {
                         "mnx-else is only valid as a direct child of mnx-if",
                     ));
                 }
+                ast::Node::Await {
+                    value,
+                    value_span,
+                    pending,
+                    then,
+                    catch,
+                    ..
+                } => {
+                    self.resolve_expression(value, *value_span, scopes)?;
+                    self.resolve_nodes(pending, scopes)?;
+                    for branch in then.iter().chain(catch) {
+                        scopes.push(branch.name.iter().cloned().collect());
+                        let result = self.resolve_nodes(&branch.children, scopes);
+                        scopes.pop();
+                        result?;
+                    }
+                }
+                ast::Node::Settled { caught, branch } => {
+                    return Err(Diagnostic::new(
+                        branch.span,
+                        format!(
+                            "mnx-{} is only valid as a direct child of mnx-await",
+                            if *caught { "catch" } else { "then" }
+                        ),
+                    ));
+                }
             }
         }
         Ok(())
@@ -725,12 +782,35 @@ impl Context<'_> {
             }
         }
         if let Some(prop) = self.props.iter().find(|prop| prop.name == name) {
+            if prop.unknown {
+                return Some(Binding::Runtime);
+            }
             return Some(Binding::Value(&prop.value));
         }
         find_local(self.locals, name).map(|local| match local {
             Local::Value(value) => Binding::Value(value),
             Local::Runtime => Binding::Runtime,
         })
+    }
+
+    /// [`Self::evaluate`], or `None` when rendering partially and only the browser can compute
+    /// the value.
+    fn evaluate_known(
+        &self,
+        expression: &Expression,
+        span: Span,
+        state: &LowerState,
+    ) -> Result<Option<Value>, Diagnostic> {
+        if partial() {
+            let mut runtime = expression.is_runtime();
+            expression.for_each_identifier(&mut |name| {
+                runtime |= matches!(self.binding(name, state), Some(Binding::Runtime));
+            });
+            if runtime {
+                return Ok(None);
+            }
+        }
+        self.evaluate(expression, span, state).map(Some)
     }
 
     fn evaluate(
@@ -761,19 +841,36 @@ impl Context<'_> {
             .map_err(|message| Diagnostic::new(span, message))
     }
 
+    /// Text with its values; partially rendered text the browser fills in is empty.
     fn lower_parts(&self, parts: &[AstPart], state: &LowerState) -> Result<Vec<Part>, Diagnostic> {
-        parts
-            .iter()
-            .map(|part| match part {
-                AstPart::Literal(text) => Ok(Part::Literal(text.clone())),
+        Ok(self
+            .lower_known_parts(parts, state)?
+            .unwrap_or_else(|| vec![Part::Escaped(String::new())]))
+    }
+
+    /// Text with its values, or `None` when one is computed in the browser.
+    fn lower_known_parts(
+        &self,
+        parts: &[AstPart],
+        state: &LowerState,
+    ) -> Result<Option<Vec<Part>>, Diagnostic> {
+        let mut lowered = Vec::new();
+        for part in parts {
+            match part {
+                AstPart::Literal(text) => lowered.push(Part::Literal(text.clone())),
                 AstPart::Expression { expression, span } => {
-                    let value = self.evaluate(expression, *span, state)?;
-                    expression::to_display_string(&value)
-                        .map(Part::Escaped)
-                        .map_err(|message| Diagnostic::new(*span, message))
+                    let Some(value) = self.evaluate_known(expression, *span, state)? else {
+                        return Ok(None);
+                    };
+                    lowered.push(
+                        expression::to_display_string(&value)
+                            .map(Part::Escaped)
+                            .map_err(|message| Diagnostic::new(*span, message))?,
+                    );
                 }
-            })
-            .collect()
+            }
+        }
+        Ok(Some(lowered))
     }
 
     fn lower_nodes(
@@ -832,7 +929,9 @@ impl Context<'_> {
                 alternate,
                 ..
             } => {
-                let value = self.evaluate(test, *test_span, state)?;
+                let Some(value) = self.evaluate_known(test, *test_span, state)? else {
+                    return Ok(vec![Node::OpenClient, Node::Close]);
+                };
                 let branch = if expression::is_truthy(&value) {
                     consequent
                 } else {
@@ -853,7 +952,9 @@ impl Context<'_> {
                 children,
                 ..
             } => {
-                let value = self.evaluate(items, *items_span, state)?;
+                let Some(value) = self.evaluate_known(items, *items_span, state)? else {
+                    return Ok(vec![Node::OpenClient, Node::Close]);
+                };
                 let Value::Array(list) = value else {
                     return Err(Diagnostic::new(
                         *items_span,
@@ -873,30 +974,32 @@ impl Context<'_> {
                     }
                     state.scopes.push(scope);
                     if let Some((key, key_span)) = key {
-                        let checked =
-                            self.evaluate(key, *key_span, state)
-                                .and_then(|value| match value {
-                                    Value::String(_) | Value::Number(_) => {
-                                        if keys.insert(value.to_string()) {
-                                            Ok(())
-                                        } else {
-                                            Err(Diagnostic::new(
-                                                *key_span,
-                                                format!(
-                                                    "duplicate mnx-each key {value} (row {})",
-                                                    position + 1
-                                                ),
-                                            ))
-                                        }
+                        let checked = self.evaluate_known(key, *key_span, state).and_then(
+                            |value| match value {
+                                // Computed in the browser, which checks it there.
+                                None => Ok(()),
+                                Some(value @ (Value::String(_) | Value::Number(_))) => {
+                                    if keys.insert(value.to_string()) {
+                                        Ok(())
+                                    } else {
+                                        Err(Diagnostic::new(
+                                            *key_span,
+                                            format!(
+                                                "duplicate mnx-each key {value} (row {})",
+                                                position + 1
+                                            ),
+                                        ))
                                     }
-                                    other => Err(Diagnostic::new(
-                                        *key_span,
-                                        format!(
-                                            "mnx-each key must be a string or number, found {}",
-                                            expression::type_name(&other)
-                                        ),
-                                    )),
-                                });
+                                }
+                                Some(other) => Err(Diagnostic::new(
+                                    *key_span,
+                                    format!(
+                                        "mnx-each key must be a string or number, found {}",
+                                        expression::type_name(&other)
+                                    ),
+                                )),
+                            },
+                        );
                         if let Err(error) = checked {
                             state.scopes.pop();
                             return Err(error);
@@ -990,6 +1093,21 @@ impl Context<'_> {
                 *span,
                 "mnx-else is only valid as a direct child of mnx-if",
             )),
+            // The server can't wait for the value: it renders the pending content, which the
+            // element replaces when the value settles.
+            ast::Node::Await { pending, .. } => {
+                let mut output = vec![Node::Open];
+                output.extend(self.lower_block(pending, state, true)?);
+                output.push(Node::Close);
+                Ok(output)
+            }
+            ast::Node::Settled { caught, branch } => Err(Diagnostic::new(
+                branch.span,
+                format!(
+                    "mnx-{} is only valid as a direct child of mnx-await",
+                    if *caught { "catch" } else { "then" }
+                ),
+            )),
         }
     }
 
@@ -1013,12 +1131,15 @@ impl Context<'_> {
             if let Some(prop) = interface.props.iter().find(|prop| prop.name == prop_name) {
                 let (value, span) = match &attribute.value {
                     AttributeValue::None => (Value::Bool(true), attribute.span),
-                    AttributeValue::Text(parts) => (
-                        Value::String(joined(&self.lower_parts(parts, state)?)),
-                        attribute.span,
-                    ),
+                    AttributeValue::Text(parts) => match self.lower_known_parts(parts, state)? {
+                        Some(lowered) => (Value::String(joined(&lowered)), attribute.span),
+                        None => continue, // the child renders its default; the parent sets it
+                    },
                     AttributeValue::Expression(expression, span) => {
-                        (self.evaluate(expression, *span, state)?, *span)
+                        match self.evaluate_known(expression, *span, state)? {
+                            Some(value) => (value, *span),
+                            None => continue,
+                        }
                     }
                 };
                 check_child_prop_type(&child.ast.tag, prop, &value, span)?;
@@ -1034,7 +1155,7 @@ impl Context<'_> {
         }
         check_child_required(&child.ast.tag, &interface, element)?;
         for prop in &interface.props {
-            if prop.runtime_default.is_some() && !overrides.contains_key(&prop.name) {
+            if prop.runtime_default.is_some() && !overrides.contains_key(&prop.name) && !partial() {
                 return Err(Diagnostic::new(
                     element.span,
                     format!(
@@ -1131,7 +1252,9 @@ impl Context<'_> {
         let value = match &attribute.value {
             AttributeValue::None => None,
             AttributeValue::Text(parts) => {
-                let lowered = self.lower_parts(parts, state)?;
+                let Some(lowered) = self.lower_known_parts(parts, state)? else {
+                    return Ok(None); // set by the element
+                };
                 let dynamic = parts
                     .iter()
                     .any(|part| matches!(part, AstPart::Expression { .. }));
@@ -1141,7 +1264,9 @@ impl Context<'_> {
                 Some(lowered)
             }
             AttributeValue::Expression(expression, span) => {
-                let value = self.evaluate(expression, *span, state)?;
+                let Some(value) = self.evaluate_known(expression, *span, state)? else {
+                    return Ok(None); // set by the element
+                };
                 if is_boolean {
                     return match value {
                         Value::Bool(true) => Ok(Some(ir::Attribute { name: attribute.name.clone(), value: None })),
@@ -1305,6 +1430,18 @@ pub(crate) fn collect_slots(nodes: &[ast::Node], slots: &mut HashSet<String>) {
             ast::Node::Each { children, .. } | ast::Node::Else { children, .. } => {
                 collect_slots(children, slots)
             }
+            ast::Node::Await {
+                pending,
+                then,
+                catch,
+                ..
+            } => {
+                collect_slots(pending, slots);
+                for branch in then.iter().chain(catch) {
+                    collect_slots(&branch.children, slots);
+                }
+            }
+            ast::Node::Settled { branch, .. } => collect_slots(&branch.children, slots),
             ast::Node::Slot { name, fallback, .. } => {
                 slots.insert(name.clone());
                 collect_slots(fallback, slots);

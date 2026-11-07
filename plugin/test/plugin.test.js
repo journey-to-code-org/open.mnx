@@ -440,6 +440,7 @@ test('astro: server-rendered pages, hydrated with a client directive', async () 
     const { build: astroBuild } = await import('astro');
     const { default: mnxAstro } = await import('../src/astro.js');
     const root = app('astro');
+    cpSync(join(here, 'apps/jsx/src/counter.mnx.tsx'), join(root, 'components/counter.mnx.tsx'));
     await astroBuild({ root, configFile: false, logLevel: 'error', integrations: [mnxAstro({ compiler })], outDir: join(root, 'dist') });
     const html = readFileSync(join(root, 'dist/index.html'), 'utf8');
     // Static components are HTML only, with props, host attributes and slot content.
@@ -449,9 +450,17 @@ test('astro: server-rendered pages, hydrated with a client directive', async () 
     assert.match(html, /<mnx-badge class="row" data-who="Ada" label="Ada" count="3"/, 'nested components render too');
     assert.match(html, /<astro-island[^>]*><mnx-rating id="r" class="big" value="1">[^]*<output>1<\/output>/);
 
+    // A JSX component with a derived value: partly server-rendered (the derived text is left
+    // for the element), then hydrated.
+    assert.match(html, /<mnx-counter id="counter" count="4">[^]*<i>4<\/i>[^]*<span class="doubled"><\/span>/);
+
     const { page, messages } = await visit(root);
     await settle(page);
     assert.equal(await page.$eval('mnx-card', (card) => card.matches(':defined')), false, 'no JavaScript for static components');
+    assert.equal(await page.textContent('#counter .doubled'), '8', 'the element filled in the derived value');
+    await page.click('#counter button');
+    await settle(page);
+    assert.equal(await page.textContent('#counter .doubled'), '10');
     await page.click('mnx-rating .two');
     await settle(page);
     assert.equal(await page.textContent('mnx-rating output'), '2', 'the island hydrated');

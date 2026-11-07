@@ -728,7 +728,10 @@ pub(crate) fn is_event_attribute(name: &str) -> bool {
 fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
     let lower = element.name.to_ascii_lowercase();
     if let Some(rest) = lower.strip_prefix("mnix-") {
-        if matches!(rest, "if" | "else" | "each" | "slot") {
+        if matches!(
+            rest,
+            "if" | "else" | "each" | "slot" | "await" | "then" | "catch"
+        ) {
             return Err(Diagnostic::new(
                 element.span,
                 format!("<{}> was renamed to <mnx-{rest}> in v0.3", element.name),
@@ -817,6 +820,65 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 name,
                 fallback: element.children,
                 span: element.span,
+            })
+        }
+        "mnx-await" => {
+            allow_attributes(&element, &["value"])?;
+            let (value, value_span) = required_expression(&element, "value")?;
+            let mut pending = Vec::new();
+            let mut then = None;
+            let mut catch = None;
+            for child in element.children {
+                match child {
+                    Node::Settled { caught, branch } => {
+                        let slot = if caught { &mut catch } else { &mut then };
+                        if slot.is_some() {
+                            return Err(Diagnostic::new(
+                                branch.span,
+                                format!("mnx-await may contain only one mnx-{}", if caught { "catch" } else { "then" }),
+                            ));
+                        }
+                        *slot = Some(branch);
+                    }
+                    Node::Text(parts)
+                        if (then.is_some() || catch.is_some())
+                            && parts.iter().all(|part| matches!(part, Part::Literal(text) if text.trim().is_empty())) => {}
+                    child => {
+                        if then.is_some() || catch.is_some() {
+                            return Err(Diagnostic::new(
+                                element.span,
+                                "mnx-await's pending content comes first, then mnx-then and mnx-catch",
+                            ));
+                        }
+                        pending.push(child);
+                    }
+                }
+            }
+            Ok(Node::Await {
+                value,
+                value_span,
+                pending,
+                then,
+                catch,
+                span: element.span,
+            })
+        }
+        "mnx-then" | "mnx-catch" => {
+            allow_attributes(&element, &["as"])?;
+            let name = optional_text(&element, "as")?;
+            if name.as_deref().is_some_and(|name| !is_identifier(name)) {
+                return Err(Diagnostic::new(
+                    element.span,
+                    format!("{lower} as must be a valid identifier"),
+                ));
+            }
+            Ok(Node::Settled {
+                caught: lower == "mnx-catch",
+                branch: crate::ast::Branch {
+                    name,
+                    children: element.children,
+                    span: element.span,
+                },
             })
         }
         "mnx-else" => {

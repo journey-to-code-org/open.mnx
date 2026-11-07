@@ -16,6 +16,22 @@ export declare function computed<T>(fn: () => T, options?: Signal.Options<T>): S
 /** Call `callback(next, previous)` when `source` changes (not on the first run). */
 export declare function watch<T>(source: (() => T) | MaybeSignal<T>, callback: (next: T, previous: T) => void): void;
 
+/** Async data as signals; see `resource()`. Awaitable: resolves to the current run's value. */
+export interface Resource<T> extends PromiseLike<T> {
+  /** The latest run's value (or `initial`); kept while the next run is pending. */
+  readonly value: T | undefined;
+  readonly error: unknown;
+  readonly status: 'pending' | 'ready' | 'error';
+  readonly loading: boolean;
+  /** Run the fetcher again. */
+  refresh(): void;
+}
+/**
+ * Run `fetcher` now and whenever a signal it read before its first `await` changes; a new run
+ * (or the element's removal) aborts the previous one through `signal`.
+ */
+export declare function resource<T>(fetcher: (context: { signal: AbortSignal }) => T | PromiseLike<T>, options?: { initial?: T }): Resource<T>;
+
 // ---- lifecycle and the element (call during setup) -----------------------------------------
 
 /** Run when the element is connected; may return a cleanup for when it is disconnected. */

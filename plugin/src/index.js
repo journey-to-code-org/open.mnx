@@ -73,6 +73,14 @@ function serverRenderer(path, compilerModule, runtime) {
   const paths = [...dependencies(path)].filter((file) => existsSync(file));
   let common = dirname(path);
   while (!paths.every((file) => file.startsWith(common + sep))) common = dirname(common);
+  // Imports may go up (`../x/y.mnx`) before coming back down: keep the directories they pass.
+  let up = 0;
+  for (const file of paths) {
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/import\s+(?:[^'"]*?from\s+)?['"]((?:\.\.\/)+)[^'"]*\.mnx(?:\.[jt]sx)?['"]/g)) {
+      up = Math.max(up, specifier.length / 3);
+    }
+  }
+  for (let i = 0; i < up && dirname(common) !== common; i++) common = dirname(common);
   const key = (file) => `/${relative(common, file).split(sep).join('/')}`;
   const files = Object.fromEntries(paths.map((file) => [key(file), readFileSync(file, 'utf8')]));
   return `
@@ -80,7 +88,7 @@ import { registerRenderer as $mnxRegister } from ${JSON.stringify(`${runtime}/se
 import { request as $mnxRequest } from ${JSON.stringify(compilerModule)};
 const $mnxFiles = ${JSON.stringify(files)};
 $mnxRegister(tag, (props, slots) => {
-  const response = $mnxRequest({ emit: 'html', path: ${JSON.stringify(key(path))}, files: $mnxFiles, props, slots, slotSource: 'html' });
+  const response = $mnxRequest({ emit: 'html', path: ${JSON.stringify(key(path))}, files: $mnxFiles, props, slots, slotSource: 'html', partial: true });
   if (!response.ok) throw new Error(response.error);
   return response.output;
 });

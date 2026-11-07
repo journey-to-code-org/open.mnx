@@ -1,0 +1,17 @@
+<!-- A user card that loads its user. -->
+<script>
+  import { resource, props } from '@mnx/runtime'
+  const p = props()
+  const user = resource(({ signal }) => window.loadUser(p.who, signal))
+</script>
+<mnx-await-demo who="ada" plain={7}>
+  <mnx-await value={user}>
+    <p class="pending">Loading {who}…</p>
+    <mnx-then as="data"><p class="name">{data.name}</p></mnx-then>
+    <mnx-catch as="error"><p class="error">{error.message}</p></mnx-catch>
+  </mnx-await>
+  <mnx-await value={plain}>
+    <mnx-then as="n"><b>{n}</b></mnx-then>
+  </mnx-await>
+  <span class="status">{user.status}</span>
+</mnx-await-demo>

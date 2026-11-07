@@ -10,6 +10,9 @@ export const DIRECTIVES = {
     attributes: { items: 'The array: `items={…}`.', as: 'The name of each item.', index: 'The name of the index (optional).', key: 'A unique string or number per item, so rows follow their items: `key={item.id}`.' },
   },
   'mnx-slot': { description: 'Where content given to the element goes; the children are the fallback.', attributes: { name: 'The slot name (omit for the default slot).' } },
+  'mnx-await': { description: 'Show the content while `value` (a promise or a `resource()`) is pending, then `<mnx-then>` or `<mnx-catch>`.', attributes: { value: 'The promise or resource: `value={…}`.' } },
+  'mnx-then': { description: 'The content of an `<mnx-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value.' } },
+  'mnx-catch': { description: 'The content of an `<mnx-await>` if its value rejected.', attributes: { as: 'The name of the error.' } },
 };
 
 /** Line/character → offset. */

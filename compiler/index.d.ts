@@ -33,6 +33,8 @@ export interface Options {
   slots?: Record<string, string>;
   /** What `slots` is written in: mnx template syntax (the default here) or rendered HTML. */
   slotSource?: 'template' | 'html';
+  /** For `emit: 'html'`: leave what only the browser can compute for the element. */
+  partial?: boolean;
 }
 
 export interface Request extends Options {
@@ -53,6 +55,8 @@ export interface RenderOptions {
   slots?: Record<string, string>;
   /** What `slots` is written in: rendered HTML, kept as written (the default), or mnx template syntax. */
   slotSource?: 'html' | 'template';
+  /** Leave what only the browser can compute for the element (the default), instead of an error. */
+  partial?: boolean;
   /** The sources, by absolute path, instead of reading them from disk. */
   files?: Record<string, string>;
 }
