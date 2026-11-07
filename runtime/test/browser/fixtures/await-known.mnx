@@ -1,0 +1,3 @@
+<mnx-await-known user={{ name: "Ada" }}>
+  <mnx-await value={user}><p>…</p><mnx-then as="u"><b>{u.name}</b></mnx-then></mnx-await>
+</mnx-await-known>

@@ -763,7 +763,7 @@ function bindWhen(part, open, hydrating, context) {
 function bindAwait(part, open, hydrating, context) {
   hydrating = hydratable(open, hydrating);
   const close = matchingClose(open);
-  let first = hydrating; // the server rendered the pending block
+  let first = hydrating;
   let latest = null;
   effect(() => {
     const value = $r(part.await());
@@ -772,7 +772,7 @@ function bindAwait(part, open, hydrating, context) {
     const owner = scope();
     const show = (index, payload) => untrack(() => owner.run(() => {
       const block = part.blocks[index];
-      const hydrate = first && index === 0;
+      const hydrate = first; // the server rendered this branch, unless it left the region to us
       first = false;
       if (block) mountBlock(block, index === 0 ? [] : [new Signal.State(payload)], open, close, hydrate, context);
       else clearBetween(open, close);

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { useBrowser, open, here, compiler } from './harness.js';
 
 const fixture = join(here, 'fixtures/await.mnx');
-useBrowser({ await: fixture, 'await-static': join(here, 'fixtures/await-static.mnx') });
+useBrowser({ await: fixture, 'await-static': join(here, 'fixtures/await-static.mnx'), 'await-known': join(here, 'fixtures/await-known.mnx') });
 
 // The page decides when each request answers.
 const LOADER = `
@@ -56,10 +56,22 @@ test('the server renders the pending content, and the element takes over from it
   // The HTML output renders each mnx-await's pending content; the element binds to it, then
   // shows the settled block.
   const html = compiler(join(here, 'fixtures/await-static.mnx'));
-  assert.match(html, /<!--\[--><span>…<\/span><!--\]-->/);
+  assert.match(html, /<!--\[\?--><span>…<\/span><!--\]-->/);
   const { page, messages } = await open(html, { modules: ['await-static'] });
   await page.waitForFunction(() => document.querySelector('mnx-await-static i'));
   assert.equal(await page.$eval('mnx-await-static', (el) => el.querySelector('i').textContent), '42');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a value the server knew renders mnx-then there, and the element keeps that markup', async () => {
+  const html = compiler(join(here, 'fixtures/await-known.mnx'));
+  assert.match(html, /<!--\[--><b>Ada<\/b><!--\]-->/);
+  const { page, messages } = await open(html, { modules: ['await-known'], beforeModules: "window.serverB = document.querySelector('b');" });
+  await page.evaluate(() => document.querySelector('mnx-await-known').updateComplete);
+  assert.equal(await page.evaluate(() => document.querySelector('b') === window.serverB), true);
+  await page.evaluate(() => { document.querySelector('mnx-await-known').user = Promise.resolve({ name: 'Grace' }); });
+  await page.waitForFunction(() => document.querySelector('mnx-await-known b')?.textContent === 'Grace');
   assert.deepEqual(messages, []);
   await page.close();
 });

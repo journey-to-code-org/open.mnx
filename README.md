@@ -88,6 +88,7 @@ export default function MnxRating({ value = 0, onValueChange }) {
 - `<mnx-if test={…}>`, with an optional final `<mnx-else>`.
 - `<mnx-each items={list} as="item" index="i" key={item.id}>` over any array. `key` is optional; keys must be strings or numbers and unique (checked at build time for known values, and reported at runtime).
 - `<mnx-slot name="…">` with fallback content; without `name`, the default slot.
+- `<mnx-await value={…}>` with pending content, `<mnx-then as="…">` and `<mnx-catch as="…">` (see Async data).
 
 In the HTML output, directives are expanded at build time and wrapped in `<!--[-->` … `<!--]-->` markers (each list row in its own pair), so the element can find them when it hydrates. In the browser:
 
@@ -123,8 +124,32 @@ Hooks are plain functions called while the script runs (once per element; nothin
 | `id()` | An id unique to this element and call, for `id`/`for`/`aria-*` |
 | `createContext`, `provide`, `inject` | Context (see below) |
 | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled` | Form controls (see below) |
+| `resource(fetcher)` | Async data (see below) |
 
 Custom hooks are plain functions that call these. A detached element pauses: long-lived signals stop holding it, and on return only the parts whose inputs changed re-run.
+
+## Async data
+
+`resource(fetcher)` holds async data as signals: `value`, `error`, `status` (`"pending"`, `"ready"`, `"error"`) and `loading`, plus `refresh()`. It is awaitable too.
+
+```html
+<script>
+  import { resource, props } from '@mnx/runtime'
+  const p = props()
+  const user = resource(({ signal }) => fetch(`/api/users/${p.id}`, { signal }).then((r) => r.json()))
+</script>
+<mnx-user id="1">
+  <mnx-await value={user}>
+    <p>Loading…</p>
+    <mnx-then as="data"><h2>{data.name}</h2></mnx-then>
+    <mnx-catch as="error"><p class="error">{error.message}</p></mnx-catch>
+  </mnx-await>
+</mnx-user>
+```
+
+- **The fetcher re-runs** when a signal it read before its first `await` changes (here the `id` prop). A new run aborts the previous one through the `AbortSignal` it was given, and so does the element's removal. An answer that arrives after a newer run started is dropped. While a new run is pending, `value` keeps the previous result.
+- **`<mnx-await value={…}>`** shows its content while the value is pending, then `<mnx-then as="name">` with the resolved value, or `<mnx-catch as="name">` with the error. Both are optional. It takes a promise, a `resource()` (followed through its states, so a reload shows the pending content again) or a plain value (`mnx-then` at once). Only the latest value's outcome is shown.
+- **On the server**, a value known at build time renders `mnx-then`. Otherwise the pending content is rendered in a region the element renders itself once the value settles.
 
 ## Slots
 
@@ -225,6 +250,8 @@ The element gets the native control API (`form`, `name`, `labels`, `validity`, `
 
 The HTML output is the server rendering: static, deterministic, escaped markup. Props that differ from their defaults are written onto the host (JSON for arrays and objects). When the element starts in the browser, it first checks that the markup has its template's shape. If it does, it binds to the existing DOM: nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match is replaced, with a warning.
 
+**Partial rendering.** A component may use what only the browser can compute: JavaScript expressions, runtime-only script values, or defaults computed in the browser. `--partial` (or `partial: true` in a request) renders everything else and leaves those parts for the element. Their text renders empty, their attributes are left out, and their conditionals and lists become empty `<!--[?-->` regions that the element renders when it starts, without a hydration warning. Without it, the HTML output reports the first such part as an error. `@mnx/compiler`'s `render()` and the plugin's server builds render partially, so every component (JSX ones with state included) can be server-rendered.
+
 In an app's server, `@mnx/compiler` renders a component at request time, from Node and without Rust:
 
 ```js
@@ -274,20 +301,20 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 
 ```sh
 mnix check <component.mnx>... [--format human|json] [--stdin]
-mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]]
+mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial]
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue|svelte|solid]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
 mnix request < request.json
 ```
 
-`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnix request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
+`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnix request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
 
 ## Stability
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, async data and streaming server rendering. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
+Planned: benchmarks and a leak suite in CI, and standards write-ups (1.6), deprecation warnings and `mnix migrate` for 2.0 (1.7). Streaming server rendering (sending resolved `mnx-await` content as it arrives) is planned after 2.0. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
 
 ## Repository and tests
 

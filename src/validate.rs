@@ -1093,10 +1093,39 @@ impl Context<'_> {
                 *span,
                 "mnx-else is only valid as a direct child of mnx-if",
             )),
-            // The server can't wait for the value: it renders the pending content, which the
-            // element replaces when the value settles.
-            ast::Node::Await { pending, .. } => {
-                let mut output = vec![Node::Open];
+            // A value known at build time isn't a promise: the `mnx-then` content, with it.
+            // Otherwise the server can't wait for the value: it renders the pending content in
+            // a region the element renders itself when the value settles.
+            ast::Node::Await {
+                value,
+                value_span,
+                pending,
+                then,
+                ..
+            } => {
+                let mut runtime = value.is_runtime();
+                value.for_each_identifier(&mut |name| {
+                    runtime |= matches!(self.binding(name, state), Some(Binding::Runtime));
+                });
+                if !runtime {
+                    let resolved = self.evaluate(value, *value_span, state)?;
+                    let mut output = vec![Node::Open];
+                    if let Some(branch) = then {
+                        state.scopes.push(
+                            branch
+                                .name
+                                .iter()
+                                .map(|name| (name.clone(), resolved.clone()))
+                                .collect(),
+                        );
+                        let lowered = self.lower_block(&branch.children, state, true);
+                        state.scopes.pop();
+                        output.extend(lowered?);
+                    }
+                    output.push(Node::Close);
+                    return Ok(output);
+                }
+                let mut output = vec![Node::OpenClient];
                 output.extend(self.lower_block(pending, state, true)?);
                 output.push(Node::Close);
                 Ok(output)
