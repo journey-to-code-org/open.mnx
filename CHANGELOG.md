@@ -2,6 +2,25 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.11.0 — 2026-11-07
+
+Next.js in the SSR bridge (`plan/roadmap-3.0.md`, 2.11). All additive.
+
+### Added
+
+- **Shadow roots in Next.js's server HTML.** Next streams React Server Components and has no hook for its HTML, so `@mnx/server`'s `injectShadowRoots` can't reach it. Now the React wrapper writes the shadow root itself, for a shadow-DOM element with no React children: on the server, the host's inner HTML is its declarative shadow root (and a form control's fallback input). The browser attaches the shadow root while parsing, and React doesn't hydrate inner HTML. In the browser that inner HTML is an empty string, which React leaves alone. The conference app's cards show without JavaScript, and the elements keep the parser's nodes when they start.
+- **The loader's server build.** `@mnx/unplugin/loader` with `options: { server: true }` (a Turbopack rule with `condition: { not: 'browser' }`) registers how to render each component on the server, with `@mnx/compiler` from the component's embedded sources. `README.md` has the `next.config.mjs`.
+- **`shadowContent(Element, { props, name })`** from `@mnx/runtime/server`: a shadow-DOM element's server-rendered shadow root and form fallback, for framework integrations.
+- An element's `mnx` description says which prop is its model (`props[name].model`).
+
+### Fixed
+
+- **`injectShadowRootsStream()` could give a host a second shadow root** when a chunk ended right after the host's start tag and the next began with a shadow root the page already had ("A second declarative shadow root cannot be created on a host"). It waits for more of the stream after a host's start tag now. With the React wrapper rendering shadow roots in React Router's server build too, that case became common there.
+
+### Not covered
+
+- An element given React children (slot content) still draws in the browser under Next.js. A `<template shadowrootmode>` as a React child breaks hydration (React finds a different child, reports #418 and re-renders the page). The spike that found it is in `plan/roadmap-3.0.md`.
+
 ## 2.10.0 — 2026-11-07
 
 Hydrating stripped pages, and props for Svelte and Solid (`plan/roadmap-3.0.md`, 2.10). All additive.

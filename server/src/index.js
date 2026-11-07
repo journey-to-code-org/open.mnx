@@ -164,14 +164,20 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
    * hidden input with their value, so the form submits without JavaScript (the element removes
    * it when it starts). Light-DOM components are left alone: frameworks would see their markup.
    */
-  function injectShadowRoots(html, { forms = true } = {}) {
+  /** The shadow-DOM components by tag, and a pattern for their hosts' start tags. */
+  function shadowHosts() {
     const shadowTags = new Map();
     for (const name of files.keys()) {
       const info = describe(name);
       if (info.shadow) shadowTags.set(info.tag, { name, info });
     }
-    if (!shadowTags.size) return html;
-    const pattern = new RegExp(`<(${[...shadowTags.keys()].map((tag) => tag.replace(/[-]/g, '\\-')).join('|')})(\\s[^>]*)?>`, 'g');
+    const pattern = shadowTags.size ? new RegExp(`<(${[...shadowTags.keys()].map((tag) => tag.replace(/[-]/g, '\\-')).join('|')})(\\s[^>]*)?>`, 'g') : null;
+    return { shadowTags, pattern };
+  }
+
+  function injectShadowRoots(html, { forms = true } = {}) {
+    const { shadowTags, pattern } = shadowHosts();
+    if (!pattern) return html;
     let out = '';
     let last = 0;
     for (const match of html.matchAll(pattern)) {
@@ -221,7 +227,15 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
       // Hold back from an unclosed `<` (a tag cut in two), and from an opened host tag whose
       // next characters might start its <template> (to not inject twice): flushing at '>'.
       const open = flush ? -1 : all.lastIndexOf('<');
-      const cut = open > all.lastIndexOf('>') ? open : all.length;
+      let cut = open > all.lastIndexOf('>') ? open : all.length;
+      // A host's start tag near the end: what follows may be its own <template> (a React
+      // wrapper renders it), so wait for more before deciding.
+      const { pattern } = shadowHosts();
+      if (!flush && pattern) {
+        let last = null;
+        for (const match of all.slice(0, cut).matchAll(pattern)) last = match;
+        if (last && cut - (last.index + last[0].length) < 64) cut = last.index;
+      }
       carry = all.slice(cut);
       return injectShadowRoots(all.slice(0, cut), options);
     };

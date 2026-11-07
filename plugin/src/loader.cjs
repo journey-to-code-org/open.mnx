@@ -8,11 +8,22 @@
 //
 // The module defines the element (importing a component's own `.mnx` imports, which go through
 // the loader too) and, as its default export, the element as a React component (a client
-// component). `?element` imports the element itself instead. Options: `{ runtime, react: false }`.
+// component). `?element` imports the element itself instead. Options: `{ runtime, react: false,
+// server: true }`.
+//
+// `server: true`, for the server's build, also registers how to render the component there
+// (with @mnx/compiler, from its sources embedded in the module). Then the React wrapper renders
+// a shadow-DOM component's declarative shadow root into the server's HTML, so it shows before
+// JavaScript (Next.js, which has no HTML hook for @mnx/server's injectShadowRoots):
+//
+//   '*.mnx': [
+//     { condition: 'browser', loaders: ['@mnx/unplugin/loader'], as: '*.js' },
+//     { condition: { not: 'browser' }, loaders: [{ loader: '@mnx/unplugin/loader', options: { server: true } }], as: '*.js' },
+//   ],
 'use strict';
 
 const { existsSync } = require('node:fs');
-const { dirname, join } = require('node:path');
+const { dirname, join, relative, sep } = require('node:path');
 
 // Inside the mnx repository, the CLI from `cargo build` stands in for @mnx/compiler's
 // WebAssembly build (as in the plugin).
@@ -24,6 +35,24 @@ function findCli(from) {
     }
   }
   return null;
+}
+
+/** The module's server renderer: @mnx/compiler, from the component's sources (by relative path). */
+function serverRenderer(path, files, runtime, compilerModule) {
+  const paths = Object.keys(files);
+  let common = dirname(path);
+  while (!paths.every((file) => file.startsWith(common + sep))) common = dirname(common);
+  const key = (file) => `/${relative(common, file).split(sep).join('/')}`;
+  const embedded = Object.fromEntries(paths.map((file) => [key(file), files[file]]));
+  return `
+import { registerRenderer as $mnxRegister } from ${JSON.stringify(`${runtime}/server`)};
+import { request as $mnxRequest } from ${JSON.stringify(compilerModule)};
+$mnxRegister(tag, (props, slots) => {
+  const response = $mnxRequest({ emit: 'html', path: ${JSON.stringify(key(path))}, files: ${JSON.stringify(embedded)}, props, slots, slotSource: 'html', partial: true });
+  if (!response.ok) throw new Error(response.error);
+  return response.output;
+});
+`;
 }
 
 module.exports = function mnxLoader() {
@@ -38,11 +67,13 @@ module.exports = function mnxLoader() {
         const cli = findCli(this.rootContext || process.cwd()) || findCli(__dirname);
         if (cli) process.env.MNX_COMPILER = cli;
       }
-      for (const file of Object.keys(compiler.sources(path))) if (file !== path) this.addDependency(file);
+      const files = compiler.sources(path);
+      for (const file of Object.keys(files)) if (file !== path) this.addDependency(file);
       const response = compiler.compileFile(path, { emit: 'js', runtime, keepImports: true });
       if (!response.ok) throw new Error(response.error);
       for (const warning of response.warnings) this.emitWarning(new Error(warning));
       let code = response.output;
+      if (options.server) code += serverRenderer(path, files, runtime, options.compilerModule || '@mnx/compiler');
       if (element || options.react === false) return callback(null, code);
       // The element, and the element as a React component (React's hooks: a client component).
       code = code.replace(/^export default \$define\(/m, 'const $element = $define(');

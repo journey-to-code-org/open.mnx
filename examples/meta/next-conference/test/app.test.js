@@ -61,6 +61,38 @@ test('the schedule: server-rendered hosts, the track filter, and stars that surv
   await page.close();
 });
 
+test('without JavaScript: the cards are in the server HTML as declarative shadow roots, and hydrate in place', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  assert.equal((html.match(/<session-card[^>]*><template shadowrootmode="open">/g) ?? []).length, 12, 'each card has its shadow root');
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto(`${base}/`);
+  assert.equal(await page.locator('session-card >> nth=0 >> h3').textContent(), 'Keynote: The Platform Is the Framework');
+  assert.equal(await page.locator('session-card >> nth=0 >> a').getAttribute('href'), '/sessions/s1');
+  await context.close();
+
+  // With JavaScript, the elements bind to those shadow roots instead of rendering their own.
+  const live = await browser.newPage();
+  const messages = [];
+  live.on('console', (message) => ['error', 'warning'].includes(message.type()) && messages.push(message.text()));
+  live.on('pageerror', (error) => messages.push(error.message));
+  // The first card's heading as the parser made it, before any script runs.
+  await live.addInitScript(() => {
+    new MutationObserver((records, observer) => {
+      const card = document.querySelector('session-card');
+      if (card?.shadowRoot?.querySelector('h3')) {
+        window.kept = card.shadowRoot.querySelector('h3');
+        observer.disconnect();
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await live.goto(`${base}/`);
+  await live.waitForFunction(() => document.querySelector('session-card').matches(':state(hydrated)'));
+  assert.equal(await live.evaluate(() => !!window.kept && window.kept === document.querySelector('session-card').shadowRoot.querySelector('h3')), true, 'the parser\'s nodes, kept');
+  assert.deepEqual(messages, []);
+  await live.close();
+});
+
 test('feedback through a Server Action: mnx form controls submit like native inputs, and validate', async () => {
   const { page, messages } = await open('/sessions/s6');
   await page.waitForSelector('star-rating button');

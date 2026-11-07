@@ -15,6 +15,7 @@
 // - `value` + `onValueChange` is React's controlled pattern; any `<prop>` + `<prop>change` pair
 //   works the same way.
 import * as React from 'react';
+import { shadowContent } from './server.js';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
 
@@ -104,7 +105,18 @@ export function wrap(Element) {
     // element starts with them before React sets them, and @mnx/server's injectShadowRoots
     // renders the element's shadow root from them.
     const json = propsJson(values);
-    return React.createElement(tag, { ...early, ...attributes(rest), ...(json ? { 'mnx-props': json } : {}), ref }, all.children);
+    const host = { ...early, ...attributes(rest), ...(json ? { 'mnx-props': json } : {}), ref };
+    // A shadow-DOM element with no children: on the server, its declarative shadow root (and a
+    // form control's fallback input) as the host's inner HTML, so it shows before JavaScript.
+    // The browser attaches the shadow root while parsing, and React doesn't hydrate inner HTML,
+    // so nothing disagrees. In the browser it's an empty string, which React leaves alone while
+    // hydrating and never changes after. (Next.js has no HTML hook for @mnx/server's
+    // injectShadowRoots; this works without one.)
+    if (meta.shadow && React.Children.count(all.children) === 0) {
+      const html = typeof window === 'undefined' ? shadowContent(Element, { props: json ? JSON.parse(json) : {}, name: rest.name }) : '';
+      return React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true });
+    }
+    return React.createElement(tag, host, all.children);
   });
   Component.displayName = pascal(tag);
   Component.element = Element;

@@ -6,6 +6,7 @@ import * as React from 'react';
 import { renderToString } from 'react-dom/server';
 import { wrap as wrapReact } from '../src/react.js';
 import { wrap as wrapVue, models } from '../src/vue.js';
+import { registerRenderer } from '../src/server.js';
 
 const meta = (props, events = []) => ({
   tag: 'mnx-picker',
@@ -38,6 +39,26 @@ test('the React wrapper renders on the server: the element, its attributes and c
     'props are written once, as JSON in mnx-props (for the element, and for @mnx/server\'s shadow roots); event handlers are set in the browser');
   // No props given: no mnx-props.
   assert.equal(renderToString(React.createElement(Picker, { id: 'q' })), '<mnx-picker id="q"></mnx-picker>');
+});
+
+test('the React wrapper renders a shadow-DOM element\'s shadow root on the server, when it has no children', () => {
+  const field = {
+    mnx: {
+      tag: 'mnx-shadow-field',
+      props: { value: { attribute: 'value', default: 0, required: false, model: true }, label: { attribute: 'label', default: '', required: false, model: false } },
+      events: ['valuechange'], slots: [], shadow: true, form: true,
+    },
+  };
+  registerRenderer('mnx-shadow-field', (props) => `<mnx-shadow-field><template shadowrootmode="open"><b>${props.label ?? ''}: ${props.value ?? 0}</b></template></mnx-shadow-field>`);
+  const Field = wrapReact(field);
+  assert.equal(renderToString(React.createElement(Field, { value: 3, label: 'Seats', name: 'seats' })),
+    '<mnx-shadow-field name="seats" mnx-props="{&quot;value&quot;:3,&quot;label&quot;:&quot;Seats&quot;}"><template shadowrootmode="open"><b>Seats: 3</b></template><input type="hidden" name="seats" value="3" data-mnx-fallback></mnx-shadow-field>',
+    'the shadow root, and the value a form would submit (for before JavaScript)');
+  // Children go to its slots instead, so no shadow root is written (React would hydrate around it).
+  assert.equal(renderToString(React.createElement(Field, { value: 3 }, 'x')), '<mnx-shadow-field mnx-props="{&quot;value&quot;:3}">x</mnx-shadow-field>');
+  // Without a renderer (no server build), an empty host, as before.
+  const Other = wrapReact({ mnx: { ...field.mnx, tag: 'mnx-unrendered' } });
+  assert.equal(renderToString(React.createElement(Other, {})), '<mnx-unrendered></mnx-unrendered>');
 });
 
 test('the Vue wrapper declares the props, events and v-model it supports', () => {

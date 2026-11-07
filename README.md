@@ -350,8 +350,9 @@ Where to call it:
 | Nuxt | a Nitro plugin on `render:html` |
 | React Router | `app/entry.server.jsx` (the stream) |
 | SolidStart | a middleware |
+| Next.js | none: the loader's server build (below) |
 
-`examples/meta/` has each. Next.js streams React Server Components with no hook for its HTML, so it isn't covered yet. A control the user types into (a text field inside a shadow root) still needs JavaScript to submit. Its server-rendered value goes, but not an edit.
+`examples/meta/` has each. Next.js streams React Server Components and has no hook for its HTML, so there the React wrapper writes the shadow root itself (since 2.11). For a shadow-DOM element with no React children, on the server, the host's inner HTML is its declarative shadow root, plus the form fallback. The browser attaches the shadow root while parsing, and React doesn't hydrate inner HTML, so nothing disagrees. An element given React children (slot content) is left to the browser there. A control the user types into (a text field inside a shadow root) still needs JavaScript to submit. Its server-rendered value goes, but not an edit.
 
 ### What the server can render
 
@@ -397,8 +398,22 @@ The JavaScript output is a module that calls `define()` on `@mnx/runtime` with t
 
 ```js
 // next.config.mjs
-export default { turbopack: { rules: { '*.mnx': { loaders: ['@mnx/unplugin/loader'], as: '*.js' } } } };
+const loader = '@mnx/unplugin/loader';
+export default {
+  serverExternalPackages: ['@mnx/compiler'], // the server renders with it at request time
+  turbopack: {
+    rules: {
+      '*.mnx': [
+        { condition: 'browser', loaders: [loader], as: '*.js' },
+        // The server's build also registers how to render each component (2.11).
+        { condition: { not: 'browser' }, loaders: [{ loader, options: { server: true } }], as: '*.js' },
+      ],
+    },
+  },
+};
 ```
+
+With only the first rule, the elements still work; they draw in the browser.
 
 The adapters it uses can also be used by hand: `wrap(Element)` from `@mnx/runtime/react` (React 18 and 19) or `@mnx/runtime/vue` (Vue 3). Other frameworks (Svelte, Solid, Lit, Preact, Angular) and plain HTML use the element directly: properties in, DOM events out. The plugin detects Svelte, Solid and Preact projects and writes typings for them. Astro has an integration, `@mnx/unplugin/astro` (see above).
 

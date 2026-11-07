@@ -156,6 +156,20 @@ test('injectShadowRootsStream: the same result as the whole page, however the ch
     await done;
     assert.equal(Buffer.concat(out.map((chunk) => Buffer.from(chunk))).toString(), whole, `chunks of ${size} bytes`);
   }
+  // Hosts that already have their shadow root (the React wrapper renders it) get no second one,
+  // even when a chunk ends right after the host's start tag.
+  assert.equal(mnx.injectShadowRoots(whole), whole);
+  const bytesAgain = Buffer.from(whole);
+  for (const size of [1, 5, 13, 4096]) {
+    const stream = mnx.injectShadowRootsStream();
+    const out = [];
+    stream.on('data', (chunk) => out.push(chunk));
+    const done = new Promise((resolve) => stream.on('end', resolve));
+    for (let at = 0; at < bytesAgain.length; at += size) stream.write(bytesAgain.subarray(at, at + size));
+    stream.end();
+    await done;
+    assert.equal(Buffer.concat(out.map((chunk) => Buffer.from(chunk))).toString(), whole, `already rendered, chunks of ${size} bytes`);
+  }
 });
 
 test('in production, the runtime served is its production build', async () => {

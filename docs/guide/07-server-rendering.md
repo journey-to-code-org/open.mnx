@@ -15,7 +15,7 @@ Every component also compiles to HTML: the same markup the element would render,
   ```
 
   The page is complete before JavaScript, and form controls submit their server-rendered values (`examples/meta/` has each framework).
-- **Next.js**: import `.mnx` files through the Turbopack loader. The framework renders the element's tag on the server, and the element renders its template in the browser.
+- **Next.js**: import `.mnx` files through the Turbopack loader, with its server rule (`options: { server: true }`, see the README). The React wrapper then writes each shadow-DOM element's shadow root into the server's HTML, for elements without React children.
 
 ## In your own server
 

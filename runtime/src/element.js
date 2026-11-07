@@ -1331,7 +1331,7 @@ function describe(tag, { props, shadow, form, slots, events, styled }) {
   return Object.freeze({
     tag,
     props: Object.freeze(Object.fromEntries(Object.entries(props).map(([name, spec]) =>
-      [name, Object.freeze({ attribute: spec.attribute, default: spec.default, required: !!spec.required })]))),
+      [name, Object.freeze({ attribute: spec.attribute, default: spec.default, required: !!spec.required, model: !!spec.model })]))),
     events: Object.freeze([...events]),
     slots: Object.freeze([...slots]),
     shadow,

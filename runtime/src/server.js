@@ -43,4 +43,40 @@ export function renderToString(Element, { props = {}, attributes = {}, slots = {
   return extra ? html.replace(/^(<[a-z][\w.-]*)/, `$1${extra}`) : html;
 }
 
+/**
+ * A shadow-DOM element's server-rendered content, for a host a framework renders: its
+ * declarative shadow root (`<template shadowrootmode>…</template>`), plus, for a
+ * form-associated element with a `name`, a hidden input with the value it would submit (the
+ * element removes it when it starts). Empty when it can't be rendered here.
+ */
+export function shadowContent(Element, { props = {}, name } = {}) {
+  const meta = Element?.mnx;
+  if (!meta?.shadow || !canRender(Element)) return '';
+  let html;
+  try {
+    html = renderers.get(meta.tag)(props, {});
+  } catch {
+    return ''; // left to the browser rather than break the page
+  }
+  const start = html.search(/<template\s[^>]*shadowrootmode/i);
+  if (start < 0) return '';
+  let depth = 0;
+  let template = '';
+  for (const match of html.slice(start).matchAll(/<template\b[^>]*>|<\/template>/gi)) {
+    depth += match[0][1] === '/' ? -1 : 1;
+    if (depth === 0) {
+      template = html.slice(start, start + match.index + match[0].length);
+      break;
+    }
+  }
+  if (!template) return '';
+  const models = Object.entries(meta.props).filter(([, spec]) => spec.model);
+  if (!meta.form || !name || models.length !== 1) return template;
+  const [[model, spec]] = models;
+  const value = model in props ? props[model] : spec.default;
+  if (value == null || value === false || value === '') return template;
+  const text = value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `${template}<input type="hidden" name="${escapeAttribute(String(name))}" value="${escapeAttribute(text)}" data-mnx-fallback>`;
+}
+
 const escapeAttribute = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
