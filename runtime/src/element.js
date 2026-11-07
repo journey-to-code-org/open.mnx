@@ -749,7 +749,16 @@ function bindAttribute(part, node) {
     }
     if (LIVE.has(`${node.localName}.${name}`)) {
       const text = value == null ? '' : String(value);
-      if (text !== written) node[name] = written = text;
+      if (text !== written) {
+        node[name] = written = text;
+        // A <select>'s options may come from a list inside it that renders after this part:
+        // until the option exists the value doesn't take, so set it again once they're there.
+        if (node.localName === 'select' && node.value !== text) {
+          queueMicrotask(() => {
+            if (written === text && node.value !== text) node.value = text;
+          });
+        }
+      }
       return;
     }
     if (value == null) return node.removeAttribute(name);

@@ -17,6 +17,7 @@ useBrowser({
   state: join(here, 'fixtures/state.mnx'),
   'row-counter': join(here, 'fixtures/row-counter.mnx'),
   'row-list': join(here, 'fixtures/row-list.mnx'),
+  'pick-list': join(here, 'fixtures/pick-list.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -361,6 +362,24 @@ test('an element a list adds keeps working when the list changes again, and valu
   await page.locator('row-counter button').nth(1).click();
   await settle();
   assert.deepEqual(await page.$$eval('row-counter button', (buttons) => buttons.map((button) => button.textContent)), ['a 0', 'b 1', 'c 0']);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a <select> bound to a value takes it when its options come from a list inside it', async () => {
+  const { page, messages } = await open('<pick-list></pick-list>', { modules: ['pick-list'] });
+  const settle = () => page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve));
+    await document.querySelector('pick-list').updateComplete;
+  });
+  await settle();
+  assert.equal(await page.inputValue('pick-list select'), 'large');
+  await page.selectOption('pick-list select', 'small');
+  await settle();
+  assert.equal(await page.textContent('pick-list output'), 'small');
+  await page.click('pick-list button');
+  await settle();
+  assert.equal(await page.inputValue('pick-list select'), 'medium');
   assert.deepEqual(messages, []);
   await page.close();
 });

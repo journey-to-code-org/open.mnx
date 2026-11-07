@@ -1,0 +1,78 @@
+<!--
+  An event's guests: invite, track RSVPs and plus-ones, and see the headcount.
+-->
+<script>
+  import { usePlanner, RSVPS } from '../store.js'
+
+  const { act } = usePlanner()
+  let name = ""
+  let email = ""
+  let filter = "all"
+  let problem = ""
+
+  const counts = RSVPS.reduce((all, rsvp) => ({ ...all, [rsvp]: event.guests.filter((guest) => guest.rsvp === rsvp).length }), {})
+  const headcount = event.guests.filter((guest) => guest.rsvp === "yes").reduce((sum, guest) => sum + (guest.plusOne ? 2 : 1), 0)
+  const shown = event.guests.filter((guest) => filter === "all" || guest.rsvp === filter)
+
+  function invite(submitEvent) {
+    submitEvent.preventDefault()
+    const address = email.trim().toLowerCase()
+    if (address && event.guests.some((guest) => guest.email.toLowerCase() === address)) {
+      problem = `${address} is already invited`
+      return
+    }
+    act('guests.add', event.id, { name: name.trim(), email: address, rsvp: "pending", plusOne: false })
+    name = ""
+    email = ""
+    problem = ""
+  }
+</script>
+<style>
+  .counts { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.75rem; }
+  .headcount { margin-left: auto; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  th { text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 0.35rem 0.5rem; }
+  td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--line); }
+  td small { display: block; color: var(--muted); }
+  tr[data-rsvp=yes] td:first-child { box-shadow: inset 3px 0 var(--ok); }
+  tr[data-rsvp=no] td:first-child { box-shadow: inset 3px 0 var(--danger); }
+  tr[data-rsvp=maybe] td:first-child { box-shadow: inset 3px 0 var(--warn); }
+  form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.5rem; }
+  .problem { color: var(--danger); font-size: 0.875rem; margin: 0.5rem 0 0; }
+  .empty { color: var(--muted); }
+</style>
+<guest-list event={{ id: "", guests: [] }}>
+  <div class="counts" role="group" aria-label="Show">
+    <button type="button" class={filter === "all" ? "pill on" : "pill"} onclick={() => (filter = "all")}>All {event.guests.length}</button>
+    <mnx-each items={RSVPS} as="rsvp" key={rsvp}>
+      <button type="button" class={filter === rsvp ? "pill on" : "pill"} data-filter={rsvp} onclick={() => (filter = rsvp)}>{rsvp} {counts[rsvp]}</button>
+    </mnx-each>
+    <span class="headcount">Headcount: {headcount}</span>
+  </div>
+  <mnx-if test={shown.length > 0}>
+    <table>
+      <thead><tr><th>Guest</th><th>RSVP</th><th>+1</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
+      <tbody>
+        <mnx-each items={shown} as="guest" key={guest.id}>
+          <tr data-rsvp={guest.rsvp}>
+            <td>{guest.name}<small>{guest.email}</small></td>
+            <td>
+              <select aria-label={`RSVP for ${guest.name}`} value={guest.rsvp} onchange={(e) => act('guests.update', event.id, guest.id, { rsvp: e.target.value })}>
+                <mnx-each items={RSVPS} as="rsvp" key={rsvp}><option value={rsvp}>{rsvp}</option></mnx-each>
+              </select>
+            </td>
+            <td><input type="checkbox" aria-label={`${guest.name} brings a plus-one`} checked={guest.plusOne} onchange={(e) => act('guests.update', event.id, guest.id, { plusOne: e.target.checked })}></td>
+            <td><button type="button" class="icon" aria-label={`Remove ${guest.name}`} onclick={() => act('guests.remove', event.id, guest.id)}>✕</button></td>
+          </tr>
+        </mnx-each>
+      </tbody>
+    </table>
+    <mnx-else><p class="empty">{event.guests.length ? "No one with that RSVP." : "No guests yet."}</p></mnx-else>
+  </mnx-if>
+  <form onsubmit={invite}>
+    <input required placeholder="Name" aria-label="Guest name" value={name} oninput={(e) => (name = e.target.value)}>
+    <input type="email" placeholder="Email (optional)" aria-label="Guest email" value={email} oninput={(e) => ((email = e.target.value), (problem = ""))}>
+    <button type="submit" class="primary">Invite</button>
+  </form>
+  <mnx-if test={problem}><p class="problem" role="alert">{problem}</p></mnx-if>
+</guest-list>

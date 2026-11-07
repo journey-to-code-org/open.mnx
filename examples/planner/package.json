@@ -1,0 +1,18 @@
+{
+  "name": "mnx-example-planner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mnx/runtime": "file:../../runtime"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "file:../../compiler",
+    "@mnx/unplugin": "file:../../plugin",
+    "vite": "8.3.6"
+  }
+}

@@ -1,0 +1,57 @@
+/* App-wide tokens and element defaults, in the `base` layer so components' scoped styles (the
+   `components` layer) win over them. */
+@layer base {
+  :root {
+    color-scheme: light dark;
+    --bg: #f3f4f7;
+    --surface: #ffffff;
+    --ink: #191c24;
+    --muted: #646b7a;
+    --line: #e3e5ec;
+    --hover: #f5f6fa;
+    --accent: #4b55e8;
+    --ok: #1c9a62;
+    --warn: #c27a00;
+    --danger: #d23b3b;
+    --chip: #eef0ff;
+    --chip-ink: #262c7a;
+    --shadow: 0 1px 2px #1a1f3014, 0 6px 20px #1a1f300d;
+    --cat-party: #e0569b;
+    --cat-work: #4b55e8;
+    --cat-family: #1c9a62;
+    --cat-travel: #e08a1c;
+    --cat-other: #8a90a0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a;
+      --surface: #1b1e27;
+      --ink: #e9ebf2;
+      --muted: #9aa1b2;
+      --line: #2b2f3c;
+      --hover: #232733;
+      --accent: #7c84ff;
+      --chip: #262a45;
+      --chip-ink: #d5d8ff;
+      --shadow: 0 1px 2px #0006;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); }
+  a { color: var(--accent); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  input, select, textarea { padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); min-width: 0; }
+  input[type=checkbox] { padding: 0; width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 0.45rem 0.85rem; border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); cursor: pointer; font-weight: 600; }
+  button:hover { background: var(--hover); }
+  button.primary { border-color: transparent; background: var(--accent); color: white; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { border-color: transparent; background: var(--danger); color: white; }
+  button.icon { padding: 0.2rem 0.45rem; border-color: transparent; background: none; color: var(--muted); }
+  button.icon:hover { color: var(--danger); background: var(--hover); }
+  .pill { padding: 0.2rem 0.7rem; border-radius: 999px; font-size: 0.8125rem; text-transform: capitalize; }
+  .pill.on { background: var(--chip); color: var(--chip-ink); border-color: transparent; }
+  .tag { display: inline-block; background: var(--chip); color: var(--chip-ink); font-weight: 600; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}

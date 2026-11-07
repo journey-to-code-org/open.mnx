@@ -1,0 +1,89 @@
+<!--
+  Create or edit an event in a modal <dialog>. Open while `event` is set; the form starts from it.
+  @fires save - The form was submitted; `detail` is the event with the form's values.
+  @fires close - Closed without saving (Cancel or Escape).
+-->
+<script>
+  import { emit, host, watch, id } from '@mnx/runtime'
+  import { CATEGORIES } from '../store.js'
+
+  const ids = { title: id(), day: id(), start: id(), end: id(), location: id(), category: id(), budget: id(), notes: id() }
+  let problem = ""
+  const heading = event?.id ? "Edit event" : "New event"
+
+  const element = host()
+  watch(() => event, (next) => {
+    const dialog = element.querySelector('dialog')
+    problem = ""
+    if (next && !dialog.open) {
+      dialog.showModal()
+      dialog.querySelector('input').focus()
+    } else if (!next && dialog.open) dialog.close()
+  })
+
+  function submit(submitEvent) {
+    submitEvent.preventDefault()
+    const form = submitEvent.target
+    const data = Object.fromEntries(new FormData(form))
+    const end = form.elements.end
+    end.setCustomValidity(data.end <= data.start ? "Ends before it starts" : "")
+    if (!form.reportValidity()) {
+      problem = end.validationMessage
+      return
+    }
+    emit('save', { ...event, ...data, title: data.title.trim(), budget: Number(data.budget) || 0 })
+  }
+  function cancel() {
+    if (event) emit('close')
+  }
+</script>
+<style>
+  dialog { width: min(32rem, calc(100vw - 2rem)); padding: 0; border: 0; border-radius: 1rem; background: var(--surface); color: inherit; box-shadow: 0 24px 64px #0004; }
+  dialog::backdrop { background: #10131a66; backdrop-filter: blur(2px); }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem 1rem; padding: 1.5rem; }
+  h2 { grid-column: 1 / -1; margin: 0 0 0.25rem; }
+  label { display: grid; gap: 0.3rem; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+  .wide { grid-column: 1 / -1; }
+  .problem { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 0.875rem; }
+  .actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem; }
+</style>
+<event-dialog event={null}>
+  <dialog aria-labelledby={ids.title + "-h"} onclose={cancel}>
+    <form onsubmit={submit} novalidate>
+      <h2 id={ids.title + "-h"}>{heading}</h2>
+      <label class="wide" for={ids.title}>Title
+        <input id={ids.title} name="title" required maxlength="80" value={event?.title ?? ""}>
+      </label>
+      <label class="wide" for={ids.day}>Date
+        <input id={ids.day} name="day" type="date" required value={event?.day ?? ""}>
+      </label>
+      <label for={ids.start}>Starts
+        <input id={ids.start} name="start" type="time" required value={event?.start ?? ""}>
+      </label>
+      <label for={ids.end}>Ends
+        <input id={ids.end} name="end" type="time" required value={event?.end ?? ""} oninput={(e) => e.target.setCustomValidity("")}>
+      </label>
+      <label class="wide" for={ids.location}>Location
+        <input id={ids.location} name="location" value={event?.location ?? ""}>
+      </label>
+      <label for={ids.category}>Category
+        <select id={ids.category} name="category" value={event?.category ?? "party"}>
+          <mnx-each items={CATEGORIES} as="category" key={category}>
+            <option value={category}>{category}</option>
+          </mnx-each>
+        </select>
+      </label>
+      <label for={ids.budget}>Budget ($)
+        <input id={ids.budget} name="budget" type="number" min="0" step="1" value={event?.budget ?? 0}>
+      </label>
+      <label class="wide" for={ids.notes}>Notes
+        <textarea id={ids.notes} name="notes" rows="2" value={event?.notes ?? ""}></textarea>
+      </label>
+      <mnx-if test={problem}><p class="problem" role="alert">{problem}</p></mnx-if>
+      <div class="actions">
+        <button type="button" onclick={cancel}>Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+</event-dialog>
