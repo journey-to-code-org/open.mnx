@@ -1,5 +1,6 @@
 # The playground on GitHub Pages: the WebAssembly compiler, the runtime, and React and Vue for
-# the framework previews. (Settings → Pages → Source: GitHub Actions.)
+# the framework previews. It deploys once Pages is enabled (Settings → Pages → Source: GitHub
+# Actions); until then the site is still built (and checked), and the deploy is skipped.
 name: Playground
 
 on:
@@ -19,7 +20,20 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.pages.outputs.enabled }}
     steps:
+      - id: pages
+        name: Is GitHub Pages enabled?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" --jq .build_type > /dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Playground not deployed::GitHub Pages isn't enabled for this repository. Turn it on in Settings → Pages (Source: GitHub Actions) to publish the playground."
+          fi
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -40,6 +54,7 @@ jobs:
 
   deploy:
     needs: build
+    if: needs.build.outputs.pages == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
