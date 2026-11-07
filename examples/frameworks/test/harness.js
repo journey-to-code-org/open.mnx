@@ -50,11 +50,13 @@ export async function serve(dir) {
   const server = createServer((request, response) => {
     let path = join(dir, decodeURIComponent(new URL(request.url, 'http://x').pathname));
     if (existsSync(path) && statSync(path).isDirectory()) path = join(path, 'index.html');
+    let body;
     try {
-      response.writeHead(200, { 'content-type': TYPES[extname(path)] ?? 'text/plain' }).end(readFileSync(path));
+      body = readFileSync(path);
     } catch {
-      response.writeHead(404).end();
+      return response.writeHead(404).end(); // (Firefox asks for /favicon.ico)
     }
+    response.writeHead(200, { 'content-type': TYPES[extname(path)] ?? 'text/plain' }).end(body);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   servers.push(server);

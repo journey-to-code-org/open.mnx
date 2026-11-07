@@ -10,7 +10,11 @@ The additive part of 3.0, early (`plan/roadmap-3.0.md`, 2.9). Nothing changes me
 
 - **`from()`** from `@mnx/runtime`: `let left = from(seconds)` is state that follows a prop until it's assigned, and starts over when the prop changes. `let running = from(seconds, false)` starts as `false` instead, again on each change. It works in `.mnx` scripts and JSX components, renders on the server as the prop's value, and a `const` with `from()` is an error that suggests the plain `const`. `mnx convert` turns React's `useState(prop)` plus a `useEffect` that resets it on `[prop]` into `from()`, and drops the effect.
 - **A production build of the runtime** (`dist/production/`), without hot reloading. Bundlers pick it through the `production` export condition (Vite and webpack do in production builds), and `@mnx/server` serves it when `NODE_ENV` is `production` (or `production: true`). It's 12.2 KB gzipped, against 12.7 KB for the development build.
-- **Firefox and WebKit in CI:** the runtime's browser suite and the React and Vue example apps run in both, through Playwright (`MNX_BROWSER=firefox|webkit`). The runtime's browser suite also runs on the production build (`MNX_RUNTIME=production`).
+- **Firefox and WebKit in CI:** the runtime's browser suite and the React and Vue example apps run in both, through Playwright (`MNX_BROWSER=firefox|webkit`). The runtime's browser suite also runs on the production build (`MNX_RUNTIME=production`). Both engines pass, with two findings recorded in `docs/browser-support.md`: Firefox before 159 can style slotted light-DOM content with its component's `<style>` (a Firefox `@scope` style-sharing bug, fixed in 159), and WebKit clears long lists relatively slowly.
+
+### Fixed
+
+- The frameworks examples' test server no longer crashes on a request for a missing file (Firefox asks for `/favicon.ico`).
 
 ### Examples and docs
 

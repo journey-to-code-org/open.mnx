@@ -215,6 +215,10 @@ test('a missing compiler is explained', async () => {
 
 test('dev server: components compile on demand; editing one updates it in place, and recompiles its importers', async () => {
   const { createServer: createViteServer } = await import('vite');
+  // The builds above leave NODE_ENV=production in this process, and Vite then resolves the
+  // runtime's `production` build (no hot reloading) for the dev server too.
+  const environment = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
   const root = app('react');
   const server = await createViteServer({
     root, configFile: false, logLevel: 'silent', plugins: [mnx({ compiler }), react()],
@@ -267,6 +271,7 @@ test('dev server: components compile on demand; editing one updates it in place,
     await page.close();
   } finally {
     await server.close();
+    process.env.NODE_ENV = environment;
   }
 });
 
