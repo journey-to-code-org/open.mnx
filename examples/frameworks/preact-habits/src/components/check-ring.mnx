@@ -1,0 +1,43 @@
+<!--
+  Today's progress on a habit, as a ring: a click adds one, the − button takes one away. A goal
+  of 1 makes it a check; a bigger goal counts up to it.
+  @fires valuechange - The count changed; `detail` is the new count.
+-->
+<script>
+  import { emit } from '@mnx/runtime'
+
+  const R = 15.915494309189533
+  const done = value >= goal
+  const percent = Math.min(100, (value / goal) * 100)
+
+  function set(next) {
+    next = Math.max(0, Math.min(goal * 3, next))
+    if (next === value) return
+    value = next
+    emit('valuechange', next)
+  }
+</script>
+<style>
+  :host { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .ring { position: relative; display: grid; place-items: center; width: 3rem; height: 3rem; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; }
+  svg { position: absolute; inset: 0; width: 100%; transform: rotate(-90deg); }
+  circle { fill: none; stroke-width: 3.5; }
+  .track { stroke: var(--level-0); }
+  .fill { stroke: var(--habit); stroke-linecap: round; transition: stroke-dasharray 0.3s; }
+  .done .count { color: white; }
+  .done .bg { fill: var(--habit); }
+  .count { position: relative; font-size: 0.8125rem; }
+  .less { width: 1.6rem; height: 1.6rem; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); cursor: pointer; }
+  .less:disabled { visibility: hidden; }
+</style>
+<check-ring value={0} goal={1} label="Today">
+  <button type="button" class="less" aria-label={`One less: ${label}`} disabled={value === 0} onclick={() => set(value - 1)}>−</button>
+  <button type="button" class={done ? "ring done" : "ring"} aria-label={`${label}: ${value} of ${goal}`} aria-pressed={done ? "true" : "false"} onclick={() => set(value + 1)}>
+    <svg viewBox="0 0 42 42" aria-hidden="true">
+      <circle class="bg" cx="21" cy="21" r="16" stroke="none" fill="none"></circle>
+      <circle class="track" cx="21" cy="21" r={R}></circle>
+      <mnx-if test={percent > 0}><circle class="fill" cx="21" cy="21" r={R} stroke-dasharray={`${percent} ${100 - percent}`}></circle></mnx-if>
+    </svg>
+    <span class="count">{goal === 1 ? (done ? "✓" : "") : value}</span>
+  </button>
+</check-ring>

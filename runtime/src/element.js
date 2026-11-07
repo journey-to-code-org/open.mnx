@@ -1204,8 +1204,10 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
       if (!shadow && styles != null) {
         // A light-DOM component's sheet goes to the root it's in, unless the bundler already put
         // it in the page (`inPage`) and that root is the document.
+        // (A callback can run after the element was moved out again: then the root is a detached
+        // tree, which has no stylesheets of its own.)
         const root = this.getRootNode();
-        if (!(inPage && root === document)) adopt(root, ownSheets());
+        if (root.adoptedStyleSheets && !(inPage && root === document)) adopt(root, ownSheets());
       }
       if (this.#scope) this.#scope.resume();
       else this.#boot();

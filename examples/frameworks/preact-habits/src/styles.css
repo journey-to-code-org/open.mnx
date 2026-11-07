@@ -1,0 +1,42 @@
+@layer base {
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f4; --surface: #fff; --ink: #1a1c19; --muted: #6d7269; --line: #e3e6e0; --level-0: #ebede8;
+    --accent: #1a1c19;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121411; --surface: #1b1e1a; --ink: #eef0ea; --muted: #9ca296; --line: #2b2f29; --level-0: #262a24; --accent: #eef0ea; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--ink); }
+  button, input { font: inherit; color: inherit; }
+  input { padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); }
+  button { padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--surface); font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--bg); border-color: transparent; }
+}
+
+.app { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+header { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; margin-bottom: 1.25rem; }
+h1 { margin: 0; font-size: 1.75rem; letter-spacing: -0.03em; }
+.date { margin: 0; color: var(--muted); }
+.today { display: grid; justify-items: end; font-size: 0.8125rem; color: var(--muted); }
+.today strong { font-size: 1.5rem; color: var(--ink); line-height: 1; }
+.today progress { width: 8rem; margin-top: 0.3rem; accent-color: var(--ink); }
+.habits { display: grid; gap: 0.85rem; margin: 0 0 1rem; padding: 0; list-style: none; }
+.habit { display: grid; gap: 0.85rem; padding: 1rem 1.1rem; border-radius: 1rem; background: var(--surface); border: 1px solid var(--line); }
+.top { display: flex; align-items: center; gap: 0.85rem; }
+.name { flex: 1; min-width: 0; }
+.name h2 { margin: 0; font-size: 1.05rem; }
+.name p { margin: 0; font-size: 0.8125rem; color: var(--muted); }
+.stats { display: flex; gap: 1rem; margin: 0; text-align: right; }
+.stats dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.remove { border: 0; background: none; color: var(--muted); padding: 0.2rem 0.4rem; font-size: 1.1rem; }
+.new { width: 100%; padding: 0.8rem; }
+.add { display: grid; gap: 0.75rem; padding: 1.1rem; border-radius: 1rem; background: var(--surface); border: 1px solid var(--line); }
+.add h2 { margin: 0; font-size: 1.05rem; }
+.add label, .add .field { display: grid; gap: 0.3rem; font-size: 0.8125rem; font-weight: 600; color: var(--muted); }
+.add input { color: var(--ink); font-weight: 400; font-size: 0.9375rem; }
+.add input[type=number] { width: 6rem; }
+.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+@media (max-width: 34rem) { .stats { display: none; } }

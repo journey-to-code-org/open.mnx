@@ -157,3 +157,32 @@ test('a styled light-DOM component inside a shadow root brings its styles there'
   assert.deepEqual(messages, []);
   await page.close();
 });
+
+test('a component whose CSS a bundler put in the page adopts it only into shadow roots', async () => {
+  const { page, messages } = await open('<div id="host"></div>', {
+    beforeModules: `
+      import { $define } from '@mnx/runtime';
+      // What @mnx/unplugin emits for a light-DOM component: the CSS is in the page, and the text
+      // comes along for shadow roots (inPage).
+      document.head.insertAdjacentHTML('beforeend', '<style>@scope (bundled-card) { p { color: rgb(255, 0, 0) } }</style>');
+      $define('bundled-card', { abi: 2, props: {}, styled: true, inPage: true, styles: '@scope (bundled-card) { p { color: rgb(255, 0, 0) } }', template: '<p>hi</p>', setup: () => [] });
+    `,
+  });
+  const result = await page.evaluate(async () => {
+    const inDocument = document.createElement('bundled-card');
+    document.body.append(inDocument);
+    const host = document.getElementById('host');
+    const root = host.attachShadow({ mode: 'open' });
+    const inShadow = document.createElement('bundled-card');
+    root.append(inShadow);
+    await Promise.all([inDocument.updateComplete, inShadow.updateComplete]);
+    return {
+      documentSheets: document.adoptedStyleSheets.length,
+      shadowSheets: root.adoptedStyleSheets.length,
+      colors: [getComputedStyle(inDocument.querySelector('p')).color, getComputedStyle(inShadow.querySelector('p')).color],
+    };
+  });
+  assert.deepEqual(result, { documentSheets: 0, shadowSheets: 1, colors: [RED, RED] });
+  assert.deepEqual(messages, []);
+  await page.close();
+});
