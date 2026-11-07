@@ -373,3 +373,59 @@ for (const name of ['svelte', 'solid', 'lit']) {
     await page.close();
   });
 }
+
+// The other bundlers unplugin supports: the same app, built by each, run in the browser.
+const BUNDLER_ENTRY = `import '../components/inbox.mnx';\nimport '../components/styled-card.mnx';\nwindow.ready = true;\n`;
+const BUNDLER_PAGE = '<!doctype html><meta charset="utf-8"><mnx-inbox></mnx-inbox><mnx-styled-card><p class="mine">mine</p></mnx-styled-card><script type="module" src="/bundle.js"></script>';
+
+async function checkBundle(root) {
+  writeFileSync(join(root, 'dist/index.html'), BUNDLER_PAGE);
+  const { page, messages } = await visit(root);
+  await settle(page);
+  assert.deepEqual(await page.$$eval('mnx-inbox mnx-badge b', (bs) => bs.map((b) => b.textContent)), ['Ada', 'Linus'], 'nested components');
+  assert.equal(await page.$eval('mnx-styled-card h2', (h2) => getComputedStyle(h2).color), 'rgb(255, 0, 0)', 'inlined styles, scoped');
+  assert.equal(await page.$eval('.mine', (p) => getComputedStyle(p).color), 'rgb(0, 0, 0)', 'slotted content is not the card\'s to style');
+  assert.deepEqual(messages, []);
+  await page.close();
+}
+
+function bundlerApp(name) {
+  const root = app('plain');
+  cpSync(join(fixtures, 'styled-card.mnx'), join(root, 'components/styled-card.mnx'));
+  mkdirSync(join(root, 'dist'), { recursive: true });
+  writeFileSync(join(root, 'src/entry.js'), BUNDLER_ENTRY);
+  return root;
+}
+
+test('rollup builds the app', async () => {
+  const { rollup } = await import('rollup');
+  const { nodeResolve } = await import('@rollup/plugin-node-resolve');
+  const { default: mnxRollup } = await import('../src/rollup.js');
+  const root = bundlerApp('rollup');
+  const bundle = await rollup({ input: join(root, 'src/entry.js'), plugins: [mnxRollup({ compiler }), nodeResolve()], onwarn: () => {} });
+  await bundle.write({ file: join(root, 'dist/bundle.js'), format: 'es' });
+  await checkBundle(root);
+});
+
+test('webpack builds the app', async () => {
+  const { default: webpack } = await import('webpack');
+  const { default: mnxWebpack } = await import('../src/webpack.js');
+  const root = bundlerApp('webpack');
+  const stats = await new Promise((resolve, reject) => webpack({
+    mode: 'development', devtool: false, context: root, entry: join(root, 'src/entry.js'),
+    output: { path: join(root, 'dist'), filename: 'bundle.js', module: true },
+    experiments: { outputModule: true },
+    resolve: { modules: [join(here, '../node_modules'), 'node_modules'] },
+    plugins: [mnxWebpack({ compiler })],
+  }, (error, result) => (error ? reject(error) : resolve(result))));
+  assert.equal(stats.hasErrors(), false, stats.toString('errors-only'));
+  await checkBundle(root);
+});
+
+test('esbuild builds the app', async () => {
+  const { build: esbuild } = await import('esbuild');
+  const { default: mnxEsbuild } = await import('../src/esbuild.js');
+  const root = bundlerApp('esbuild');
+  await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', outfile: join(root, 'dist/bundle.js'), plugins: [mnxEsbuild({ compiler })], logLevel: 'silent' });
+  await checkBundle(root);
+});
