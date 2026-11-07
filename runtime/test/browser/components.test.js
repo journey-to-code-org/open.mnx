@@ -11,6 +11,7 @@ useBrowser({
   link: join(here, 'fixtures/link.mnx'),
   greeting: join(here, 'fixtures/greeting.mnx'),
   pair: join(here, 'fixtures/pair.mnx'),
+  typed: join(here, 'fixtures/typed.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -168,6 +169,20 @@ test('a template with several top-level nodes renders, hydrates and updates', as
   });
   assert.equal(await read(page), 'Hi Grace <p>x</p>');
   assert.equal(await page.evaluate(() => window.p === document.querySelector('mnx-pair p')), true, 'hydrated, not re-rendered');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a component written in TypeScript runs as its JavaScript', async () => {
+  const { page, messages } = await open('<mnx-typed></mnx-typed>', {
+    beforeModules: "window.picks = []; document.addEventListener('pick', (event) => window.picks.push(event.detail));",
+    modules: ['typed'],
+  });
+  assert.equal(await page.textContent('mnx-typed p'), 'none');
+  await page.click('mnx-typed li[data-index="1"]');
+  await page.evaluate(() => document.querySelector('mnx-typed').updateComplete);
+  assert.equal(await page.textContent('mnx-typed p'), '#1');
+  assert.deepEqual(await page.evaluate(() => window.picks), [{ option: { id: 2, label: '?' }, index: 1 }]);
   assert.deepEqual(messages, []);
   await page.close();
 });

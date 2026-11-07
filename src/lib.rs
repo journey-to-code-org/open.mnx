@@ -16,6 +16,7 @@ mod parser;
 mod render;
 mod scanner;
 mod script;
+mod typescript;
 mod validate;
 
 pub use components::{filesystem, Loader};

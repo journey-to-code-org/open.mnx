@@ -85,6 +85,9 @@ pub fn property_key(key: &str) -> String {
 }
 
 fn prop_type(prop: &PropInterface) -> String {
+    if let Some(declared) = &prop.declared {
+        return declared.clone();
+    }
     prop.default
         .as_ref()
         .map_or_else(|| "unknown".to_owned(), ts_type)
@@ -234,6 +237,18 @@ pub fn declarations(
         Framework::None => {}
         Framework::React => out.push_str("import type * as React from \"react\";\n\n"),
         Framework::Vue => out.push_str("import type { DefineComponent } from \"vue\";\n\n"),
+    }
+    // A TypeScript script's own types, which the interface may mention.
+    for import in &component.script.type_imports {
+        out.push_str(import);
+        out.push('\n');
+    }
+    for declaration in &component.script.type_declarations {
+        out.push_str(declaration);
+        out.push_str("\n\n");
+    }
+    if !component.script.type_imports.is_empty() && component.script.type_declarations.is_empty() {
+        out.push('\n');
     }
     if let Some(description) = &interface.description {
         out.push_str("/**\n");

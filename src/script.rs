@@ -31,7 +31,14 @@ use crate::{
 
 /// Parse `source` (the text between `<script>` and `</script>`), which begins at `start` in the
 /// component file.
-pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
+pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diagnostic> {
+    // TypeScript is reduced to JavaScript in place (same positions); its types are kept aside.
+    let (stripped, types) = if typescript {
+        crate::typescript::strip(source, start)?
+    } else {
+        (source.to_owned(), crate::typescript::Types::default())
+    };
+    let source = stripped.as_str();
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::mjs()).parse();
     let at = |offset: u32| span_after(start, source, offset as usize);
@@ -43,7 +50,12 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
         ));
     }
 
-    let mut script = Script::default();
+    let mut script = Script {
+        declared_types: types.bindings.clone(),
+        type_declarations: types.declarations.clone(),
+        type_imports: types.imports.clone(),
+        ..Script::default()
+    };
     let mut import_ranges = Vec::new();
     for statement in &parsed.program.body {
         match statement {
@@ -156,6 +168,7 @@ pub fn parse(source: &str, start: Span) -> Result<Script, Diagnostic> {
     if let Some(emit) = script.emit.clone() {
         let mut finder = EmitFinder {
             emit: &emit,
+            declared: &types.emits,
             at: &at,
             emits: Vec::new(),
             error: None,
@@ -186,6 +199,8 @@ pub const RUNTIME: &str = "@mnx/runtime";
 /// Finds `emit("name", detail)` calls; `emit` used any other way can't be analyzed.
 struct EmitFinder<'s, F: Fn(u32) -> Span> {
     emit: &'s str,
+    /// `emit<Detail>(…)` types, by call offset (TypeScript scripts).
+    declared: &'s std::collections::HashMap<u32, String>,
     at: &'s F,
     emits: Vec<Emit>,
     error: Option<Diagnostic>,
@@ -201,7 +216,12 @@ impl<'a, F: Fn(u32) -> Span> Visit<'a> for EmitFinder<'_, F> {
         }
         if self.error.is_none() {
             match emitted(call, self.at) {
-                Ok(emit) => self.emits.push(emit),
+                Ok(mut emit) => {
+                    if let Some(declared) = self.declared.get(&call.span.start) {
+                        emit.detail.clone_from(declared);
+                    }
+                    self.emits.push(emit);
+                }
                 Err(error) => self.error = Some(error),
             }
         }
@@ -386,6 +406,7 @@ mod tests {
         let script = parse(
             "import { state } from '@mnx/runtime'\nconst title = \"Mikey\"\nlet count = 1 + 2\nconst now = Date.now()\nconst { a, b } = thing\nfunction inc() { emit('valuechange', 1) }\nclass Thing {}\nconsole.log(title)",
             Span::new(2, 1),
+            false,
         )
         .unwrap();
         let names: Vec<_> = script
@@ -419,18 +440,18 @@ mod tests {
 
     #[test]
     fn reports_syntax_errors_and_unsupported_forms_at_their_position() {
-        let error = parse("const ok = 1\nconst = 2", Span::new(5, 3)).unwrap_err();
+        let error = parse("const ok = 1\nconst = 2", Span::new(5, 3), false).unwrap_err();
         assert!(error.message.starts_with("invalid <script>"));
         assert_eq!(error.span.line, 6);
-        assert!(parse("var x = 1", Span::new(1, 1))
+        assert!(parse("var x = 1", Span::new(1, 1), false)
             .unwrap_err()
             .message
             .contains("`var`"));
-        assert!(parse("export const x = 1", Span::new(1, 1))
+        assert!(parse("export const x = 1", Span::new(1, 1), false)
             .unwrap_err()
             .message
             .contains("can't export"));
-        assert!(parse("export default {}", Span::new(1, 1))
+        assert!(parse("export default {}", Span::new(1, 1), false)
             .unwrap_err()
             .message
             .contains("default export"));

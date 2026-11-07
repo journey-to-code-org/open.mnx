@@ -1,0 +1,25 @@
+<!-- A list you can pick from, written in TypeScript. -->
+<script lang="ts">
+  import { emit, state, computed, type Signal, type MaybeSignal } from '@mnx/runtime'
+
+  type Option = { id: number; label: string }
+  interface Picked {
+    option: Option
+    index: number
+    total?: MaybeSignal<number>
+  }
+
+  const options: Option[] = [{ id: 1, label: "One" }, { id: 2, label: "Two" }]
+  const picked: Signal.State<number> = state(-1)
+  const summary = computed((): string => (picked.get() < 0 ? 'none' : `#${picked.get()}`))
+
+  function pick(event: MouseEvent): void {
+    const index = Number((event.target as HTMLElement).dataset.index!)
+    picked.set(index)
+    emit<Picked>('pick', { option: { id: index + 1, label: "?" }, index })
+  }
+</script>
+<mnx-typed options={options}>
+  <ul onclick={pick}><mnx-each items={options} as="option" index="i"><li data-index={i}>{option.label}</li></mnx-each></ul>
+  <p>{summary}</p>
+</mnx-typed>

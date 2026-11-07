@@ -220,10 +220,20 @@ impl<'a> TemplateParser<'a> {
         let span = self.current_span();
         self.advance("<script".len());
         self.skip_whitespace();
+        // `lang="ts"` is the one attribute: the script is TypeScript (erasable syntax only).
+        let mut typescript = false;
+        for quote in ['"', '\''] {
+            let attribute = format!("lang={quote}ts{quote}");
+            if self.starts_with(&attribute) {
+                typescript = true;
+                self.advance(attribute.len());
+                self.skip_whitespace();
+            }
+        }
         if !self.starts_with(">") {
             return Err(Diagnostic::new(
                 span,
-                "<script> in a component takes no attributes (it is always a module)",
+                "<script> in a component takes no attributes except lang=\"ts\" (it is always a module)",
             ));
         }
         self.advance(1);
@@ -239,7 +249,7 @@ impl<'a> TemplateParser<'a> {
             return Err(self.error("expected > after </script"));
         }
         self.advance(1);
-        script::parse(body, body_span)
+        script::parse(body, body_span, typescript)
     }
 
     /// Skip whitespace and comments; returns the text of the last comment skipped.

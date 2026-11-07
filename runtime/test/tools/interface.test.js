@@ -235,3 +235,32 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
   `);
   assert.equal(bad.split('\n').filter((line) => /error TS\d+/.test(line)).length, 4, bad);
 });
+
+test('a TypeScript component\'s typings carry its own types', async () => {
+  // As in a project: @mnx/runtime resolves from node_modules.
+  const { mkdirSync, symlinkSync, existsSync } = await import('node:fs');
+  mkdirSync(join(dir, 'node_modules/@mnx'), { recursive: true });
+  if (!existsSync(join(dir, 'node_modules/@mnx/runtime'))) symlinkSync(join(here, '../..'), join(dir, 'node_modules/@mnx/runtime'));
+  const dts = execFileSync(join(repo, 'target/debug/mnix'), ['compile', join(here, '../browser/fixtures/typed.mnx'), '--emit', 'dts'], { encoding: 'utf8' });
+  writeFileSync(join(dir, 'typed.d.ts'), dts);
+  const good = typecheck('typed-good', `
+    import { type Picked, type Option } from './typed.js';
+    const el = document.querySelector('mnx-typed')!;
+    const first: Option = el.options[0];
+    el.addEventListener('pick', (event) => {
+      const picked: Picked = event.detail;
+      const label: string = picked.option.label;
+      void label;
+    });
+    export { first };
+  `);
+  assert.equal(good, '');
+  const bad = typecheck('typed-bad', `
+    import './typed.js';
+    const el = document.querySelector('mnx-typed')!;
+    el.options = [{ id: 'one', label: 'One' }];
+    el.addEventListener('pick', (event) => { const n: number = event.detail.option.label; void n; });
+    export {};
+  `);
+  assert.equal(bad.split('\n').filter((line) => /error TS\d+/.test(line)).length, 2, bad);
+});

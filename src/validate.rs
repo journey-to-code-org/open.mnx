@@ -190,6 +190,8 @@ pub struct Interface {
 
 pub struct PropInterface {
     pub name: String,
+    /// The TypeScript type, when the default is an annotated binding (`<script lang="ts">`).
+    pub declared: Option<String>,
     pub attribute: String,
     /// `None` for a required prop.
     pub default: Option<Value>,
@@ -245,10 +247,24 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         description,
         props: props
             .into_iter()
-            .map(|prop| PropInterface {
-                name: prop.name,
-                attribute: prop.attribute,
-                default: prop.default,
+            .map(|prop| {
+                // `value={initial}` where `const initial: Value = …`: the prop has that type.
+                let declared = component
+                    .props
+                    .iter()
+                    .find(|declaration| declaration.name == prop.name)
+                    .and_then(|declaration| match &declaration.default {
+                        PropDefault::Expression(expression::Expression::Identifier(name), _) => {
+                            component.script.declared_types.get(name).cloned()
+                        }
+                        _ => None,
+                    });
+                PropInterface {
+                    name: prop.name,
+                    declared,
+                    attribute: prop.attribute,
+                    default: prop.default,
+                }
             })
             .collect(),
         script_names: locals.into_iter().map(|(name, _)| name).collect(),

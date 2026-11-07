@@ -74,6 +74,12 @@ pub struct Script {
     pub emit: Option<String>,
     /// Every `emit("name", detail)` call, in source order.
     pub emits: Vec<Emit>,
+    /// TypeScript types of annotated bindings (`const title: string = …`), by name.
+    pub declared_types: std::collections::HashMap<String, String>,
+    /// For the typings of a TypeScript script: its exported type declarations and its imports as
+    /// `import type`.
+    pub type_declarations: Vec<String>,
+    pub type_imports: Vec<String>,
 }
 
 /// An `emit("name", detail)` call: the component fires a DOM event called `name`.
