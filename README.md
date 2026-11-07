@@ -97,6 +97,30 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 - **Shadow DOM** (`shadow`): `mnx-slot` compiles to a native `<slot>`, and supplied content is light DOM with `slot="…"`, as declarative shadow DOM expects.
 - A slot can't be inside `mnx-each`.
 
+## Styles
+
+```html
+<style>
+  :host { display: block }
+  h2 { color: var(--card-accent, crimson) }
+</style>
+<mnx-card heading="">
+  <h2>{heading}</h2>
+  <mnx-slot></mnx-slot>
+</mnx-card>
+```
+
+- **Scoped with the platform's own `@scope`.** In light DOM, a component's `<style>` applies to its own elements and stops at content callers put in its slots. The runtime and the HTML output mark each slotted element `data-mnx-slotted="mnx-card"`, and the stylesheet is `@scope (mnx-card) to ([data-mnx-slotted="mnx-card"])`. The marker names the component, so a parent's content placed in a child's slot is still the parent's to style, as with shadow DOM. The marker is removed when content leaves the slot. In shadow DOM the shadow root does the scoping and the CSS is used as written. `:host` means the host either way, so one stylesheet works with or without `shadow`.
+- **Utilities and app CSS win.** The CSS goes in the `components` cascade layer, and the sheet declares Tailwind's layer order (`theme, base, components, utilities`). Utility classes override a component's defaults, base and reset styles come before them, and unlayered page CSS overrides both, whichever stylesheet loads first. `<style layer="…">` picks another layer; `<style layer="none">` leaves the CSS unlayered.
+- **Page CSS still applies in light DOM.** Tailwind, Bootstrap or your own global classes work on a component's elements as on any element. A parent's styles can also reach into a light-DOM child's elements, as page CSS does; use `shadow` when a component needs full isolation.
+- **Delivery.** In the browser, each component's stylesheet is one constructed `CSSStyleSheet`, shared by every instance. A light-DOM component's sheet is adopted by the document, or by the shadow root it lives in. A shadow component's sheet is adopted by each of its shadow roots. In the HTML output, a shadow component carries a `<style>` in its declarative shadow root. Light-DOM styles go in the page once: `--emit css` writes the stylesheets of a component and everything it imports, for the page's `<head>`.
+- **Through the bundler.** With `@mnx/unplugin` in Vite, each `<style>` is a CSS module that Vite's pipeline processes: PostCSS, Tailwind (`@reference "tailwindcss"` and `@apply` work), and preprocessors with `<style lang="scss">` (or `less`, `stylus`). Leading `@import`, `@use` and `@reference` statements stay at the top of the sheet. Without a bundler, `lang` other than CSS is an error, and `@import` isn't available, because constructed stylesheets don't support it.
+- **Shadow DOM and app-wide CSS.** Page CSS doesn't reach into shadow roots. `adoptStyles(sheet)` from `@mnx/runtime` adds a stylesheet (CSS text, or a `CSSStyleSheet` such as `import sheet from './app.css' with { type: 'css' }`) to every mnx shadow root, now and later. That's how Tailwind's output or a design system reaches shadow components.
+
+### Tailwind CSS
+
+Light-DOM components need no setup: utility classes in templates are just classes. Tailwind 4 detects `.mnx` files with its other sources; if your components are somewhere it doesn't look, add `@source "./components";` to your CSS. Inside a component's `<style>`, add `@reference "tailwindcss";` to use `@apply` and theme values. For shadow components, pass Tailwind's compiled CSS to `adoptStyles`.
+
 ## Events
 
 ```html
@@ -186,18 +210,19 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 ## The CLI
 
 ```sh
-mnix compile <component.mnx> [--emit html|js|dts|manifest] [--props <props.json>] [--slots <slots.json>]
-                             [--runtime <module>] [--keep-imports] [--framework react|vue]
+mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>]
+                             [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue]
+                             [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
 ```
 
-`--emit html` (the default) writes server-rendered HTML. `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`). `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
+`--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
 
 ## Stability
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, a `wasm32` build of the compiler, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters, scoped `<style>`, and prop defaults computed at runtime (prop defaults are build-time values in 1.0).
+Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, a `wasm32` build of the compiler, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters, and prop defaults computed at runtime (prop defaults are build-time values in 1.0).
 
 ## Repository and tests
 

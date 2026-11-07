@@ -16,12 +16,14 @@ mod parser;
 mod render;
 mod scanner;
 mod script;
+mod styles;
 mod typescript;
 mod validate;
 
 pub use components::{filesystem, Loader};
 pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
+pub use emit_js::StyleImports;
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {
     serde_json::from_str(text).map_err(|error| {
@@ -144,6 +146,7 @@ pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<Stri
             runtime,
             source_name,
             component_extension: Some(".js"),
+            style_imports: None,
         },
     )
 }
@@ -180,8 +183,73 @@ pub fn compile_js_with(
             runtime,
             source_name: &source_name,
             component_extension,
+            style_imports: None,
         },
     )
+}
+
+/// The JavaScript module for a bundler plugin: `.mnx` imports are kept, and the `<style>` is
+/// imported through the bundler (see [`StyleImports`]) instead of inlined.
+pub fn compile_js_for_bundler(
+    source: &str,
+    path: &str,
+    runtime: &str,
+    style_imports: StyleImports<'_>,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
+    let component = load(source, path, Some(loader))?;
+    let source_name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    emit_js::emit(
+        &component,
+        &emit_js::Options {
+            runtime,
+            source_name: &source_name,
+            component_extension: None,
+            style_imports: Some(style_imports),
+        },
+    )
+}
+
+// ---- styles ---------------------------------------------------------------------------------
+
+/// The scoped stylesheet of the component at `path` and of every component it imports, for the
+/// page's `<head>` (light-DOM components; shadow ones carry their own). Empty without styles.
+pub fn compile_css_file(path: &str) -> Result<String, Diagnostic> {
+    let component = load(&read(path)?, path, Some(&components::filesystem))?;
+    Ok(stylesheets(&component))
+}
+
+/// The scoped stylesheet of a component with no `.mnx` imports.
+pub fn compile_css(source: &str) -> Result<String, Diagnostic> {
+    Ok(stylesheets(&parser::parse(source)?))
+}
+
+fn stylesheets(component: &ast::ComponentAst) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = String::new();
+    collect_stylesheets(component, &mut seen, &mut out);
+    out
+}
+
+fn collect_stylesheets(
+    component: &ast::ComponentAst,
+    seen: &mut std::collections::HashSet<String>,
+    out: &mut String,
+) {
+    for child in &component.children {
+        collect_stylesheets(&child.ast, seen, out);
+    }
+    if seen.insert(component.tag.clone()) {
+        if let Some(css) = styles::stylesheet(component) {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&format!("/* {} */\n{css}", component.tag));
+        }
+    }
 }
 
 // ---- tools ----------------------------------------------------------------------------------

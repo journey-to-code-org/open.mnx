@@ -14,7 +14,7 @@ mnx draws one trust boundary: **the `.mnx` source is code you trust; the values 
 
 **No string event handlers.** `onclick="…"` is a compile error. `onclick={handler}` binds a function from the script, read when the event fires; it's left out of the HTML output.
 
-**No inline styles or scripts in templates.** `style` attributes, `<style>` and `<script>` elements inside a template are compile errors. The component's own `<script>` block, before the host tag, is the only code in a component.
+**No inline styles or scripts in templates.** `style` attributes, `<style>` and `<script>` elements inside a template are compile errors. The component's own `<script>` and `<style>` blocks, before the host tag, are the only code and CSS in a component. The `<style>` is static: no expressions, so values can't inject CSS.
 
 **Attributes are parsed, never evaluated.** A prop set from an attribute is parsed by its default's type: a number, a boolean, or `JSON.parse` for arrays and objects. Invalid JSON keeps the default and logs a warning.
 

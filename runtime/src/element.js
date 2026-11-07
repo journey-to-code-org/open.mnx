@@ -471,7 +471,7 @@ function bindSlot(part, open, hydrating, context) {
       if (slot.nodes.length) {
         if (fallback) { fallback.dispose(); fallback = null; clearBetween(open, close); }
         open.data = '[!';
-        place(slot.nodes, open);
+        place(slot.nodes, open, context.slotted);
       } else if (part.fallback) {
         if (fallback) return;
         if (!hydrate || open.data !== '[') clearBetween(open, close);
@@ -520,10 +520,11 @@ function slotRecord(context, name) {
  * Put `nodes` right after `open`, in order, moving only what's out of place. (Anything that left
  * the slot was removed from the region as it left, so nothing else is there.)
  */
-function place(nodes, open) {
+function place(nodes, open, tag) {
   const parent = open.parentNode;
   let cursor = open.nextSibling;
   for (const node of nodes) {
+    mark(node, tag);
     if (node === cursor) cursor = cursor.nextSibling;
     else move(parent, node, cursor);
   }
@@ -551,6 +552,7 @@ function routeChildren(host, context, slots, tag) {
   const prune = (slot, keep) => {
     const home = slot.region ? slot.region.open.parentNode : slot.park;
     const kept = slot.nodes.filter((node) => node === keep || node.parentNode === home);
+    for (const node of slot.nodes) if (!kept.includes(node)) unmark(node, context.slotted);
     const changed = kept.length !== slot.nodes.length;
     slot.nodes = kept;
     return changed;
@@ -583,13 +585,17 @@ function routeChildren(host, context, slots, tag) {
   const remove = (node) => {
     const slot = take(node);
     if (!slot) return false;
+    unmark(node, context.slotted);
     node.remove();
     show(slot);
     return true;
   };
   const clear = () => {
     for (const slot of context.slots.values()) {
-      for (const node of slot.nodes.splice(0)) node.remove();
+      for (const node of slot.nodes.splice(0)) {
+        unmark(node, context.slotted);
+        node.remove();
+      }
       show(slot);
     }
   };
@@ -640,6 +646,15 @@ function routeChildren(host, context, slots, tag) {
       if (slot && slotName(record.target) !== slot.name) insert(record.target, null);
     }
     for (const slot of context.slots.values()) if (prune(slot)) show(slot);
+    // Content a parent adds inside a slot itself (its mnx-if or mnx-each there) is slotted too.
+    if (context.slotted) {
+      for (const slot of context.slots.values()) {
+        if (!slot.region) continue;
+        for (let node = slot.region.open.nextSibling; node && node !== slot.region.close; node = node.nextSibling) {
+          mark(node, context.slotted);
+        }
+      }
+    }
   });
   context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
   for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
@@ -820,12 +835,65 @@ const hasContent = (root) =>
 
 const fired = new WeakMap(); // event → the component that dispatched it
 
+// ---- styles --------------------------------------------------------------------------------
+//
+// A component's stylesheet is one constructed CSSStyleSheet shared by every instance: adopted
+// by each shadow root of a shadow component, and, for a light-DOM component, by the document (or
+// the shadow root it lives in). `adoptStyles()` adds app-wide sheets — Tailwind's output, a
+// design system — to every mnx shadow root, since page CSS doesn't reach inside them.
+
+const globalSheets = [];
+const shadowRoots = new Set(); // WeakRef<ShadowRoot>
+const adopted = new WeakMap(); // Document | ShadowRoot → Set<CSSStyleSheet>
+
+function toSheet(css) {
+  if (css instanceof CSSStyleSheet) return css;
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(String(css));
+  return sheet;
+}
+
+function adopt(root, sheets) {
+  let has = adopted.get(root);
+  if (!has) adopted.set(root, (has = new Set()));
+  const added = sheets.filter((sheet) => !has.has(sheet));
+  for (const sheet of added) has.add(sheet);
+  if (added.length) root.adoptedStyleSheets = [...root.adoptedStyleSheets, ...added];
+}
+
+/**
+ * Add stylesheets (CSS text or `CSSStyleSheet`s) to every mnx shadow root, now and later — for
+ * app-wide CSS such as Tailwind's output, which page styles can't carry into shadow DOM.
+ * Light-DOM components already get page CSS. Returns the sheets.
+ */
+export function adoptStyles(...styles) {
+  const sheets = styles.map(toSheet);
+  globalSheets.push(...sheets);
+  for (const ref of [...shadowRoots]) {
+    const root = ref.deref();
+    if (root) adopt(root, sheets);
+    else shadowRoots.delete(ref);
+  }
+  return sheets;
+}
+
+/** The attribute that marks content slotted into a styled light-DOM component (value: its tag). */
+const SLOTTED = 'data-mnx-slotted';
+const unmark = (node, tag) => {
+  if (tag && node.nodeType === 1 && node.getAttribute(SLOTTED) === tag) node.removeAttribute(SLOTTED);
+};
+const mark = (node, tag) => {
+  if (tag && node.nodeType === 1 && node.getAttribute(SLOTTED) !== tag) node.setAttribute(SLOTTED, tag);
+};
+
 /**
  * Register a compiled component. `props` maps prop names to `{ attribute, default, required }`;
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
-export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], setup }) {
+export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, setup }) {
+  let sheet; // created on first use, so define() needs no document
+  const ownSheets = () => (styles == null ? [] : [(sheet ??= toSheet(styles))]);
   if (customElements.get(tag)) return customElements.get(tag);
   const componentTemplate = blueprint({ template });
   const templateSignature = signature(childRange(componentTemplate.content));
@@ -844,6 +912,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
       slots: Object.freeze([...slots]),
       shadow,
       form,
+      styled,
     });
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
@@ -894,6 +963,8 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
     }
 
     connectedCallback() {
+      // A light-DOM component's styles go where it is: the document, or a shadow root.
+      if (!shadow && styles != null) adopt(this.getRootNode(), ownSheets());
       if (this.#scope) this.#scope.resume();
       else this.#boot();
       this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
@@ -939,6 +1010,15 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
     #boot() {
       const element = this;
       const root = shadow ? (this.shadowRoot ?? this.attachShadow({ mode: 'open' })) : this;
+      if (shadow) {
+        adopt(root, [...globalSheets, ...ownSheets()]);
+        shadowRoots.add(new WeakRef(root));
+        // The server's copy of the styles, for before this ran; the adopted sheet replaces it.
+        const serverStyles = root.firstElementChild;
+        if (serverStyles?.localName === 'style' && serverStyles.hasAttribute('data-mnx')) {
+          serverStyles.remove();
+        }
+      }
       const $p = {};
       for (const name of Object.keys(props)) {
         Object.defineProperty($p, name, {
@@ -957,7 +1037,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
         let parts;
         try { parts = setup ? setup($p, (name, detail) => this.#emit(name, detail)) : []; } finally { current = previous; }
 
-        const context = { slots: new Map() };
+        const context = { slots: new Map(), slotted: styled && !shadow ? tag : null };
         const server = hasContent(root);
         // Server markup has the template's shape; anything else is the page's own children.
         const nodes = server && signature(childRange(root)) === templateSignature

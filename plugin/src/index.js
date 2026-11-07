@@ -59,7 +59,7 @@ function dependencies(path, seen = new Set()) {
   return seen;
 }
 
-export const unplugin = createUnplugin((options = {}) => {
+export const unplugin = createUnplugin((options = {}, meta = {}) => {
   const compiler = options.compiler ?? process.env.MNX_COMPILER ?? 'mnix';
   const runtime = options.runtime ?? '@mnx/runtime';
   let project = options.framework && options.framework !== 'auto' ? options.framework : null;
@@ -98,6 +98,9 @@ export const unplugin = createUnplugin((options = {}) => {
         if (!resolved) return null;
         path = split(resolved.id)[0];
       }
+      // A component's stylesheet keeps its whole query: Vite (and Tailwind) recognize CSS by its
+      // `&lang.css` suffix, and inline CSS by `&inline`.
+      if (new URLSearchParams(query).get('mnx') === 'style') return `${path}?${query}`;
       // A variant already chosen (a wrapper's import of its element, a dev server URL) stays.
       const variant = new URLSearchParams(query).get('mnx') ?? variantFor(query, importer, project ?? 'element');
       return `${path}${QUERY}${variant}`;
@@ -110,6 +113,15 @@ export const unplugin = createUnplugin((options = {}) => {
     load(id) {
       const [path, query] = split(id);
       const variant = new URLSearchParams(query).get('mnx');
+      if (variant === 'style') {
+        // This component's stylesheet, for the bundler's CSS pipeline (PostCSS, Tailwind,
+        // preprocessors) to process.
+        try {
+          return compile(path, '--emit', 'css', '--no-imports').code;
+        } catch (error) {
+          this.error(error.message);
+        }
+      }
       if (variant === 'react' || variant === 'vue') {
         const element = JSON.stringify(`${path}${QUERY}element`);
         return `import Element from ${element};\nimport { wrap } from ${JSON.stringify(`${runtime}/${variant}`)};\n`
@@ -117,9 +129,15 @@ export const unplugin = createUnplugin((options = {}) => {
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
       if (typings) writeTypings(path);
+      // With Vite, a <style> goes through Vite's CSS pipeline; elsewhere it's inlined as written.
+      const styles = [];
+      if (meta.framework === 'vite' && /<style[\s>]/i.test(readFileSync(path, 'utf8'))) {
+        const lang = readFileSync(path, 'utf8').match(/<style[^>]*\slang=["']([a-z0-9]+)["']/i)?.[1] ?? 'css';
+        styles.push('--css-import', `${path}?mnx=style&lang.${lang}`, '--css-import-inline', `${path}?mnx=style&inline&lang.${lang}`);
+      }
       let output;
       try {
-        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime);
+        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles);
       } catch (error) {
         this.error(error.message);
       }

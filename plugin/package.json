@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@mnx/runtime": "file:../runtime",
+    "@tailwindcss/vite": "4.3.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.2.1",
@@ -41,6 +42,8 @@
     "playwright": "1.63.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "sass": "1.108.1",
+    "tailwindcss": "4.3.5",
     "typescript": "7.0.2",
     "vite": "8.3.6",
     "vue": "3.5.45"

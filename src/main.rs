@@ -20,7 +20,7 @@ fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
     if arguments.next().as_deref() != Some("compile") {
         return Err(
-            "usage: mnix compile <component.mnx> [--emit html|js|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -33,6 +33,9 @@ fn run() -> Result<(), String> {
     let mut runtime = "@mnx/runtime".to_owned();
     let mut module_path = None;
     let mut keep_imports = false;
+    let mut no_imports = false;
+    let mut css_import = None;
+    let mut css_import_inline = None;
     let mut framework = mnix_compiler::Framework::None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -41,6 +44,11 @@ fn run() -> Result<(), String> {
             "--module-path" => module_path = arguments.next(),
             // For bundler plugins: leave `./x.mnx` imports for the bundler to resolve.
             "--keep-imports" => keep_imports = true,
+            // For --emit css: this component's stylesheet only (a bundler loads the others).
+            "--no-imports" => no_imports = true,
+            // For bundler plugins: import the <style> through the bundler instead of inlining it.
+            "--css-import" => css_import = arguments.next(),
+            "--css-import-inline" => css_import_inline = arguments.next(),
             // For --emit dts: type the default export as that framework's wrapper.
             "--framework" => {
                 framework = match arguments.next().as_deref() {
@@ -85,6 +93,20 @@ fn run() -> Result<(), String> {
                 .into_owned()
         });
         let output = match emit.as_str() {
+            "js" if css_import.is_some() || css_import_inline.is_some() => {
+                match (&css_import, &css_import_inline) {
+                    (Some(stylesheet), Some(inline)) => mnix_compiler::compile_js_for_bundler(
+                        &source,
+                        &source_path,
+                        &runtime,
+                        mnix_compiler::StyleImports { stylesheet, inline },
+                        &mnix_compiler::filesystem,
+                    ),
+                    _ => return Err("--css-import and --css-import-inline go together".into()),
+                }
+            }
+            "css" if no_imports => mnix_compiler::compile_css(&source),
+            "css" => mnix_compiler::compile_css_file(&source_path),
             "js" if keep_imports => mnix_compiler::compile_js_with(
                 &source,
                 &source_path,
@@ -97,7 +119,7 @@ fn run() -> Result<(), String> {
             "manifest" => mnix_compiler::compile_manifest(&source, &module_path),
             _ => {
                 return Err(format!(
-                    "unknown --emit `{emit}`; expected html, js, dts or manifest"
+                    "unknown --emit `{emit}`; expected html, js, css, dts or manifest"
                 ))
             }
         }

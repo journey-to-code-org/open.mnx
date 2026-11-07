@@ -43,7 +43,7 @@ before(async () => {
     }
     try {
       const body = readFileSync(join(site, url.pathname));
-      response.writeHead(200, { 'content-type': extname(url.pathname) === '.js' ? 'text/javascript' : 'text/plain' });
+      response.writeHead(200, { 'content-type': { '.js': 'text/javascript', '.css': 'text/css' }[extname(url.pathname)] ?? 'text/plain' });
       response.end(body);
     } catch {
       response.writeHead(404).end();

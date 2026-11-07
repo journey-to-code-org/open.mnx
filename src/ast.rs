@@ -23,12 +23,26 @@ pub struct ComponentAst {
     pub shadow: bool,
     /// `form-associated` on the host makes the element a form control (ElementInternals).
     pub form_associated: bool,
+    /// The component's `<style>`, scoped to it.
+    pub style: Option<Style>,
     pub props: Vec<PropDecl>,
     pub script: Script,
     /// The template: the host element's children.
     pub nodes: Vec<Node>,
     /// Components imported from `.mnx` files, by tag, once loaded.
     pub children: Vec<ChildComponent>,
+}
+
+/// A component's `<style>` block.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Style {
+    pub css: String,
+    /// The cascade layer it goes in (`components` unless `layer="…"`; `None` for `layer="none"`).
+    pub layer: Option<String>,
+    /// A preprocessor language (`scss`, …) for a bundler to run; `None` for plain CSS.
+    pub lang: Option<String>,
+    /// Where the CSS starts.
+    pub span: Span,
 }
 
 impl ComponentAst {

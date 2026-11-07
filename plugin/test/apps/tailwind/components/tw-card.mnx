@@ -1,0 +1,12 @@
+<!-- Tailwind inside a component: @apply in its <style>, utilities in its template. -->
+<style>
+  @reference "tailwindcss";
+  .box { @apply p-4; color: rgb(255, 0, 0) }
+  h2 { margin: 7px }
+</style>
+<mnx-tw-card>
+  <div class="box" id="own">own</div>
+  <div class="box p-8 text-blue-600" id="util">util</div>
+  <h2 id="heading">heading</h2>
+  <mnx-slot></mnx-slot>
+</mnx-tw-card>

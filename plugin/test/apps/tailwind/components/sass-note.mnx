@@ -1,0 +1,7 @@
+<style lang="scss">
+  $accent: rgb(0, 128, 0);
+  p { color: $accent; strong { color: darken($accent, 10%) } }
+</style>
+<mnx-sass-note>
+  <p>note <strong>!</strong></p>
+</mnx-sass-note>

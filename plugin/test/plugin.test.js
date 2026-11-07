@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import react from '@vitejs/plugin-react';
 import vue from '@vitejs/plugin-vue';
+import tailwindcss from '@tailwindcss/vite';
 import mnx from '../src/vite.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -39,7 +40,7 @@ function app(name) {
   return root;
 }
 
-const plugins = { react: () => [react()], vue: () => [vue()], plain: () => [] };
+const plugins = { react: () => [react()], vue: () => [vue()], plain: () => [], tailwind: () => [tailwindcss()] };
 
 async function bundle(name, root = app(name)) {
   await build({
@@ -295,4 +296,23 @@ test('compiler warnings reach the bundler', async () => {
     build: { outDir: join(root, 'dist'), rollupOptions: { onwarn: (warning) => warnings.push(warning.message) } },
   });
   assert.ok(warnings.some((message) => message.includes('prop `hidden` is also every element')), warnings.join('\n'));
+});
+
+test('styles go through the bundler: Tailwind (@apply, utilities, layer order) and Sass', async () => {
+  const root = await bundle('tailwind');
+  const { page, messages } = await visit(root);
+  const style = (selector, property) => page.$eval(selector, (el, property) => getComputedStyle(el)[property], property);
+  assert.equal(await style('#own', 'paddingTop'), '16px', '@apply p-4 in the component\'s <style>');
+  assert.equal(await style('#own', 'color'), 'rgb(255, 0, 0)');
+  assert.equal(await style('#util', 'paddingTop'), '32px', 'a utility class beats the component\'s own padding');
+  assert.notEqual(await style('#util', 'color'), 'rgb(255, 0, 0)', 'and its color');
+  assert.equal(await style('#heading', 'marginTop'), '7px', "the component's styles beat Tailwind's base (preflight), wherever they load");
+  assert.equal(await style('h2.caller', 'color'), 'rgb(0, 0, 0)', "the caller's slotted heading isn't styled by the component");
+  assert.equal(await style('h2.caller', 'paddingTop'), '0px');
+  assert.equal(await style('mnx-sass-note p', 'color'), 'rgb(0, 128, 0)', '<style lang="scss">');
+  assert.notEqual(await style('mnx-sass-note strong', 'color'), 'rgb(0, 128, 0)', 'nested Sass rules');
+  const sheets = await page.evaluate(() => document.adoptedStyleSheets.length);
+  assert.equal(sheets, 0, 'the CSS is in the page bundle, not inlined in the modules');
+  assert.deepEqual(messages, []);
+  await page.close();
 });

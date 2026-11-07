@@ -16,7 +16,8 @@ use std::collections::HashSet;
 
 use crate::{
     ast::{
-        Attribute, AttributeValue, ComponentAst, Element, Node, Part, PropDecl, PropDefault, Script,
+        Attribute, AttributeValue, ComponentAst, Element, Node, Part, PropDecl, PropDefault,
+        Script, Style,
     },
     diagnostic::{Diagnostic, Span},
     expression::{self, Expression},
@@ -41,12 +42,27 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         .with_help("<script>const name = \"…\"</script>\n<my-element name={name}>…</my-element>"));
     }
 
-    let script = if parser.cursor.starts_with_ignore_ascii_case("<script") {
-        parser.parse_script_block()?
-    } else {
-        Script::default()
-    };
-    let host_comment = parser.skip_whitespace_and_comments()?;
+    // One <script> and one <style>, in either order, before the host element.
+    let mut script = None;
+    let mut style = None;
+    let mut host_comment = None;
+    loop {
+        if parser.cursor.starts_with_ignore_ascii_case("<script") {
+            if script.is_some() {
+                return Err(parser.error("a component has one <script>"));
+            }
+            script = Some(parser.parse_script_block()?);
+        } else if parser.cursor.starts_with_ignore_ascii_case("<style") {
+            if style.is_some() {
+                return Err(parser.error("a component has one <style>"));
+            }
+            style = Some(parser.parse_style_block()?);
+        } else {
+            break;
+        }
+        host_comment = parser.skip_whitespace_and_comments()?;
+    }
+    let script = script.unwrap_or_default();
 
     if !parser.starts_with("<") || parser.starts_with("</") {
         return Err(
@@ -57,7 +73,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     parser.skip_whitespace_and_comments()?;
     if !parser.cursor.is_at_end() {
         return Err(parser.error(
-            "unexpected content after the host element; a component file has one <script> and one host element",
+            "unexpected content after the host element; a component file has a <script>, a <style> and then its host element",
         ));
     }
 
@@ -107,6 +123,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         description,
         shadow,
         form_associated,
+        style,
         props,
         script,
         nodes: host.children,
@@ -214,6 +231,98 @@ struct TemplateParser<'a> {
 impl<'a> TemplateParser<'a> {
     fn new(cursor: Cursor<'a>) -> Self {
         Self { cursor }
+    }
+
+    /// `<style>`, with optional `layer="…"` (the cascade layer; `none` for no layer) and
+    /// `lang="…"` (a preprocessor for the bundler to run, e.g. `scss`).
+    fn parse_style_block(&mut self) -> Result<Style, Diagnostic> {
+        let span = self.current_span();
+        self.advance("<style".len());
+        self.skip_whitespace();
+        let mut layer = Some("components".to_owned());
+        let mut lang = None;
+        while !self.starts_with(">") {
+            let at = self.current_span();
+            let rest = self.cursor.rest();
+            let name_end = rest
+                .find('=')
+                .filter(|end| rest[..*end].chars().all(|c| c.is_ascii_alphabetic()));
+            let Some(name_end) = name_end else {
+                return Err(Diagnostic::new(
+                    at,
+                    "<style> takes `layer=\"…\"` and `lang=\"…\"` attributes",
+                ));
+            };
+            let name = rest[..name_end].to_ascii_lowercase();
+            let quote = rest[name_end + 1..]
+                .chars()
+                .next()
+                .filter(|quote| *quote == '"' || *quote == '\'');
+            let Some(quote) = quote else {
+                return Err(Diagnostic::new(
+                    at,
+                    format!("`{name}` on <style> needs a quoted value"),
+                ));
+            };
+            let value_start = name_end + 2;
+            let Some(length) = rest[value_start..].find(quote) else {
+                return Err(Diagnostic::new(at, "unterminated attribute value"));
+            };
+            let value = rest[value_start..value_start + length].trim().to_owned();
+            match name.as_str() {
+                "layer" if value == "none" => layer = None,
+                "layer"
+                    if !value.is_empty()
+                        && value
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) =>
+                {
+                    layer = Some(value)
+                }
+                "layer" => {
+                    return Err(Diagnostic::new(
+                        at,
+                        format!("`{value}` isn't a cascade layer name"),
+                    ))
+                }
+                "lang" if !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric()) => {
+                    lang = (value != "css").then_some(value);
+                }
+                "lang" => {
+                    return Err(Diagnostic::new(
+                        at,
+                        format!("`{value}` isn't a stylesheet language"),
+                    ))
+                }
+                other => {
+                    return Err(Diagnostic::new(
+                        at,
+                        format!("<style> takes `layer` and `lang`, not `{other}`"),
+                    ))
+                }
+            }
+            self.advance(value_start + length + 1);
+            self.skip_whitespace();
+        }
+        self.advance(1);
+        let css_span = self.current_span();
+        let rest = self.cursor.rest();
+        let Some(end) = rest.to_ascii_lowercase().find("</style") else {
+            return Err(Diagnostic::new(span, "missing </style>"));
+        };
+        let css = rest[..end].to_owned();
+        self.advance(end + "</style".len());
+        self.skip_whitespace();
+        if !self.starts_with(">") {
+            return Err(self.error("expected > after </style"));
+        }
+        self.advance(1);
+        Ok(Style {
+            css,
+            layer,
+            lang,
+            span: css_span,
+        })
     }
 
     fn parse_script_block(&mut self) -> Result<Script, Diagnostic> {

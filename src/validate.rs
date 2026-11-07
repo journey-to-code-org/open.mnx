@@ -158,7 +158,31 @@ fn lower_component(
 
     // 3. Lower the branches that are taken.
     let mut state = LowerState::default();
-    let nodes = context.lower_nodes(&component.nodes, &mut state)?;
+    let mut nodes = context.lower_nodes(&component.nodes, &mut state)?;
+    // A shadow component's styles go in its declarative shadow root (nothing else can style it
+    // before its JavaScript runs); a light-DOM component's go in the page (`--emit css`).
+    if let Some(style) = &component.style {
+        if let Some(lang) = &style.lang {
+            return Err(Diagnostic::new(
+                style.span,
+                format!("`<style lang=\"{lang}\">` needs a bundler to compile it: use @mnx/unplugin (Vite)"),
+            ));
+        }
+        if component.shadow {
+            let css = crate::styles::stylesheet(component).unwrap_or_default();
+            nodes.insert(
+                0,
+                Node::Element(ir::Element {
+                    name: "style".to_owned(),
+                    attributes: vec![ir::Attribute {
+                        name: "data-mnx".to_owned(),
+                        value: None,
+                    }],
+                    children: vec![Node::Text(vec![Part::Literal(css)])],
+                }),
+            );
+        }
+    }
     let light_children = std::mem::take(&mut state.light);
 
     let host_attributes = props
@@ -886,7 +910,23 @@ impl Context<'_> {
                     match supplied {
                         Some(lowered) => {
                             output.push(Node::OpenProjected);
-                            output.extend(lowered);
+                            // A styled component's styles stop at what callers put in its slots.
+                            let styled = self.component.style.is_some();
+                            output.extend(lowered.into_iter().map(|node| match node {
+                                Node::Element(mut element) if styled => {
+                                    element.attributes.retain(|attribute| {
+                                        attribute.name != crate::styles::SLOTTED
+                                    });
+                                    element.attributes.push(ir::Attribute {
+                                        name: crate::styles::SLOTTED.to_owned(),
+                                        value: Some(vec![Part::Literal(
+                                            self.component.tag.clone(),
+                                        )]),
+                                    });
+                                    Node::Element(element)
+                                }
+                                node => node,
+                            }));
                         }
                         None => {
                             output.push(Node::Open);

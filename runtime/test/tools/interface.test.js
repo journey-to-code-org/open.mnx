@@ -196,7 +196,9 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
   };
   assert.equal(check('good', `
     import { state, computed, effect, scope, watch, onMount, props, host, emit, id, createContext, provide, inject,
-      formValue, validity, define, Signal, tick, type MnxElementClass } from '@mnx/runtime';
+      formValue, validity, define, Signal, tick, adoptStyles, type MnxElementClass } from '@mnx/runtime';
+    const sheets: CSSStyleSheet[] = adoptStyles('p { color: red }', new CSSStyleSheet());
+    void sheets;
     import { wrap } from '@mnx/runtime/react';
     import { wrap as wrapVue, models } from '@mnx/runtime/vue';
     const count = state(0);
@@ -216,7 +218,9 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
     validity(() => (count.get() < 0 ? 'no' : ''));
     const watcher = new Signal.subtle.Watcher(() => {});
     watcher.watch(count);
-    const Element: MnxElementClass = define('mnx-x', { props: { value: { attribute: 'value', default: 0 } }, setup: () => [] });
+    const Element: MnxElementClass = define('mnx-x', { props: { value: { attribute: 'value', default: 0 } }, styled: true, styles: ':host { display: block }', setup: () => [] });
+    const styled: boolean = Element.mnx.styled;
+    void styled;
     const tag: string = Element.mnx.tag;
     const Component = wrap(Element);
     const VueComponent = wrapVue(Element);

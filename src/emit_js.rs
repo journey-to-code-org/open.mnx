@@ -42,6 +42,18 @@ pub struct Options<'a> {
     /// Rewrite `.mnx` imports to this extension (`".js"` for CLI output); `None` keeps them,
     /// for bundler plugins that load `.mnx` files themselves.
     pub component_extension: Option<&'a str>,
+    /// How the `<style>` reaches the page: `None` inlines it in the module; `Some` imports it
+    /// through the bundler's CSS pipeline (so Tailwind, PostCSS and preprocessors run on it).
+    pub style_imports: Option<StyleImports<'a>>,
+}
+
+/// Module specifiers for a component's stylesheet, as the bundler serves it.
+#[derive(Clone, Copy, Debug)]
+pub struct StyleImports<'a> {
+    /// Imported for its side effect: the bundler adds the CSS to the page (light DOM).
+    pub stylesheet: &'a str,
+    /// Imported as a string, for a shadow root (Vite's `?inline`).
+    pub inline: &'a str,
 }
 
 pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, Diagnostic> {
@@ -92,6 +104,26 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         }
         out.push('\n');
     }
+    // The stylesheet: inlined, or through the bundler.
+    let mut styles = None;
+    if let Some(style) = &component.style {
+        match options.style_imports {
+            Some(imports) if component.shadow => {
+                out.push_str(&format!("import $styles from {};\n", json(imports.inline)));
+                styles = Some("$styles".to_owned());
+            }
+            Some(imports) => out.push_str(&format!("import {};\n", json(imports.stylesheet))),
+            None => {
+                if let Some(lang) = &style.lang {
+                    return Err(Diagnostic::new(
+                        style.span,
+                        format!("`<style lang=\"{lang}\">` needs a bundler to compile it: use @mnx/unplugin (Vite)"),
+                    ));
+                }
+                styles = crate::styles::stylesheet(component).map(|css| json(&css));
+            }
+        }
+    }
     out.push_str(&format!(
         "\nexport const tag = {};\n\nexport default define(tag, {{\n  props: {{\n",
         json(&component.tag)
@@ -117,11 +149,17 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     let list =
         |names: &mut dyn Iterator<Item = &str>| names.map(json).collect::<Vec<_>>().join(", ");
     out.push_str(&format!(
-        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n  template: {},\n  setup($p, $emit) {{\n",
+        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}  template: {},\n  setup($p, $emit) {{\n",
         component.shadow,
         component.form_associated,
         list(&mut slots.iter().map(String::as_str)),
         list(&mut interface.events.iter().map(|event| event.name.as_str())),
+        // `styled`: the runtime marks slotted content, where light-DOM styles stop.
+        match (component.style.is_some(), styles) {
+            (false, _) => String::new(),
+            (true, None) => "  styled: true,\n".to_owned(),
+            (true, Some(styles)) => format!("  styled: true,\n  styles: {styles},\n"),
+        },
         json(&emitter.template)
     ));
     // `emit` from the runtime, bound to this element (handlers call it long after setup).

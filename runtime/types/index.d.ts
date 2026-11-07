@@ -35,6 +35,15 @@ export declare function host<E extends HTMLElement = HTMLElement>(): E;
  */
 export declare function emit(name: string, detail?: unknown): boolean;
 
+// ---- styles ---------------------------------------------------------------------------------
+
+/**
+ * Add stylesheets (CSS text or `CSSStyleSheet`s) to every mnx shadow root, now and later: for
+ * app-wide CSS such as Tailwind's output, which page styles can't carry into shadow DOM.
+ * Light-DOM components already get page CSS.
+ */
+export declare function adoptStyles(...styles: (string | CSSStyleSheet)[]): CSSStyleSheet[];
+
 // ---- context (the Web Components Community Group Context Protocol) -------------------------
 
 export interface Context<T> {
@@ -87,6 +96,8 @@ export interface ElementMeta {
   readonly slots: readonly string[];
   readonly shadow: boolean;
   readonly form: boolean;
+  /** The component has a `<style>` (light DOM: slotted content is marked `data-mnx-slotted`). */
+  readonly styled: boolean;
 }
 
 export interface MnxElementClass<E extends HTMLElement = HTMLElement> {
@@ -103,6 +114,10 @@ export interface Definition {
   form?: boolean;
   slots?: string[];
   events?: string[];
+  /** The component has a `<style>`. */
+  styled?: boolean;
+  /** Its stylesheet, when the module carries it (otherwise the bundler adds it to the page). */
+  styles?: string | CSSStyleSheet | null;
   /** Runs once per element; returns the template's parts. */
   setup?: (props: Record<string, unknown>, emit: (name: string, detail?: unknown) => boolean) => unknown[];
 }

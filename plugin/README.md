@@ -45,6 +45,10 @@ Every variant defines the custom element, so `<mnx-rating>` also works in plain 
 - **Vue**: props are set as DOM properties before the element starts; events are Vue events (`@valuechange`); every `<prop>` + `<prop>change` pair supports `v-model:<prop>`, and `v-model` binds `value`. Named slots (`<template #title>`) become `slot="title"` content.
 - **Anything else** (Angular, Svelte, Solid, Lit, plain DOM) uses the element directly: properties in, DOM events out, as with built-in elements.
 
+## Styles
+
+With Vite, a component's `<style>` is a CSS module in Vite's pipeline, so PostCSS, Tailwind (`@reference "tailwindcss"`, `@apply`) and preprocessors (`<style lang="scss">`) process it. Light-DOM components' CSS lands in the page's CSS bundle; shadow components get theirs as a string (`?inline`) for their shadow roots. With other bundlers, plain CSS is inlined in the module. See the main README's Styles section.
+
 ## Options
 
 ```js
