@@ -1,0 +1,57 @@
+<!--
+  A habit's last weeks as a grid of days (a column per week, Monday at the top), shaded by how
+  much of the goal was done. Choosing a day toggles it; arrow keys move between days.
+  `log` maps "YYYY-MM-DD" to a count; `today` is "YYYY-MM-DD".
+  @fires daytoggle - A day was chosen; `detail` is the day.
+-->
+<script>
+  import { emit } from '@mnx/runtime'
+
+  let grid = null
+  const day = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+  const parse = (text) => new Date(`${text}T12:00`)
+  const names = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" })
+  const end = parse(today)
+  // Start on the Monday `weeks` weeks before this week's.
+  const start = new Date(end)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - (weeks - 1) * 7)
+  const columns = Array.from({ length: weeks }, (_, week) => ({
+    week,
+    days: Array.from({ length: 7 }, (_, weekday) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() + week * 7 + weekday)
+      const key = day(date)
+      const count = log[key] ?? 0
+      const level = date > end ? -1 : count === 0 ? 0 : Math.min(4, Math.ceil((count / goal) * 4))
+      return { key, level, count, label: `${names.format(date)}: ${count}/${goal}` }
+    }),
+  }))
+
+  // Arrow keys: a day up or down, a week left or right.
+  function move(key, step) {
+    const date = parse(key)
+    date.setDate(date.getDate() + step)
+    grid.querySelector(`[data-day="${day(date)}"]:not([disabled])`)?.focus()
+  }
+</script>
+<style>
+  :host { display: block; overflow-x: auto; }
+  .grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, var(--cell, 0.85rem)); grid-auto-columns: var(--cell, 0.85rem); gap: 3px; width: max-content; }
+  button { width: 100%; height: 100%; padding: 0; border: 0; border-radius: 3px; background: var(--level-0, #ebedf0); cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--ink, #1d2130); outline-offset: 1px; }
+  button[data-level="1"] { background: color-mix(in srgb, var(--habit, #16a34a) 30%, var(--level-0, #ebedf0)); }
+  button[data-level="2"] { background: color-mix(in srgb, var(--habit, #16a34a) 55%, var(--level-0, #ebedf0)); }
+  button[data-level="3"] { background: color-mix(in srgb, var(--habit, #16a34a) 78%, var(--level-0, #ebedf0)); }
+  button[data-level="4"] { background: var(--habit, #16a34a); }
+  button[data-today] { box-shadow: 0 0 0 1.5px var(--ink, #1d2130); }
+  button:disabled { visibility: hidden; }
+</style>
+<streak-grid log={{}} goal={1} today="" weeks={12} label="History">
+  <div class="grid" role="group" aria-label={label} ref={grid}>
+    <mnx-each items={columns} as="column" key={column.week}>
+      <mnx-each items={column.days} as="cell" key={cell.key}>
+        <button type="button" data-day={cell.key} data-level={cell.level} data-today={cell.key === today ? "" : null} disabled={cell.level < 0} title={cell.label} aria-label={cell.label} aria-pressed={cell.count >= goal ? "true" : "false"} tabindex={cell.key === today ? "0" : "-1"} onclick={() => emit('daytoggle', cell.key)} onkeydown.up.prevent={() => move(cell.key, -1)} onkeydown.down.prevent={() => move(cell.key, 1)} onkeydown.left.prevent={() => move(cell.key, -7)} onkeydown.right.prevent={() => move(cell.key, 7)}></button>
+      </mnx-each>
+    </mnx-each>
+  </div>
+</streak-grid>

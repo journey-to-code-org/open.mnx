@@ -1,0 +1,44 @@
+<!--
+  A modal dialog on the native <dialog>: the page behind is inert, focus moves into the dialog
+  and back to where it was, and Escape, the close button or a click on the backdrop closes it.
+  `open` is two-way.
+  @slot - The dialog's content.
+  @slot heading - Its title, which labels the dialog (defaults to `label`).
+  @slot actions - Buttons at the bottom, shown only when given.
+-->
+<script>
+  import { effect, hasSlot, id } from '@mnx/runtime'
+
+  const headingId = id()
+  const hasActions = hasSlot('actions')
+  let dialog = null
+
+  // Follow `open` (from outside or inside): show the dialog modally, or close it.
+  effect(() => {
+    if (!dialog) return
+    if (open && !dialog.open) dialog.showModal()
+    else if (!open && dialog.open) dialog.close()
+  })
+</script>
+<style>
+  dialog { padding: 0; border: 0; border-radius: 0.9rem; width: min(32rem, calc(100vw - 2rem)); background: var(--surface, #ffffff); color: var(--ink, #1d2130); box-shadow: 0 24px 64px #0d122040; }
+  dialog::backdrop { background: #0d122066; }
+  .panel { display: grid; gap: 1rem; padding: 1.1rem 1.25rem 1.25rem; }
+  header { display: flex; align-items: center; gap: 1rem; }
+  h2 { flex: 1; margin: 0; font-size: 1.1rem; }
+  .close { width: 2rem; height: 2rem; border: 0; border-radius: 50%; background: none; color: inherit; font-size: 1.4rem; line-height: 1; cursor: pointer; }
+  .close:hover { background: var(--hover, #f2f4f8); }
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; }
+</style>
+<modal-dialog open:model={false} label="Dialog">
+  <dialog ref={dialog} aria-labelledby={headingId} onclose={() => (open = false)} onclick.self={() => (open = false)}>
+    <div class="panel">
+      <header>
+        <h2 id={headingId}><mnx-slot name="heading">{label}</mnx-slot></h2>
+        <button type="button" class="close" aria-label="Close" onclick={() => (open = false)}>×</button>
+      </header>
+      <div class="body"><mnx-slot></mnx-slot></div>
+      <mnx-if test={hasActions}><footer><mnx-slot name="actions"></mnx-slot></footer></mnx-if>
+    </div>
+  </dialog>
+</modal-dialog>

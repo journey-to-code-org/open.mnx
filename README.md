@@ -338,6 +338,41 @@ Lit apps put mnx elements in their shadow roots: a light-DOM component's styles 
 
 `examples/frameworks/` has a complete app for each framework (React, Vue, Svelte, Solid, Lit, Preact, Angular), tested in a browser.
 
+## Sharing components
+
+**Publish a library** with one command (`mnx` comes with `@mnx/compiler`; no Rust needed):
+
+```sh
+npx mnx build --lib src/components --out dist   # name and version from ./package.json, or --name/--version
+cd dist && npm publish
+```
+
+The package needs no bundler or mnx tooling on the consumer's side:
+
+- an ES module per element (`@acme/ui/quantity-stepper`), and `index.js` exporting every element by class name;
+- `@acme/ui/react` and `@acme/ui/vue`: each element as a React or Vue component, with two-way props, events and children working as through the plugin;
+- typings for all of them, including the React and Vue component types;
+- `custom-elements.json`, the [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest), referenced from `package.json`'s `customElements` field for IDEs, documentation tools and Storybook;
+- `package.json` with `exports` for each of the above, and `@mnx/runtime` as a peer dependency.
+
+`buildLibrary(dir, options)` from `@mnx/compiler/library` does the same from a script.
+
+**Start from the registry.** `npx mnx add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty, from form controls to a modal dialog and charts, each tested from the keyboard and by role and accessible name. `npx mnx add --list` lists them; `registry/README.md` has the details and the theme properties.
+
+**Storybook.** With `@storybook/web-components`, give Storybook the manifest and it fills each story's controls and docs (attributes, properties, events, slots, descriptions) from it:
+
+```js
+// .storybook/preview.js
+import { setCustomElementsManifest } from '@storybook/web-components';
+import manifest from '@acme/ui/custom-elements.json';   // or the manifest mnx writes for your own components
+setCustomElementsManifest(manifest);
+
+// quantity-stepper.stories.js
+import '@acme/ui/quantity-stepper';
+export default { component: 'quantity-stepper' };
+export const Default = { args: { value: 2, max: 5 } };
+```
+
 ## Editors and tooling without Rust
 
 - **`@mnx/compiler`** (`compiler/`) is the compiler built to WebAssembly, for Node: the same output and errors as the CLI, with no Rust toolchain. `@mnx/unplugin` uses it automatically when it's installed.
@@ -397,6 +432,7 @@ Upgrading from 1.x: `mnx migrate` rewrites what 2.0 needs; see `docs/migrating-t
 - `create/`: `create-mnx`, the starter (`npm create mnx`), with a template per framework.
 - `playground/`: the in-browser playground, published to GitHub Pages by `.github/workflows/pages.yml`.
 - `docs/guide/`: the tutorial.
+- `registry/`: the components `mnx add` copies, with their accessibility tests.
 
 Install Rust 1.97 or newer and Node 20 or newer.
 
@@ -410,6 +446,7 @@ cargo clippy --all-targets --locked -- -D warnings
 (cd plugin && npm ci && npm test)        # real apps: React, Vue, Svelte, Solid, Lit, Astro, Tailwind; Rollup, webpack, esbuild
 (cd compiler && npm test)                # render API (and, with mnx.wasm built, parity with the CLI)
 (cd create && npm test)                  # the starter's command line
+node --test "registry/test/*.test.js"    # the registry's components: keyboard and screen-reader behaviour
 (cd examples/frameworks && npm ci && npm test)  # the framework apps, and every starter's own browser test
 node --test "playground/test/*.test.js"  # the playground in Chromium
 ```

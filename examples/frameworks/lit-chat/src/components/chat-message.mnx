@@ -44,8 +44,9 @@
   .reactions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
   .reactions button { display: inline-flex; gap: 0.3rem; align-items: center; padding: 0.05rem 0.5rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: inherit; font: inherit; font-size: 0.8125rem; cursor: pointer; }
   .reactions button[aria-pressed=true] { border-color: var(--link); background: var(--mention-wash); }
-  .tools { position: absolute; top: -0.9rem; right: 1rem; display: none; gap: 0.1rem; padding: 0.15rem; border: 1px solid var(--line); border-radius: 0.55rem; background: var(--surface); box-shadow: 0 2px 8px #0002; }
-  article:hover .tools, .tools:focus-within { display: flex; }
+  .tools { position: absolute; top: -0.9rem; right: 1rem; display: flex; opacity: 0; gap: 0.1rem; padding: 0.15rem; border: 1px solid var(--line); border-radius: 0.55rem; background: var(--surface); box-shadow: 0 2px 8px #0002; }
+  /* Transparent rather than hidden, so the keyboard can reach it; it shows on hover or focus. */
+  article:hover .tools, .tools:focus-within { opacity: 1; }
   .tools button { border: 0; background: none; padding: 0.15rem 0.35rem; border-radius: 0.35rem; cursor: pointer; font: inherit; color: inherit; }
   .tools button:hover { background: var(--hover); }
 </style>

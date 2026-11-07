@@ -1,0 +1,39 @@
+# The mnx component registry
+
+Twenty accessible components, drawn from the example apps, to copy into your project:
+
+```sh
+npx mnx add tag-input modal-dialog         # into src/components/ (--dir elsewhere)
+npx mnx add --list
+```
+
+`mnx` comes with `@mnx/compiler`. The files are copied, not installed: they're yours to edit, and `mnx add` never overwrites a file you have (`--force` does).
+
+| Inputs | Display | App pieces |
+|---|---|---|
+| `tag-input`, `date-range`, `money-input`, `star-rating`, `toggle-switch`, `choice-cards`, `color-swatches`, `quantity-stepper`, `segmented-control` | `donut-chart`, `spark-line`, `line-chart`, `progress-ring`, `streak-grid`, `flip-card`, `step-indicator` | `kanban-column`, `chat-message`, `message-composer`, `modal-dialog` |
+
+Each component's comment says what it does, its props, slots and events (`index.json` collects them). The inputs are form controls with a two-way `value` (or `checked`), so `v-model`, React's controlled pattern and Angular's `MnxModel` work with them as they are.
+
+## Accessibility
+
+Every component is tested in Chromium (`test/components.test.js`) the way assistive technology meets it: found by its role and accessible name, used from the keyboard (radio groups with arrow keys and one tab stop, Space and Enter on switches and toggle buttons, a dialog that moves focus in and back, Escape to close), and checked for the state it announces (`aria-checked`, `aria-pressed`, `aria-current`, `aria-expanded`).
+
+## Theming
+
+Colours come from CSS custom properties, each with a default, so the components look right on their own and take your theme when you set them on a parent:
+
+| Property | Used for | Default |
+|---|---|---|
+| `--ink`, `--muted` | text | `#1d2130`, `#667085` |
+| `--surface`, `--sunken`, `--hover` | backgrounds | `#ffffff`, `#f3f4f7`, `#f2f4f8` |
+| `--line` | borders | `#d9dce3` |
+| `--accent`, `--link`, `--danger` | emphasis | `#4f5df5`, `#2563eb`, `#d92d20` |
+| `--up`, `--down` | chart trends | `#12805c`, `#c4320a` |
+| `--habit`, `--level-0` | `streak-grid` | `#16a34a`, `#ebedf0` |
+| `--chip`, `--chip-ink`, `--column`, `--column-over` | `kanban-column` | `#eceefe`, `#3a3f9e`, `#f3f4f7`, `#e8ebff` |
+| `--mention`, `--mention-wash` | `chat-message` | `#8a5a00`, `#fff4cc` |
+
+## Adding one
+
+Put the `.mnx` file in `components/`, give it a description comment, add it to a category in `build-index.mjs`, run `node registry/build-index.mjs`, and add its keyboard and screen-reader test.

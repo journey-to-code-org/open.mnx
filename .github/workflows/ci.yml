@@ -46,6 +46,9 @@ jobs:
         working-directory: runtime
       - run: npm run test:tools
         working-directory: runtime
+      # The component registry: keyboard and screen-reader behaviour of each component, and its index.
+      - run: node --test "registry/test/*.test.js"
+      - run: node registry/build-index.mjs --check
 
   plugin:
     name: Build plugin (Vite, React, Vue)

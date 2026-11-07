@@ -2,6 +2,27 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.5.0 — 2026-11-07
+
+Share components (`plan/roadmap-adoption.md`).
+
+### Added
+
+- **Library mode: `mnx build --lib <dir>`.** A folder of components becomes a publishable package with no bundler or mnx tooling needed by consumers. It contains an ES module per element, an index, React and Vue entries (`<package>/react`, `<package>/vue`) with their typings, `custom-elements.json`, and `package.json` exports. Tested by building the registry and using it from a React app and a Vue app (each with only its framework's Vite plugin), a plain page and TypeScript.
+- **`mnx` on npm**: `@mnx/compiler` now has a command, `mnx`, with `build --lib`, `add`, `compile` and `check`, running the WebAssembly compiler (no Rust needed). `buildLibrary()` is exported from `@mnx/compiler/library`.
+- **The component registry: `mnx add <name>`.** It copies one of twenty accessible components into your project (`--dir`, `--force`, `--list`). They are drawn from the examples:
+  - inputs: tag input, date range, money input, star rating, toggle switch, choice cards, colour swatches, quantity stepper, segmented control;
+  - display: donut chart, spark line, line chart, progress ring, streak grid, flip card, step indicator;
+  - app pieces: kanban column, chat message, message composer, and a new modal dialog.
+
+  Each has keyboard and screen-reader tests (role, accessible name, announced state). Every colour is a themeable custom property with a default.
+- **Storybook through the manifest**: the library's `package.json` points to its `custom-elements.json`, which `@storybook/web-components` reads for controls and docs (README, "Sharing components").
+
+### Fixed
+
+- The chat message's action toolbar (the Lit example's, and the registry's) was `display: none` until hovered, so the keyboard couldn't reach it. It is now transparent until hovered or focused.
+- In the registry versions: the star rating is a named group with a two-way `value`; the spark line is an image named with its trend; the flip card's name is its visible face; the emoji picker is a named group rather than a menu without menu keys.
+
 ## 2.4.0 — 2026-11-07
 
 Start in a minute (`plan/roadmap-adoption.md`).

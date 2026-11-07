@@ -1,0 +1,184 @@
+{
+  "components": [
+    {
+      "name": "chat-message",
+      "category": "app",
+      "description": "One message: avatar, author, time, text (with @mentions and links picked out), the message it replies to, and reactions. `me` is the signed-in user's name: their messages, mentions of them and their reactions are marked.",
+      "files": [
+        "chat-message.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "choice-cards",
+      "category": "input",
+      "description": "Pick one of several cards: a radio group. A form control; arrow keys move the choice. Each item is `{ id, title, detail, price, note }` (`note` and `price` optional).",
+      "files": [
+        "choice-cards.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "color-swatches",
+      "category": "input",
+      "description": "Pick a colour from `colors`. A form control (a radio group): arrow keys move the choice.",
+      "files": [
+        "color-swatches.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "date-range",
+      "category": "input",
+      "description": "A check-in and check-out date, as one value `{ start, end }` (\"YYYY-MM-DD\" strings). A form control: invalid until both are set and `end` is after `start`.",
+      "files": [
+        "date-range.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "donut-chart",
+      "category": "display",
+      "description": "A donut chart of `segments` (`[{ label, value, tone }]`, `tone` 0–7), with the total in the middle and a legend. Choosing a segment (or its legend entry) selects it; again clears it.",
+      "files": [
+        "donut-chart.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "flip-card",
+      "category": "display",
+      "description": "A card with two faces that flips in 3D. Click, Space or Enter flips it. Shadow DOM: the faces are slotted, and the page's CSS styles them, not the card's.",
+      "files": [
+        "flip-card.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "kanban-column",
+      "category": "app",
+      "description": "A board column: a heading with a count and an optional work-in-progress limit, its cards (the default slot) and a drop zone for cards dragged from anywhere on the board.",
+      "files": [
+        "kanban-column.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "line-chart",
+      "category": "display",
+      "description": "A price chart: an area under a line, with the high, low and a crosshair that follows the pointer and shows the value under it.",
+      "files": [
+        "line-chart.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "message-composer",
+      "category": "app",
+      "description": "Writing a message: Enter sends, Shift+Enter adds a line, the box grows with the text, an emoji menu inserts at the caret, and a message being replied to shows above.",
+      "files": [
+        "message-composer.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "modal-dialog",
+      "category": "app",
+      "description": "A modal dialog on the native <dialog>: the page behind is inert, focus moves into the dialog and back to where it was, and Escape, the close button or a click on the backdrop closes it. `open` is two-way.",
+      "files": [
+        "modal-dialog.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "money-input",
+      "category": "input",
+      "description": "An amount of money. Typing is free-form; on blur it's formatted (`1234.5` → `1,234.50`). The value is a number (or null when empty). A form control: `required` and `min` validate it.",
+      "files": [
+        "money-input.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "progress-ring",
+      "category": "display",
+      "description": "A ring that fills to `value` of `max`, with what's in the middle from the default slot (the percentage if empty).",
+      "files": [
+        "progress-ring.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "quantity-stepper",
+      "category": "input",
+      "description": "A number with − and + buttons, between `min` and `max`. A form control.",
+      "files": [
+        "quantity-stepper.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "segmented-control",
+      "category": "input",
+      "description": "A row of mutually exclusive options. `options` is `[{ value, label }]`.",
+      "files": [
+        "segmented-control.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "spark-line",
+      "category": "display",
+      "description": "A small line of recent values, green when it ends higher than it started, red when lower.",
+      "files": [
+        "spark-line.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "star-rating",
+      "category": "input",
+      "description": "A star rating that is a form control: it submits its value under its `name`, is invalid while `required` and unset, and goes back to 0 when its form resets. `readonly` shows a rating.",
+      "files": [
+        "star-rating.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "step-indicator",
+      "category": "display",
+      "description": "Where a multi-step flow is: steps done (which can be revisited), the current one, and those ahead.",
+      "files": [
+        "step-indicator.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "streak-grid",
+      "category": "display",
+      "description": "A habit's last weeks as a grid of days (a column per week, Monday at the top), shaded by how much of the goal was done. Choosing a day toggles it; arrow keys move between days. `log` maps \"YYYY-MM-DD\" to a count; `today` is \"YYYY-MM-DD\".",
+      "files": [
+        "streak-grid.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "tag-input",
+      "category": "input",
+      "description": "A list of tags you type: Enter or comma adds one, Backspace in the empty field removes the last, × removes any. Suggestions come from `suggestions`. A form control.",
+      "files": [
+        "tag-input.mnx"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "toggle-switch",
+      "category": "input",
+      "description": "An on/off switch with a label and a description. A form control (submits \"on\" when checked).",
+      "files": [
+        "toggle-switch.mnx"
+      ],
+      "dependencies": []
+    }
+  ]
+}

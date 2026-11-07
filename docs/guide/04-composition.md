@@ -58,4 +58,8 @@ Components render into **light DOM** by default: their markup is part of the pag
 
 `createContext`, `provide` and `inject` pass a value down the tree without props, following the community Context Protocol (so they also work with Lit's context). For app-wide state, a module that exports `state()` signals works too: every component that reads one updates when it changes.
 
+## Ready-made components, and publishing your own
+
+`npx mnx add modal-dialog` copies a component from the registry into your project: twenty accessible components, from form controls to charts and a dialog. When yours are ready to share, `npx mnx build --lib src/components` makes them a package that works in every framework (the README's "Sharing components" section).
+
 **Next:** [Forms](05-forms.md)
