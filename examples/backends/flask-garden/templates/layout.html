@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · Garden plots</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  {# The styles of the mnx components this page rendered. #}
+  <style data-mnx-components>{{ styles }}</style>
+  <script type="importmap">{ "imports": { "@mnx/runtime": "/vendor/mnx/index.js" } }</script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">🌱 Garden plots</a>
+    <nav aria-label="Main"><a href="/">Plots</a> <a href="/harvest">Harvest</a></nav>
+  </header>
+  <main>
+{{ body }}
+  </main>
+  {% if modules %}
+  {# The page works as it is; these make its components interactive, on the markup above. #}
+  <script type="module">
+{% for name in modules %}    import '/components/{{ name }}.js';
+{% endfor %}  </script>
+  {% endif %}
+</body>
+</html>

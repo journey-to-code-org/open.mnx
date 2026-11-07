@@ -1,0 +1,41 @@
+<!--
+  The garden as a grid of plots. On the server it's a list of links (one per plot), so it works
+  without JavaScript; in the browser the arrow keys move between plots, by row and column.
+  `plots` is `[{ id, status, size, sun, waiting }]`, in row order.
+-->
+<script>
+  import './status-pill.mnx'
+
+  let grid = null
+  function step(event, by) {
+    const links = [...grid.querySelectorAll('a')]
+    const at = links.indexOf(event.target)
+    const next = links[at + by]
+    if (at >= 0 && next) next.focus()
+  }
+</script>
+<style>
+  ul { display: grid; grid-template-columns: repeat(var(--columns), minmax(0, 1fr)); gap: 0.6rem; margin: 0; padding: 0; list-style: none; }
+  a { display: grid; gap: 0.3rem; padding: 0.8rem; border: 2px solid #d9dccf; border-radius: 0.7rem; background: white; color: inherit; text-decoration: none; }
+  a:hover { border-color: #8aa77d; }
+  a:focus-visible { outline: 3px solid #3b7d3f; outline-offset: 2px; }
+  a[data-status=open] { background: #f6fbf4; }
+  a.selected { border-color: #3b7d3f; box-shadow: 0 0 0 3px #cfe6c9; }
+  strong { font-size: 1.15rem; }
+  small { color: #6b705f; }
+</style>
+<plot-map plots={[]} selected="" columns={4}>
+  <ul ref={grid} style:--columns={columns}
+      onkeydown.right.prevent={(event) => step(event, 1)} onkeydown.left.prevent={(event) => step(event, -1)}
+      onkeydown.down.prevent={(event) => step(event, columns)} onkeydown.up.prevent={(event) => step(event, 0 - columns)}>
+    <mnx-each items={plots} as="plot" key={plot.id}>
+      <li>
+        <a href={"/plots/" + plot.id} data-status={plot.status} class:selected={plot.id === selected} aria-current={plot.id === selected ? "page" : null}>
+          <strong>{plot.id}</strong>
+          <status-pill status={plot.status} waiting={plot.waiting}></status-pill>
+          <small>{plot.size} · {plot.sun} sun</small>
+        </a>
+      </li>
+    </mnx-each>
+  </ul>
+</plot-map>

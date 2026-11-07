@@ -1,0 +1,32 @@
+<!--
+  Harvest by crop, as horizontal bars. Rendered completely on the server (by the Rust
+  compiler), so the chart is in the page's HTML: the app passes each bar's share as `pct`,
+  since the server's renderer evaluates arithmetic but not `Math.max(…)` or `.reduce(…)`.
+  `rows` is `[{ crop, label, kg, pct }]`.
+-->
+<style>
+  figure { margin: 0; }
+  figcaption { margin-bottom: 0.6rem; font-weight: 600; }
+  ol { display: grid; gap: 0.45rem; margin: 0; padding: 0; list-style: none; }
+  li { display: grid; grid-template-columns: 6rem 1fr 4rem; align-items: center; gap: 0.6rem; }
+  .bar { height: 1.1rem; border-radius: 0.3rem; background: linear-gradient(90deg, #5c9d55, #3b7d3f); }
+  .kg { text-align: right; font-variant-numeric: tabular-nums; color: #4a4f40; }
+  p { color: #6b705f; }
+</style>
+<harvest-chart rows={[]} total={0} heading="Harvest">
+  <figure>
+    <figcaption>{heading} <small>({total} kg)</small></figcaption>
+    <mnx-if test={rows.length > 0}>
+      <ol>
+        <mnx-each items={rows} as="row" key={row.crop}>
+          <li data-crop={row.crop}>
+            <span>{row.label}</span>
+            <span class="bar" style:width={row.pct + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
+            <span class="kg">{row.kg} kg</span>
+          </li>
+        </mnx-each>
+      </ol>
+      <mnx-else><p>Nothing harvested yet.</p></mnx-else>
+    </mnx-if>
+  </figure>
+</harvest-chart>

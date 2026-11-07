@@ -1,0 +1,18 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #2b2f25; background: #f4f5ef; }
+.top { display: flex; align-items: center; gap: 1.5rem; padding: 0.8rem 1.5rem; background: #2f5e32; }
+.top a { color: white; text-decoration: none; }
+.brand { font-weight: 700; }
+.top nav { display: flex; gap: 1rem; }
+main { max-width: 64rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+h1 { display: flex; align-items: center; gap: 0.6rem; margin-top: 0; }
+.lede { color: #4a4f40; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; align-items: start; }
+@media (max-width: 48rem) { .split { grid-template-columns: 1fr; } }
+.form { display: grid; gap: 0.9rem; max-width: 26rem; }
+.form > label { display: grid; gap: 0.25rem; font-weight: 600; }
+.form input:not([type=checkbox]), .form select { padding: 0.5rem 0.65rem; font: inherit; font-weight: 400; border: 1px solid #d9dccf; border-radius: 0.5rem; background: white; }
+.form button, .form > button { justify-self: start; padding: 0.55rem 1.2rem; font: inherit; font-weight: 600; color: white; background: #3b7d3f; border: 0; border-radius: 0.5rem; cursor: pointer; }
+.error { margin: -0.5rem 0 0; color: #a3302b; font-size: 0.9rem; }
+.notice { padding: 0.8rem 1rem; background: #e3f4e1; border-radius: 0.6rem; }
+aside plot-map ul { gap: 0.4rem; }

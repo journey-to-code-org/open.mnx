@@ -17,7 +17,10 @@ Projects that use mnx 2 the way an app would, each with its own README:
 - **[`meta/`](meta/)**, the meta-framework ones: a conference app in Next.js, a bookshop in Nuxt
   and a workout log in SvelteKit, each using mnx elements from server-rendered pages, with forms
   posting to the framework's own server code. Its README lists what they found.
+- **[`backends/`](backends/)**, the non-JavaScript servers: a community garden's plot sign-up
+  in Flask, Jinja and SQLite, whose components are rendered by the Rust CLI, with no Node.js
+  on the server.
 
-`plugin/test/examples.test.js`, `frameworks/test/`, `helpdesk/test/` and each `meta/*/test/` build each one and drive them in Chromium (the help desk also against MongoDB in CI).
+`plugin/test/examples.test.js`, `frameworks/test/`, `helpdesk/test/` each `meta/*/test/` and each `backends/*/tests/` build each one and drive them in Chromium (the help desk also against MongoDB in CI).
 
 The loose `.mnx` files here are the small samples the CLI's README and tests refer to.

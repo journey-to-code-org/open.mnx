@@ -1,0 +1,11 @@
+<!--
+  A plot's status as a small label: open, or taken (with how many are waiting).
+-->
+<style>
+  span { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; }
+  span[data-status=open] { background: #e3f4e1; color: #24642b; }
+  span[data-status=taken] { background: #f3ece1; color: #7a5420; }
+</style>
+<status-pill status="open" waiting={0}>
+  <span data-status={status}>{status}{waiting > 0 ? " · " + waiting + " waiting" : ""}</span>
+</status-pill>

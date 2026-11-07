@@ -2,6 +2,16 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.4 — 2026-11-07
+
+### Examples
+
+- **`examples/backends/flask-garden/`**: a community garden's plot sign-up in Python, built with Flask, Jinja and SQLite.
+  - Its components are rendered by the mnx CLI (`mnx request`), so there's no Node.js on the server and no bundler. The browser hydrates them through an import map.
+  - `garden/mnx.py` is the glue: about 100 lines, standard library only.
+  - Every page works without JavaScript. Its tests drive them in Chromium with JavaScript off and on, using Playwright for Python. CI runs them in a new `backends` job.
+  - Its README lists what it found about the server's expression subset, which is everything a non-JavaScript server has.
+
 ## 2.6.3 — 2026-11-07
 
 ### Fixed
