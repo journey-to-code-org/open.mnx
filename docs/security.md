@@ -12,13 +12,13 @@ mnx draws one trust boundary: **the `.mnx` source is code you trust; the values 
 
 **Boolean attributes take booleans.** `disabled={x}` requires a boolean; a quoted interpolation into a boolean attribute is a compile error, so `"false"` can't silently mean true.
 
-**No string event handlers.** `onclick="…"` is a compile error. `onclick={handler}` binds a function from the script, read when the event fires; it's left out of the HTML output.
+**No string event handlers.** `onclick="…"` is a compile error. `onclick={handler}` (or `onclick={() => …}`) binds a function written in the component, read when the event fires; it's left out of the HTML output. (Server-rendered slot content passed to the HTML output as HTML is the server's own markup and is kept as written.)
 
 **No inline styles or scripts in templates.** `style` attributes, `<style>` and `<script>` elements inside a template are compile errors. The component's own `<script>` and `<style>` blocks, before the host tag, are the only code and CSS in a component. The `<style>` is static: no expressions, so values can't inject CSS.
 
 **Attributes are parsed, never evaluated.** A prop set from an attribute is parsed by its default's type: a number, a boolean, or `JSON.parse` for arrays and objects. Invalid JSON keeps the default and logs a warning.
 
-**Build-time expressions can't run code.** The expression language in templates and build-time `const`s has no calls, assignment, `new` or `this`, so compiling a component never executes its expressions as JavaScript.
+**Build-time expressions can't run code.** The build-time subset that the HTML output evaluates has no calls, assignment, `new` or `this`, so compiling a component never executes its expressions as JavaScript. Template expressions outside the subset are component code, like the `<script>`: they run only in the browser, in the JavaScript output, and their values reach the DOM through the same escaping and URL checks.
 
 ## What is your responsibility
 

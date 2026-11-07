@@ -30,6 +30,10 @@ const stars = ref(1);
 <template><Rating v-model="stars" /></template>
 ```
 
+## JSX components
+
+`.mnx.jsx` and `.mnx.tsx` files are components too (see the main README), resolved and wrapped like `.mnx` files: `import Rating from './rating.mnx.tsx'` in a React file is a React component, and `?element` gives the element. TypeScript reads the component's own source for its types, so no typings file is written for it.
+
 ## What an import gives
 
 | Imported from | Default export |

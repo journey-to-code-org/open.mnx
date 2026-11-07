@@ -43,10 +43,45 @@ import Header from './header.mnx';
 - **Defaults computed in the browser.** A prop whose default uses a value only the browser has (`since={start}` with `const start = Date.now()`, or anything reading `window`, `document`, `Math` and other globals) gets it per element, after the script runs, unless the prop was given by an attribute or property. The HTML output needs that prop from `--props` (or from the parent), and says so.
 - **`<script>` is real JavaScript** (parsed with oxc). Top-level `const`/`let` initializers written in the expression language are evaluated at build time for the HTML output. Functions, imports and everything else run in the browser, once per element. Using a runtime-only value in static HTML is a compile error that says so.
 - **`<script lang="ts">`** is TypeScript, reduced to JavaScript by removing its types in place, so every line and column stays where it was and errors point into your source. Only erasable syntax is accepted, as with Node's type stripping or TypeScript's `erasableSyntaxOnly`. `enum`, `namespace`, parameter properties, `<T>x` assertions and `import x = require()` are errors that say what to write instead. The types aren't lost: a prop whose default is an annotated binding (`const options: Option[] = …`, then `options={options}`) has that type, `emit<Picked>("pick", …)` types the event's `detail`, and the script's `type`/`interface` declarations are exported from the generated typings.
-- **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). The expression language is a JavaScript subset: literals, arrays and objects, member and index access (with `?.`), `!` `-` `+` `*` `/` `%`, comparisons, `==`/`!=` (strict), `&&` `||` `??` and `? :`, with JavaScript's truthiness. Calls, assignment, `new` and `this` are rejected with a reason. Signals read in the template (`{count}`) are reactive.
+- **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). An expression in the build-time subset is evaluated by the HTML output too: literals, arrays and objects, member and index access (with `?.`), `!` `-` `+` `*` `/` `%`, comparisons, `==`/`!=` (strict), `&&` `||` `??` and `? :`, with JavaScript's truthiness. Signals read in the template (`{count}`) are reactive.
+- **Any other JavaScript expression runs in the browser**: calls (`{format(price)}`, `{items.filter((item) => item.done).length}`), arrow-function handlers that close over list items (`onclick={() => remove(item.id)}`), `new`. Names mean what they mean in the script, so a `state()` is read with `.get()` there (`{count.get() * 2}`); props and list items read as in the subset. A template can assign to props only (`onclick={() => { open = !open }}`), and `emit()` in a template declares its event like one in the script. The HTML output can't evaluate these, so a component that renders one needs the JavaScript output (handlers are never rendered, so inline handlers don't count).
 - **Names resolve** to loop variables, then props, then script bindings. Every reference is checked in every branch, including branches a build won't render, and unknown names get a "did you mean" suggestion. Errors point at the source line with a caret.
-- **Events from the template**: `onclick={increment}` calls a script function, read when the event fires.
+- **Events from the template**: `onclick={increment}` calls a script function, read when the event fires; `onclick={() => rate(2)}` works too.
 - **Warnings** flag props that shadow built-in element properties (a `hidden` prop also hides the element; `title` also shows a tooltip).
+
+## JSX components
+
+A component can also be a function in a `.mnx.jsx` or `.mnx.tsx` file. It compiles to the same element as an `.mnx` file, and the two formats import each other.
+
+```jsx
+// rating.mnx.jsx
+/** A two-star rating. */
+export default function MnxRating({ value = 0, onValueChange }) {
+  let hovered = null                         // state: assigning it updates the DOM
+  const shown = hovered ?? value             // derived from props and state: stays in sync
+  function rate(stars) {
+    value = stars                            // props are names, readable and writable
+    onValueChange(stars)                     // fires `valuechange` with detail `stars`
+  }
+  return (
+    <>
+      {[1, 2].map((star) => (
+        <button key={star} onClick={() => rate(star)} onMouseEnter={() => (hovered = star)}>{star}</button>
+      ))}
+      <output>{shown}</output>
+      {value > 1 && <em>Great!</em>}
+    </>
+  )
+}
+```
+
+- **The function's name is the tag**: `MnxRating` is `<mnx-rating>` (custom elements need a hyphen, so `Rating` is an error). Return the host itself (`<mnx-rating shadow>…</mnx-rating>`) to set `shadow` or `form-associated`.
+- **Destructured parameters are props**, with their defaults; one without a default is required. **`on<Name>` parameters are events**: calling `onValueChange(x)` fires `valuechange` with `detail: x`, so React users pass `onValueChange` and everyone else listens for `valuechange`. **`children`** is the default slot; `<mnx-slot name="…">` declares named ones.
+- **The body runs once per element**, not on every change. A top-level `let` is state, a top-level `const` that reads props or state is derived, and everything in the returned JSX is a fine-grained binding.
+- **In the JSX**: `cond && <X/>` and `cond ? <A/> : <B/>` are conditionals, `list.map((item, i) => <li key={item.id}>…</li>)` is a keyed list, imported components are used by name (`import Badge from './badge.mnx'`, then `<Badge label="x" />`), and `className`, `htmlFor` and `onClick` mean `class`, `for` and `onclick`. Any JavaScript expression works, as in `.mnx` templates.
+- Errors point into the JSX. Not supported yet, each with an error that says what to do instead: spread props and attributes, `ref`, render props (JSX in attributes), renamed or nested destructured props, early returns, and module-level `let`. Prop types come from defaults, and JSX components have no `<style>` yet.
+
+`plan/decisions/jsx-components.md` in the project docs records the design.
 
 ## Directives
 
