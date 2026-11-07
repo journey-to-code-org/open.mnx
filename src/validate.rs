@@ -484,6 +484,7 @@ fn prop_default(
         PropDefault::Expression(expression, span) => {
             let names: Vec<&str> = locals.iter().map(|(name, _)| name.as_str()).collect();
             let mut problem = None;
+            let runtime = expression.is_runtime();
             expression.for_each_identifier(&mut |name| {
                 if problem.is_some() {
                     return;
@@ -491,9 +492,16 @@ fn prop_default(
                 match find_local(locals, name) {
                     Some(Local::Value(_)) => {}
                     Some(Local::Runtime) => problem = Some(Err(name.to_owned())),
+                    None if runtime && RUNTIME_GLOBALS.contains(&name) => {}
                     None => problem = Some(Ok(name.to_owned())),
                 }
             });
+            // A runtime expression (`{Date.now()}`) is computed in the browser, like a default
+            // that uses a runtime-only script value.
+            if runtime && problem.is_none() {
+                let text = expression.to_js_with(&|name| name.to_owned());
+                problem = Some(Err(text[1..text.len() - 1].to_owned()));
+            }
             match problem {
                 Some(Ok(unknown)) => {
                     return Err(with_suggestion(
@@ -597,11 +605,29 @@ impl Context<'_> {
         scopes: &[Vec<String>],
     ) -> Result<(), Diagnostic> {
         let mut unknown = None;
+        let runtime = expression.is_runtime();
         expression.for_each_identifier(&mut |name| {
-            if unknown.is_none() && !self.names_in_scope(scopes).contains(&name) {
+            // A runtime expression may use the browser's globals, as a script may.
+            let global = runtime && (RUNTIME_GLOBALS.contains(&name) || name == "undefined");
+            if unknown.is_none() && !global && !self.names_in_scope(scopes).contains(&name) {
                 unknown = Some(name.to_owned());
             }
         });
+        for name in expression.written_names() {
+            let prop = self.props.iter().any(|prop| prop.name == name);
+            let looped = scopes.iter().flatten().any(|scope| scope == name);
+            if looped || !prop {
+                return Err(Diagnostic::new(
+                    span,
+                    format!("`{name}` can't be assigned here: a template can assign to props only"),
+                )
+                .with_help(if looped {
+                    "a list item is read-only; change the list instead".to_owned()
+                } else {
+                    format!("call a function from <script> that updates `{name}` (e.g. `{name}.set(…)` on a state())")
+                }));
+            }
+        }
         match unknown {
             None => Ok(()),
             Some(name) => Err(with_suggestion(
@@ -1522,7 +1548,7 @@ pub(crate) fn check_child_required(
 }
 
 /// Globals a component script can read in the browser (a binding that uses one is runtime-only).
-const RUNTIME_GLOBALS: &[&str] = &[
+pub(crate) const RUNTIME_GLOBALS: &[&str] = &[
     "window",
     "self",
     "globalThis",

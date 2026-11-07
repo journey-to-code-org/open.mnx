@@ -62,7 +62,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         }
         host_comment = parser.skip_whitespace_and_comments()?;
     }
-    let script = script.unwrap_or_default();
+    let mut script = script.unwrap_or_default();
 
     if !parser.starts_with("<") || parser.starts_with("</") {
         return Err(
@@ -110,6 +110,20 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
             default,
             span: attribute.span,
         });
+    }
+
+    // Events emitted from the template's runtime expressions count too.
+    if let Some(emit) = script.emit.clone() {
+        let mut found = Ok(Vec::new());
+        crate::ast::for_each_expression(&host.children, &mut |expression, span| {
+            if let (Expression::Runtime { source, .. }, Ok(emits)) = (expression, &mut found) {
+                match crate::script::template_emits(source, &emit, span) {
+                    Ok(more) => emits.extend(more),
+                    Err(error) => found = Err(error),
+                }
+            }
+        });
+        script.emits.extend(found?);
     }
 
     // A comment right above the host tag (or above the script) documents the component.
@@ -592,7 +606,24 @@ impl<'a> TemplateParser<'a> {
         if braced.inner.trim().is_empty() {
             return Err(Diagnostic::new(braced.open_span, "empty {} expression"));
         }
-        let expression = expression::parse(braced.inner).map_err(|error| {
+        let subset = expression::parse(braced.inner);
+        let inner = braced.inner.trim();
+        let v02 = inner
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+            .is_some_and(|name| is_identifier(name.trim()));
+        // Beyond the build-time subset, any JavaScript expression is accepted; it runs in the
+        // browser only (see `runtime_expression`).
+        if subset.is_err() && !v02 {
+            if let Ok(names) = crate::runtime_expression::parse(braced.inner) {
+                let expression = Expression::Runtime {
+                    source: braced.inner.to_owned(),
+                    names,
+                };
+                return Ok((expression, braced.open_span));
+            }
+        }
+        let expression = subset.map_err(|error| {
             // `{{ name }}` parses as an (invalid) object literal; it's almost certainly v0.2.
             let inner = braced.inner.trim();
             if let Some(name) = inner

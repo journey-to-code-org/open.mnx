@@ -200,3 +200,55 @@ pub enum Part {
     Literal(String),
     Expression { expression: Expression, span: Span },
 }
+
+/// Call `visit` with every expression in `nodes` (text, attributes, directives), with its span.
+pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Span)) {
+    let parts = |parts: &[Part], visit: &mut dyn FnMut(&Expression, Span)| {
+        for part in parts {
+            if let Part::Expression { expression, span } = part {
+                visit(expression, *span);
+            }
+        }
+    };
+    for node in nodes {
+        match node {
+            Node::Text(text) => parts(text, visit),
+            Node::Element(element) => {
+                for attribute in &element.attributes {
+                    match &attribute.value {
+                        AttributeValue::None => {}
+                        AttributeValue::Text(text) => parts(text, visit),
+                        AttributeValue::Expression(expression, span) => visit(expression, *span),
+                    }
+                }
+                for_each_expression(&element.children, visit);
+            }
+            Node::If {
+                test,
+                test_span,
+                consequent,
+                alternate,
+                ..
+            } => {
+                visit(test, *test_span);
+                for_each_expression(consequent, visit);
+                for_each_expression(alternate, visit);
+            }
+            Node::Each {
+                items,
+                items_span,
+                key,
+                children,
+                ..
+            } => {
+                visit(items, *items_span);
+                if let Some((key, span)) = key {
+                    visit(key, *span);
+                }
+                for_each_expression(children, visit);
+            }
+            Node::Slot { fallback, .. } => for_each_expression(fallback, visit),
+            Node::Else { children, .. } => for_each_expression(children, visit),
+        }
+    }
+}

@@ -405,7 +405,11 @@ fn rejects_malformed_html_and_unsafe_template_features() {
             "quoted text or a {…} expression",
         ),
         ("<mnx-x><p>{ }</p></mnx-x>", "empty {} expression"),
-        ("<mnx-x><p>{a.b(1)}</p></mnx-x>", "function calls"),
+        (
+            "<script>const a = {}</script>\n<mnx-x><p>{a.b(1)}</p></mnx-x>",
+            "runs in the browser only",
+        ),
+        ("<mnx-x><p>{a.b(1)}</p></mnx-x>", "unknown reference `a`"),
         ("<mnx-x></mnx-x><mnx-y></mnx-y>", "after the host element"),
     ] {
         assert_error(source, "{}", expected);

@@ -193,6 +193,28 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     Ok(script)
 }
 
+/// `emit("name", detail)` calls in a template's runtime expression (`onclick={() => emit(…)}`),
+/// located at the expression.
+pub fn template_emits(source: &str, emit: &str, span: Span) -> Result<Vec<Emit>, Diagnostic> {
+    let wrapped = format!("({source}\n)");
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, &wrapped, SourceType::mjs()).parse();
+    let declared = std::collections::HashMap::new();
+    let at = |_: u32| span;
+    let mut finder = EmitFinder {
+        emit,
+        declared: &declared,
+        at: &at,
+        emits: Vec::new(),
+        error: None,
+    };
+    finder.visit_program(&parsed.program);
+    match finder.error {
+        Some(error) => Err(error),
+        None => Ok(finder.emits),
+    }
+}
+
 /// The module components import hooks from.
 pub const RUNTIME: &str = "@mnx/runtime";
 

@@ -13,6 +13,7 @@ useBrowser({
   pair: join(here, 'fixtures/pair.mnx'),
   typed: join(here, 'fixtures/typed.mnx'),
   clock: join(here, 'fixtures/clock.mnx'),
+  inline: join(here, 'fixtures/inline.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -273,5 +274,29 @@ test('blocks unsafe URLs at runtime and handles boolean and interpolated attribu
     await el.updateComplete;
   });
   assert.equal((await read()).hidden, false, 'kebab-case attributes map to camelCase props');
+  await page.close();
+});
+
+test('inline JavaScript in the template: calls, handlers that close over list items, emit()', async () => {
+  const { page, messages } = await open('<mnx-inline></mnx-inline>', { modules: ['inline'] });
+  const read = () => page.evaluate(() => ({
+    summary: document.querySelector('.summary').textContent,
+    rows: [...document.querySelectorAll('mnx-inline li')].map((li) => li.textContent),
+  }));
+  assert.deepEqual(await read(), { summary: '2 of 3; none', rows: ['#2 LINUS', '#3 GRACE'] });
+  assert.deepEqual(await page.evaluate(() => customElements.get('mnx-inline').mnx.events), ['pick']);
+  assert.equal(await page.evaluate(() => typeof document.querySelector('mnx-inline').stamp), 'number', 'a default computed in the browser');
+
+  await page.evaluate(() => document.querySelector('mnx-inline').addEventListener('pick', (event) => { window.picked = event.detail; }));
+  await page.click('mnx-inline li:last-child');
+  await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
+  assert.equal(await page.evaluate(() => window.picked), 3, 'the handler saw its own row');
+  assert.equal((await read()).summary, '2 of 3; grace', 'a state() read with .get() in the template is reactive');
+
+  await page.click('mnx-inline .raise');
+  await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
+  assert.deepEqual(await read(), { summary: '1 of 3; grace', rows: ['#3 GRACE'] }, 'a handler assigned a prop');
+  assert.equal(await page.evaluate(() => document.querySelector('mnx-inline').min), 2);
+  assert.deepEqual(messages, []);
   await page.close();
 });

@@ -1,0 +1,17 @@
+<!--
+  Inline JavaScript in the template: calls, arrow-function handlers and list methods.
+-->
+<script>
+  import { state, emit } from '@mnx/runtime'
+  const picked = state(null)
+  const format = (n) => `#${n}`
+</script>
+<mnx-inline items={[{ id: 1, name: "ada" }, { id: 2, name: "linus" }, { id: 3, name: "grace" }]} min={1} stamp={Date.now()}>
+  <p class="summary">{items.filter((item) => item.id > min).length} of {items.length}; {picked.get() ?? "none"}</p>
+  <button type="button" class="raise" onclick={() => { min = min + 1 }}>raise</button>
+  <ul>
+    <mnx-each items={items.filter((item) => item.id > min)} as="item" key={item.id}>
+      <li onclick={() => { picked.set(item.name); emit("pick", item.id) }}>{format(item.id)} {item.name.toUpperCase()}</li>
+    </mnx-each>
+  </ul>
+</mnx-inline>

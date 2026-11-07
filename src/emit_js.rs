@@ -175,7 +175,14 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     // Defaults that use script values: computed now, unless the prop was already given.
     for prop in &interface.props {
         if let Some(default) = &prop.runtime_default {
-            let value = default.to_js_with(&|name| format!("$r({name})"));
+            let runtime = default.is_runtime();
+            let value = default.to_js_with(&|name| {
+                if runtime {
+                    name.to_owned()
+                } else {
+                    format!("$r({name})")
+                }
+            });
             out.push_str(&format!(
                 "    $initial({}, () => {value});\n",
                 json(&prop.name)
@@ -385,12 +392,19 @@ impl<'a> Emitter<'a> {
     /// unwraps signals (rows hold their item as a signal; `const count = state(0)` makes `{count}`
     /// reactive); props read from `$p`, whose getters are signal-backed. Loop variables shadow
     /// props, props shadow script names — the same order the HTML backend resolves.
+    ///
+    /// A runtime expression (beyond the build-time subset) is script code: its script names
+    /// mean what they mean in the script, so a `state()` is read with `.get()` there.
     fn js(&self, expression: &Expression) -> String {
+        let runtime = expression.is_runtime();
         expression.to_js_with(&|name| {
             if self.scopes.iter().any(|scope| scope == name) {
                 format!("$r({name})")
             } else if self.interface.props.iter().any(|prop| prop.name == name) {
                 format!("$p.{name}")
+            } else if runtime {
+                // A script name, or a browser global.
+                name.to_owned()
             } else {
                 format!("$r({name})")
             }

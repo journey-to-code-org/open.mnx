@@ -15,6 +15,7 @@ mod ir;
 mod parser;
 mod render;
 mod request;
+mod runtime_expression;
 mod scanner;
 mod script;
 mod styles;

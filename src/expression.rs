@@ -71,6 +71,30 @@ pub enum Expression {
         index: Box<Expression>,
         optional: bool,
     },
+    /// Any other JavaScript expression (calls, functions, …): it runs in the browser only.
+    Runtime {
+        source: String,
+        names: Vec<crate::runtime_expression::Name>,
+    },
+}
+
+impl Expression {
+    /// Whether this is JavaScript beyond the build-time subset (see [`Expression::Runtime`]).
+    pub fn is_runtime(&self) -> bool {
+        matches!(self, Self::Runtime { .. })
+    }
+
+    /// Free identifiers this expression assigns to (only runtime expressions can).
+    pub fn written_names(&self) -> Vec<&str> {
+        match self {
+            Self::Runtime { names, .. } => names
+                .iter()
+                .filter(|name| name.written)
+                .map(|name| name.name.as_str())
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -140,6 +164,9 @@ pub fn parse_prefix(source: &str) -> Result<(Expression, usize), ParseError> {
     Ok((expression, parser.position))
 }
 
+/// Why a runtime expression can't be evaluated at build time.
+pub const RUNTIME_ONLY: &str = "this expression runs in the browser only (it calls or defines a function, or goes beyond the build-time subset), so it can't be rendered into static HTML";
+
 // ---- evaluation ----------------------------------------------------------------------------
 
 impl Expression {
@@ -150,6 +177,7 @@ impl Expression {
             Self::Identifier(name) => {
                 lookup(name).ok_or_else(|| format!("unknown reference `{name}`"))
             }
+            Self::Runtime { .. } => Err(RUNTIME_ONLY.to_owned()),
             Self::String(value) => Ok(Value::String(value.clone())),
             Self::Number(text) => {
                 serde_json::from_str(text).map_err(|_| format!("invalid number literal `{text}`"))
@@ -265,6 +293,7 @@ impl Expression {
     pub fn for_each_identifier(&self, visit: &mut dyn FnMut(&str)) {
         match self {
             Self::Identifier(name) => visit(name),
+            Self::Runtime { names, .. } => names.iter().for_each(|name| visit(&name.name)),
             Self::String(_) | Self::Number(_) | Self::Boolean(_) | Self::Null => {}
             Self::Array(elements) => elements
                 .iter()
@@ -307,6 +336,7 @@ impl Expression {
     pub fn to_js_with(&self, map: &dyn Fn(&str) -> String) -> String {
         match self {
             Self::Identifier(name) => map(name),
+            Self::Runtime { source, names } => crate::runtime_expression::to_js(source, names, map),
             Self::String(value) => serde_json::to_string(value).unwrap_or_default(),
             Self::Number(text) => text.clone(),
             Self::Boolean(value) => value.to_string(),
