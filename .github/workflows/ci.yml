@@ -90,7 +90,7 @@ jobs:
         working-directory: examples/frameworks
       - run: npx playwright install --with-deps ${{ matrix.browser }}
         working-directory: examples/frameworks
-      - run: node --test test/react.test.js test/vue.test.js
+      - run: node test/build-ui.mjs && node --test test/react.test.js test/vue.test.js
         working-directory: examples/frameworks
 
   plugin:
