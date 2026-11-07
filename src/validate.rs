@@ -1093,8 +1093,11 @@ impl Context<'_> {
         custom_element: bool,
     ) -> Result<Option<ir::Attribute>, Diagnostic> {
         let lower = attribute.name.to_ascii_lowercase();
-        if crate::parser::is_event_attribute(&lower) {
-            // Handlers are functions: they exist only in the JavaScript output.
+        if crate::parser::is_event_attribute(&lower)
+            && matches!(attribute.value, AttributeValue::Expression(..))
+        {
+            // Handlers are functions: they exist only in the JavaScript output. (A handler
+            // written as text can only be in server-rendered slot HTML, which is kept.)
             return Ok(None);
         }
         let is_boolean = BOOLEAN_ATTRIBUTES.contains(&lower.as_str());

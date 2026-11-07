@@ -1,0 +1,60 @@
+// mnx components on a server: compiled modules load without a DOM, and render through the
+// registry the build plugin's server output fills. Needs `cargo build` at the repository root.
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { canRender, registerRenderer, renderToString } from '../src/server.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const repo = join(here, '../..');
+const mnix = join(repo, 'target/debug/mnix');
+execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
+// Inside the package, so `@mnx/runtime` resolves to it.
+const dir = join(here, `.server-${process.pid}`);
+mkdirSync(dir, { recursive: true });
+after(() => rmSync(dir, { recursive: true, force: true }));
+
+async function load(fixture) {
+  const path = join(dir, `${fixture}.js`);
+  writeFileSync(path, execFileSync(mnix, ['compile', join(here, 'browser/fixtures', `${fixture}.mnx`), '--emit', 'js'], { encoding: 'utf8' }));
+  return (await import(pathToFileURL(path).href)).default;
+}
+
+test('a compiled module loads without a DOM, as a stand-in with its description', async () => {
+  assert.equal(typeof HTMLElement, 'undefined');
+  const Card = await load('card');
+  assert.equal(Card.mnx.tag, 'mnx-card');
+  assert.deepEqual(Card.mnx.slots, ['default', 'title']);
+  assert.deepEqual(Object.keys(Card.mnx.props), ['heading', 'open']);
+  assert.throws(() => new Card(), /can't be created without a DOM/);
+  assert.equal(await load('card'), Card, 'one stand-in per tag');
+});
+
+test('renderToString() uses the registered renderer, with host attributes', async () => {
+  const Card = await load('card');
+  assert.equal(canRender(Card), false);
+  assert.throws(() => renderToString(Card), /no server renderer for <mnx-card>/);
+  registerRenderer('mnx-card', (props, slots) => execFileSync(mnix, ['request'], {
+    input: JSON.stringify({ path: '/card.mnx', files: { '/card.mnx': CARD }, props, slots, slotSource: 'html' }),
+    encoding: 'utf8',
+  }).replace(/^[^]*"output":("(?:[^"\\]|\\.)*")[^]*$/, (_, output) => JSON.parse(output)));
+  assert.equal(canRender(Card), true);
+  assert.equal(canRender(class {}), false);
+  const html = renderToString(Card, {
+    props: { heading: 'Mail' }, attributes: { class: 'big "one"', hidden: true, id: null }, slots: { title: '<h2>{T}</h2>' },
+  });
+  assert.match(html, /^<mnx-card class="big &quot;one&quot;" hidden heading="Mail">/);
+  assert.match(html, /<header><!--\[!--><h2>\{T\}<\/h2><!--\]--><\/header>/);
+  assert.throws(() => renderToString(Card, { slots: { nope: '' } }), /<mnx-card> has no slot `nope`/);
+  assert.throws(() => renderToString({}), /needs a compiled mnx element/);
+});
+
+const CARD = `<mnx-card heading="Card" open={true}>
+  <article>
+    <header><mnx-slot name="title"><h2>{heading}</h2></mnx-slot></header>
+    <mnx-if test={open}><section><mnx-slot><p>No content</p></mnx-slot></section></mnx-if>
+  </article>
+</mnx-card>`;

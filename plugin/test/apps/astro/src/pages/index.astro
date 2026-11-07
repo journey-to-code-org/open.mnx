@@ -1,0 +1,20 @@
+---
+import Rating from '../../components/rating.mnx';
+import Card from '../../components/card.mnx';
+import Inbox from '../../components/inbox.mnx';
+---
+<html>
+  <head><meta charset="utf-8"><title>Astro</title></head>
+  <body>
+    <Rating id="r" class="big" value={1} client:load />
+    <Card heading="Astro" data-kind="static">
+      <h2 slot="title">Custom {'{braces}'}</h2>
+      <p>Body</p>
+    </Card>
+    <Inbox />
+    <script>
+      await customElements.whenDefined('mnx-rating');
+      window.ready = true;
+    </script>
+  </body>
+</html>

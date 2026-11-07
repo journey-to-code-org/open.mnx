@@ -896,3 +896,41 @@ fn defaults_that_use_runtime_values_are_computed_in_the_browser() {
             .contains("  setup($p, $emit) {")
     );
 }
+
+#[test]
+fn server_rendered_slot_html_is_kept_as_written() {
+    use mnix_compiler::{compile_html_from, SlotSource};
+    let loader = |_: &str, _: &str| -> Result<(String, String), String> { Err("none".into()) };
+    let source = "<mnx-panel><main><mnx-slot><p>Fallback</p></mnx-slot></main></mnx-panel>";
+    let slots = serde_json::json!({
+        "default": "<p data-x={a}>{\"json\"}</p><!--astro:end--><script type=\"application/json\">{\"a\":1}</script><input value=raw onclick=\"go()\"><mnx-slot></mnx-slot>"
+    })
+    .to_string();
+    let html =
+        compile_html_from(source, "panel.mnx", "{}", &slots, SlotSource::Html, &loader).unwrap();
+    assert_eq!(
+        html,
+        "<mnx-panel><main><!--[!--><p data-x=\"{a}\">{\"json\"}</p><!--astro:end--><script type=\"application/json\">{\"a\":1}</script><input value=\"raw\" onclick=\"go()\"><mnx-slot></mnx-slot><!--]--></main></mnx-panel>"
+    );
+    // The same content is an error as a template (and stays one).
+    assert!(compile_html_from(
+        source,
+        "panel.mnx",
+        "{}",
+        &slots,
+        SlotSource::Template,
+        &loader
+    )
+    .is_err());
+    assert!(compile_html_from(
+        source,
+        "panel.mnx",
+        "{}",
+        r#"{"default":"<p>Broken</main>"}"#,
+        SlotSource::Html,
+        &loader
+    )
+    .unwrap_err()
+    .message
+    .contains("does not match"));
+}

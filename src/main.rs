@@ -24,9 +24,20 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("check") {
         return check(arguments.collect());
     }
+    // `mnix request`: one JSON request on stdin, the JSON response on stdout (what the
+    // WebAssembly build exposes, for anything embedding the native compiler instead).
+    if command.as_deref() == Some("request") {
+        if let Some(argument) = arguments.next() {
+            return Err(format!("unexpected argument `{argument}`"));
+        }
+        let request = std::io::read_to_string(std::io::stdin())
+            .map_err(|error| format!("unable to read standard input: {error}"))?;
+        println!("{}", mnix_compiler::handle_request(&request));
+        return Ok(());
+    }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix request < request.json\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -34,6 +45,7 @@ fn run() -> Result<(), String> {
         .ok_or_else(|| "missing component source path".to_owned())?;
     let mut props_path = None;
     let mut slots_path = None;
+    let mut slots_html = false;
     let mut output_path = None;
     let mut emit = "html".to_owned();
     let mut runtime = "@mnx/runtime".to_owned();
@@ -73,6 +85,8 @@ fn run() -> Result<(), String> {
             }
             "--props" => props_path = arguments.next(),
             "--slots" => slots_path = arguments.next(),
+            // The --slots content is HTML a server already rendered, kept as written.
+            "--slots-html" => slots_html = true,
             "--output" => output_path = arguments.next(),
             _ => return Err(format!("unexpected argument `{argument}`")),
         }
@@ -83,9 +97,9 @@ fn run() -> Result<(), String> {
         eprint!("{}", warning.render_warning(&source, &source_path));
     }
     if emit != "html" {
-        if props_path.is_some() || slots_path.is_some() {
+        if props_path.is_some() || slots_path.is_some() || slots_html {
             return Err(format!(
-                "--props and --slots apply to --emit html, not --emit {emit}"
+                "--props, --slots and --slots-html apply to --emit html, not --emit {emit}"
             ));
         }
         let name = Path::new(&source_path)
@@ -148,13 +162,24 @@ fn run() -> Result<(), String> {
             .map_err(|error| format!("{props_path}: unable to read props: {error}"))?,
         None => "{}".to_owned(),
     };
-    let html = if let Some(slots_path) = slots_path {
-        let slots = fs::read_to_string(&slots_path)
-            .map_err(|error| format!("{slots_path}: unable to read slots: {error}"))?;
-        mnix_compiler::compile_file(&source_path, &props, &slots)
+    let slots = match &slots_path {
+        Some(slots_path) => fs::read_to_string(slots_path)
+            .map_err(|error| format!("{slots_path}: unable to read slots: {error}"))?,
+        None => "{}".to_owned(),
+    };
+    let slot_source = if slots_html {
+        mnix_compiler::SlotSource::Html
     } else {
-        mnix_compiler::compile_file(&source_path, &props, "{}")
-    }
+        mnix_compiler::SlotSource::Template
+    };
+    let html = mnix_compiler::compile_html_from(
+        &source,
+        &source_path,
+        &props,
+        &slots,
+        slot_source,
+        &mnix_compiler::filesystem,
+    )
     .map_err(|diagnostic| diagnostic.render_in(&source, &source_path))?;
     if let Some(output_path) = output_path {
         write_atomically(&output_path, html.as_bytes())?;

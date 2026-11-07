@@ -1,0 +1,46 @@
+// Server rendering of mnx elements, for framework integrations (the Astro renderer, …).
+//
+// A `.mnx` module loads on a server: `define()` returns a stand-in that carries the element's
+// `mnx` description and can't be constructed. The build plugin's server build of each component
+// registers how to render it (through @mnx/compiler, with the component's sources embedded), and
+// `renderToString(Element, …)` uses that. Without the plugin, render a file with
+// `@mnx/compiler`'s `renderToString(path, …)` instead.
+
+// One registry per process, even with several copies of the runtime.
+const renderers = (globalThis[Symbol.for('mnx.renderers')] ??= new Map());
+
+/** Register how to server-render `tag`: `(props, slots) => html`. Called by the plugin's output. */
+export function registerRenderer(tag, render) {
+  renderers.set(tag, render);
+}
+
+/** Whether `Element` is an mnx element that can be rendered here. */
+export function canRender(Element) {
+  return typeof Element?.mnx?.tag === 'string' && renderers.has(Element.mnx.tag);
+}
+
+/**
+ * The element's server-rendered HTML, which it hydrates in the browser. `props` are its prop
+ * values (JSON), `attributes` other attributes for the host (`class`, `id`, …), and `slots` the
+ * supplied content by slot name (`default` for unnamed content), as HTML.
+ */
+export function renderToString(Element, { props = {}, attributes = {}, slots = {} } = {}) {
+  const meta = Element?.mnx;
+  if (!meta) throw new TypeError('mnx: renderToString() needs a compiled mnx element (the default export of a .mnx module)');
+  const render = renderers.get(meta.tag);
+  if (!render) {
+    throw new Error(`mnx: no server renderer for <${meta.tag}>; build it with the mnx plugin (in its server build), or use @mnx/compiler's renderToString(path)`);
+  }
+  for (const name of Object.keys(slots)) {
+    if (name !== 'default' && !meta.slots.includes(name)) throw new Error(`mnx: <${meta.tag}> has no slot \`${name}\``);
+  }
+  const html = render(props, slots);
+  const extra = Object.entries(attributes)
+    .filter(([, value]) => value != null && value !== false)
+    .map(([name, value]) => (value === true ? ` ${name}` : ` ${name}="${escapeAttribute(String(value))}"`))
+    .join('');
+  // Onto the host's start tag (the markup starts with it).
+  return extra ? html.replace(/^(<[a-z][\w.-]*)/, `$1${extra}`) : html;
+}
+
+const escapeAttribute = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');

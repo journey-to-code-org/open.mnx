@@ -429,3 +429,36 @@ test('esbuild builds the app', async () => {
   await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', outfile: join(root, 'dist/bundle.js'), plugins: [mnxEsbuild({ compiler })], logLevel: 'silent' });
   await checkBundle(root);
 });
+
+// Astro: components server-rendered at build time through the renderer (with @mnx/compiler,
+// or the native CLI standing in for its WebAssembly), hydrated on the client with client:load.
+test('astro: server-rendered pages, hydrated with a client directive', async () => {
+  const { available } = await import('@mnx/compiler');
+  const saved = process.env.MNX_COMPILER;
+  if (!available()) process.env.MNX_COMPILER = compiler;
+  try {
+    const { build: astroBuild } = await import('astro');
+    const { default: mnxAstro } = await import('../src/astro.js');
+    const root = app('astro');
+    await astroBuild({ root, configFile: false, logLevel: 'error', integrations: [mnxAstro({ compiler })], outDir: join(root, 'dist') });
+    const html = readFileSync(join(root, 'dist/index.html'), 'utf8');
+    // Static components are HTML only, with props, host attributes and slot content.
+    assert.match(html, /<mnx-card data-kind="static" heading="Astro">/);
+    // (Astro takes the `slot` attribute off what it passes.)
+    assert.match(html, /<header><!--\[!--><h2>Custom \{braces\}<\/h2><!--\]--><\/header>[^]*<section><!--\[!--><p>Body<\/p><!--\]--><\/section>/);
+    assert.match(html, /<mnx-badge class="row" data-who="Ada" label="Ada" count="3"/, 'nested components render too');
+    assert.match(html, /<astro-island[^>]*><mnx-rating id="r" class="big" value="1">[^]*<output>1<\/output>/);
+
+    const { page, messages } = await visit(root);
+    await settle(page);
+    assert.equal(await page.$eval('mnx-card', (card) => card.matches(':defined')), false, 'no JavaScript for static components');
+    await page.click('mnx-rating .two');
+    await settle(page);
+    assert.equal(await page.textContent('mnx-rating output'), '2', 'the island hydrated');
+    assert.deepEqual(messages, []);
+    await page.close();
+  } finally {
+    if (saved === undefined) delete process.env.MNX_COMPILER;
+    else process.env.MNX_COMPILER = saved;
+  }
+});

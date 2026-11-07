@@ -24,7 +24,7 @@
 import { createUnplugin } from 'unplugin';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { basename, dirname, extname, resolve } from 'node:path';
+import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
 
 const VARIANTS = ['element', 'react', 'vue'];
 const QUERY = '?mnx=';
@@ -54,11 +54,34 @@ function dependencies(path, seen = new Set()) {
   seen.add(path);
   let source = '';
   try { source = readFileSync(path, 'utf8'); } catch { return seen; }
-  const script = source.match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
   for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx)['"]/g)) {
     if (specifier.startsWith('.')) dependencies(resolve(dirname(path), specifier), seen);
   }
   return seen;
+}
+
+/**
+ * What a server build appends to a component: its renderer, registered by tag. It renders with
+ * @mnx/compiler from the component's sources, embedded (keyed by path below their common
+ * directory), so the server bundle needs nothing from the build machine.
+ */
+function serverRenderer(path, compilerModule, runtime) {
+  const paths = [...dependencies(path)].filter((file) => existsSync(file));
+  let common = dirname(path);
+  while (!paths.every((file) => file.startsWith(common + sep))) common = dirname(common);
+  const key = (file) => `/${relative(common, file).split(sep).join('/')}`;
+  const files = Object.fromEntries(paths.map((file) => [key(file), readFileSync(file, 'utf8')]));
+  return `
+import { registerRenderer as $mnxRegister } from ${JSON.stringify(`${runtime}/server`)};
+import { request as $mnxRequest } from ${JSON.stringify(compilerModule)};
+const $mnxFiles = ${JSON.stringify(files)};
+$mnxRegister(tag, (props, slots) => {
+  const response = $mnxRequest({ emit: 'html', path: ${JSON.stringify(key(path))}, files: $mnxFiles, props, slots, slotSource: 'html' });
+  if (!response.ok) throw new Error(response.error);
+  return response.output;
+});
+`;
 }
 
 export const unplugin = createUnplugin((options = {}, meta = {}) => {
@@ -79,6 +102,10 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   const runtime = options.runtime ?? '@mnx/runtime';
   let project = options.framework && options.framework !== 'auto' ? options.framework : null;
   const typings = options.dts ?? true;
+  // Server builds render components with @mnx/compiler at request time (`ssr: false` leaves
+  // that out: the elements then render on the client only).
+  const serverRendering = options.ssr ?? true;
+  const compilerModule = options.compilerModule ?? '@mnx/compiler';
 
   /** CLI flags → a request for the WebAssembly compiler. */
   function asRequest(args) {
@@ -150,7 +177,10 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       return id.includes(`.mnx${QUERY}`);
     },
 
-    load(id) {
+    load(id, loadOptions) {
+      // A server build (Vite's SSR, or its server environments): the module also registers its
+      // server renderer.
+      const server = loadOptions?.ssr === true || this?.environment?.config?.consumer === 'server';
       const [path, query] = split(id);
       const variant = new URLSearchParams(query).get('mnx');
       if (variant === 'style') {
@@ -182,7 +212,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         this.error(error.message);
       }
       if (output.warnings) this.warn(output.warnings);
-      return output.code;
+      return server && serverRendering ? output.code + serverRenderer(path, compilerModule, runtime) : output.code;
     },
 
     vite: {

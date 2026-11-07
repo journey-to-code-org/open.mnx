@@ -131,3 +131,63 @@ fn check_reads_unsaved_text_from_standard_input() {
     let (ok, _, stderr) = mnix(&["check", "a.mnx", "b.mnx", "--stdin"]);
     assert!(!ok && stderr.contains("one path"), "{stderr}");
 }
+
+#[test]
+fn request_answers_one_json_request_on_stdin() {
+    use std::io::Write;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mnix"))
+        .arg("request")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            br#"{"path":"/a.mnx","files":{"/a.mnx":"<mnx-a x=\"1\"><mnx-slot></mnx-slot><b>{x}</b></mnx-a>"},"props":{"x":"2"},"slots":{"default":"<i>{y}</i>"},"slotSource":"html"}"#,
+        )
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["ok"], true);
+    assert_eq!(
+        response["output"],
+        "<mnx-a x=\"2\"><!--[!--><i>{y}</i><!--]--><b>2</b></mnx-a>"
+    );
+    let (ok, _, stderr) = mnix(&["request", "extra"]);
+    assert!(!ok);
+    assert!(stderr.contains("unexpected argument `extra`"), "{stderr}");
+}
+
+#[test]
+fn slots_html_takes_server_rendered_content() {
+    let dir = temp_dir("slots-html");
+    let source = dir.join("panel.mnx");
+    let slots = dir.join("slots.json");
+    fs::write(&source, "<mnx-panel><mnx-slot></mnx-slot></mnx-panel>").unwrap();
+    fs::write(&slots, r#"{"default":"<p>{kept}</p>"}"#).unwrap();
+    let (ok, stdout, stderr) = mnix(&[
+        "compile",
+        source.to_str().unwrap(),
+        "--slots",
+        slots.to_str().unwrap(),
+        "--slots-html",
+    ]);
+    assert!(ok, "{stderr}");
+    assert_eq!(
+        stdout,
+        "<mnx-panel><!--[!--><p>{kept}</p><!--]--></mnx-panel>\n"
+    );
+    let (ok, _, stderr) = mnix(&[
+        "compile",
+        source.to_str().unwrap(),
+        "--emit",
+        "js",
+        "--slots-html",
+    ]);
+    assert!(!ok);
+    assert!(stderr.contains("apply to --emit html"), "{stderr}");
+}

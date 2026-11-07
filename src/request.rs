@@ -9,7 +9,7 @@
 //!   "files": { "/app/inbox.mnx": "…", "/app/badge.mnx": "…" },
 //!   "runtime": "@mnx/runtime", "keepImports": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
-//!   "modulePath": "inbox.js", "props": {}, "slots": {} }
+//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html" }
 //! ```
 //!
 //! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }`: `output` is the
@@ -121,7 +121,16 @@ fn respond(request: &Map<String, Value>) -> Value {
                 .cloned()
                 .unwrap_or_else(|| json!({}))
                 .to_string();
-            crate::compile_html_with(source, &path, &props, &slots, &loader)
+            let slot_source = match text("slotSource") {
+                None | Some("template") => crate::SlotSource::Template,
+                Some("html") => crate::SlotSource::Html,
+                Some(other) => {
+                    return failure(&format!(
+                        "unknown slotSource `{other}`; expected template or html"
+                    ))
+                }
+            };
+            crate::compile_html_from(source, &path, &props, &slots, slot_source, &loader)
         }
         ("compile", "css")
             if request

@@ -561,8 +561,7 @@ function assignSlots(nodes) {
     ?? (node.nodeType === COMMENT ? after(i) ?? before(i) : before(i) ?? after(i))
     ?? 'default');
 }
-const nativeText = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
-const nativeHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+let nativeText, nativeHTML; // looked up on first use, so the module loads without a DOM
 
 /** Route the host's child methods to its slots (see above). */
 function routeChildren(host, context, slots, tag) {
@@ -646,12 +645,12 @@ function routeChildren(host, context, slots, tag) {
     },
     replaceChildren: { value(...items) { clear(); for (const node of asNodes(items)) insert(node, null); }, configurable: true },
     textContent: {
-      get() { return nativeText.get.call(host); },
+      get() { return (nativeText ??= Object.getOwnPropertyDescriptor(Node.prototype, 'textContent')).get.call(host); },
       set(value) { clear(); if (value != null && value !== '') insert(document.createTextNode(String(value)), null); },
       configurable: true,
     },
     innerHTML: {
-      get() { return nativeHTML.get.call(host); },
+      get() { return (nativeHTML ??= Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML')).get.call(host); },
       set(value) {
         clear();
         const template = document.createElement('template');
@@ -926,12 +925,40 @@ const mark = (node, tag) => {
   if (tag && node.nodeType === 1 && node.getAttribute(SLOTTED) !== tag) node.setAttribute(SLOTTED, tag);
 };
 
+/** What adapters and tools need: the tag, each prop's attribute and default, the events. */
+function describe(tag, { props, shadow, form, slots, events, styled }) {
+  return Object.freeze({
+    tag,
+    props: Object.freeze(Object.fromEntries(Object.entries(props).map(([name, spec]) =>
+      [name, Object.freeze({ attribute: spec.attribute, default: spec.default, required: !!spec.required })]))),
+    events: Object.freeze([...events]),
+    slots: Object.freeze([...slots]),
+    shadow,
+    form,
+    styled,
+  });
+}
+
+const serverElements = new Map();
+function serverElement(tag, options) {
+  if (!serverElements.has(tag)) {
+    serverElements.set(tag, class MnxServerElement {
+      static mnx = describe(tag, options);
+      constructor() { throw new TypeError(`mnx: <${tag}> can't be created without a DOM`); }
+    });
+  }
+  return serverElements.get(tag);
+}
+
 /**
  * Register a compiled component. `props` maps prop names to `{ attribute, default, required }`;
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
 export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, setup }) {
+  // On a server (no DOM), a stand-in with the same `mnx` description, so a module that imports a
+  // component loads there: adapters render the host tag, and `@mnx/runtime/server` renders it.
+  if (typeof HTMLElement === 'undefined') return serverElement(tag, { props, shadow, form, slots, events, styled });
   let sheet; // created on first use, so define() needs no document
   const ownSheets = () => (styles == null ? [] : [(sheet ??= toSheet(styles))]);
   if (customElements.get(tag)) return customElements.get(tag);
@@ -943,17 +970,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
   let internals; // (element) => its ElementInternals; set in the static block below
   class MnxElement extends HTMLElement {
     static observedAttributes = Object.keys(byAttribute);
-    /** What adapters and tools need: the tag, each prop's attribute and default, the events. */
-    static mnx = Object.freeze({
-      tag,
-      props: Object.freeze(Object.fromEntries(Object.entries(props).map(([name, spec]) =>
-        [name, Object.freeze({ attribute: spec.attribute, default: spec.default, required: !!spec.required })]))),
-      events: Object.freeze([...events]),
-      slots: Object.freeze([...slots]),
-      shadow,
-      form,
-      styled,
-    });
+    static mnx = describe(tag, { props, shadow, form, slots, events, styled });
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
     #signals = {};

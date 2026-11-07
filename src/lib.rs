@@ -81,7 +81,12 @@ pub fn compile_value_with_slots(
     props: &serde_json::Value,
     slots: &serde_json::Value,
 ) -> Result<String, Diagnostic> {
-    html(load(source, "component.mnx", None)?, props, slots)
+    html(
+        load(source, "component.mnx", None)?,
+        props,
+        slots,
+        SlotSource::Template,
+    )
 }
 
 /// Static HTML for the component at `path`, resolving its `.mnx` imports from the filesystem.
@@ -103,11 +108,40 @@ pub fn compile_html_with(
     slots_json: &str,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
+    compile_html_from(
+        source,
+        path,
+        props_json,
+        slots_json,
+        SlotSource::Template,
+        loader,
+    )
+}
+
+/// What slot content is written in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlotSource {
+    /// mnx template syntax (`{…}` is an expression; it has no scope, so only literals work).
+    Template,
+    /// HTML a server already rendered: kept as written (braces, comments, scripts and all).
+    Html,
+}
+
+/// Static HTML, with slot content in `slot_source` syntax.
+pub fn compile_html_from(
+    source: &str,
+    path: &str,
+    props_json: &str,
+    slots_json: &str,
+    slot_source: SlotSource,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
     let component = load(source, path, Some(loader))?;
     html(
         component,
         &parse_json(props_json, "props")?,
         &parse_json(slots_json, "slots")?,
+        slot_source,
     )
 }
 
@@ -115,6 +149,7 @@ fn html(
     component: ast::ComponentAst,
     props: &serde_json::Value,
     slots: &serde_json::Value,
+    slot_source: SlotSource,
 ) -> Result<String, Diagnostic> {
     let slot_values = slots
         .as_object()
@@ -127,7 +162,10 @@ fn html(
                 format!("slot `{name}` must contain an mnx template string"),
             )
         })?;
-        slot_nodes.insert(name.clone(), parser::parse_fragment(source)?);
+        slot_nodes.insert(
+            name.clone(),
+            parser::parse_slot(source, slot_source == SlotSource::Html)?,
+        );
     }
     let component = validate::validate(component, props, &slot_nodes)?;
     Ok(render::render(&component))

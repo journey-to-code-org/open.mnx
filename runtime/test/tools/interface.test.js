@@ -184,7 +184,7 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
   const project = join(dir, 'runtime-types');
   mkdirSync(join(project, 'node_modules/@mnx'), { recursive: true });
   symlinkSync(join(here, '../..'), join(project, 'node_modules/@mnx/runtime'));
-  for (const name of ['react', 'vue', '@vue', '@types']) {
+  for (const name of ['react', 'vue', '@vue', '@types', '@angular', 'rxjs']) {
     symlinkSync(join(here, '../../node_modules', name), join(project, 'node_modules', name));
   }
   writeFileSync(join(project, 'package.json'), '{ "type": "module" }');
@@ -201,6 +201,13 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
     void sheets;
     import { wrap } from '@mnx/runtime/react';
     import { wrap as wrapVue, models } from '@mnx/runtime/vue';
+    import { MnxModel } from '@mnx/runtime/angular';
+    import { canRender, registerRenderer, renderToString } from '@mnx/runtime/server';
+    registerRenderer('mnx-x', (props, slots) => JSON.stringify([props, slots]));
+    const candidate: unknown = null;
+    if (canRender(candidate)) { const html: string = renderToString(candidate, { props: { a: 1 }, attributes: { hidden: true }, slots: { default: '' } }); void html; }
+    const accessor: import('@angular/forms').ControlValueAccessor = new MnxModel();
+    void accessor;
     const count = state(0);
     const doubled = computed(() => count.get() * 2);
     const n: number = doubled.get();

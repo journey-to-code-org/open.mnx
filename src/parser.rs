@@ -132,9 +132,11 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
 }
 
 /// Parse a template fragment (slot content supplied at build time).
-pub(crate) fn parse_fragment(source: &str) -> Result<Vec<Node>, Diagnostic> {
+/// Slot content: an mnx template, or (`html`) markup a server already rendered, kept as written.
+pub(crate) fn parse_slot(source: &str, html: bool) -> Result<Vec<Node>, Diagnostic> {
     let normalized = normalize(source);
     let mut parser = TemplateParser::new(Cursor::new(&normalized));
+    parser.html = html;
     let nodes = parser.parse_nodes(None)?;
     if !parser.cursor.is_at_end() {
         return Err(parser.error("unexpected content after slot template"));
@@ -226,11 +228,17 @@ pub(crate) fn is_identifier(value: &str) -> bool {
 
 struct TemplateParser<'a> {
     cursor: Cursor<'a>,
+    /// Already-rendered HTML (a server's slot content): braces are text, comments are kept,
+    /// and `<script>`, `<style>`, unquoted and inline-handler attributes are allowed as written.
+    html: bool,
 }
 
 impl<'a> TemplateParser<'a> {
     fn new(cursor: Cursor<'a>) -> Self {
-        Self { cursor }
+        Self {
+            cursor,
+            html: false,
+        }
     }
 
     /// `<style>`, with optional `layer="…"` (the cascade layer; `none` for no layer) and
@@ -412,9 +420,18 @@ impl<'a> TemplateParser<'a> {
                 return Ok(nodes);
             }
             if self.starts_with("<!--") {
-                // Comments are authoring notes; they are not emitted.
+                let start = self.cursor.position();
+                // Comments are authoring notes; they are not emitted (a server's are kept: they
+                // may be its hydration markers).
                 self.skip_comment()?;
+                if self.html {
+                    let comment = self.cursor.source()[start..self.cursor.position()].to_owned();
+                    nodes.push(Node::Text(vec![Part::Literal(comment)]));
+                }
                 continue;
+            }
+            if self.html && self.cursor.starts_with_ignore_ascii_case("<!doctype") {
+                return Err(self.error("a doctype can't be slot content"));
             }
             if self.starts_with("<!") || self.starts_with("<?") {
                 return Err(self
@@ -422,7 +439,11 @@ impl<'a> TemplateParser<'a> {
             }
             if self.starts_with("<") {
                 let element = self.parse_raw_element()?;
-                nodes.push(lower_directive(element)?);
+                nodes.push(if self.html {
+                    Node::Element(element)
+                } else {
+                    lower_directive(element)?
+                });
             } else {
                 let parts = self.parse_parts(None)?;
                 // A comment between two runs of text was stripped, so in the DOM they are one
@@ -474,9 +495,14 @@ impl<'a> TemplateParser<'a> {
             let value = if self.starts_with("=") {
                 self.advance(1);
                 self.skip_whitespace();
-                if self.starts_with("{") {
+                if self.starts_with("{") && !self.html {
                     let (expression, expression_span) = self.parse_braced_expression()?;
                     AttributeValue::Expression(expression, expression_span)
+                } else if self.html && !(self.starts_with("\"") || self.starts_with("'")) {
+                    let value = self
+                        .cursor
+                        .take_while(|byte| !byte.is_ascii_whitespace() && byte != b'>');
+                    AttributeValue::Text(vec![Part::Literal(value.to_owned())])
                 } else if self.starts_with("\"") || self.starts_with("'") {
                     let quote = self.cursor.peek_byte().unwrap_or(b'"') as char;
                     self.advance(1);
@@ -494,7 +520,9 @@ impl<'a> TemplateParser<'a> {
             } else {
                 AttributeValue::None
             };
-            check_attribute(&attribute_name, &value, attribute_span)?;
+            if !self.html {
+                check_attribute(&attribute_name, &value, attribute_span)?;
+            }
             attributes.push(Attribute {
                 name: attribute_name,
                 value,
@@ -502,6 +530,32 @@ impl<'a> TemplateParser<'a> {
             });
         };
 
+        let raw_text = ["script", "style", "textarea", "title"]
+            .iter()
+            .any(|raw| name.eq_ignore_ascii_case(raw));
+        if self.html && raw_text && !self_closing {
+            // Raw text: everything up to the closing tag, as written.
+            let lower = self.cursor.rest().to_ascii_lowercase();
+            let Some(end) = lower.find(&format!("</{}", name.to_ascii_lowercase())) else {
+                return Err(Diagnostic::new(
+                    span,
+                    format!("missing closing tag </{name}>"),
+                ));
+            };
+            let text = self.cursor.rest()[..end].to_owned();
+            self.advance(end + 2 + name.len());
+            self.skip_whitespace();
+            if !self.starts_with(">") {
+                return Err(self.error("expected > after closing tag"));
+            }
+            self.advance(1);
+            return Ok(Element {
+                name,
+                attributes,
+                children: vec![Node::Text(vec![Part::Literal(text)])],
+                span,
+            });
+        }
         if name.eq_ignore_ascii_case("script") || name.eq_ignore_ascii_case("style") {
             return Err(Diagnostic::new(
                 span,
@@ -571,7 +625,7 @@ impl<'a> TemplateParser<'a> {
             if quote.is_some_and(|quote| byte == quote as u8) || quote.is_none() && byte == b'<' {
                 break;
             }
-            if byte == b'{' {
+            if byte == b'{' && !self.html {
                 if literal_start < self.cursor.position() {
                     parts.push(Part::Literal(
                         source[literal_start..self.cursor.position()].to_owned(),

@@ -159,3 +159,24 @@ fn preprocessor_languages_need_a_bundler() {
     };
     assert!(compile_js_for_bundler(source, "x.mnx", "@mnx/runtime", imports, &loader).is_ok());
 }
+
+#[test]
+fn server_rendered_slot_html_is_marked_slotted_too() {
+    use mnix_compiler::{compile_html_from, SlotSource};
+    let loader = |_: &str, _: &str| -> Result<(String, String), String> { Err("none".into()) };
+    let source =
+        "<style>p { color: red }</style>\n<mnx-card><p>Own</p><mnx-slot></mnx-slot></mnx-card>";
+    let html = compile_html_from(
+        source,
+        "card.mnx",
+        "{}",
+        r#"{"default":"<p class=x>{theirs}</p>"}"#,
+        SlotSource::Html,
+        &loader,
+    )
+    .unwrap();
+    assert!(
+        html.contains(r#"<p class="x" data-mnx-slotted="mnx-card">{theirs}</p>"#),
+        "{html}"
+    );
+}
