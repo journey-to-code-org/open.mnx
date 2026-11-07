@@ -573,6 +573,13 @@ const BUILT_IN_PROPERTIES: &[(&str, &str)] = &[
 
 /// A Custom Elements Manifest (`custom-elements.json`) describing the component, as the module
 /// at `module_path` (the path the JavaScript output is published at).
+/// The component's interface for servers (see [`emit_interface::server_interface`]).
+pub fn compile_interface(source: &str) -> Result<String, Diagnostic> {
+    front(source, None, None, |source| {
+        emit_interface::server_interface(&parser::parse(source)?)
+    })
+}
+
 pub fn compile_manifest(source: &str, module_path: &str) -> Result<String, Diagnostic> {
     front(source, None, None, |source| {
         emit_interface::manifest(&parser::parse(source)?, module_path)

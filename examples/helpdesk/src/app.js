@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import ejs from 'ejs';
 import express from 'express';
 import { sessions } from './auth.js';
-import { createMnx } from './mnx.js';
+import { mnx } from '@mnx/server/express';
 import { SLA_HOURS } from './store/seed.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -26,24 +26,24 @@ function ago(at, now) {
 export function createApp({ store, cache = true, now = () => Date.now() }) {
   const app = express();
   const auth = sessions();
-  const mnx = createMnx({ cache });
 
   app.disable('x-powered-by');
   app.use(express.urlencoded({ extended: false }));
   app.use(express.static(join(here, '../public')));
-  app.use(mnx.router);
+  // Components rendered into the views, and their modules and @mnx/runtime served under /_mnx.
+  app.use(mnx({ components: join(here, '../components'), cache }));
   app.use(auth.middleware(store));
 
   /**
-   * Render `view` inside the layout. The view runs first, so the layout knows which components
-   * the page used: their CSS goes in the head, and their modules are loaded at the end.
+   * Render `view` inside the layout; `finish()` then adds the CSS of the components the page
+   * used to its head and their modules to the end of its body.
    */
   async function page(res, view, locals = {}, status = 200) {
-    const components = mnx.page();
+    const components = res.locals.mnx;
     const data = { ...res.locals, ...locals, mnx: components.render, user: res.locals.user };
     const body = await ejs.renderFile(join(VIEWS, `${view}.ejs`), data, { async: false });
-    const html = await ejs.renderFile(join(VIEWS, 'layout.ejs'), { ...data, body, styles: components.css(), modules: [...components.used] });
-    res.status(status).type('html').send(html);
+    const html = await ejs.renderFile(join(VIEWS, 'layout.ejs'), { ...data, body });
+    res.status(status).type('html').send(components.finish(html));
   }
 
   const requireUser = (req, res, next) => (req.user ? next() : res.redirect(303, `/login?next=${encodeURIComponent(req.originalUrl)}`));

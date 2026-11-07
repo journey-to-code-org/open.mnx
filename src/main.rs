@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx serve   (JSON lines: a request per line in, a response per line out)\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx serve   (JSON lines: a request per line in, a response per line out)\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -171,9 +171,10 @@ fn run() -> Result<(), String> {
             "dts" => mnx_compiler::compile_declarations_for(&source, &name, framework),
             "manifest" => mnx_compiler::compile_manifest(&source, &module_path),
             "html-data" => mnx_compiler::compile_html_data(&source),
+            "interface" => mnx_compiler::compile_interface(&source),
             _ => {
                 return Err(format!(
-                    "unknown --emit `{emit}`; expected html, js, css, dts, manifest or html-data"
+                    "unknown --emit `{emit}`; expected html, js, css, dts, manifest, html-data or interface"
                 ))
             }
         }

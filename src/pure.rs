@@ -347,13 +347,20 @@ impl Evaluator<'_> {
     }
 
     fn arguments(&mut self, arguments: &[Argument<'_>]) -> Result<Vec<Val>> {
-        arguments
-            .iter()
-            .map(|argument| match argument {
-                Argument::SpreadElement(_) => Err(Unsupported),
-                argument => self.eval(argument.as_expression().ok_or(Unsupported)?),
-            })
-            .collect()
+        let mut values = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            match argument {
+                // `Math.max(...points)`: an array's items as arguments.
+                Argument::SpreadElement(spread) => match self.eval(&spread.argument)? {
+                    Val::Json(Value::Array(items)) => {
+                        values.extend(items.into_iter().map(Val::Json))
+                    }
+                    _ => return Err(Unsupported),
+                },
+                argument => values.push(self.eval(argument.as_expression().ok_or(Unsupported)?)?),
+            }
+        }
+        Ok(values)
     }
 
     fn call(&mut self, call: &oxc_ast::ast::CallExpression<'_>) -> Result<Val> {
@@ -1242,11 +1249,8 @@ mod tests {
     fn the_subset() {
         assert_eq!(run("value.includes('kale')"), Some(true.into()));
         assert_eq!(run("`Hi ${name}!`"), Some("Hi Ada!".into()));
-        assert_eq!(
-            run("Math.max(...[1])"),
-            None,
-            "spread arguments stay in the browser"
-        );
+        assert_eq!(run("Math.max(...[1, 4, 2])"), Some(4.into()));
+        assert_eq!(run("Math.max(...[])"), None, "-Infinity isn't JSON");
         assert_eq!(run("Math.max(1, 3, 2)"), Some(3.into()));
         assert_eq!(
             run("rows.map((row) => row.kg * 2)"),

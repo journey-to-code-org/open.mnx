@@ -179,3 +179,15 @@ test('the dashboard: counts, and the registry charts hydrated with the server da
   assert.deepEqual(messages, []);
   await close();
 });
+
+test('the dashboard\'s charts are in the server\'s HTML: the registry components\' JavaScript ran on the server', async () => {
+  const { page, close } = await as('u-sam', { js: false });
+  // donut-chart's reduce/filter/Math.round and spark-line's map/join: rendered, not left empty.
+  assert.deepEqual(await text(page, 'donut-chart li button span:nth-child(2)'), ['Open', 'Pending', 'Solved']);
+  assert.ok((await page.locator('donut-chart circle[data-label]').count()) >= 1);
+  assert.match(await page.locator('donut-chart .pct').first().textContent(), /^\d+%$/);
+  assert.match(await page.getByRole('img', { name: /^New tickets per day: / }).getAttribute('aria-label'), /: (up|down|flat)$/);
+  assert.match(await page.locator('spark-line polyline').getAttribute('points'), /^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
+  assert.equal(await page.evaluate(() => document.body.innerHTML.includes('<!--[?-->')), false, 'nothing left for the browser');
+  await close();
+});

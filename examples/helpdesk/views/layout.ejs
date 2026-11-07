@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= title %> · Help desk</title>
   <link rel="stylesheet" href="/app.css">
-  <%# The styles of the mnx components this page rendered. %>
-  <style data-mnx-components><%- styles %></style>
-  <script type="importmap">{ "imports": { "@mnx/runtime": "/vendor/mnx/index.js" } }</script>
+  <%# @mnx/server adds the CSS of the components this page rendered here, and their modules at the end of the body. %>
 </head>
 <body>
   <header class="top">
@@ -27,11 +25,5 @@
   <main>
 <%- body %>
   </main>
-  <% if (modules.length) { %>
-  <%# The page works as it is; these make its components interactive, binding to the markup above. %>
-  <script type="module">
-<% for (const name of modules) { %>    import '/components/<%= name %>.js';
-<% } %>  </script>
-  <% } %>
 </body>
 </html>

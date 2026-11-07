@@ -103,6 +103,39 @@ fn sorted_slots(component: &ComponentAst) -> Vec<String> {
 }
 
 /// A Custom Elements Manifest with one module, `module_path`, holding this component.
+/// The component as servers need it (`emit: "interface"`): its tag, whether it renders into a
+/// shadow root and is a form control, and its props (attribute, type, default, two-way).
+/// `@mnx/server` uses it to read props back from a framework's HTML.
+pub fn server_interface(component: &ComponentAst) -> Result<String, Diagnostic> {
+    let interface = validate::analyze(component)?;
+    let props: Vec<Value> = interface
+        .props
+        .iter()
+        .map(|prop| {
+            json!({
+                "name": prop.name,
+                "attribute": prop.attribute,
+                "type": prop_type(prop),
+                "default": prop.default,
+                "model": prop.model,
+            })
+        })
+        .collect();
+    let events: Vec<&str> = interface
+        .events
+        .iter()
+        .map(|event| event.name.as_str())
+        .collect();
+    Ok(serde_json::to_string_pretty(&json!({
+        "tag": component.tag,
+        "shadow": component.shadow,
+        "form": component.form_associated,
+        "props": props,
+        "events": events,
+    }))
+    .expect("JSON serializes"))
+}
+
 pub fn manifest(component: &ComponentAst, module_path: &str) -> Result<String, Diagnostic> {
     let interface = validate::analyze(component)?;
     let class = class_name(&component.tag);

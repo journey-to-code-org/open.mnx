@@ -1,0 +1,33 @@
+{
+  "name": "@mnx/server",
+  "version": "2.7.0",
+  "description": "mnx on the server: render components into any template engine's pages, serve their browser modules, and give frameworks' HTML its components' shadow roots.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": { "types": "./src/index.d.ts", "default": "./src/index.js" },
+    "./express": { "types": "./src/adapters.d.ts", "default": "./src/express.js" },
+    "./fastify": { "types": "./src/adapters.d.ts", "default": "./src/fastify.js" },
+    "./hono": { "types": "./src/adapters.d.ts", "default": "./src/hono.js" }
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "peerDependencies": {
+    "@mnx/compiler": "^2.7.0",
+    "@mnx/runtime": "^2.7.0"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "file:../compiler",
+    "@mnx/runtime": "file:../runtime",
+    "express": "5.3.0",
+    "fastify": "5.12.8",
+    "hono": "4.13.17",
+    "playwright": "1.63.0"
+  },
+  "files": ["src"],
+  "engines": { "node": ">=20" },
+  "license": "ISC",
+  "repository": { "type": "git", "url": "git+https://github.com/journey-to-code-org/open.mnx.git", "directory": "server" }
+}

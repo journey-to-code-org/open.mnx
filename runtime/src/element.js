@@ -1500,6 +1500,9 @@ function defineElement(tag, definition) {
 
     #boot(kept = null, reloading = false) {
       const element = this;
+      // The server's stand-in for this control's value, for submitting before JavaScript
+      // (@mnx/server's injectShadowRoots): the element's own form value takes over now.
+      if (form) for (const child of [...this.children]) if (child.localName === 'input' && child.hasAttribute('data-mnx-fallback')) child.remove();
       if (globalThis.__MNX_HOT__ && !reloading) live.add(new WeakRef(this));
       const root = shadow ? (this.shadowRoot ?? this.attachShadow({ mode: 'open' })) : this;
       if (shadow) {

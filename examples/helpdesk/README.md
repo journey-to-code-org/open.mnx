@@ -6,11 +6,11 @@ It's an ordinary Node server app: Express routes, EJS templates, MongoDB. The in
 
 | Promise | Here |
 |---|---|
-| **Server-rendered first** | Each page's components are rendered to HTML on the request by `@mnx/compiler` (`src/mnx.js`), inside the EJS templates: `<%- mnx('ticket-table', { tickets }) %>`. The SLA timers' "due in 2h 30m" is in that HTML, worked out on the server from the request's time rather than filled in later. |
+| **Server-rendered first** | Each page's components are rendered to HTML on the request by `@mnx/server` (Express middleware over `@mnx/compiler`), inside the EJS templates: `<%- mnx('ticket-table', { tickets }) %>`. The SLA timers' "due in 2h 30m" is in that HTML, worked out on the server from the request's time rather than filled in later. |
 | **Hydrated, not re-rendered** | The browser loads each component's module and binds it to the markup that's already there. The test checks that a table row is the same DOM node before and after. |
 | **Works without JavaScript** | The components render native form elements in light DOM (radio buttons, selects, a textarea), so filing a ticket, replying, filtering and updating all work as plain HTML forms. The test runs the whole flow with JavaScript turned off. |
 | **Then better with it** | J/K/Enter moves through the queue. Filters apply as you choose them. The reply box counts characters, waits for text and sends on Ctrl+Enter. Priorities highlight as you pick them. SLA timers keep counting. |
-| **No bundler** | `/components/<name>.js` is each component compiled on request, and an import map points `@mnx/runtime` at the runtime's own modules. A page loads only the components it rendered. |
+| **No bundler** | `/_mnx/components/<name>.js` is each component compiled on request, and an import map points `@mnx/runtime` at the runtime's own modules (both served by `@mnx/server`). A page loads only the components it rendered. |
 | **Components you own** | The dashboard's donut chart and spark line came from the registry: `npx mnx add donut-chart spark-line --dir components`. |
 
 ## Run it
@@ -37,8 +37,8 @@ If none of these is there, `npm start` stops and says so, rather than serving er
 
 ```text
 server.js              starts the app with a store
-src/app.js             routes; renders a view, then the layout with the CSS and modules it used
-src/mnx.js             render(name, props) for views; /components/*.js and /vendor/mnx for the browser
+src/app.js             routes; renders a view, then the layout, and finish() adds the CSS and modules
+                       it used (@mnx/server/express: res.locals.mnx)
 src/auth.js            sign-in as a signed cookie
 src/store/             memory.js and mongo.js, one interface (seed.js has the demo data)
 views/*.ejs            the pages

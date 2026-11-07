@@ -1,0 +1,11 @@
+<!--
+  @fires valuechange - The count changed.
+-->
+<style>
+  output { font-weight: 700; }
+</style>
+<count-stepper shadow form-associated value:model={1} label="Count">
+  <button type="button" class="less" onclick={() => (value = value - 1)}>−</button>
+  <output aria-label={label}>{value}</output>
+  <button type="button" class="more" onclick={() => (value = value + 1)}>+</button>
+</count-stepper>

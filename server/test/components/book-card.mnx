@@ -1,0 +1,7 @@
+<style>
+  h3 { margin: 0; }
+</style>
+<book-card shadow book={{ title: "", price: 0 }} featured={false}>
+  <h3>{book.title}</h3>
+  <p class:featured>{"$" + (book.price / 100).toFixed(2)}</p>
+</book-card>
