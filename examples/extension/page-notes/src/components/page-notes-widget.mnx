@@ -2,8 +2,9 @@
   The widget on the pages themselves: how many notes this site has and the newest one, in a
   corner. Shadow DOM, so the site's CSS can't restyle what's inside and its CSS can't touch the
   site. The host itself is in the page, though: a site's `* { font-family: … !important }`
-  matches it and beats `:host` rules, and fonts and colours inherit into the shadow root. So the
-  host's rules are `!important` too: across a shadow boundary, the inner `!important` wins.
+  matches it and beats `:host` rules, and fonts and colours inherit into the shadow root.
+  `host-reset` protects it: the host starts from `all: initial`, and its own `:host` rules
+  win (mnx makes them `!important`, which wins across the shadow boundary).
   `notes` is `[{ id, text, color, at }]`, newest first.
   @fires hide - "Hide on this site" was chosen.
 -->
@@ -14,14 +15,14 @@
   const latest = notes[0]
 </script>
 <style>
-  :host { all: initial !important; position: fixed !important; right: 16px !important; bottom: 16px !important; z-index: 2147483647 !important; font: 14px/1.4 system-ui, sans-serif !important; color: #1d2130 !important; }
+  :host { position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; font: 14px/1.4 system-ui, sans-serif; color: #1d2130; }
   .chip { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.75rem; border: 0; border-radius: 999px; background: #1d2130; color: white; font: inherit; cursor: pointer; box-shadow: 0 4px 16px rgb(0 0 0 / 0.2); }
   .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; }
   .card { width: 16rem; margin-bottom: 0.5rem; padding: 0.75rem; background: white; border-left: 4px solid; border-radius: 0.5rem; box-shadow: 0 6px 24px rgb(0 0 0 / 0.18); }
   .card p { margin: 0 0 0.5rem; white-space: pre-wrap; overflow-wrap: anywhere; }
   .card button { padding: 0; border: 0; background: none; color: #5b6275; font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
 </style>
-<page-notes-widget shadow notes={[]}>
+<page-notes-widget shadow host-reset notes={[]}>
   <mnx-if test={notes.length > 0}>
     <mnx-if test={open}>
       <section class="card" style:border-color={latest.color} aria-label="Newest note">

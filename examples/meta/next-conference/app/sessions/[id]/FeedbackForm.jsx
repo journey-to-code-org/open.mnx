@@ -3,7 +3,8 @@
 // part in the form like native inputs (FormData, validation, reset), so the action just reads
 // `rating` and `followup`.
 import { useActionState } from 'react';
-import { StarRating, ToggleSwitch } from '@ui/react';
+import StarRating from '../../../components/star-rating.mnx';
+import ToggleSwitch from '../../../components/toggle-switch.mnx';
 import { submitFeedback } from '@/app/actions.js';
 
 export default function FeedbackForm({ session }) {

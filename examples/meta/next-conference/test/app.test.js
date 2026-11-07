@@ -1,4 +1,4 @@
-// The conference app in Chromium: `npm run build` (the components' library build, then Next's),
+// The conference app in Chromium: `npm run build` (Next's, with mnx's Turbopack loader),
 // `next start`, and the schedule, filter, stars and feedback form, with no hydration errors.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';

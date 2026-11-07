@@ -3,7 +3,8 @@
 // app's own component), both mnx elements used as React components from the library build in
 // ui/. Starred sessions are remembered in localStorage.
 import { useEffect, useMemo, useState } from 'react';
-import { SegmentedControl, SessionCard } from '@ui/react';
+import SegmentedControl from '../components/segmented-control.mnx';
+import SessionCard from '../components/session-card.mnx';
 
 const KEY = 'webconf:starred';
 

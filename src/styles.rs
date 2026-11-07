@@ -22,8 +22,81 @@ pub const SLOTTED: &str = "data-mnx-slotted";
 
 /// The component's stylesheet, or `None` without a `<style>`.
 pub fn stylesheet(component: &ComponentAst) -> Option<String> {
+    if component.host_reset {
+        // The page can match the host (`* { … !important }`) and its inherited properties flow
+        // in: start the host from nothing, and make the component's own `:host` rules
+        // `!important`, which wins across the shadow boundary.
+        let own = component.style.as_ref().map_or(String::new(), |style| {
+            wrap(
+                &Style {
+                    css: important_host_rules(&style.css),
+                    ..style.clone()
+                },
+                &component.tag,
+                true,
+            )
+        });
+        return Some(format!("{HOST_RESET}\n{own}"));
+    }
     let style = component.style.as_ref()?;
     Some(wrap(style, &component.tag, component.shadow))
+}
+
+const HOST_RESET: &str = ":host { all: initial !important; }";
+
+/// Top-level rules whose selector starts with `:host`: every declaration made `!important`.
+fn important_host_rules(css: &str) -> String {
+    let mut out = String::with_capacity(css.len() + 64);
+    let mut rest = css;
+    while let Some(open) = rest.find('{') {
+        let selector = &rest[..open];
+        // The selector is what follows the previous rule's `}` (or `;` of an at-rule).
+        let selector_start = selector.rfind([';', '}']).map_or(0, |at| at + 1);
+        let is_host = selector[selector_start..].trim_start().starts_with(":host")
+            && !selector[selector_start..].contains('@');
+        // The block, with nested braces.
+        let mut depth = 0;
+        let mut end = None;
+        for (index, character) in rest[open..].char_indices() {
+            match character {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(open + index);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(end) = end else { break };
+        out.push_str(&rest[..=open]);
+        let body = &rest[open + 1..end];
+        if is_host && !body.contains('{') {
+            let declarations: Vec<String> = body
+                .split(';')
+                .map(|declaration| {
+                    let trimmed = declaration.trim();
+                    if trimmed.is_empty()
+                        || trimmed.contains("!important")
+                        || !trimmed.contains(':')
+                    {
+                        declaration.to_owned()
+                    } else {
+                        format!("{} !important", declaration.trim_end())
+                    }
+                })
+                .collect();
+            out.push_str(&declarations.join(";"));
+        } else {
+            out.push_str(body);
+        }
+        out.push('}');
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn wrap(style: &Style, tag: &str, shadow: bool) -> String {

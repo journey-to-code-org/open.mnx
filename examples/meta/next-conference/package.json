@@ -2,13 +2,9 @@
   "name": "mnx-example-next-conference",
   "private": true,
   "type": "module",
-  "description": "A conference schedule in Next.js (App Router, Turbopack), with mnx components used through library mode.",
+  "description": "A conference schedule in Next.js (App Router, Turbopack), with .mnx components imported directly through mnx's Turbopack loader.",
   "scripts": {
-    "ui": "mnx build --lib components --out ui --name conference-ui",
-    "ui:watch": "mnx build --lib components --out ui --name conference-ui --watch",
-    "predev": "npm run ui",
     "dev": "next dev",
-    "prebuild": "npm run ui",
     "build": "next build",
     "start": "next start",
     "test": "node --test \"test/*.test.js\""
@@ -21,6 +17,7 @@
   },
   "devDependencies": {
     "@mnx/compiler": "file:../../../compiler",
+    "@mnx/unplugin": "file:../../../plugin",
     "playwright": "1.63.0"
   }
 }

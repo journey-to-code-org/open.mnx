@@ -23,6 +23,9 @@ pub struct ComponentAst {
     pub shadow: bool,
     /// `form-associated` on the host makes the element a form control (ElementInternals).
     pub form_associated: bool,
+    /// `host-reset` on a shadow host: the host's styles are protected from the page's (for
+    /// components on pages you don't control).
+    pub host_reset: bool,
     /// The component's `<style>`, scoped to it.
     pub style: Option<Style>,
     pub props: Vec<PropDecl>,

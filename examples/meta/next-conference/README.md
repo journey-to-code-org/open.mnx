@@ -2,12 +2,14 @@
 
 A conference schedule. Filter the talks by track, star the ones you want (kept in `localStorage`), and rate a talk afterwards through a form handled by a **Server Action**.
 
-Next.js 16 builds with Turbopack, which doesn't take bundler plugins, so this app uses mnx through **library mode**. `npm run ui` (`mnx build --lib components --out ui`) turns `components/` into a package with React components, and the app imports them:
+Next.js 16 builds with Turbopack, which takes webpack-style loaders but not bundler plugins. `next.config.mjs` gives `.mnx` files mnx's loader (`@mnx/unplugin/loader`, since 2.8), and the app imports components directly, as React (client) components:
 
 ```jsx
 'use client';
-import { SegmentedControl, SessionCard } from '@ui/react';   // jsconfig.json maps @ui to ui/
+import SessionCard from '../components/session-card.mnx';
 ```
+
+(Before 2.8 the app used library mode, `mnx build --lib`, which still works for a component package.)
 
 | What | Where |
 |---|---|
@@ -18,8 +20,7 @@ import { SegmentedControl, SessionCard } from '@ui/react';   // jsconfig.json ma
 
 ```sh
 npm install
-npm run dev        # builds ui/ first
-npm run ui:watch   # in a second terminal, to rebuild ui/ as you edit components/
+npm run dev        # edits to components/ rebuild through the loader
 npm run build && npm start
 npm test           # builds, starts, and drives it in Chromium
 ```
@@ -31,5 +32,5 @@ Inside this repository, the mnx compiler comes from `MNX_COMPILER` (the CLI from
 These are recorded in the project's server roadmap (`plan/roadmap-server.md`).
 
 - **The components are shadow DOM here.** Next server-renders each element's host tag, and the browser defines the elements before React hydrates. A light-DOM element then renders its template into the host, React finds children it didn't render, reports a hydration error (#418), and re-renders the page from scratch. Shadow-DOM elements render into their shadow root, which React doesn't look at, so they hydrate cleanly. Making light DOM work under framework hydration is on the roadmap.
-- **The element's own markup isn't in the server HTML.** React renders the host tag (`<session-card>`) on the server, and the card's template appears once the element starts. Full server rendering through the React wrapper is on the roadmap.
+- **The element's own markup isn't in the server HTML.** React renders the host tag (`<session-card>`, with its props as `mnx-props` since 2.8) on the server, and the card's template appears once the element starts. In React Router, Nuxt, SvelteKit and SolidStart, `@mnx/server` adds the shadow roots to the page (2.8). Next streams React Server Components and has no hook for transforming its HTML, so that's still open here.
 - **Fixed while building it:** library mode's React entry now starts with `'use client'`, so it can be imported from a Server Component. The runtime no longer reports an empty URL (a prop's `""` default, before the app sets it) as unsafe.

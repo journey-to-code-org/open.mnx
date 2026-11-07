@@ -89,6 +89,7 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
     let mut props = Vec::new();
     let mut shadow = false;
     let mut form_associated = false;
+    let mut host_reset = None;
     for attribute in host.attributes {
         if attribute.name == "shadow" && attribute.value == AttributeValue::None {
             shadow = true;
@@ -96,6 +97,10 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
         }
         if attribute.name == "form-associated" && attribute.value == AttributeValue::None {
             form_associated = true;
+            continue;
+        }
+        if attribute.name == "host-reset" && attribute.value == AttributeValue::None {
+            host_reset = Some(attribute.span);
             continue;
         }
         // `value:model={…}`: a two-way prop.
@@ -179,12 +184,17 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
         .or(leading_comment)
         .map(|text| dedent(&text))
         .filter(|text| !text.is_empty());
+    if let (Some(span), false) = (host_reset, shadow) {
+        return Err(Diagnostic::new(span, "`host-reset` protects a shadow-DOM component's host from the page's styles; add `shadow` too")
+            .with_help("in light DOM there's no boundary to protect: the page's styles apply by design"));
+    }
     Ok(ComponentAst {
         tag: host.name,
         tag_span: host.span,
         description,
         shadow,
         form_associated,
+        host_reset: host_reset.is_some(),
         style,
         props,
         script,

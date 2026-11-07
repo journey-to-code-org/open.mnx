@@ -15,6 +15,7 @@
     "./rollup": "./src/rollup.js",
     "./webpack": "./src/webpack.js",
     "./esbuild": "./src/esbuild.js",
+    "./loader": "./src/loader.cjs",
     "./rspack": "./src/rspack.js",
     "./astro": "./src/astro.js",
     "./astro/server": "./src/astro-server.js",
