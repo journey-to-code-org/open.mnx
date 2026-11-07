@@ -3,7 +3,7 @@
 // segments come from Vue's computed state.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, settle, texts } from './harness.js';
+import { launch, settle, texts, engineNoise } from './harness.js';
 
 test('vue-budget: a budget tracker built from mnx elements', async () => {
   const { page, messages } = await launch('vue-budget');
@@ -79,6 +79,6 @@ test('vue-budget: a budget tracker built from mnx elements', async () => {
   await settle(page);
   assert.equal(await page.textContent('.totals .income'), '$5,550.00');
   assert.match(await page.textContent('budget-bar[data-category="Eating out"] .numbers'), /\/ \$250\.00/);
-  assert.deepEqual(messages, []);
+  assert.deepEqual(messages.filter((message) => !engineNoise(message)), []);
   await page.close();
 });

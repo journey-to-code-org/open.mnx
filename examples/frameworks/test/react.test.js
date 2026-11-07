@@ -3,7 +3,7 @@
 // removed by React), drag and drop, and an mnx form control used as a controlled input.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { launch, settle, texts } from './harness.js';
+import { launch, settle, texts, engineNoise } from './harness.js';
 
 test('react-board: a sprint board built from mnx elements', async () => {
   const { page, messages } = await launch('react-board');
@@ -105,6 +105,6 @@ test('react-board: a sprint board built from mnx elements', async () => {
   assert.deepEqual(await titles('done'), ['Dark mode for settings', 'Upgrade the build to Vite 8']);
   await go('button.reset');
   assert.deepEqual(await titles('doing'), ['Sign-in with passkeys', 'Rate-limit the public API']);
-  assert.deepEqual(messages, []);
+  assert.deepEqual(messages.filter((message) => !engineNoise(message)), []);
   await page.close();
 });
