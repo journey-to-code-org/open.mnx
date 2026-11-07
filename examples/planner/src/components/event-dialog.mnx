@@ -4,16 +4,16 @@
   @fires close - Closed without saving (Cancel or Escape).
 -->
 <script>
-  import { emit, watch, id } from '@mnx/runtime'
+  import { emit, from, watch, id } from '@mnx/runtime'
   import { CATEGORIES } from '../store.js'
 
   const ids = { title: id(), day: id(), start: id(), end: id(), location: id(), category: id(), budget: id(), notes: id() }
-  let problem = ""
+  // A validation message, cleared when the dialog opens another event.
+  let problem = from(event, "")
   const heading = event?.id ? "Edit event" : "New event"
 
   let dialog = null
   watch(() => event, (next) => {
-    problem = ""
     if (next && !dialog.open) {
       dialog.showModal()
       dialog.querySelector('input').focus()

@@ -2,6 +2,18 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.9.1 — 2026-11-07
+
+`from()` across the examples and docs.
+
+### Examples and docs
+
+- Three more components use `from()`:
+  - the planner's event dialog: `let problem = from(event, "")` clears its validation message when it opens another event, instead of a line in its `watch()`;
+  - the Eleventy trail filter: `let longest = from(max)` starts the slider at the longest trail, and again if that changes;
+  - the recipe scaler: `let people = from(servings)` (a JSX component).
+- The React, Svelte and Vue guides map their patterns onto it: `useState(prop)` plus a reset effect, Svelte's writable `$derived`, and Vue's `ref(props.x)` plus a `watch()`.
+
 ## 2.9.0 — 2026-11-07
 
 The additive part of 3.0, early (`plan/roadmap-3.0.md`, 2.9). Nothing changes meaning.

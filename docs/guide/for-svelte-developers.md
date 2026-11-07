@@ -7,6 +7,7 @@ Svelte and mnx make the same bet: compile components ahead of time, update only 
 | `let { label = "Hi" } = $props()` | `<my-greeting label="Hi">`: the host tag's attributes are the props |
 | `let count = $state(0)` | `let count = 0` |
 | `const doubled = $derived(count * 2)` | `const doubled = count * 2` |
+| `let left = $derived(seconds)`, then `left--` (a writable derived) | `let left = from(seconds)`, then `left--` |
 | `$effect(() => …)` | `effect(() => …)` |
 | `let { value = $bindable(0) } = $props()` | `value:model={0}` on the host |
 | `{#if a}…{:else if b}…{:else}…{/if}` | `<mnx-if test={a}>…<mnx-else-if test={b}>…</mnx-else-if><mnx-else>…</mnx-else></mnx-if>` |

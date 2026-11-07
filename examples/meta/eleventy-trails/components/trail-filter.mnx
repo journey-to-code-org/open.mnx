@@ -4,11 +4,11 @@
   @fires filterchange - The filter changed; `detail` is `{ levels, longest }`.
 -->
 <script>
-  import { emit, hydrated } from '@mnx/runtime'
+  import { emit, from, hydrated } from '@mnx/runtime'
 
   const LEVELS = ['easy', 'moderate', 'hard']
   let levels = [...LEVELS]
-  let longest = max
+  let longest = from(max) // the slider starts at the longest trail, and again if that changes
   const live = hydrated()
   function toggle(level, on) {
     levels = on ? [...levels, level] : levels.filter((item) => item !== level)

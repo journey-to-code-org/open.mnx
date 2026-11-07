@@ -1,6 +1,7 @@
+import { from } from '@mnx/runtime'
 /** A recipe's ingredients, scaled to the number of people. */
 export default function RecipeServings({ servings = 1, ingredients = [] }) {
-  let people = servings
+  let people = from(servings)
   const factor = people / servings
   const label = people === 1 ? "serving" : "servings"
 

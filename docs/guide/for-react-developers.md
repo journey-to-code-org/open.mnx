@@ -7,6 +7,7 @@ An mnx component is closer to a React function component than it looks. The diff
 | `function Counter({ label = "Clicks" })` | `<my-counter label="Clicks">` (or the same function in a `.mnx.jsx` file) |
 | `const [count, setCount] = useState(0)` | `let count = 0`, then `count++` |
 | `const doubled = useMemo(() => count * 2, [count])` | `const doubled = count * 2` |
+| `useState(seconds)` plus `useEffect(() => setLeft(seconds), [seconds])` | `let left = from(seconds)`: follows the prop until assigned, starts over when it changes (`mnx convert` writes it) |
 | `useEffect(() => { … }, [count])` | `effect(() => { … })`: tracks what it reads (it runs before the DOM updates; `onMount(() => effect(…))` runs after, as React's does) |
 | `useEffect(() => { … return cleanup }, [])` | `onMount(() => { … return cleanup })` |
 | `useRef()` + `ref={input}` | `let input = null` + `ref={input}` |

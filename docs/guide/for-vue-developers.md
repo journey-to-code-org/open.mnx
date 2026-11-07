@@ -7,6 +7,7 @@ If you write single-file components, mnx will look familiar: a script, scoped st
 | `defineProps({ label: { type: String, default: "Hi" } })` | `<my-greeting label="Hi">`: the host tag's attributes are the props |
 | `const count = ref(0)`, `count.value++` | `let count = 0`, `count++` |
 | `const doubled = computed(() => count.value * 2)` | `const doubled = count * 2` |
+| `const left = ref(props.seconds)` plus `watch(() => props.seconds, (s) => (left.value = s))` | `let left = from(seconds)` |
 | `watch(source, (next, prev) => …)` | `watch(source, (next, prev) => …)` |
 | `watchEffect(() => …)` | `effect(() => …)` |
 | `onMounted`, `onUnmounted` | `onMount`, `onUnmount` |
