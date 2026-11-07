@@ -255,6 +255,22 @@ pub struct PropInterface {
     pub default: Option<Value>,
     /// A default computed in the browser (it uses script names that only exist there).
     pub runtime_default: Option<expression::Expression>,
+    /// Two-way (`value:model`): assigning it inside the component fires `<prop>change`.
+    pub model: bool,
+}
+
+impl Interface {
+    /// A two-way prop's `<prop>change` event carries the prop's type.
+    fn with_model_events(mut self) -> Self {
+        for prop in self.props.iter().filter(|prop| prop.model) {
+            let name = format!("{}change", prop.name.to_ascii_lowercase());
+            let detail = crate::emit_interface::prop_type(prop);
+            if let Some(event) = self.events.iter_mut().find(|event| event.name == name) {
+                event.detail = detail;
+            }
+        }
+        self
+    }
 }
 
 impl PropInterface {
@@ -310,6 +326,16 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         shadow: component.shadow,
     };
     context.resolve_nodes(&component.nodes, &mut Vec::new())?;
+    for (name, _, span) in &component.script.prop_types {
+        if !props.iter().any(|prop| &prop.name == name) {
+            let names: Vec<&str> = props.iter().map(|prop| prop.name.as_str()).collect();
+            return Err(with_suggestion(
+                Diagnostic::new(*span, format!("`declare const {name}` types a prop, but there's no prop `{name}` on the host tag")),
+                name,
+                &names,
+            ));
+        }
+    }
     let (events, description) = crate::events::events(component)?;
     Ok(Interface {
         events,
@@ -317,17 +343,27 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         props: props
             .into_iter()
             .map(|prop| {
-                // `value={initial}` where `const initial: Value = …`: the prop has that type.
-                let declared = component
-                    .props
+                // `declare const value: T`, or `value={initial}` where `const initial: T = …`:
+                // the prop has that type.
+                let declared_directly = component
+                    .script
+                    .prop_types
                     .iter()
-                    .find(|declaration| declaration.name == prop.name)
-                    .and_then(|declaration| match &declaration.default {
-                        PropDefault::Expression(expression::Expression::Identifier(name), _) => {
-                            component.script.declared_types.get(name).cloned()
-                        }
-                        _ => None,
-                    });
+                    .find(|(name, _, _)| *name == prop.name)
+                    .map(|(_, text, _)| text.clone());
+                let declared = declared_directly.or_else(|| {
+                    component
+                        .props
+                        .iter()
+                        .find(|declaration| declaration.name == prop.name)
+                        .and_then(|declaration| match &declaration.default {
+                            PropDefault::Expression(
+                                expression::Expression::Identifier(name),
+                                _,
+                            ) => component.script.declared_types.get(name).cloned(),
+                            _ => None,
+                        })
+                });
                 let runtime_default = runtime_defaults
                     .contains(&prop.name)
                     .then(|| {
@@ -341,17 +377,23 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
                             })
                     })
                     .flatten();
+                let model = component
+                    .props
+                    .iter()
+                    .any(|declaration| declaration.name == prop.name && declaration.model);
                 PropInterface {
                     name: prop.name,
                     declared,
                     attribute: prop.attribute,
                     default: prop.default,
                     runtime_default,
+                    model,
                 }
             })
             .collect(),
         script_names: locals.into_iter().map(|(name, _)| name).collect(),
-    })
+    }
+    .with_model_events())
 }
 
 /// Dynamic text that shares its parent with other nodes, or sits directly inside an `mnx-if`
@@ -1782,6 +1824,8 @@ pub(crate) fn check_child_prop_type(
     span: Span,
 ) -> Result<(), Diagnostic> {
     match &prop.default {
+        // A declared type (`declare const value: number | null`) says more than the default.
+        _ if prop.declared.is_some() => Ok(()),
         Some(default) if !same_type(default, value) => Err(Diagnostic::new(
             span,
             format!(

@@ -5,8 +5,6 @@
   @fires valuechange - The selected label changed; `detail` is the label, or "" for none.
 -->
 <script>
-  import { emit } from '@mnx/runtime'
-
   const R = 15.915494309189533 // circumference 100, so lengths are percentages
   const total = segments.reduce((sum, segment) => sum + segment.value, 0)
   const arcs = segments.reduce((list, segment) => {
@@ -18,7 +16,6 @@
 
   function select(label) {
     value = value === label ? "" : label
-    emit('valuechange', value)
   }
 </script>
 <style>
@@ -41,7 +38,7 @@
   .t6 { stroke: #7c3aed; background: #7c3aed; } .t7 { stroke: #64748b; background: #64748b; }
   @media (max-width: 34rem) { :host { grid-template-columns: 1fr; } .chart { max-width: 12rem; margin: 0 auto; } }
 </style>
-<donut-chart segments={[]} value="" label="Chart">
+<donut-chart segments={[]} value:model="" label="Chart">
   <div class="chart">
     <svg viewBox="0 0 42 42" role="img" aria-label={label}>
       <circle class="track" cx="21" cy="21" r={R}></circle>

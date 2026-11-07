@@ -98,6 +98,16 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
             form_associated = true;
             continue;
         }
+        // `value:model={…}`: a two-way prop.
+        let model = attribute.name.ends_with(":model");
+        let attribute = if model {
+            Attribute {
+                name: attribute.name.trim_end_matches(":model").to_owned(),
+                ..attribute
+            }
+        } else {
+            attribute
+        };
         let name = prop_name(&attribute)?;
         let default = match attribute.value {
             AttributeValue::None => PropDefault::Required,
@@ -117,6 +127,7 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
         props.push(PropDecl {
             name,
             default,
+            model,
             span: attribute.span,
         });
     }

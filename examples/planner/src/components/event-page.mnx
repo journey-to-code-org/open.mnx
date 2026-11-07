@@ -59,13 +59,13 @@
   [role=tabpanel] { padding: 1rem; border-radius: 1rem; background: var(--surface); box-shadow: var(--shadow); }
 </style>
 <event-page event-id="">
-  <mnx-if test={event.get()}>
+  <mnx-if test={event}>
     <div class="head">
       <div>
-        <span class="pill tag">{event.get().category}</span>
-        <h1>{event.get().title}</h1>
-        <p class="meta">{formatDay(event.get().day)} ({relative(event.get().day)}) · {event.get().start}–{event.get().end}{event.get().location ? ` · ${event.get().location}` : ""}</p>
-        <mnx-if test={event.get().notes}><p class="notes">{event.get().notes}</p></mnx-if>
+        <span class="pill tag">{event.category}</span>
+        <h1>{event.title}</h1>
+        <p class="meta">{formatDay(event.day)} ({relative(event.day)}) · {event.start}–{event.end}{event.location ? ` · ${event.location}` : ""}</p>
+        <mnx-if test={event.notes}><p class="notes">{event.notes}</p></mnx-if>
       </div>
       <div class="actions">
         <button type="button" class="export" onclick={download}>Export .ics</button>
@@ -78,9 +78,9 @@
       </div>
     </div>
     <div class="stats">
-      <div><b class="going">{summary.get().going}</b><span>going of {summary.get().invited} invited</span></div>
-      <div><b class="spent">{money.format(summary.get().spent)}</b><span>{event.get().budget ? `of ${money.format(event.get().budget)} budget` : "spent, no budget set"}</span></div>
-      <div><b class="done">{summary.get().done}/{summary.get().tasks}</b><span>tasks done</span></div>
+      <div><b class="going">{summary.going}</b><span>going of {summary.invited} invited</span></div>
+      <div><b class="spent">{money.format(summary.spent)}</b><span>{event.budget ? `of ${money.format(event.budget)} budget` : "spent, no budget set"}</span></div>
+      <div><b class="done">{summary.done}/{summary.tasks}</b><span>tasks done</span></div>
     </div>
     <div role="tablist" aria-label="Plan">
       <mnx-each items={TABS} as="name" key={name}>
@@ -89,16 +89,16 @@
     </div>
     <section role="tabpanel" aria-label={tab}>
       <mnx-if test={tab === "schedule"}>
-        <schedule-list event={event.get()}></schedule-list>
+        <schedule-list event={event}></schedule-list>
       </mnx-if>
       <mnx-if test={tab === "guests"}>
-        <guest-list event={event.get()}></guest-list>
+        <guest-list event={event}></guest-list>
       </mnx-if>
       <mnx-if test={tab === "budget"}>
-        <budget-table event={event.get()}></budget-table>
+        <budget-table event={event}></budget-table>
       </mnx-if>
       <mnx-if test={tab === "tasks"}>
-        <task-list event={event.get()}></task-list>
+        <task-list event={event}></task-list>
       </mnx-if>
     </section>
     <mnx-else>

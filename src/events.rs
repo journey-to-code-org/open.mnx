@@ -24,6 +24,17 @@ pub fn events(
     component: &ComponentAst,
 ) -> Result<(Vec<EventInterface>, Option<String>), Diagnostic> {
     let mut events: Vec<EventInterface> = Vec::new();
+    // A two-way prop fires `<prop>change` when the component assigns it.
+    for prop in component.props.iter().filter(|prop| prop.model) {
+        events.push(EventInterface {
+            name: format!("{}change", prop.name.to_ascii_lowercase()),
+            detail: "unknown".to_owned(),
+            description: Some(format!(
+                "`{}` changed; `detail` is the new value.",
+                prop.name
+            )),
+        });
+    }
     for emit in &component.script.emits {
         match events.iter_mut().find(|event| event.name == emit.name) {
             Some(event) => event.detail = union([event.detail.clone(), emit.detail.clone()]),

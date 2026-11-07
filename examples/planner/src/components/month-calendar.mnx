@@ -65,7 +65,7 @@
             <td class:other={monthOf(day) !== month} class:today={day === now} data-day={day}>
               <div class="day" role="button" tabindex="0" aria-label={`Add an event on ${formatDay(day)}`} onclick={(e) => e.target.closest('a') || emit('daypick', day)} onkeydown={(e) => e.key === "Enter" && e.target === e.currentTarget && emit('daypick', day)}>
                 <span class="num">{Number(day.slice(8))}</span>
-                <mnx-each items={byDay.get()[day] ?? []} as="event" key={event.id}>
+                <mnx-each items={byDay[day] ?? []} as="event" key={event.id}>
                   <a href={`#/events/${event.id}`} data-category={event.category} title={`${event.start} ${event.title}`}>{event.start} {event.title}</a>
                 </mnx-each>
               </div>

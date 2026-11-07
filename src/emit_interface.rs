@@ -84,7 +84,7 @@ pub fn property_key(key: &str) -> String {
     }
 }
 
-fn prop_type(prop: &PropInterface) -> String {
+pub(crate) fn prop_type(prop: &PropInterface) -> String {
     if let Some(declared) = &prop.declared {
         return declared.clone();
     }

@@ -4,7 +4,7 @@
   @fires valuechange - The tags changed; `detail` is the new array.
 -->
 <script>
-  import { emit, formValue, id } from '@mnx/runtime'
+  import { formValue, id } from '@mnx/runtime'
 
   const listId = id()
   let draft = ""
@@ -14,7 +14,6 @@
 
   function set(next) {
     value = next
-    emit('valuechange', next)
   }
   function add(text) {
     const tag = text.trim().toLowerCase().replace(/\s+/g, "-")
@@ -39,7 +38,7 @@
   input { flex: 1; min-width: 7rem; border: 0; outline: 0; padding: 0.3rem; font: inherit; background: none; color: inherit; }
   .hint { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--muted); }
 </style>
-<tag-input form-associated value={[]} suggestions={[]} max={6} label="Tags">
+<tag-input form-associated value:model={[]} suggestions={[]} max={6} label="Tags">
   <div class="box">
     <mnx-each items={value} as="tag" key={tag}>
       <span class="tag">{tag}<button type="button" aria-label={`Remove ${tag}`} onclick={() => set(value.filter((item) => item !== tag))}>×</button></span>

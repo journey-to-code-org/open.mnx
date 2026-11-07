@@ -138,7 +138,9 @@ function formHooks(name) {
 
 /** What the form submits for this control: follows `source` (a signal, function or value). */
 export function formValue(source) {
-  const { internals } = formHooks('formValue');
+  const component = formHooks('formValue');
+  const { internals } = component;
+  component.formValued = true;
   effect(() => {
     const value = $r(typeof source === 'function' ? source() : source);
     internals.setFormValue(value == null ? null : value instanceof FormData || value instanceof File ? value : String(value));
@@ -464,6 +466,12 @@ const signature = (range) =>
 
 // ---- event helpers: the modifiers, as functions (for JSX, and for handlers built in scripts) --
 
+/**
+ * `function X({ value = model(0) })` in a JSX component marks `value` as two-way (like
+ * `value:model={0}` in `.mnx`). The compiler reads it; at runtime it's just the default.
+ */
+export const model = (value) => value;
+
 /** `prevent(fn)`: a handler that calls `event.preventDefault()` first. */
 export const prevent = (fn) => function (event) { event.preventDefault(); return fn?.call(this, event); };
 /** `stop(fn)`: a handler that calls `event.stopPropagation()` first. */
@@ -596,6 +604,24 @@ function bind(part, node, hydrating, context) {
   }
 }
 
+/** The signal saying whether slot `name` has content (shared by hasSlot() and the slot). */
+function filledSignal(filled, name) {
+  let signal = filled.get(name);
+  if (!signal) filled.set(name, (signal = new Signal.State(false)));
+  return signal;
+}
+
+/**
+ * Whether content was given for slot `name` (`'default'` for the default slot), as a signal that
+ * follows the content: for wrapping a slot in markup only when it's used.
+ *
+ *   const hasFooter = hasSlot('footer')
+ *   <mnx-if test={hasFooter}><footer><mnx-slot name="footer"></mnx-slot></footer></mnx-if>
+ */
+export function hasSlot(name = 'default') {
+  return filledSignal(hooks('hasSlot').filled, name);
+}
+
 /**
  * mnx-slot in light DOM: the host's own children for this slot, moved in once at startup, or the
  * fallback block. The provided nodes are kept, so a slot inside an mnx-if branch gets them back
@@ -665,7 +691,7 @@ function bindSlot(part, open, hydrating, context) {
 function slotRecord(context, name) {
   let slot = context.slots.get(name);
   if (!slot) {
-    slot = { name, nodes: [], region: null, park: document.createDocumentFragment() };
+    slot = { name, nodes: [], region: null, park: document.createDocumentFragment(), filled: filledSignal(context.filled, name) };
     context.slots.set(name, slot);
     context.observer?.observe(slot.park, { childList: true });
   }
@@ -733,6 +759,7 @@ function routeChildren(host, context, slots, tag) {
   };
   const show = (slot, keep) => {
     prune(slot, keep);
+    slot.filled.set(slot.nodes.some(isContent));
     if (slot.region) slot.region.update();
     else slot.park.append(...slot.nodes);
   };
@@ -1359,14 +1386,21 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
       }
       const $p = {};
       for (const name of Object.keys(props)) {
+        // A two-way prop (`value:model`) fires `<prop>change` when the component assigns it.
+        const change = props[name].model ? `${name.toLowerCase()}change` : null;
         Object.defineProperty($p, name, {
           get: () => element.#signals[name].get(),
-          set: (value) => element.#signals[name].set(value),
+          set: (value) => {
+            const signal = element.#signals[name];
+            if (change && Object.is(untrack(() => signal.get()), value)) return;
+            signal.set(value);
+            if (change) element.#emit(change, value);
+          },
           enumerable: true,
         });
       }
       this.#hooks = {
-        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0,
+        mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(),
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
       // The element's own root: an effect that inserted it (a list row) doesn't own it, so
@@ -1381,8 +1415,26 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
           if (!this.#given.has(name)) this.#signals[name].set(compute());
         };
         try { parts = setup ? setup($p, (name, detail) => this.#emit(name, detail), initial) : []; } finally { current = previous; }
+        // A form control with one two-way prop: that's what it submits, and what a form reset
+        // restores, unless the script says otherwise.
+        const models = Object.keys(props).filter((name) => props[name].model);
+        if (form && models.length === 1) {
+          const [name] = models;
+          if (!this.#hooks.formValued) {
+            effect(() => {
+              const value = $p[name];
+              this.#internals.setFormValue(value == null || value === false || value === ''
+                ? null
+                : value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value));
+            });
+          }
+          if (!this.#hooks.formReset.length) {
+            const initialValue = untrack(() => $p[name]);
+            this.#hooks.formReset.push(() => { $p[name] = initialValue; });
+          }
+        }
 
-        const context = { slots: new Map(), slotted: styled && !shadow ? tag : null };
+        const context = { slots: new Map(), slotted: styled && !shadow ? tag : null, filled: this.#hooks.filled };
         const server = hasContent(root);
         // Server markup has the template's shape; anything else is the page's own children.
         const nodes = server && signature(childRange(root)) === templateSignature
@@ -1409,8 +1461,25 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
         }
         if (!shadow) {
           // Content for slots that aren't rendered now waits in their park.
-          for (const slot of context.slots.values()) if (!slot.region) slot.park.append(...slot.nodes);
+          for (const slot of context.slots.values()) {
+            if (!slot.region) slot.park.append(...slot.nodes);
+            slot.filled.set(slot.nodes.some(isContent));
+          }
           routeChildren(this, context, slots, tag);
+        } else if (this.#hooks.filled.size) {
+          // Shadow DOM: the host's children are assigned by the browser; follow them.
+          const follow = () => {
+            for (const [name, signal] of this.#hooks.filled) {
+              signal.set([...this.childNodes].some((node) => isContent(node) && (node.nodeType === 1 ? (node.getAttribute('slot') ?? 'default') : 'default') === name));
+            }
+          };
+          follow();
+          this.#hooks.mount.push(() => {
+            follow();
+            const observer = new MutationObserver(follow);
+            observer.observe(this, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'], characterData: true });
+            return () => observer.disconnect();
+          });
         }
       });
       // Disabled (e.g. inside a disabled <fieldset>) before setup registered its hooks. Chromium

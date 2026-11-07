@@ -78,9 +78,39 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         .iter()
         .map(|prop| prop.name.clone())
         .collect();
+    // The local names `state`, `computed` and `inject` have, imported from the runtime.
+    let makers: Vec<String> = component
+        .script
+        .imports
+        .iter()
+        .filter(|import| import.specifier == "@mnx/runtime")
+        .flat_map(|import| {
+            let names = import
+                .text
+                .split_once('{')
+                .and_then(|(_, rest)| rest.split_once('}'))
+                .map_or("", |(names, _)| names);
+            names
+                .split(',')
+                .filter_map(|name| {
+                    let mut words = name.split_whitespace();
+                    let imported = words.next()?;
+                    let local = match (words.next(), words.next()) {
+                        (Some("as"), Some(local)) => local,
+                        _ => imported,
+                    };
+                    // `__mnx…` names come from JSX lowering, which writes its own `.get()`s.
+                    (matches!(imported, "state" | "computed" | "inject" | "hasSlot")
+                        && !local.starts_with("__mnx"))
+                    .then(|| local.to_owned())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
     let script = crate::reactive::rewrite_script(
         &component.script.body,
         &prop_names,
+        &makers,
         component
             .script
             .start
@@ -89,6 +119,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     let mut emitter = Emitter {
         state: &script.state,
         derived: &script.derived,
+        signals: &script.signals,
         interface: &interface,
         children: &children,
         shadow: component.shadow,
@@ -172,10 +203,11 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             .as_ref()
             .map_or_else(|| "undefined".to_owned(), |value| value.to_string());
         out.push_str(&format!(
-            "    {}: {{ attribute: {}, default: {default}, required: {} }},\n",
+            "    {}: {{ attribute: {}, default: {default}, required: {}{} }},\n",
             json(&prop.name),
             json(&prop.attribute),
-            prop.required()
+            prop.required(),
+            if prop.model { ", model: true" } else { "" }
         ));
     }
     let mut slots: Vec<String> = {
@@ -218,7 +250,8 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     for prop in &interface.props {
         if let Some(default) = &prop.runtime_default {
             let runtime = default.is_runtime();
-            let rewritten = reactive_expression(default, &script.state, &script.derived);
+            let rewritten =
+                reactive_expression(default, &script.state, &script.derived, &script.signals);
             let default = rewritten.as_ref().unwrap_or(default);
             let value = default.to_js_with(&|name| {
                 if runtime {
@@ -313,6 +346,7 @@ fn child_infos(component: &ComponentAst) -> Result<Vec<(String, ChildInfo)>, Dia
                 let mut emitter = Emitter {
                     state: &[],
                     derived: &[],
+                    signals: &[],
                     interface: &interface,
                     children: &grandchildren,
                     shadow: child.ast.shadow,
@@ -401,6 +435,8 @@ struct Emitter<'a> {
     /// expressions.
     state: &'a [String],
     derived: &'a [String],
+    /// The script's signal `const`s (`computed()`, `inject()`, `state()`): read like values.
+    signals: &'a [String],
     interface: &'a Interface,
     children: &'a [(String, ChildInfo)],
     /// Shadow-DOM components compile mnx-slot to a native <slot>.
@@ -422,6 +458,7 @@ impl<'a> Emitter<'a> {
         Emitter {
             state: self.state,
             derived: self.derived,
+            signals: self.signals,
             interface: self.interface,
             children: self.children,
             shadow: self.shadow,
@@ -449,7 +486,7 @@ impl<'a> Emitter<'a> {
     /// mean what they mean in the script, so a `state()` is read with `.get()` there.
     fn js(&self, expression: &Expression) -> String {
         let runtime = expression.is_runtime();
-        let rewritten = reactive_expression(expression, self.state, self.derived);
+        let rewritten = reactive_expression(expression, self.state, self.derived, self.signals);
         let expression = rewritten.as_ref().unwrap_or(expression);
         expression.to_js_with(&|name| {
             if self.scopes.iter().any(|scope| scope == name) {
@@ -972,14 +1009,16 @@ fn reactive_expression(
     expression: &Expression,
     state: &[String],
     derived: &[String],
+    signals: &[String],
 ) -> Option<Expression> {
     let Expression::Runtime { source, .. } = expression else {
         return None;
     };
-    if state.is_empty() && derived.is_empty() {
+    if state.is_empty() && derived.is_empty() && signals.is_empty() {
         return None;
     }
-    let rewritten = crate::reactive::rewrite_template_expression(source, state, derived).ok()??;
+    let rewritten =
+        crate::reactive::rewrite_template_expression(source, state, derived, signals).ok()??;
     let names = crate::runtime_expression::parse(&rewritten).ok()?;
     Some(Expression::Runtime {
         source: rewritten,

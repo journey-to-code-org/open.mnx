@@ -6,11 +6,8 @@
   @fires flippedchange - It was flipped; `detail` is whether the back is showing.
 -->
 <script>
-  import { emit } from '@mnx/runtime'
-
   function flip() {
     flipped = !flipped
-    emit('flippedchange', flipped)
   }
 </script>
 <style>
@@ -23,7 +20,7 @@
   .hint { position: absolute; bottom: 0.75rem; left: 0; right: 0; text-align: center; font-size: 0.75rem; color: var(--muted, #888); backface-visibility: hidden; }
   @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
 </style>
-<flip-card shadow flipped={false} hint="Click or press Space to flip">
+<flip-card shadow flipped:model={false} hint="Click or press Space to flip">
   <div class="card" class:flipped role="button" tabindex="0" aria-pressed={flipped ? "true" : "false"} aria-label={flipped ? "Answer (flip back)" : "Question (flip to see the answer)"} onclick={flip} onkeydown.space.enter.prevent={flip}>
     <div class="face front" aria-hidden={flipped ? "true" : "false"}><mnx-slot name="front"></mnx-slot></div>
     <div class="face back" aria-hidden={flipped ? "false" : "true"}><mnx-slot name="back"></mnx-slot></div>

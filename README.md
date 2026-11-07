@@ -145,7 +145,9 @@ In the HTML output, directives are expanded at build time and wrapped in `<!--[-
 - **A prop's name is the prop**, in the script as in the template: read `label`, assign `label = …` (the element updates as if it were set from outside). So the script can't declare a name a prop has. A default taken from the script uses another name: `<mnx-card title={titleDefault}>`.
 - **A top-level `let` is state.** Reading it in the template, in a `computed` or an effect tracks it, and assigning it (`count++`, `count = 0`, `count += 2`) updates what reads it. Its initial value renders on the server.
 - **A top-level `const` that reads props or state** (outside nested functions) is derived: it's recomputed when they change. Other `const`s, functions and imports are plain JavaScript, run once per element.
-- `state()` and `computed()` give explicit signals, for custom hooks and shared state.
+- `state()` and `computed()` give explicit signals, for custom hooks and shared state. A `const` holding one (from `state`, `computed`, `inject` or `hasSlot`) **reads like a value in the template**: `{user.name}` means `{user.get().name}`. In the script, call `.get()`; a `const` derived from a signal (`const me = user.get()?.name`) stays in sync like any other.
+- **`name:model={default}` on the host** makes a prop two-way: assigning it in the script fires `<name>change` (detail: the new value) when it changes, and the event is declared in the typings and manifest. Setting it from outside fires nothing. Frameworks' two-way binding (`v-model`, `bind:`, Angular's `MnxModel`) listen for exactly that event. In JSX, `function Stepper({ value = model(0) })`.
+- **`declare const name: Type`** in `<script lang="ts">` gives a prop its type (for the typings, manifest and child checks) without a default's help: `declare const size: 'small' | 'large'`. A `declare const` that names no prop is an error.
 
 Hooks are plain functions called while the script runs (once per element; nothing re-renders, so there are no hook rules beyond that):
 
@@ -158,6 +160,7 @@ Hooks are plain functions called while the script runs (once per element; nothin
 | `host()` | The element |
 | `emit(name, detail)` | Fire an event (see Events) |
 | `id()` | An id unique to this element and call, for `id`/`for`/`aria-*` |
+| `hasSlot(name = 'default')` | A signal: whether content was given for a slot (see Slots) |
 | `createContext`, `provide`, `inject` | Context (see below) |
 | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled` | Form controls (see below) |
 | `resource(fetcher)` | Async data (see below) |
@@ -193,6 +196,18 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 - **Slotted content stays live.** Frameworks keep managing an element's children through the host (`appendChild`, `insertBefore`, `removeChild`, `replaceChild`, `append`, `replaceChildren`, `textContent`, `innerHTML`, as React and Vue do), and those calls are routed to the slots. Content removed through its real parent leaves its slot, changing an element's `slot` attribute moves it, and an emptied slot shows its fallback again. Reading `childNodes` on the host shows the rendered template.
 - **Shadow DOM** (`shadow`): `mnx-slot` compiles to a native `<slot>`, and supplied content is light DOM with `slot="…"`, as declarative shadow DOM expects.
 - A slot can't be inside `mnx-each`.
+- **`hasSlot(name)`** says whether content was given for a slot, and follows it as content comes and goes, in light and shadow DOM. For markup that only makes sense around a used slot:
+
+```html
+<script>
+  import { hasSlot } from '@mnx/runtime'
+  const hasFooter = hasSlot('footer')
+</script>
+<mnx-card>
+  <mnx-slot></mnx-slot>
+  <mnx-if test={hasFooter}><footer><mnx-slot name="footer"></mnx-slot></footer></mnx-if>
+</mnx-card>
+```
 
 ## Styles
 
@@ -272,7 +287,7 @@ Light-DOM components need no setup: utility classes in templates are just classe
 
 `form-associated` on the host makes the element a form control on the platform's `ElementInternals`:
 
-- `formValue(signal)` sets what the form submits, under the element's `name`.
+- `formValue(signal)` sets what the form submits, under the element's `name`. Without it, a control with exactly one `:model` prop submits that prop (`null`, `false` and `''` submit nothing, `true` submits `"on"`, objects JSON), and a form reset restores the prop's initial value.
 - `validity(() => message)` takes part in validation. `''` means valid; otherwise the form won't submit, and `:invalid`/`:valid` match.
 - `onFormReset`, `onFormRestore` and `onFormDisabled` follow the form's lifecycle. A disabled `<fieldset>` disables the control and leaves it out of the submitted data.
 

@@ -10,7 +10,7 @@ import { build } from 'esbuild';
 const here = dirname(fileURLToPath(import.meta.url));
 const BUDGETS = {
   // Everything, the Signals implementation included.
-  'src/index.js': { gzip: 11 * 1024 },
+  'src/index.js': { gzip: 12 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
 };

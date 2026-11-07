@@ -41,6 +41,10 @@ pub enum Kind {
     Callback(String),
     /// JSX `children`.
     Children,
+    /// A top-level `const` holding a signal from `state()`, `computed()` or `inject()`: the
+    /// script reads it with `.get()`; templates read it like a value, and a `const` that reads it
+    /// is derived.
+    Signal,
 }
 
 /// What the names in some code are, for one front end.
@@ -101,7 +105,7 @@ impl<'a, N: Names> Visit<'a> for ReactiveReads<'_, N> {
         if self.depth == 0
             && matches!(
                 self.names.kind(identifier),
-                Some(Kind::Prop(_) | Kind::State | Kind::Derived)
+                Some(Kind::Prop(_) | Kind::State | Kind::Derived | Kind::Signal)
             )
         {
             self.found = true;
@@ -233,6 +237,14 @@ impl<'n, N: Names> Rewriter<'n, N> {
         match self.names.kind(identifier)? {
             Kind::Prop(prop) => self.names.in_script().then(|| format!("$p.{prop}")),
             Kind::State | Kind::Derived => Some(format!("{name}.get()")),
+            // In a template, a signal reads like a value; `.get()`/`.set()` written out stay.
+            Kind::Signal => {
+                let rest = &self.names.source()[identifier.span.end as usize..];
+                let explicit = [".get(", ".set(", "?.get("]
+                    .iter()
+                    .any(|call| rest.trim_start().starts_with(call));
+                (!self.names.in_script() && !explicit).then(|| format!("{name}.get()"))
+            }
             Kind::Callback(_) => {
                 self.fail(
                     identifier.span.start,
@@ -388,6 +400,8 @@ pub struct ScriptCode {
     /// Its top-level `let`s (state) and derived `const`s, which templates read with `.get()`.
     pub state: Vec<String>,
     pub derived: Vec<String>,
+    /// Its top-level `const`s that hold a signal (`state()`, `computed()`, `inject()`).
+    pub signals: Vec<String>,
 }
 
 struct ScriptNames<'s> {
@@ -436,6 +450,7 @@ impl Names for ScriptNames<'_> {
 pub fn rewrite_script(
     body: &str,
     props: &[String],
+    makers: &[String],
     start: crate::diagnostic::Span,
 ) -> Result<ScriptCode, Diagnostic> {
     let allocator = oxc_allocator::Allocator::default();
@@ -475,6 +490,18 @@ pub fn rewrite_script(
                     let Some(init) = &declarator.init else {
                         continue;
                     };
+                    if let (
+                        Expression::CallExpression(call),
+                        BindingPattern::BindingIdentifier(identifier),
+                    ) = (init.without_parentheses(), &declarator.id)
+                    {
+                        if matches!(&call.callee, Expression::Identifier(callee) if makers.iter().any(|maker| maker == callee.name.as_str()))
+                        {
+                            names.kinds.insert(identifier.symbol_id(), Kind::Signal);
+                            code.signals.push(identifier.name.to_string());
+                            continue;
+                        }
+                    }
                     if !reads_reactive(&names, init) {
                         continue;
                     }
@@ -503,6 +530,7 @@ struct TemplateNames<'s> {
     scoping: &'s oxc_semantic::Scoping,
     state: &'s [String],
     derived: &'s [String],
+    signals: &'s [String],
 }
 
 impl Names for TemplateNames<'_> {
@@ -516,6 +544,8 @@ impl Names for TemplateNames<'_> {
             Some(Kind::State)
         } else if self.derived.iter().any(|derived| derived == name) {
             Some(Kind::Derived)
+        } else if self.signals.iter().any(|signal| signal == name) {
+            Some(Kind::Signal)
         } else {
             None
         }
@@ -542,6 +572,7 @@ pub fn rewrite_template_expression(
     source: &str,
     state: &[String],
     derived: &[String],
+    signals: &[String],
 ) -> Result<Option<String>, String> {
     let wrapped = format!("({source}\n)");
     let allocator = oxc_allocator::Allocator::default();
@@ -555,6 +586,7 @@ pub fn rewrite_template_expression(
         scoping: semantic.scoping(),
         state,
         derived,
+        signals,
     };
     let mut rewriter = Rewriter::new(&names);
     rewriter.visit_program(&parsed.program);

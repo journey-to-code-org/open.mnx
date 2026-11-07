@@ -4,8 +4,6 @@
   @fires valuechange - The count changed; `detail` is the new count.
 -->
 <script>
-  import { emit } from '@mnx/runtime'
-
   const R = 15.915494309189533
   const done = value >= goal
   const percent = Math.min(100, (value / goal) * 100)
@@ -14,7 +12,6 @@
     next = Math.max(0, Math.min(goal * 3, next))
     if (next === value) return
     value = next
-    emit('valuechange', next)
   }
 </script>
 <style>
@@ -30,7 +27,7 @@
   .less { width: 1.6rem; height: 1.6rem; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); cursor: pointer; }
   .less:disabled { visibility: hidden; }
 </style>
-<check-ring value={0} goal={1} label="Today">
+<check-ring value:model={0} goal={1} label="Today">
   <button type="button" class="less" aria-label={`One less: ${label}`} disabled={value === 0} onclick={() => set(value - 1)}>−</button>
   <button type="button" class="ring" class:done aria-label={`${label}: ${value} of ${goal}`} aria-pressed={done ? "true" : "false"} onclick={() => set(value + 1)}>
     <svg viewBox="0 0 42 42" aria-hidden="true">

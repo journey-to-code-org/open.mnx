@@ -39,6 +39,8 @@ pub struct Types {
     pub bindings: HashMap<String, String>,
     /// `emit<Detail>(…)`: the call's start offset → `Detail`.
     pub emits: HashMap<u32, String>,
+    /// `declare const value: number | null`: a prop's type, by name, with where it's declared.
+    pub props: Vec<(String, String, u32)>,
     /// For the typings: the script's `type` and `interface` declarations, exported, and its
     /// imports as `import type`, so the types the interface mentions resolve.
     pub declarations: Vec<String>,
@@ -314,6 +316,18 @@ impl<'a> Visit<'a> for Stripper<'_> {
 
     fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
         if it.declare {
+            // `declare const value: T` types the prop `value` (it declares nothing at runtime).
+            for declarator in &it.declarations {
+                if let (Some(name), Some(annotation)) = (
+                    declarator.id.get_binding_identifier(),
+                    &declarator.type_annotation,
+                ) {
+                    let text = self.text(annotation.type_annotation.span()).to_owned();
+                    self.types
+                        .props
+                        .push((name.name.to_string(), text, declarator.span.start));
+                }
+            }
             return self.blank(it.span);
         }
         walk::walk_variable_declaration(self, it);

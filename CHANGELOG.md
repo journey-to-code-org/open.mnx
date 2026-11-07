@@ -2,6 +2,22 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.3.0 — 2026-11-07
+
+Components that say less (`plan/roadmap-adoption.md`). Rewritten with these, the example components went from 1,913 lines to 1,882, with no hand-fired `<prop>change` events (was 11) and 6 `.get()` calls left of 30 (`node examples/stats.mjs`).
+
+### Added
+
+- **Two-way props**: `value:model={0}` on the host. Assigning the prop in the script fires `valuechange` when it changes; the event is declared in the typings (`CustomEvent<number>`) and the manifest. In JSX, a default of `model(x)`.
+- **Automatic form values**: a `form-associated` control with one `:model` prop and no `formValue()` submits that prop, and a form reset restores its initial value.
+- **Signals read like values in templates**: a `const` from `state()`, `computed()`, `inject()` or `hasSlot()` is unwrapped where the template reads it (`{user.name}`), and a `const` derived from one is a computed.
+- **`hasSlot(name)`**: a signal saying whether a slot has content, following it in light and shadow DOM.
+- **`declare const name: Type`** types a prop in `<script lang="ts">`; one naming no prop is an error, with a suggestion.
+
+### Changed
+
+- The runtime's size budget is 12 KB gzipped (was 11 KB); it is 11.4 KB.
+
 ## 2.2.0 — 2026-11-07
 
 Templates that say less (`plan/roadmap-adoption.md`). Rewritten with these, the example components went from 1,968 lines to 1,913, with no class-string concatenation (was 22), no `host()` queries (6), no hand-added window or document listeners (2), and 4 `preventDefault()` calls left of 18 (`node examples/stats.mjs`).

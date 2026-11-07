@@ -5,14 +5,13 @@
   @fires reply - Reply was chosen.
 -->
 <script>
-  import { emit, inject, effect } from '@mnx/runtime'
+  import { emit, inject } from '@mnx/runtime'
   import { userContext } from '../user.js'
 
-  // `inject` gives a signal that follows the provider; mirrored into state, so everything derived
-  // from `me` updates when the user changes.
+  // `inject` gives a signal that follows the provider, so `me` (and everything derived from it)
+  // updates when the user changes.
   const user = inject(userContext)
-  let me = ""
-  effect(() => (me = user.get()?.name ?? ""))
+  const me = user.get()?.name ?? ""
   const QUICK = ["👍", "🎉", "❤️", "😂"]
   const mine = message.author === me
   const initials = message.author.split(/\s+/).map((part) => part[0]).join("").slice(0, 2)

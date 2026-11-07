@@ -6,8 +6,9 @@
   @fires carddrop - A card was dropped here; `detail` is `{ id, index }` (where among the cards).
 -->
 <script>
-  import { emit } from '@mnx/runtime'
+  import { emit, hasSlot } from '@mnx/runtime'
 
+  const hasActions = hasSlot('actions')
   let list = null
   let over = false
   const full = limit > 0 && count > limit
@@ -46,6 +47,7 @@
   .limit { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
   .full .limit { color: var(--danger); font-weight: 700; }
   .cards { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; min-height: 4rem; }
+  footer { display: flex; flex-direction: column; }
   .empty { display: grid; place-items: center; flex: 1; min-height: 4rem; border: 2px dashed var(--line); border-radius: 0.7rem; color: var(--muted); font-size: 0.8125rem; }
 </style>
 <kanban-column heading="" count={0} limit={0}>
@@ -58,6 +60,6 @@
     <div class="cards" ref={list}>
       <mnx-slot><div class="empty">Drop cards here</div></mnx-slot>
     </div>
-    <mnx-slot name="actions"></mnx-slot>
+    <mnx-if test={hasActions}><footer><mnx-slot name="actions"></mnx-slot></footer></mnx-if>
   </section>
 </kanban-column>

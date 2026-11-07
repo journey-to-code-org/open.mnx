@@ -55,6 +55,11 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         declared_types: types.bindings.clone(),
         type_declarations: types.declarations.clone(),
         type_imports: types.imports.clone(),
+        prop_types: types
+            .props
+            .iter()
+            .map(|(name, text, offset)| (name.clone(), text.clone(), at(*offset)))
+            .collect(),
         ..Script::default()
     };
     let mut import_ranges = Vec::new();

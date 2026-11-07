@@ -4,7 +4,7 @@
   @fires valuechange - Either date changed; `detail` is the new `{ start, end }`.
 -->
 <script>
-  import { emit, formValue, validity, id } from '@mnx/runtime'
+  import { formValue, validity, id } from '@mnx/runtime'
 
   const startId = id()
   const endId = id()
@@ -18,7 +18,6 @@
     const next = { ...value, [part]: day }
     if (part === "start" && next.end && next.end <= day) next.end = nextDay(day)
     value = next
-    emit('valuechange', next)
   }
 </script>
 <style>
@@ -27,7 +26,7 @@
   input { font: inherit; padding: 0.55rem 0.65rem; border: 1px solid var(--line, #ccd); border-radius: 0.6rem; background: var(--surface, #fff); color: var(--ink, #111); }
   .nights { padding: 0.55rem 0.8rem; border-radius: 999px; background: var(--chip, #eef); font-weight: 700; white-space: nowrap; }
 </style>
-<date-range form-associated value={{ start: "", end: "" }} min="">
+<date-range form-associated value:model={{ start: "", end: "" }} min="">
   <label for={startId}>Check-in
     <input id={startId} type="date" class="start" min={min} value={value.start} onchange={(event) => set("start", event.target.value)}>
   </label>

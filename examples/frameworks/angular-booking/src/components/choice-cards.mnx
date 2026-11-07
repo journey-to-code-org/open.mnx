@@ -4,16 +4,14 @@
   @fires valuechange - The choice changed; `detail` is the chosen id.
 -->
 <script>
-  import { emit, formValue, validity } from '@mnx/runtime'
+  import { validity } from '@mnx/runtime'
 
   let group = null
-  formValue(() => value || null)
   validity(() => (required && !value ? "Choose one" : ""))
 
   function choose(item) {
     if (item.disabled || item.id === value) return
     value = item.id
-    emit('valuechange', item.id)
   }
   function move(index, step) {
     const enabled = items.filter((item) => !item.disabled)
@@ -36,7 +34,7 @@
   .price { font-weight: 700; }
   .note { font-size: 0.75rem; font-weight: 600; color: var(--accent, #36c); }
 </style>
-<choice-cards form-associated value="" items={[]} required={false} label="">
+<choice-cards form-associated value:model="" items={[]} required={false} label="">
   <div role="radiogroup" aria-label={label} ref={group}>
   <mnx-each items={items} as="item" index="index" key={item.id}>
     <button type="button" role="radio" data-id={item.id} aria-checked={item.id === value ? "true" : "false"} tabindex={item.id === value || (!value && index === 0) ? "0" : "-1"} disabled={item.disabled ?? false} onclick={() => choose(item)} onkeydown.down.right.prevent={() => move(index, 1)} onkeydown.up.left.prevent={() => move(index, -1)}>

@@ -51,6 +51,18 @@ export declare function host<E extends HTMLElement = HTMLElement>(): E;
  */
 export declare function emit(name: string, detail?: unknown): boolean;
 
+/**
+ * Whether content was given for a slot (`'default'` for the default slot), as a signal that
+ * follows the content. Read it like a value in the template: `<mnx-if test={hasFooter}>`.
+ */
+export declare function hasSlot(name?: string): Signal.State<boolean>;
+
+/**
+ * In a JSX component's parameters, `value = model(0)` makes `value` two-way: assigning it fires
+ * `valuechange` (like `value:model={0}` in `.mnx`). Returns its argument.
+ */
+export declare function model<T>(value: T): T;
+
 // ---- event helpers (the template's event modifiers, as functions) ---------------------------
 
 type Handler<E extends Event = Event> = (this: unknown, event: E) => unknown;

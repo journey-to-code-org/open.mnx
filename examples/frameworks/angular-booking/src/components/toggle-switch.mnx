@@ -3,13 +3,8 @@
   @fires checkedchange - It was switched; `detail` is the new state.
 -->
 <script>
-  import { emit, formValue } from '@mnx/runtime'
-
-  formValue(() => (checked ? "on" : null))
-
   function toggle() {
     checked = !checked
-    emit('checkedchange', checked)
   }
 </script>
 <style>
@@ -23,7 +18,7 @@
   small { color: var(--muted, #667); }
   .extra { font-weight: 700; white-space: nowrap; }
 </style>
-<toggle-switch form-associated checked={false} label="" description="" extra="">
+<toggle-switch form-associated checked:model={false} label="" description="" extra="">
   <button type="button" role="switch" aria-checked={checked ? "true" : "false"} onclick={toggle}>
     <span class="track"></span>
     <span class="text"><span class="label">{label}</span><small>{description}</small></span>

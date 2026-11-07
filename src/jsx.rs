@@ -583,7 +583,14 @@ fn lower_uncached(
         out.synthetic(&format!(" {flag}"), id.span.start as usize);
     }
     for prop in std::mem::take(&mut lowering.props) {
-        out.synthetic(&format!(" {}", kebab(&prop.name)), prop.at as usize);
+        out.synthetic(
+            &format!(
+                " {}{}",
+                kebab(&prop.name),
+                if prop.model { ":model" } else { "" }
+            ),
+            prop.at as usize,
+        );
         if let Some(default) = prop.default {
             out.synthetic("={", default.start);
             let edits = prop.edits;
@@ -668,6 +675,8 @@ struct PropOut {
     name: String,
     at: u32,
     default: Option<Range<usize>>,
+    /// `value = model(0)`: a two-way prop.
+    model: bool,
     edits: Vec<Edit>,
 }
 
@@ -777,11 +786,22 @@ impl Lowering<'_, '_> {
                 continue;
             }
             self.symbols.insert(symbol, Kind::Prop(name.clone()));
+            // `value = model(0)`: two-way, with `0` as the default.
+            let (default, model) = match default {
+                Some(Expression::CallExpression(call))
+                    if matches!(&call.callee, Expression::Identifier(callee) if callee.name == "model")
+                        && call.arguments.len() == 1 =>
+                {
+                    (call.arguments[0].as_expression(), true)
+                }
+                other => (other, false),
+            };
             self.props.push(PropOut {
                 name,
                 at: property.span.start,
                 default: default
                     .map(|default| default.span().start as usize..default.span().end as usize),
+                model,
                 edits: Vec::new(),
             });
         }

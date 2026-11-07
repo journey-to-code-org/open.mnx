@@ -58,6 +58,8 @@ impl ComponentAst {
 pub struct PropDecl {
     pub name: String,
     pub default: PropDefault,
+    /// `value:model={…}`: assigning the prop inside the component fires `<prop>change`.
+    pub model: bool,
     pub span: Span,
 }
 
@@ -96,6 +98,9 @@ pub struct Script {
     /// `import type`.
     pub type_declarations: Vec<String>,
     pub type_imports: Vec<String>,
+    /// `declare const value: T` in a TypeScript script: the prop's type, by prop name, and
+    /// where it's declared.
+    pub prop_types: Vec<(String, String, Span)>,
 }
 
 /// An `emit("name", detail)` call: the component fires a DOM event called `name`.

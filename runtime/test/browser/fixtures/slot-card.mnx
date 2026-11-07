@@ -1,0 +1,11 @@
+<script>
+  import { hasSlot } from '@mnx/runtime'
+
+  const hasFooter = hasSlot('footer')
+</script>
+<slot-card>
+  <article>
+    <mnx-slot></mnx-slot>
+    <mnx-if test={hasFooter}><footer><mnx-slot name="footer"></mnx-slot></footer></mnx-if>
+  </article>
+</slot-card>

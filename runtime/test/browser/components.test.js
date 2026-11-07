@@ -17,9 +17,12 @@ useBrowser({
   state: join(here, 'fixtures/state.mnx'),
   'row-counter': join(here, 'fixtures/row-counter.mnx'),
   'row-list': join(here, 'fixtures/row-list.mnx'),
+  'mnx-model-input': join(here, 'fixtures/model-input.mnx'),
   'mnx-sugar': join(here, 'fixtures/sugar.mnx'),
   'svg-dots': join(here, 'fixtures/svg-dots.mnx'),
   'pick-list': join(here, 'fixtures/pick-list.mnx'),
+  'slot-card': join(here, 'fixtures/slot-card.mnx'),
+  'slot-card-shadow': join(here, 'fixtures/slot-card-shadow.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -435,4 +438,55 @@ test('2.2 template sugar: class and style directives, event modifiers, ref, glob
   assert.equal(await page.$eval('mnx-sugar', (el) => el.textContent.includes('C')), true);
   assert.deepEqual(messages, []);
   await page.close();
+});
+
+test('a two-way prop fires <prop>change when the component assigns it, and is the form value', async () => {
+  const { page, messages } = await open('<form><mnx-model-input name="qty"></mnx-model-input><button type="reset">reset</button></form>', { modules: ['mnx-model-input'] });
+  await page.evaluate(() => {
+    window.changes = [];
+    document.querySelector('mnx-model-input').addEventListener('valuechange', (event) => window.changes.push(event.detail));
+  });
+  const settle = () => page.evaluate(() => document.querySelector('mnx-model-input').updateComplete);
+  const data = () => page.evaluate(() => new FormData(document.querySelector('form')).get('qty'));
+  assert.equal(await data(), '2');
+  await page.click('mnx-model-input .up');
+  await page.click('mnx-model-input .up');
+  await page.click('mnx-model-input .down');
+  await settle();
+  assert.deepEqual(await page.evaluate(() => window.changes), [3, 4, 3]);
+  assert.equal(await page.textContent('mnx-model-input output'), '3');
+  assert.equal(await data(), '3');
+  // Set from outside: no event (the caller knows), but the form value follows.
+  await page.evaluate(() => { document.querySelector('mnx-model-input').value = 7; });
+  await settle();
+  assert.deepEqual(await page.evaluate(() => window.changes), [3, 4, 3]);
+  assert.equal(await data(), '7');
+  // A form reset restores the initial value, and says so.
+  await page.click('button[type=reset]');
+  await settle();
+  assert.equal(await page.textContent('mnx-model-input output'), '2');
+  assert.deepEqual(await page.evaluate(() => window.changes), [3, 4, 3, 2]);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('hasSlot() follows whether a slot has content, in light and shadow DOM', async () => {
+  for (const tag of ['slot-card', 'slot-card-shadow']) {
+    const { page, messages } = await open(`<${tag} id="a">Body</${tag}><${tag} id="b">Body<p slot="footer">Foot</p></${tag}>`, { modules: [tag] });
+    const footers = () => page.evaluate((tag) => [...document.querySelectorAll(tag)].map((el) => !!(el.shadowRoot ?? el).querySelector('footer')), tag);
+    const settle = () => page.evaluate((tag) => Promise.all([...document.querySelectorAll(tag)].map((el) => el.updateComplete)), tag);
+    assert.deepEqual(await footers(), [false, true], tag);
+    await page.evaluate((tag) => {
+      const p = document.createElement('p');
+      p.slot = 'footer';
+      p.textContent = 'Late';
+      document.querySelector(`${tag}#a`).append(p);
+      document.querySelector(`${tag}#b [slot=footer]`).remove();
+    }, tag);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
+    assert.deepEqual(await footers(), [true, false], tag);
+    assert.deepEqual(messages, [], tag);
+    await page.close();
+  }
 });
