@@ -2,6 +2,19 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.5 — 2026-11-07
+
+### Examples
+
+- **`examples/hypermedia/hono-bikes/`**: a bike shop's inventory built with Hono and htmx, running on Node.js and on Bun.
+  - Every route answers a plain request with a page and an htmx request with the fragment to swap.
+  - The mnx components in those fragments are rendered on the server and hydrate where htmx puts them.
+  - Its tests run the server on both runtimes, with JavaScript off and on. CI runs them in a new `hypermedia` job.
+- **What it found** (in its README):
+  - In the Chromium that Playwright ships, `Document.parseHTMLUnsafe()`, which htmx 2 prefers, drops HTML comments. That includes mnx's hydration markers, so swapped-in elements render fresh instead of hydrating. They come out right, but with a warning. The example works around it so htmx uses `DOMParser`, and a test covers both paths.
+  - Custom elements can't be table rows.
+  - Formatting money on the server takes arithmetic.
+
 ## 2.6.4 — 2026-11-07
 
 ### Examples

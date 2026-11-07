@@ -1,0 +1,24 @@
+{
+  "name": "mnx-example-hono-bikes",
+  "private": true,
+  "type": "module",
+  "description": "A bike shop's inventory: Hono and htmx, with mnx components rendered on the server, swapped in by htmx, and hydrated in the browser. Runs on Node.js and Bun.",
+  "scripts": {
+    "start": "node server.js",
+    "start:bun": "bun server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.6",
+    "@mnx/compiler": "file:../../../compiler",
+    "@mnx/runtime": "file:../../../runtime",
+    "hono": "4.13.17",
+    "htmx.org": "2.0.11"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

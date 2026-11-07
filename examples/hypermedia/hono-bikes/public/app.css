@@ -1,0 +1,25 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: #1f2430; background: #f5f6f8; }
+.top { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1.5rem; background: #1f2430; color: white; }
+.brand { color: white; font-weight: 700; text-decoration: none; }
+.low { font-size: 0.85rem; color: #ffd580; }
+main { max-width: 68rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+.filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.filters input, .filters select, .edit input:not([type=number]) { padding: 0.4rem 0.6rem; font: inherit; border: 1px solid #cfd4de; border-radius: 0.4rem; }
+.filters input { flex: 1; }
+button { font: inherit; padding: 0.35rem 0.8rem; border: 1px solid #cfd4de; border-radius: 0.4rem; background: white; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #e2e5eb; border-radius: 0.6rem; overflow: hidden; }
+th, td { padding: 0.55rem 0.75rem; text-align: left; border-bottom: 1px solid #eef0f4; vertical-align: middle; }
+th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: #616a7d; background: #f8f9fb; }
+td strong { display: block; }
+.category { text-transform: capitalize; color: #616a7d; }
+.actions { display: flex; align-items: center; gap: 0.75rem; justify-content: flex-end; }
+.actions form { margin: 0; }
+tr.editing td { background: #fbfaf3; }
+.edit { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; }
+.edit label { display: grid; gap: 0.2rem; font-size: 0.8rem; font-weight: 600; }
+.edit input[type=number][name=price] { width: 7rem; padding: 0.4rem 0.6rem; font: inherit; border: 1px solid #cfd4de; border-radius: 0.4rem; }
+.error { width: 100%; margin: 0; color: #a1251f; }
+#more td, .empty { text-align: center; color: #616a7d; }
+tr.htmx-swapping td { opacity: 0.4; transition: opacity 0.15s; }

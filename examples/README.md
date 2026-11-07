@@ -20,7 +20,11 @@ Projects that use mnx 2 the way an app would, each with its own README:
 - **[`backends/`](backends/)**, the non-JavaScript servers: a community garden's plot sign-up
   in Flask, Jinja and SQLite, whose components are rendered by the Rust CLI, with no Node.js
   on the server.
+- **[`hypermedia/`](hypermedia/)**: a bike shop's inventory in Hono and htmx, on Node.js or
+  Bun. htmx swaps server-rendered fragments in, and the mnx elements in them hydrate where they
+  land.
 
-`plugin/test/examples.test.js`, `frameworks/test/`, `helpdesk/test/` each `meta/*/test/` and each `backends/*/tests/` build each one and drive them in Chromium (the help desk also against MongoDB in CI).
+Each one has tests that build it and drive it in Chromium: `plugin/test/examples.test.js`, and the
+`test/` (or `tests/`) folder of each app. The help desk's also run against MongoDB in CI.
 
 The loose `.mnx` files here are the small samples the CLI's README and tests refer to.
