@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use mnix_compiler::{compile, compile_html_with, compile_js_with, Diagnostic};
+use mnx_compiler::{compile, compile_html_with, compile_js_with, Diagnostic};
 
 const BADGE: &str = r#"<mnx-badge label="new" count={0} info={{ color: "gray" }}>
   <span data-color={info.color}><mnx-slot name="icon"></mnx-slot><b>{label}</b> {count}<mnx-slot></mnx-slot></span>

@@ -1040,7 +1040,26 @@ function serverElement(tag, options) {
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
-export function define(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, setup }) {
+/** The version of the compiled-code interface: what `$define()`'s arguments and parts mean. */
+export const ABI = 2;
+
+/**
+ * What modules compiled for runtime 1.x call. Their compiled shape differs, so they're refused
+ * with a clear message instead of misbehaving.
+ */
+export function define(tag) {
+  throw new Error(`mnx: <${tag}> was compiled for @mnx/runtime 1.x; recompile it with mnx 2 (the CLI, @mnx/compiler or @mnx/unplugin)`);
+}
+
+/** @internal Register a compiled component: what the compiler's JavaScript output calls. */
+export function $define(tag, definition) {
+  if (definition?.abi !== ABI) {
+    throw new Error(`mnx: <${tag}> was compiled for a different @mnx/runtime (interface ${definition?.abi ?? 1}, this runtime is ${ABI}); recompile it with the matching mnx`);
+  }
+  return defineElement(tag, definition);
+}
+
+function defineElement(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, setup }) {
   // On a server (no DOM), a stand-in with the same `mnx` description, so a module that imports a
   // component loads there: adapters render the host tag, and `@mnx/runtime/server` renders it.
   if (typeof HTMLElement === 'undefined') return serverElement(tag, { props, shadow, form, slots, events, styled });

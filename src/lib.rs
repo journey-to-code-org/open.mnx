@@ -15,6 +15,7 @@ mod ir;
 mod jsx;
 mod migrate;
 mod parser;
+mod reactive;
 mod render;
 mod request;
 mod runtime_expression;
@@ -428,13 +429,7 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
     let Some((component, lowered)) = parsed else {
         return Vec::new();
     };
-    // 1.x code that 2.0 changes (JSX components already have 2.0's semantics).
-    let deprecations = if lowered.is_none() {
-        migrate::deprecations(source, &component)
-    } else {
-        Vec::new()
-    };
-    let mut warnings: Vec<Diagnostic> = component
+    let warnings: Vec<Diagnostic> = component
         .props
         .iter()
         .filter_map(|prop| {
@@ -460,7 +455,6 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
             None => diagnostic,
         })
         .collect();
-    warnings.extend(deprecations);
     warnings
 }
 

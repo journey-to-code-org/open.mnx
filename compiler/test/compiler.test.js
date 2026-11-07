@@ -13,7 +13,7 @@ const repo = join(here, '../..');
 const fixtures = join(repo, 'runtime/test/browser/fixtures');
 if (process.env.MNX_REQUIRE_WASM && !available()) throw new Error('MNX_REQUIRE_WASM is set but mnx.wasm is missing');
 const skip = available() ? false : 'mnx.wasm is not built (npm run build)';
-const cli = (...args) => execFileSync(join(repo, 'target/debug/mnix'), ['compile', ...args], { encoding: 'utf8' });
+const cli = (...args) => execFileSync(join(repo, 'target/debug/mnx'), ['compile', ...args], { encoding: 'utf8' });
 
 test('collects a component and the components it imports', () => {
   const files = sources(join(fixtures, 'inbox.mnx'));

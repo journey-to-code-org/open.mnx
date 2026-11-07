@@ -1,5 +1,5 @@
 // @mnx/compiler: the mnx compiler as WebAssembly, for Node (and bundler plugins) without a
-// Rust toolchain. Same compiler, same output, same errors as the `mnix` CLI.
+// Rust toolchain. Same compiler, same output, same errors as the `mnx` CLI.
 //
 //   import { compileFile, renderToString } from '@mnx/compiler';
 //   const { ok, output, error, warnings } = compileFile('src/inbox.mnx', { emit: 'js' });
@@ -33,7 +33,7 @@ const decoder = new TextDecoder();
 
 /**
  * One request to the compiler; returns `{ ok, output, error, warnings, diagnostics }`. Without
- * mnx.wasm, a native `mnix` named by $MNX_COMPILER answers it instead (`mnix request`).
+ * mnx.wasm, a native `mnx` named by $MNX_COMPILER answers it instead (`mnx request`).
  */
 export function request(body) {
   if (!available() && process.env.MNX_COMPILER) return native(process.env.MNX_COMPILER, body);

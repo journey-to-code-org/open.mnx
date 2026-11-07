@@ -1,7 +1,7 @@
 <script>
-  const features = ["Static HTML", "Scoped slots", "Escaped output"]
+  const featuresDefault = ["Static HTML", "Scoped slots", "Escaped output"]
 </script>
-<mnx-feature-list ready={true} mode="active" features={features}>
+<mnx-feature-list ready={true} mode="active" features={featuresDefault}>
   <main>
     <mnx-if test={ready && mode == "active"}>
       <ul>

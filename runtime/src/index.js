@@ -3,7 +3,7 @@ export { Signal, isNative } from './signal.js';
 export { effect, scope, flush, tick } from './effect.js';
 export { resource } from './resource.js';
 export {
-  define, state, computed, watch, onMount, onUnmount, id, props, host, emit, adoptStyles,
+  define, $define, ABI, state, computed, watch, onMount, onUnmount, id, props, host, emit, adoptStyles,
   createContext, provide, inject, ContextRequestEvent, ContextProviderEvent,
   formValue, validity, onFormReset, onFormRestore, onFormDisabled,
   isSafeUrl, $r, $t,

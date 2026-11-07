@@ -1,12 +1,12 @@
-//! The `mnix` command line, run as a process.
+//! The `mnx` command line, run as a process.
 
 use std::{fs, process::Command};
 
-fn mnix(arguments: &[&str]) -> (bool, String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_mnix"))
+fn mnx(arguments: &[&str]) -> (bool, String, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_mnx"))
         .args(arguments)
         .output()
-        .expect("mnix runs");
+        .expect("mnx runs");
     (
         output.status.success(),
         String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -15,7 +15,7 @@ fn mnix(arguments: &[&str]) -> (bool, String, String) {
 }
 
 fn temp_dir(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("mnix-cli-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("mnx-cli-{name}-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -30,12 +30,12 @@ fn check_reports_errors_and_warnings_across_files() {
     fs::write(&warned, "<mnx-warned hidden={false}><p>x</p></mnx-warned>").unwrap();
     fs::write(&bad, "<mnx-bad label=\"x\">\n  <p>{lable}</p>\n</mnx-bad>").unwrap();
 
-    let (ok, _, stderr) = mnix(&["check", good.to_str().unwrap(), warned.to_str().unwrap()]);
+    let (ok, _, stderr) = mnx(&["check", good.to_str().unwrap(), warned.to_str().unwrap()]);
     assert!(ok, "warnings don't fail the check: {stderr}");
     assert!(stderr.contains("warning: prop `hidden`"), "{stderr}");
     assert!(stderr.contains("checked 2 files: no errors"), "{stderr}");
 
-    let (ok, _, stderr) = mnix(&["check", good.to_str().unwrap(), bad.to_str().unwrap()]);
+    let (ok, _, stderr) = mnx(&["check", good.to_str().unwrap(), bad.to_str().unwrap()]);
     assert!(!ok);
     assert!(
         stderr.contains("error: unknown reference `lable`"),
@@ -44,7 +44,7 @@ fn check_reports_errors_and_warnings_across_files() {
     assert!(stderr.contains("= help: did you mean `label`?"), "{stderr}");
     assert!(stderr.contains("1 file with errors"), "{stderr}");
 
-    let (ok, stdout, stderr) = mnix(&[
+    let (ok, stdout, stderr) = mnx(&[
         "check",
         bad.to_str().unwrap(),
         warned.to_str().unwrap(),
@@ -79,13 +79,13 @@ fn emit_css_collects_imported_components_unless_asked_not_to() {
     .unwrap();
     fs::write(dir.join("page.mnx"), "<script>import './card.mnx'</script>\n<style>.a { color: red }</style>\n<mnx-page><mnx-card></mnx-card></mnx-page>").unwrap();
     let page = dir.join("page.mnx");
-    let (ok, all, stderr) = mnix(&["compile", page.to_str().unwrap(), "--emit", "css"]);
+    let (ok, all, stderr) = mnx(&["compile", page.to_str().unwrap(), "--emit", "css"]);
     assert!(ok, "{stderr}");
     assert!(
         all.find("/* mnx-card */").unwrap() < all.find("/* mnx-page */").unwrap(),
         "{all}"
     );
-    let (_, own, _) = mnix(&[
+    let (_, own, _) = mnx(&[
         "compile",
         page.to_str().unwrap(),
         "--emit",
@@ -109,7 +109,7 @@ fn check_reads_unsaved_text_from_standard_input() {
     .unwrap();
     let page = dir.join("page.mnx");
     fs::write(&page, "<mnx-page><p>saved, fine</p></mnx-page>").unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_mnix"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mnx"))
         .args([
             "check",
             page.to_str().unwrap(),
@@ -128,14 +128,14 @@ fn check_reads_unsaved_text_from_standard_input() {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report[0]["message"], "<mnx-badge> has no prop `lable`");
     assert_eq!(report[0]["line"], 2);
-    let (ok, _, stderr) = mnix(&["check", "a.mnx", "b.mnx", "--stdin"]);
+    let (ok, _, stderr) = mnx(&["check", "a.mnx", "b.mnx", "--stdin"]);
     assert!(!ok && stderr.contains("one path"), "{stderr}");
 }
 
 #[test]
 fn request_answers_one_json_request_on_stdin() {
     use std::io::Write;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_mnix"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mnx"))
         .arg("request")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -157,7 +157,7 @@ fn request_answers_one_json_request_on_stdin() {
         response["output"],
         "<mnx-a x=\"2\"><!--[!--><i>{y}</i><!--]--><b>2</b></mnx-a>"
     );
-    let (ok, _, stderr) = mnix(&["request", "extra"]);
+    let (ok, _, stderr) = mnx(&["request", "extra"]);
     assert!(!ok);
     assert!(stderr.contains("unexpected argument `extra`"), "{stderr}");
 }
@@ -169,7 +169,7 @@ fn slots_html_takes_server_rendered_content() {
     let slots = dir.join("slots.json");
     fs::write(&source, "<mnx-panel><mnx-slot></mnx-slot></mnx-panel>").unwrap();
     fs::write(&slots, r#"{"default":"<p>{kept}</p>"}"#).unwrap();
-    let (ok, stdout, stderr) = mnix(&[
+    let (ok, stdout, stderr) = mnx(&[
         "compile",
         source.to_str().unwrap(),
         "--slots",
@@ -181,7 +181,7 @@ fn slots_html_takes_server_rendered_content() {
         stdout,
         "<mnx-panel><!--[!--><p>{kept}</p><!--]--></mnx-panel>\n"
     );
-    let (ok, _, stderr) = mnix(&[
+    let (ok, _, stderr) = mnx(&[
         "compile",
         source.to_str().unwrap(),
         "--emit",
@@ -203,10 +203,10 @@ fn migrate_rewrites_in_place_and_check_reports() {
     )
     .unwrap();
     fs::write(&jsx, "export default function MnxY() { return <p /> }\n").unwrap();
-    let (ok, _, stderr) = mnix(&["migrate", file.to_str().unwrap(), "--check"]);
+    let (ok, _, stderr) = mnx(&["migrate", file.to_str().unwrap(), "--check"]);
     assert!(!ok);
     assert!(stderr.contains("1 file would change"), "{stderr}");
-    let (ok, _, stderr) = mnix(&["migrate", file.to_str().unwrap(), jsx.to_str().unwrap()]);
+    let (ok, _, stderr) = mnx(&["migrate", file.to_str().unwrap(), jsx.to_str().unwrap()]);
     assert!(ok, "{stderr}");
     assert!(
         stderr.contains("renamed the script's `name` to `nameDefault`"),
@@ -216,13 +216,13 @@ fn migrate_rewrites_in_place_and_check_reports() {
     assert!(fs::read_to_string(&file)
         .unwrap()
         .contains("name={nameDefault}"));
-    let (ok, _, _) = mnix(&["migrate", file.to_str().unwrap(), "--check"]);
+    let (ok, _, _) = mnx(&["migrate", file.to_str().unwrap(), "--check"]);
     assert!(ok, "nothing left to migrate");
 }
 
 #[test]
-fn mnx_is_the_same_cli() {
-    let output = Command::new(env!("CARGO_BIN_EXE_mnx"))
+fn mnix_is_still_the_same_cli() {
+    let output = Command::new(env!("CARGO_BIN_EXE_mnix"))
         .args(["compile", "--help-me"])
         .output()
         .unwrap();

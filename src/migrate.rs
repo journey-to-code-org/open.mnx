@@ -1,4 +1,4 @@
-//! `mnix migrate`: rewrite a 1.x `.mnx` file for 2.0, and say what else changes.
+//! `mnx migrate`: rewrite a 1.x `.mnx` file for 2.0, and say what else changes.
 //!
 //! 2.0 makes props names in the script (`value`, not `props().value`), so a script binding with
 //! a prop's name would clash with it. The usual case is a default taken from the script:
@@ -25,7 +25,7 @@ use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{ComponentAst, PropDefault},
+    ast::PropDefault,
     diagnostic::{Diagnostic, Span},
     scanner::span_after,
 };
@@ -81,7 +81,7 @@ fn offset_of(source: &str, span: Span) -> usize {
 
 /// Migrate `source` (an `.mnx` file).
 pub fn migrate(source: &str) -> Result<Migration, Diagnostic> {
-    let component = crate::parser::parse(source)?;
+    let component = crate::parser::parse_for_migration(source)?;
     let mut migration = Migration {
         output: source.to_owned(),
         ..Migration::default()
@@ -262,31 +262,4 @@ fn note(source: &str, start: usize, script: &str, at: u32, name: &str) -> Diagno
         format!("`{name}` is a `let` the script changes and the template reads: in 2.0 `let` is state, so the template will update when it changes (in 1.x it doesn't)"),
     )
     .with_help("nothing to rewrite; check that updating is what you want")
-}
-
-/// Deprecation warnings for 1.x code that 2.0 changes (see [`migrate`]).
-pub fn deprecations(source: &str, component: &ComponentAst) -> Vec<Diagnostic> {
-    let Ok(migration) = migrate(source) else {
-        return Vec::new();
-    };
-    let mut warnings = Vec::new();
-    for prop in &component.props {
-        let is_binding = component
-            .script
-            .bindings
-            .iter()
-            .any(|binding| binding.name == prop.name)
-            || component.script.runtime_names.contains(&prop.name);
-        if is_binding {
-            warnings.push(
-                Diagnostic::new(
-                    prop.span,
-                    format!("in 2.0, props are names in the script, so the script's `{}` will clash with the prop `{}`", prop.name, prop.name),
-                )
-                .with_help(format!("rename the script's `{}` (e.g. `{}Default`); `mnix migrate` does it", prop.name, prop.name)),
-            );
-        }
-    }
-    warnings.extend(migration.notes);
-    warnings
 }

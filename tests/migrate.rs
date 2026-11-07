@@ -1,6 +1,6 @@
-//! `mnix migrate` and the 1.x deprecation warnings for what 2.0 changes.
+//! `mnx migrate`: rewriting 1.x files for 2.0.
 
-use mnix_compiler::{compile, compile_js, migrate, warnings};
+use mnx_compiler::{compile, compile_js, migrate, warnings};
 
 #[test]
 fn renames_script_bindings_that_share_a_props_name_and_keeps_the_output() {
@@ -11,18 +11,16 @@ fn renames_script_bindings_that_share_a_props_name_and_keeps_the_output() {
         "<script>\n  const titleDefault2 = \"Hi\"\n  const titleDefault = 1\n  const extra = { title: titleDefault2 }\n  function shout() { return titleDefault2.toUpperCase() }\n</script>\n<mnx-x title={titleDefault2} count={titleDefault} info={[titleDefault2]}>\n  <h1>{title}</h1><button onclick={shout}>!</button>\n</mnx-x>\n"
     );
     assert_eq!(migration.changes.len(), 1);
-    // The same component, before and after.
+    // 1.x code is an error in 2.0; the migrated code compiles, with the same output as 1.x gave.
+    assert!(compile(source, "{}")
+        .unwrap_err()
+        .message
+        .contains("which is also a prop"));
     assert_eq!(
-        compile(source, "{}").unwrap(),
-        compile(&migration.output, "{}").unwrap()
+        compile(&migration.output, "{}").unwrap(),
+        "<mnx-x>\n  <h1>Hi</h1><button>!</button>\n</mnx-x>"
     );
-    let js = |source: &str| compile_js(source, "@mnx/runtime", "x.mnx").unwrap();
-    assert_eq!(
-        js(source),
-        js(&migration.output)
-            .replace("titleDefault2", "title")
-            .replace("{ title: title }", "{ title }")
-    );
+    assert!(compile_js(&migration.output, "@mnx/runtime", "x.mnx").is_ok());
     // Nothing left to do.
     assert_eq!(migrate(&migration.output).unwrap().output, migration.output);
 }
@@ -43,18 +41,22 @@ fn reports_lets_that_will_start_updating_the_template() {
 }
 
 #[test]
-fn deprecation_warnings_point_at_the_prop_and_typescript_scripts_work() {
+fn typescript_scripts_migrate_too() {
     let source = "<script lang=\"ts\">\n  const label: string = \"x\"\n</script>\n<mnx-x label={label}><p>{label}</p></mnx-x>\n";
-    let found = warnings(source);
-    assert_eq!(found.len(), 1);
-    assert!(found[0]
-        .message
-        .contains("the script's `label` will clash with the prop `label`"));
-    assert_eq!((found[0].span.line, found[0].span.column), (4, 8));
+    let error = compile(source, "{}").unwrap_err();
+    assert_eq!(
+        (error.span.line, error.span.column),
+        (2, 9),
+        "at the script's binding"
+    );
     let migration = migrate(source).unwrap();
     assert!(migration
         .output
         .contains("const labelDefault: string = \"x\""));
     assert!(migration.output.contains("<mnx-x label={labelDefault}>"));
     assert!(warnings(&migration.output).is_empty());
+    assert_eq!(
+        compile(&migration.output, "{}").unwrap(),
+        "<mnx-x><p>x</p></mnx-x>"
+    );
 }

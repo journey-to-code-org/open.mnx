@@ -1,6 +1,6 @@
 //! JavaScript beyond the build-time subset in templates: calls, arrow functions, handlers.
 
-use mnix_compiler::{compile, compile_js};
+use mnx_compiler::{compile, compile_js};
 
 const SOURCE: &str = r#"<script>
   import { state, emit } from "@mnx/runtime"
@@ -77,15 +77,26 @@ fn names_are_checked_and_only_props_can_be_assigned() {
     let unknown =
         compile_js("<mnx-x><p>{formt(1)}</p></mnx-x>", "@mnx/runtime", "x.mnx").unwrap_err();
     assert_eq!(unknown.message, "unknown reference `formt`");
+    // State (a `let`) and props can be assigned; other script names can't.
+    let state = compile_js(
+        "<script>let total = 0</script>\n<mnx-x><button onclick={() => total++}>{total}</button></mnx-x>",
+        "@mnx/runtime",
+        "x.mnx",
+    )
+    .unwrap();
+    assert!(
+        state.contains("handler: () => (() => __mnxUpdate(total, 1, false))"),
+        "{state}"
+    );
     let local = compile_js(
-        "<script>let total = 0</script>\n<mnx-x><button onclick={() => total++}>x</button></mnx-x>",
+        "<script>const total = 0</script>\n<mnx-x><button onclick={() => total++}>x</button></mnx-x>",
         "@mnx/runtime",
         "x.mnx",
     )
     .unwrap_err();
     assert_eq!(
         local.message,
-        "`total` can't be assigned here: a template can assign to props only"
+        "`total` can't be assigned here: a template can assign props and state (a `let`) only"
     );
     let row = compile_js(
         "<mnx-x items={[1]}><mnx-each items={items} as=\"item\"><b onclick={() => { item = 2 }}>x</b></mnx-each></mnx-x>",
@@ -129,7 +140,7 @@ fn the_subset_still_comes_first_and_v02_syntax_is_still_caught() {
 
 #[test]
 fn partial_html_leaves_browser_only_parts_to_the_element() {
-    use mnix_compiler::{compile_html_with_options, HtmlOptions, SlotSource};
+    use mnx_compiler::{compile_html_with_options, HtmlOptions, SlotSource};
     let partial = |source: &str, props: &str| {
         let loader = |_: &str, _: &str| -> Result<(String, String), String> { Err("none".into()) };
         compile_html_with_options(

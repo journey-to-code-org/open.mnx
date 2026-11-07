@@ -21,7 +21,7 @@ import mnx from '../src/vite.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
 const fixtures = join(repo, 'runtime/test/browser/fixtures');
-const compiler = join(repo, 'target/debug/mnix');
+const compiler = join(repo, 'target/debug/mnx');
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const tsc = join(dirname(require.resolve('typescript/package.json')), 'bin', 'tsc');

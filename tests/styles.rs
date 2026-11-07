@@ -1,20 +1,20 @@
 //! `<style>` in components.
 
-use mnix_compiler::{
+use mnx_compiler::{
     compile, compile_css, compile_html_with, compile_js, compile_js_for_bundler, StyleImports,
 };
 
-const CARD: &str = "<!-- A card. -->\n<style layer=\"ui\">\n  h2 { color: red }\n</style>\n<script>\n  const heading = \"Card\"\n</script>\n<mnx-card heading={heading}>\n  <h2>{heading}</h2><mnx-slot></mnx-slot>\n</mnx-card>";
+const CARD: &str = "<!-- A card. -->\n<style layer=\"ui\">\n  h2 { color: red }\n</style>\n<script>\n  const headingDefault = \"Card\"\n</script>\n<mnx-card heading={headingDefault}>\n  <h2>{heading}</h2><mnx-slot></mnx-slot>\n</mnx-card>";
 
 #[test]
 fn style_and_script_come_in_either_order_and_the_description_is_kept() {
     for source in [
         CARD.to_owned(),
-        "<!-- A card. -->\n<script>\n  const heading = \"Card\"\n</script>\n<style layer=\"ui\">\n  h2 { color: red }\n</style>\n<mnx-card heading={heading}>\n  <h2>{heading}</h2><mnx-slot></mnx-slot>\n</mnx-card>".to_owned(),
+        "<!-- A card. -->\n<script>\n  const headingDefault = \"Card\"\n</script>\n<style layer=\"ui\">\n  h2 { color: red }\n</style>\n<mnx-card heading={headingDefault}>\n  <h2>{heading}</h2><mnx-slot></mnx-slot>\n</mnx-card>".to_owned(),
     ] {
         let css = compile_css(&source).unwrap();
         assert!(css.contains("@layer ui {\n@scope (mnx-card) to ([data-mnx-slotted=\"mnx-card\"]) {\n  h2 { color: red }\n}\n}"), "{css}");
-        let manifest = mnix_compiler::compile_manifest(&source, "card.js").unwrap();
+        let manifest = mnx_compiler::compile_manifest(&source, "card.js").unwrap();
         assert!(manifest.contains("\"description\": \"A card.\""), "{manifest}");
     }
 }
@@ -162,7 +162,7 @@ fn preprocessor_languages_need_a_bundler() {
 
 #[test]
 fn server_rendered_slot_html_is_marked_slotted_too() {
-    use mnix_compiler::{compile_html_from, SlotSource};
+    use mnx_compiler::{compile_html_from, SlotSource};
     let loader = |_: &str, _: &str| -> Result<(String, String), String> { Err("none".into()) };
     let source =
         "<style>p { color: red }</style>\n<mnx-card><p>Own</p><mnx-slot></mnx-slot></mnx-card>";

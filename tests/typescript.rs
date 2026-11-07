@@ -1,6 +1,6 @@
 //! `<script lang="ts">` components, through every output.
 
-use mnix_compiler::{compile, compile_declarations, compile_js, compile_manifest};
+use mnx_compiler::{compile, compile_declarations, compile_js, compile_manifest};
 
 const PICKER: &str = r#"<!-- A typed picker. -->
 <script lang="ts">
@@ -9,8 +9,8 @@ const PICKER: &str = r#"<!-- A typed picker. -->
   type Option = { id: number; label: string }
   interface Picked { option: Option; index: number }
 
-  const options: Option[] = [{ id: 1, label: "One" }, { id: 2, label: "Two" }]
-  const heading: string = "Pick one"
+  const optionsDefault: Option[] = [{ id: 1, label: "One" }, { id: 2, label: "Two" }]
+  const headingDefault: string = "Pick one"
   const open: Signal.State<boolean> = state(false)
 
   function pick(option: Option, index: number): void {
@@ -18,7 +18,7 @@ const PICKER: &str = r#"<!-- A typed picker. -->
   }
   const toggle = (): void => open.set(!open.get())
 </script>
-<mnx-picker options={options} heading={heading}>
+<mnx-picker options={optionsDefault} heading={headingDefault}>
   <h2>{heading}</h2>
   <ul><mnx-each items={options} as="option"><li>{option.label}</li></mnx-each></ul>
 </mnx-picker>"#;

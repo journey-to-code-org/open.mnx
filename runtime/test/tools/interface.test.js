@@ -22,16 +22,16 @@ const SOURCE = `<!--
   Pass \`data\` as JSON in plain HTML.
 -->
 <script>
-  const title = "Mikey Nichols"
-  const data = { sample: "sample data", sampleTwo: "additional data" }
+  const titleDefault = "Mikey Nichols"
+  const dataDefault = { sample: "sample data", sampleTwo: "additional data" }
 </script>
-<mnx-header title={title} data={data} tags={["a"]} max-items={3} open={false} label>
+<mnx-header title={titleDefault} data={dataDefault} tags={["a"]} max-items={3} open={false} label>
   <header><h1>{title}</h1><mnx-slot name="actions"></mnx-slot><mnx-slot></mnx-slot></header>
 </mnx-header>
 `;
 
 function compile(...args) {
-  return execFileSync(join(repo, 'target/debug/mnix'), ['compile', join(dir, 'header.mnx'), ...args], { encoding: 'utf8' });
+  return execFileSync(join(repo, 'target/debug/mnx'), ['compile', join(dir, 'header.mnx'), ...args], { encoding: 'utf8' });
 }
 
 before(() => {
@@ -122,7 +122,7 @@ test('the declarations reject wrong prop types and missing required props', () =
 test('form-associated components declare the native control API', () => {
   writeFileSync(join(dir, 'stepper.mnx'), readFileSync(join(here, '../browser/fixtures/stepper.mnx'), 'utf8'));
   writeFileSync(join(dir, 'stepper.d.ts'),
-    execFileSync(join(repo, 'target/debug/mnix'), ['compile', join(dir, 'stepper.mnx'), '--emit', 'dts'], { encoding: 'utf8' }));
+    execFileSync(join(repo, 'target/debug/mnx'), ['compile', join(dir, 'stepper.mnx'), '--emit', 'dts'], { encoding: 'utf8' }));
   const good = typecheck('form-good', `
     import './stepper.js';
     const el = document.querySelector('mnx-stepper')!;
@@ -143,7 +143,7 @@ test('form-associated components declare the native control API', () => {
 });
 
 test('events are in the manifest and type their listeners', () => {
-  const compileFixture = (emit) => execFileSync(join(repo, 'target/debug/mnix'),
+  const compileFixture = (emit) => execFileSync(join(repo, 'target/debug/mnx'),
     ['compile', join(here, '../browser/fixtures/rating.mnx'), '--emit', emit], { encoding: 'utf8' });
   const manifest = JSON.parse(compileFixture('manifest'));
   const schema = JSON.parse(readFileSync(require.resolve('custom-elements-manifest/schema.json'), 'utf8'));
@@ -196,7 +196,7 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
   };
   assert.equal(check('good', `
     import { state, computed, effect, scope, watch, onMount, props, host, emit, id, createContext, provide, inject,
-      formValue, validity, define, Signal, tick, adoptStyles, resource, type MnxElementClass } from '@mnx/runtime';
+      formValue, validity, $define, ABI, Signal, tick, adoptStyles, resource, type MnxElementClass } from '@mnx/runtime';
     const user = resource(async ({ signal }) => { void signal; return { name: 'Ada' }; });
     const userName: string | undefined = user.value?.name;
     void userName;
@@ -228,7 +228,7 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
     validity(() => (count.get() < 0 ? 'no' : ''));
     const watcher = new Signal.subtle.Watcher(() => {});
     watcher.watch(count);
-    const Element: MnxElementClass = define('mnx-x', { props: { value: { attribute: 'value', default: 0 } }, styled: true, styles: ':host { display: block }', setup: () => [] });
+    const Element: MnxElementClass = $define('mnx-x', { abi: ABI, props: { value: { attribute: 'value', default: 0 } }, styled: true, styles: ':host { display: block }', setup: () => [] });
     const styled: boolean = Element.mnx.styled;
     void styled;
     const tag: string = Element.mnx.tag;
@@ -255,7 +255,7 @@ test('a TypeScript component\'s typings carry its own types', async () => {
   const { mkdirSync, symlinkSync, existsSync } = await import('node:fs');
   mkdirSync(join(dir, 'node_modules/@mnx'), { recursive: true });
   if (!existsSync(join(dir, 'node_modules/@mnx/runtime'))) symlinkSync(join(here, '../..'), join(dir, 'node_modules/@mnx/runtime'));
-  const dts = execFileSync(join(repo, 'target/debug/mnix'), ['compile', join(here, '../browser/fixtures/typed.mnx'), '--emit', 'dts'], { encoding: 'utf8' });
+  const dts = execFileSync(join(repo, 'target/debug/mnx'), ['compile', join(here, '../browser/fixtures/typed.mnx'), '--emit', 'dts'], { encoding: 'utf8' });
   writeFileSync(join(dir, 'typed.d.ts'), dts);
   const good = typecheck('typed-good', `
     import { type Picked, type Option } from './typed.js';
@@ -282,7 +282,7 @@ test('a TypeScript component\'s typings carry its own types', async () => {
 test('HTML custom data drives completions in the HTML language service (what VS Code uses)', async () => {
   const { getLanguageService, newHTMLDataProvider } = await import('vscode-html-languageservice');
   const { TextDocument } = await import('vscode-languageserver-textdocument');
-  const data = JSON.parse(execFileSync(join(repo, 'target/debug/mnix'),
+  const data = JSON.parse(execFileSync(join(repo, 'target/debug/mnx'),
     ['compile', join(here, '../browser/fixtures/rating.mnx'), '--emit', 'html-data'], { encoding: 'utf8' }));
   const service = getLanguageService({ customDataProviders: [newHTMLDataProvider('mnx', data)] });
   const complete = (text) => {

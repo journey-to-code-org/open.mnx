@@ -51,6 +51,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     }
 
     let mut script = Script {
+        start: Some(start),
         declared_types: types.bindings.clone(),
         type_declarations: types.declarations.clone(),
         type_imports: types.imports.clone(),

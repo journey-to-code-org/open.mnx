@@ -27,7 +27,7 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("migrate") {
         return migrate(arguments.collect());
     }
-    // `mnix request`: one JSON request on stdin, the JSON response on stdout (what the
+    // `mnx request`: one JSON request on stdin, the JSON response on stdout (what the
     // WebAssembly build exposes, for anything embedding the native compiler instead).
     if command.as_deref() == Some("request") {
         if let Some(argument) = arguments.next() {
@@ -35,12 +35,12 @@ fn run() -> Result<(), String> {
         }
         let request = std::io::read_to_string(std::io::stdin())
             .map_err(|error| format!("unable to read standard input: {error}"))?;
-        println!("{}", mnix_compiler::handle_request(&request));
+        println!("{}", mnx_compiler::handle_request(&request));
         return Ok(());
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix migrate <component.mnx>... [--check]\n       mnix request < request.json\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check]\n       mnx request < request.json\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -58,7 +58,7 @@ fn run() -> Result<(), String> {
     let mut no_imports = false;
     let mut css_import = None;
     let mut css_import_inline = None;
-    let mut framework = mnix_compiler::Framework::None;
+    let mut framework = mnx_compiler::Framework::None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--emit" => emit = arguments.next().unwrap_or_default(),
@@ -74,11 +74,11 @@ fn run() -> Result<(), String> {
             // For --emit dts: type the default export as that framework's wrapper.
             "--framework" => {
                 framework = match arguments.next().as_deref() {
-                    Some("react") => mnix_compiler::Framework::React,
-                    Some("vue") => mnix_compiler::Framework::Vue,
-                    Some("svelte") => mnix_compiler::Framework::Svelte,
-                    Some("solid") => mnix_compiler::Framework::Solid,
-                    Some("none") => mnix_compiler::Framework::None,
+                    Some("react") => mnx_compiler::Framework::React,
+                    Some("vue") => mnx_compiler::Framework::Vue,
+                    Some("svelte") => mnx_compiler::Framework::Svelte,
+                    Some("solid") => mnx_compiler::Framework::Solid,
+                    Some("none") => mnx_compiler::Framework::None,
                     other => {
                         return Err(format!(
                             "unknown --framework `{}`; expected react, vue, svelte, solid or none",
@@ -99,7 +99,7 @@ fn run() -> Result<(), String> {
     }
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
-    for warning in mnix_compiler::warnings(&source) {
+    for warning in mnx_compiler::warnings(&source) {
         eprint!("{}", warning.render_warning(&source, &source_path));
     }
     if emit != "html" {
@@ -115,7 +115,7 @@ fn run() -> Result<(), String> {
             });
         // The JavaScript module the manifest describes: header.mnx → header.js by default.
         let module_path = module_path.unwrap_or_else(|| {
-            let stem = mnix_compiler::component_extension(&name)
+            let stem = mnx_compiler::component_extension(&name)
                 .map_or(name.as_str(), |extension| {
                     &name[..name.len() - extension.len()]
                 });
@@ -124,29 +124,29 @@ fn run() -> Result<(), String> {
         let output = match emit.as_str() {
             "js" if css_import.is_some() || css_import_inline.is_some() => {
                 match (&css_import, &css_import_inline) {
-                    (Some(stylesheet), Some(inline)) => mnix_compiler::compile_js_for_bundler(
+                    (Some(stylesheet), Some(inline)) => mnx_compiler::compile_js_for_bundler(
                         &source,
                         &source_path,
                         &runtime,
-                        mnix_compiler::StyleImports { stylesheet, inline },
-                        &mnix_compiler::filesystem,
+                        mnx_compiler::StyleImports { stylesheet, inline },
+                        &mnx_compiler::filesystem,
                     ),
                     _ => return Err("--css-import and --css-import-inline go together".into()),
                 }
             }
-            "css" if no_imports => mnix_compiler::compile_css(&source),
-            "css" => mnix_compiler::compile_css_file(&source_path),
-            "js" if keep_imports => mnix_compiler::compile_js_with(
+            "css" if no_imports => mnx_compiler::compile_css(&source),
+            "css" => mnx_compiler::compile_css_file(&source_path),
+            "js" if keep_imports => mnx_compiler::compile_js_with(
                 &source,
                 &source_path,
                 &runtime,
                 None,
-                &mnix_compiler::filesystem,
+                &mnx_compiler::filesystem,
             ),
-            "js" => mnix_compiler::compile_js_file(&source_path, &runtime),
-            "dts" => mnix_compiler::compile_declarations_for(&source, &name, framework),
-            "manifest" => mnix_compiler::compile_manifest(&source, &module_path),
-            "html-data" => mnix_compiler::compile_html_data(&source),
+            "js" => mnx_compiler::compile_js_file(&source_path, &runtime),
+            "dts" => mnx_compiler::compile_declarations_for(&source, &name, framework),
+            "manifest" => mnx_compiler::compile_manifest(&source, &module_path),
+            "html-data" => mnx_compiler::compile_html_data(&source),
             _ => {
                 return Err(format!(
                     "unknown --emit `{emit}`; expected html, js, css, dts, manifest or html-data"
@@ -175,20 +175,20 @@ fn run() -> Result<(), String> {
         None => "{}".to_owned(),
     };
     let slot_source = if slots_html {
-        mnix_compiler::SlotSource::Html
+        mnx_compiler::SlotSource::Html
     } else {
-        mnix_compiler::SlotSource::Template
+        mnx_compiler::SlotSource::Template
     };
-    let html = mnix_compiler::compile_html_with_options(
+    let html = mnx_compiler::compile_html_with_options(
         &source,
         &source_path,
         &props,
         &slots,
-        mnix_compiler::HtmlOptions {
+        mnx_compiler::HtmlOptions {
             slot_source,
             partial,
         },
-        &mnix_compiler::filesystem,
+        &mnx_compiler::filesystem,
     )
     .map_err(|diagnostic| diagnostic.render_in(&source, &source_path))?;
     if let Some(output_path) = output_path {
@@ -211,7 +211,7 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
         .file_name()
         .ok_or_else(|| format!("{output_path}: output path must name a file"))?;
     let temporary = parent.join(format!(
-        ".{}.mnix-tmp-{}",
+        ".{}.mnx-tmp-{}",
         name.to_string_lossy(),
         std::process::id()
     ));
@@ -247,7 +247,7 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
     result
 }
 
-/// `mnix check`: every error and warning, for CI and editors; exits non-zero on errors.
+/// `mnx check`: every error and warning, for CI and editors; exits non-zero on errors.
 fn check(arguments: Vec<String>) -> Result<(), String> {
     let mut files = Vec::new();
     let mut json = false;
@@ -274,7 +274,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
         }
     }
     if files.is_empty() || (stdin && files.len() != 1) {
-        return Err("usage: mnix check <component.mnx>... [--format human|json] [--stdin (one path; source from standard input)]".into());
+        return Err("usage: mnx check <component.mnx>... [--format human|json] [--stdin (one path; source from standard input)]".into());
     }
     let mut report = Vec::new();
     let mut errors = 0;
@@ -287,17 +287,17 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             fs::read_to_string(path)
                 .map_err(|error| format!("{path}: unable to read source: {error}"))?
         };
-        for warning in mnix_compiler::warnings(&source) {
+        for warning in mnx_compiler::warnings(&source) {
             human.push_str(&warning.render_warning(&source, path));
             report.push(entry(path, &source, &warning, "warning"));
         }
         // The JavaScript output runs every check that doesn't need prop values.
-        if let Err(error) = mnix_compiler::compile_js_with(
+        if let Err(error) = mnx_compiler::compile_js_with(
             &source,
             path,
             "@mnx/runtime",
             Some(".js"),
-            &mnix_compiler::filesystem,
+            &mnx_compiler::filesystem,
         ) {
             errors += 1;
             human.push_str(&error.render_in(&source, path));
@@ -335,7 +335,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
 fn entry(
     path: &str,
     _source: &str,
-    diagnostic: &mnix_compiler::Diagnostic,
+    diagnostic: &mnx_compiler::Diagnostic,
     severity: &str,
 ) -> serde_json::Value {
     let file = diagnostic
@@ -352,7 +352,7 @@ fn entry(
     })
 }
 
-/// `mnix migrate`: rewrite `.mnx` files for 2.0 in place (`--check`: only report, and fail if
+/// `mnx migrate`: rewrite `.mnx` files for 2.0 in place (`--check`: only report, and fail if
 /// anything would change).
 fn migrate(arguments: Vec<String>) -> Result<(), String> {
     let check = arguments.iter().any(|argument| argument == "--check");
@@ -367,17 +367,17 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
         return Err(format!("unexpected argument `{unknown}`"));
     }
     if files.is_empty() {
-        return Err("usage: mnix migrate <component.mnx>... [--check]".into());
+        return Err("usage: mnx migrate <component.mnx>... [--check]".into());
     }
     let mut pending = 0;
     for path in files {
-        if mnix_compiler::component_extension(path) != Some(".mnx") {
+        if mnx_compiler::component_extension(path) != Some(".mnx") {
             eprintln!("{path}: skipped (JSX components already have 2.0's semantics)");
             continue;
         }
         let source = fs::read_to_string(path)
             .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-        let migration = mnix_compiler::migrate(&source)
+        let migration = mnx_compiler::migrate(&source)
             .map_err(|diagnostic| diagnostic.render_in(&source, path))?;
         for change in &migration.changes {
             eprintln!("{path}: {change}");
@@ -394,7 +394,7 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
     }
     if check && pending > 0 {
         return Err(format!(
-            "{pending} file{} would change; run `mnix migrate` without --check",
+            "{pending} file{} would change; run `mnx migrate` without --check",
             if pending == 1 { "" } else { "s" }
         ));
     }

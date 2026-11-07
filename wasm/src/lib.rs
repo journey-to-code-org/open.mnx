@@ -5,7 +5,7 @@
 //!    `(ptr << 32) | len` (a `u64`); the request's memory is freed.
 //! 3. The host reads the response (UTF-8 JSON) and calls `mnx_free(ptr, len)`.
 //!
-//! The request and response formats are `mnix_compiler::handle_request`'s.
+//! The request and response formats are `mnx_compiler::handle_request`'s.
 
 use std::{alloc, slice};
 
@@ -43,7 +43,7 @@ pub unsafe extern "C" fn mnx_request(ptr: *mut u8, len: usize) -> u64 {
     // SAFETY: the caller wrote `len` bytes at `ptr`, which `mnx_alloc` reserved.
     let request = unsafe { slice::from_raw_parts(ptr, len) };
     let response = match std::str::from_utf8(request) {
-        Ok(request) => mnix_compiler::handle_request(request),
+        Ok(request) => mnx_compiler::handle_request(request),
         Err(_) => r#"{"ok":false,"output":null,"error":"the request isn't UTF-8","warnings":[],"diagnostics":[]}"#.to_owned(),
     };
     // SAFETY: as above; the request isn't used after this.
@@ -67,7 +67,7 @@ mod tests {
         // Natively the packed form can't hold a 64-bit pointer, so call the compiler the same
         // way the export does and check the response it would carry.
         unsafe { mnx_free(ptr, request.len()) };
-        let response = mnix_compiler::handle_request(std::str::from_utf8(request).unwrap());
+        let response = mnx_compiler::handle_request(std::str::from_utf8(request).unwrap());
         assert!(response.contains("<p>x</p>"), "{response}");
     }
 }

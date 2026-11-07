@@ -1,11 +1,11 @@
 <script>
-  const title = "Mikey Nichols"
-  const data = {
+  const titleDefault = "Mikey Nichols"
+  const dataDefault = {
     sample: "sample data",
     sampleTwo: "additional data"
   }
 </script>
-<mnx-header title={title} data={data}>
+<mnx-header title={titleDefault} data={dataDefault}>
   <header>
     <nav>
       <h1>{title}</h1>

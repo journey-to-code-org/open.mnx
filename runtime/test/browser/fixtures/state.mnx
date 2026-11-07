@@ -1,0 +1,16 @@
+<!-- 2.0's script: props by name, `let` as state, derived `const`s. -->
+<script>
+  import { emit } from '@mnx/runtime'
+  let count = 0
+  const doubled = count * 2 + step
+  function add() {
+    count += step
+    if (count > 5) label = "big"
+    emit('countchange', count)
+  }
+</script>
+<mnx-state step={1} label="n">
+  <button type="button" class="add" onclick={add}>{label}: {count}</button>
+  <i>{doubled}</i>
+  <b onclick={() => count++}>{Math.max(count, 1)}</b>
+</mnx-state>

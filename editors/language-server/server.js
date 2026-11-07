@@ -3,8 +3,8 @@
 // imported components, their props and events, hover documentation from their manifests, and
 // go to definition for imported components. Speaks LSP over stdio (`--stdio`).
 //
-// initializationOptions: { compiler?: "/path/to/mnix" } — otherwise @mnx/compiler (WebAssembly)
-// when installed, else `mnix` on PATH.
+// initializationOptions: { compiler?: "/path/to/mnx" } — otherwise @mnx/compiler (WebAssembly)
+// when installed, else `mnx` (or `mnix`) on PATH.
 import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';

@@ -20,7 +20,7 @@ fn assert_golden(actual: &str, expected_file: &str) {
 /// declare props (defaults bound to script locals), and `{expr}` bindings with member access.
 #[test]
 fn header_sample_renders_with_script_defaults() {
-    let html = mnix_compiler::compile(&read("header.mnx"), "{}").unwrap();
+    let html = mnx_compiler::compile(&read("header.mnx"), "{}").unwrap();
     assert_golden(&html, "header.html");
 }
 
@@ -28,7 +28,7 @@ fn header_sample_renders_with_script_defaults() {
 /// host as attributes, so a runtime can hydrate from the markup alone.
 #[test]
 fn header_sample_accepts_prop_overrides() {
-    let html = mnix_compiler::compile(&read("header.mnx"), &read("header.props.json")).unwrap();
+    let html = mnx_compiler::compile(&read("header.mnx"), &read("header.props.json")).unwrap();
     assert_golden(&html, "header.override.html");
 }
 
@@ -37,7 +37,7 @@ fn header_sample_accepts_prop_overrides() {
 #[test]
 fn header_sample_compiles_to_a_custom_element_module() {
     let module =
-        mnix_compiler::compile_js(&read("header.mnx"), "@mnx/runtime", "header.mnx").unwrap();
+        mnx_compiler::compile_js(&read("header.mnx"), "@mnx/runtime", "header.mnx").unwrap();
     assert_golden(&module, "header.js");
 }
 
@@ -46,11 +46,11 @@ fn header_sample_compiles_to_a_custom_element_module() {
 fn header_sample_describes_itself_to_tools() {
     let source = read("header.mnx");
     assert_golden(
-        &mnix_compiler::compile_declarations(&source, "header.mnx").unwrap(),
+        &mnx_compiler::compile_declarations(&source, "header.mnx").unwrap(),
         "header.d.ts",
     );
     assert_golden(
-        &mnix_compiler::compile_manifest(&source, "header.js").unwrap(),
+        &mnx_compiler::compile_manifest(&source, "header.js").unwrap(),
         "header.manifest.json",
     );
 }

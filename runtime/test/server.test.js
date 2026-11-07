@@ -10,7 +10,7 @@ import { canRender, registerRenderer, renderToString } from '../src/server.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
-const mnix = join(repo, 'target/debug/mnix');
+const mnix = join(repo, 'target/debug/mnx');
 execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
 // Inside the package, so `@mnx/runtime` resolves to it.
 const dir = join(here, `.server-${process.pid}`);

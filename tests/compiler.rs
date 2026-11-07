@@ -1,4 +1,4 @@
-use mnix_compiler::{compile, compile_js, compile_value, compile_with_slots, Diagnostic};
+use mnx_compiler::{compile, compile_js, compile_value, compile_with_slots, Diagnostic};
 use serde_json::json;
 
 const GREETING: &str = r#"<mnx-greeting name url>
@@ -70,9 +70,8 @@ fn script_bindings_feed_prop_defaults_and_the_template() {
 }
 
 #[test]
-fn props_shadow_script_bindings_inside_the_template() {
-    let source =
-        "<script>const title = \"Script\"</script>\n<mnx-x title={title}><h1>{title}</h1></mnx-x>";
+fn a_prop_default_from_the_script_and_no_script_name_shared_with_a_prop() {
+    let source = "<script>const titleDefault = \"Script\"</script>\n<mnx-x title={titleDefault}><h1>{title}</h1></mnx-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
         "<mnx-x><h1>Script</h1></mnx-x>"
@@ -81,6 +80,17 @@ fn props_shadow_script_bindings_inside_the_template() {
         compile(source, r#"{"title":"Override"}"#).unwrap(),
         "<mnx-x title=\"Override\"><h1>Override</h1></mnx-x>"
     );
+    // A prop's name is the prop in the script too, so the script can't declare it.
+    let clash = compile(
+        "<script>const title = \"Script\"</script>\n<mnx-x title={title}></mnx-x>",
+        "{}",
+    )
+    .unwrap_err();
+    assert_eq!(
+        clash.message,
+        "the script declares `title`, which is also a prop: a prop's name is the prop in the script too"
+    );
+    assert_eq!(clash.help.as_deref(), Some("rename the script's `title` (e.g. `titleDefault`, and `title={titleDefault}` on the host); `mnx migrate` does it"));
 }
 
 #[test]
@@ -270,7 +280,7 @@ fn script_errors_are_reported_where_they_happen() {
         "{}",
     );
     assert!(types.message.contains("in `x`"));
-    assert_eq!(types.span, mnix_compiler::Span::new(2, 7));
+    assert_eq!(types.span, mnx_compiler::Span::new(2, 7));
 
     assert_error(
         "<script>const a = 1\nconst a = 2</script><mnx-x><p></p></mnx-x>",
@@ -288,7 +298,7 @@ fn rejects_unknown_references_with_location_and_suggestion() {
         r#"{"name":"Mikey"}"#,
     );
     assert_eq!(diagnostic.message, "unknown reference `nmae`");
-    assert_eq!(diagnostic.span, mnix_compiler::Span::new(2, 9));
+    assert_eq!(diagnostic.span, mnx_compiler::Span::new(2, 9));
     assert_eq!(diagnostic.help.as_deref(), Some("did you mean `name`?"));
 }
 
@@ -452,7 +462,7 @@ fn dynamic_text_beside_other_nodes_gets_a_hydration_anchor() {
 #[test]
 fn reports_expression_errors_at_their_position_in_the_file() {
     let diagnostic = error("<mnx-x a={1}>\n  <p>{a +* 2}</p>\n</mnx-x>", "{}");
-    assert_eq!(diagnostic.span, mnix_compiler::Span::new(2, 10));
+    assert_eq!(diagnostic.span, mnx_compiler::Span::new(2, 10));
 }
 
 #[test]
@@ -524,9 +534,9 @@ fn directive_attributes_are_expressions() {
 #[test]
 fn expands_loops_over_any_values_with_member_access_and_index() {
     let source = r#"<script>
-const people = [{ name: "Ada", role: "<admin>" }, { name: "Linus", role: "dev" }]
+const everyone = [{ name: "Ada", role: "<admin>" }, { name: "Linus", role: "dev" }]
 </script>
-<mnx-team people={people}>
+<mnx-team people={everyone}>
 <ul><mnx-each items={people} as="person" index="i"><li data-n={i + 1}>{person.name} ({person.role})</li></mnx-each></ul>
 </mnx-team>"#;
     assert_eq!(
@@ -650,7 +660,7 @@ function go() {}
   <a href={href} class="link {label}" hidden={off} onclick={go}>{count}</a>
 </mnx-x>"#);
     assert!(module.contains(
-        "import { define, $r, $t } from \"@mnx/runtime\";\nimport { state } from '@mnx/runtime';"
+        "import { $define, $r, $t } from \"@mnx/runtime\";\nimport { state } from '@mnx/runtime';"
     ));
     assert!(module.contains(r#"template: "\n  <p>Hi <b>there</b><!----></p>\n  <a></a>\n","#));
     for part in [
@@ -820,11 +830,11 @@ fn form_associated_is_a_flag_not_a_prop() {
         .unwrap_err()
         .message
         .contains("unknown prop"));
-    let dts = mnix_compiler::compile_declarations(source, "x.mnx").unwrap();
+    let dts = mnx_compiler::compile_declarations(source, "x.mnx").unwrap();
     assert!(dts.contains("readonly form: HTMLFormElement | null;"));
     assert!(dts.contains("name: string | null;"));
     assert!(dts.contains("checkValidity(): boolean;"));
-    let named = mnix_compiler::compile_declarations(
+    let named = mnx_compiler::compile_declarations(
         "<mnx-x form-associated name=\"n\"><p>{name}</p></mnx-x>",
         "x.mnx",
     )
@@ -837,7 +847,7 @@ fn form_associated_is_a_flag_not_a_prop() {
 
 #[test]
 fn props_that_shadow_built_in_element_properties_are_warned_about() {
-    let warnings = mnix_compiler::warnings(
+    let warnings = mnx_compiler::warnings(
         "<mnx-x title=\"\" hidden={false} label=\"\">\n  <p>{label}</p>\n</mnx-x>",
     );
     let messages: Vec<_> = warnings
@@ -851,7 +861,7 @@ fn props_that_shadow_built_in_element_properties_are_warned_about() {
     assert!(warnings[0]
         .render_warning("<mnx-x title=\"\">", "x.mnx")
         .starts_with("warning: prop `title`"));
-    assert!(mnix_compiler::warnings("<mnx-x label=\"\"><p>x</p></mnx-x>").is_empty());
+    assert!(mnx_compiler::warnings("<mnx-x label=\"\"><p>x</p></mnx-x>").is_empty());
 }
 
 #[test]
@@ -864,7 +874,7 @@ fn defaults_that_use_runtime_values_are_computed_in_the_browser() {
     );
     assert!(js.contains("  setup($p, $emit, $initial) {"), "{js}");
     assert!(js.contains("    $initial(\"since\", () => $r(start));\n    $initial(\"width\", () => $r(fallback));"), "{js}");
-    let dts = mnix_compiler::compile_declarations(source, "x.mnx").unwrap();
+    let dts = mnx_compiler::compile_declarations(source, "x.mnx").unwrap();
     assert!(dts.contains("Default: computed by the component."), "{dts}");
     assert!(
         dts.contains("  since?: unknown;"),
@@ -903,7 +913,7 @@ fn defaults_that_use_runtime_values_are_computed_in_the_browser() {
 
 #[test]
 fn server_rendered_slot_html_is_kept_as_written() {
-    use mnix_compiler::{compile_html_from, SlotSource};
+    use mnx_compiler::{compile_html_from, SlotSource};
     let loader = |_: &str, _: &str| -> Result<(String, String), String> { Err("none".into()) };
     let source = "<mnx-panel><main><mnx-slot><p>Fallback</p></mnx-slot></main></mnx-panel>";
     let slots = serde_json::json!({

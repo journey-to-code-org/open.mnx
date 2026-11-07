@@ -19,7 +19,7 @@ let server, origin, browser;
 const pages = new Map();
 
 export function compiler(...args) {
-  return execFileSync(join(repo, 'target/debug/mnix'), ['compile', ...args], { encoding: 'utf8' });
+  return execFileSync(join(repo, 'target/debug/mnx'), ['compile', ...args], { encoding: 'utf8' });
 }
 
 /**

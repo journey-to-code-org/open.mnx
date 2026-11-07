@@ -74,6 +74,8 @@ pub enum PropDefault {
 /// What the compiler understood of the `<script>` block.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Script {
+    /// Where the script's text starts in the file (`None` without a `<script>`).
+    pub start: Option<Span>,
     /// Top-level `const`/`let` declarations, in source order.
     pub bindings: Vec<Binding>,
     /// Names the script declares that only exist at runtime (functions, classes, imports).

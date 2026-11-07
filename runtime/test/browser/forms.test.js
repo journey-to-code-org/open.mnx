@@ -110,9 +110,9 @@ test('a restored value (back/forward, autofill) comes back through onFormRestore
 test('form hooks in a component without form-associated explain themselves', async () => {
   const { page } = await open('', { modules: [] });
   const message = await page.evaluate(async () => {
-    const { define, formValue } = await import('@mnx/runtime');
+    const { $define, ABI, formValue } = await import('@mnx/runtime');
     let error;
-    define('plain-thing', { setup() { try { formValue(1); } catch (caught) { error = caught.message; } return []; } });
+    $define('plain-thing', { abi: ABI, setup() { try { formValue(1); } catch (caught) { error = caught.message; } return []; } });
     document.body.append(document.createElement('plain-thing'));
     return error;
   });

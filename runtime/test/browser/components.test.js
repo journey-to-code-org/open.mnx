@@ -14,6 +14,7 @@ useBrowser({
   typed: join(here, 'fixtures/typed.mnx'),
   clock: join(here, 'fixtures/clock.mnx'),
   inline: join(here, 'fixtures/inline.mnx'),
+  state: join(here, 'fixtures/state.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -317,5 +318,30 @@ test('partially server-rendered markup: the element fills in what only the brows
   await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
   assert.equal((await read()).summary, '2 of 3; grace', 'and it works as usual');
   assert.deepEqual(messages, [], 'no hydration warnings');
+  await page.close();
+});
+
+test("2.0's script: a let is state, a derived const follows it, and props are names", async () => {
+  const html = compiler(join(here, 'fixtures/state.mnx'), '--partial');
+  assert.match(html, /<button type="button" class="add">n: 0<\/button>\n  <i>1<\/i>/, 'server-rendered from the initial values');
+  const { page, messages } = await open(html, { modules: ['state'] });
+  const read = () => page.evaluate(async () => {
+    const el = document.querySelector('mnx-state');
+    await el.updateComplete;
+    return [el.querySelector('.add').textContent, el.querySelector('i').textContent, el.querySelector('b').textContent];
+  });
+  assert.deepEqual(await read(), ['n: 0', '1', '1']);
+  await page.evaluate(() => { window.counts = []; document.querySelector('mnx-state').addEventListener('countchange', (event) => window.counts.push(event.detail)); });
+  await page.click('mnx-state .add');
+  assert.deepEqual(await read(), ['n: 1', '3', '1']);
+  await page.click('mnx-state b');
+  assert.deepEqual(await read(), ['n: 2', '5', '2'], 'an inline handler updated the state');
+  await page.evaluate(() => { document.querySelector('mnx-state').step = 4; });
+  assert.deepEqual(await read(), ['n: 2', '8', '2'], 'the derived value follows the prop');
+  await page.click('mnx-state .add');
+  assert.deepEqual(await read(), ['big: 6', '16', '6'], 'the script assigned a prop by its name');
+  assert.equal(await page.evaluate(() => document.querySelector('mnx-state').label), 'big');
+  assert.deepEqual(await page.evaluate(() => window.counts), [1, 6]);
+  assert.deepEqual(messages, []);
   await page.close();
 });

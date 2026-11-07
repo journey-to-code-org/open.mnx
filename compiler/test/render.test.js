@@ -9,7 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
 const fixtures = join(repo, 'runtime/test/browser/fixtures');
 const { available, render, renderToString, CompileError } = await import('../index.js');
-if (!available()) process.env.MNX_COMPILER = join(repo, 'target/debug/mnix');
+if (!available()) process.env.MNX_COMPILER = join(repo, 'target/debug/mnx');
 
 test('renders a component with props, slot HTML and the styles it needs', () => {
   const { html, css, warnings } = render(join(fixtures, 'styled-page.mnx'), {

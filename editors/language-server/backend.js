@@ -1,5 +1,5 @@
 // How the language server reaches the compiler: the WebAssembly build (@mnx/compiler) when it's
-// installed, otherwise the `mnix` CLI (or the one in `compiler`). Both give the same diagnostics.
+// installed, otherwise the `mnx` CLI (or `mnix`, its 1.x name, or the one in `compiler`). Both give the same diagnostics.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -13,7 +13,9 @@ export async function createBackend({ compiler } = {}) {
       // Not installed.
     }
   }
-  return cliBackend(compiler ?? process.env.MNX_COMPILER ?? 'mnix');
+  const chosen = compiler ?? process.env.MNX_COMPILER;
+  if (chosen) return cliBackend(chosen);
+  return cliBackend(spawnSync('mnx', ['--version']).error?.code === 'ENOENT' ? 'mnix' : 'mnx');
 }
 
 function wasmBackend(wasm) {
@@ -39,7 +41,7 @@ function cliBackend(compiler) {
     name: 'cli',
     check(path, text) {
       const result = run(['check', path, '--stdin', '--format', 'json'], text);
-      if (result.error) return [{ file: path, line: 1, column: 1, severity: 'error', message: `mnx: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}); install @mnx/compiler or the mnix CLI`, help: null }];
+      if (result.error) return [{ file: path, line: 1, column: 1, severity: 'error', message: `mnx: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}); install @mnx/compiler or the mnx CLI`, help: null }];
       try { return JSON.parse(result.stdout); } catch { return []; }
     },
     manifest(path) {

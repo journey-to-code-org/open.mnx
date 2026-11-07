@@ -36,12 +36,10 @@ use std::ops::Range;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentOperator, AssignmentTarget,
-    BindingPattern, CallExpression, ExportDefaultDeclarationKind, Expression, Function,
-    IdentifierReference, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
-    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, ObjectProperty,
-    PropertyKey, SimpleAssignmentTarget, Statement, UpdateExpression, UpdateOperator,
-    VariableDeclarationKind,
+    Argument, ArrowFunctionExpression, BindingPattern, CallExpression,
+    ExportDefaultDeclarationKind, Expression, Function, IdentifierReference,
+    ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild,
+    JSXElement, JSXElementName, JSXExpression, PropertyKey, Statement, VariableDeclarationKind,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
@@ -52,6 +50,7 @@ use oxc_syntax::{scope::ScopeFlags, symbol::SymbolId};
 use crate::{
     components::Loader,
     diagnostic::{Diagnostic, Span},
+    reactive::{self, Edit, Kind, COMPUTED, EMIT, HELPERS, STATE},
     scanner::span_after,
 };
 
@@ -111,16 +110,6 @@ pub fn looks_like_jsx(source: &str) -> bool {
 pub fn is_jsx(path: &str) -> bool {
     path.ends_with(".mnx.jsx") || path.ends_with(".mnx.tsx")
 }
-
-const STATE: &str = "__mnxState";
-const COMPUTED: &str = "__mnxComputed";
-const EMIT: &str = "__mnxEmit";
-const ASSIGN: &str = "__mnxAssign";
-const UPDATE: &str = "__mnxUpdate";
-
-/// Assignments to state as expressions: `x = v` is `__mnxAssign(x, v)` (calls, so no line of
-/// the output starts with a parenthesis that could join the previous statement).
-const HELPERS: &str = "function __mnxAssign(signal, value) { signal.set(value); return value }\nfunction __mnxUpdate(signal, delta, prefix) { const old = signal.get(); signal.set(old + delta); return prefix ? old + delta : old }\n";
 
 const VOID_ELEMENTS: &[&str] = &[
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
@@ -207,24 +196,6 @@ impl Out {
         self.map.pieces.push((self.text.len(), at, 0, false));
         self.text.push_str(text);
     }
-}
-
-/// A replacement of `range` (empty for an insertion) in the JSX source.
-#[derive(Clone, Debug)]
-struct Edit {
-    range: Range<usize>,
-    text: String,
-}
-
-/// What a component-level name is.
-#[derive(Clone, Debug, PartialEq)]
-enum Kind {
-    Prop(String),
-    State,
-    Derived,
-    /// An `on<Name>` parameter, with its event name.
-    Callback(String),
-    Children,
 }
 
 fn error_at(source: &str, offset: u32, message: impl Into<String>) -> Diagnostic {
@@ -840,13 +811,11 @@ impl Lowering<'_, '_> {
                         let Some(init) = &declarator.init else {
                             continue;
                         };
-                        let mut reads = ReactiveReads {
+                        let names = JsxNames {
                             lowering: self,
-                            depth: 0,
-                            found: false,
+                            context: Context::Script,
                         };
-                        reads.visit_expression(init);
-                        if !reads.found {
+                        if !reactive::reads_reactive(&names, init) {
                             continue;
                         }
                         match &declarator.id {
@@ -874,76 +843,14 @@ impl Lowering<'_, '_> {
         statement: &Statement<'_>,
         context: Context,
     ) -> Result<Vec<Edit>, Diagnostic> {
-        let mut rewriter = Rewriter {
+        let names = JsxNames {
             lowering: self,
             context,
-            edits: Vec::new(),
-            error: None,
         };
-        if let Statement::VariableDeclaration(declaration) = statement {
-            let start = declaration.span.start as usize;
-            match declaration.kind {
-                VariableDeclarationKind::Let => {
-                    rewriter.edits.push(Edit {
-                        range: start..start + 3,
-                        text: "const".to_owned(),
-                    });
-                    for declarator in &declaration.declarations {
-                        match &declarator.init {
-                            Some(init) => {
-                                let span = init.span();
-                                rewriter.edits.push(Edit {
-                                    range: span.start as usize..span.start as usize,
-                                    text: format!("{STATE}("),
-                                });
-                                rewriter.visit_expression(init);
-                                rewriter.edits.push(Edit {
-                                    range: span.end as usize..span.end as usize,
-                                    text: ")".to_owned(),
-                                });
-                            }
-                            None => {
-                                let end = declarator.id.span().end as usize;
-                                let end = declarator
-                                    .type_annotation
-                                    .as_ref()
-                                    .map_or(end, |annotation| annotation.span.end as usize);
-                                rewriter.edits.push(Edit {
-                                    range: end..end,
-                                    text: format!(" = {STATE}(undefined)"),
-                                });
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    for declarator in &declaration.declarations {
-                        let Some(init) = &declarator.init else {
-                            continue;
-                        };
-                        let derived = matches!(&declarator.id, BindingPattern::BindingIdentifier(identifier)
-                            if self.symbols.get(&identifier.symbol_id()) == Some(&Kind::Derived));
-                        let span = init.span();
-                        if derived {
-                            rewriter.edits.push(Edit {
-                                range: span.start as usize..span.start as usize,
-                                text: format!("{COMPUTED}(() => ("),
-                            });
-                        }
-                        rewriter.visit_expression(init);
-                        if derived {
-                            rewriter.edits.push(Edit {
-                                range: span.end as usize..span.end as usize,
-                                text: "))".to_owned(),
-                            });
-                        }
-                    }
-                }
-            }
-        } else {
-            rewriter.visit_statement(statement);
-        }
-        rewriter.finish()
+        reactive::rewrite_statement(&names, statement, &|id| {
+            matches!(id, BindingPattern::BindingIdentifier(identifier)
+                if self.symbols.get(&identifier.symbol_id()) == Some(&Kind::Derived))
+        })
     }
 
     fn rewrite_expression(
@@ -951,14 +858,11 @@ impl Lowering<'_, '_> {
         expression: &Expression<'_>,
         context: Context,
     ) -> Result<Vec<Edit>, Diagnostic> {
-        let mut rewriter = Rewriter {
+        let names = JsxNames {
             lowering: self,
             context,
-            edits: Vec::new(),
-            error: None,
         };
-        rewriter.visit_expression(expression);
-        rewriter.finish()
+        reactive::rewrite_expression(&names, expression)
     }
 
     /// Copy `range` of the source to `out`, applying `edits`.
@@ -1390,206 +1294,29 @@ fn clean_text(raw: &str) -> String {
     out
 }
 
-/// Reads of props, state or derived values outside nested functions.
-struct ReactiveReads<'r, 's, 'l> {
-    lowering: &'r Lowering<'s, 'l>,
-    depth: usize,
-    found: bool,
-}
-
-impl<'a> Visit<'a> for ReactiveReads<'_, '_, '_> {
-    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
-        if self.depth == 0
-            && matches!(
-                self.lowering.kind_of(identifier),
-                Some(Kind::Prop(_) | Kind::State | Kind::Derived)
-            )
-        {
-            self.found = true;
-        }
-    }
-    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        self.depth += 1;
-        walk::walk_function(self, function, flags);
-        self.depth -= 1;
-    }
-    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        self.depth += 1;
-        walk::walk_arrow_function_expression(self, arrow);
-        self.depth -= 1;
-    }
-}
-
-/// Collects the edits that turn component code into script code: props → `$p.name` (in the
-/// script), state and derived reads → `.get()`, state writes → `.set()`, `onX(…)` →
-/// `emit("x", …)`.
-struct Rewriter<'r, 's, 'l> {
+/// What names are, for the shared rewriter: from the component's symbols.
+struct JsxNames<'r, 's, 'l> {
     lowering: &'r Lowering<'s, 'l>,
     context: Context,
-    edits: Vec<Edit>,
-    error: Option<Diagnostic>,
 }
 
-impl Rewriter<'_, '_, '_> {
-    fn finish(self) -> Result<Vec<Edit>, Diagnostic> {
-        match self.error {
-            Some(error) => Err(error),
-            None => Ok(self.edits),
-        }
+impl reactive::Names for JsxNames<'_, '_, '_> {
+    fn kind(&self, identifier: &IdentifierReference<'_>) -> Option<Kind> {
+        self.lowering.kind_of(identifier).cloned()
     }
-
-    fn fail(&mut self, offset: u32, message: impl Into<String>) {
-        if self.error.is_none() {
-            self.error = Some(self.lowering.error(offset, message));
-        }
-    }
-
-    fn replace(&mut self, start: u32, end: u32, text: String) {
-        self.edits.push(Edit {
-            range: start as usize..end as usize,
-            text,
-        });
-    }
-
-    /// What reading `identifier` becomes, if it changes.
-    fn read(&mut self, identifier: &IdentifierReference<'_>) -> Option<String> {
-        let name = identifier.name.as_str();
-        match self.lowering.kind_of(identifier)? {
-            Kind::Prop(prop) => (self.context == Context::Script).then(|| format!("$p.{prop}")),
-            Kind::State | Kind::Derived => Some(format!("{name}.get()")),
-            Kind::Callback(_) => {
-                self.fail(
-                    identifier.span.start,
-                    format!("call `{name}(…)` to fire the event; passing it on isn't supported"),
-                );
-                None
-            }
-            Kind::Children => {
-                self.fail(
-                    identifier.span.start,
-                    "`children` can only be rendered: put `{children}` in the JSX",
-                );
-                None
-            }
-        }
-    }
-
-    fn state_target<'b>(&self, target: &'b AssignmentTarget<'_>) -> Option<&'b str> {
-        let AssignmentTarget::AssignmentTargetIdentifier(identifier) = target else {
-            return None;
-        };
-        (self.lowering.kind_of(identifier) == Some(&Kind::State)).then(|| identifier.name.as_str())
-    }
-}
-
-impl<'a> Visit<'a> for Rewriter<'_, '_, '_> {
-    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
-        let reference = self
-            .lowering
+    fn is_write(&self, identifier: &IdentifierReference<'_>) -> bool {
+        self.lowering
             .scoping
-            .get_reference(identifier.reference_id());
-        if reference.is_write() {
-            match self.lowering.kind_of(identifier) {
-                Some(Kind::State) => self.fail(identifier.span.start, "assign state with `name = …`, not by destructuring"),
-                Some(Kind::Derived) => self.fail(identifier.span.start, format!("`{}` is derived from props or state, so it can't be assigned; make it a `let`", identifier.name)),
-                Some(Kind::Callback(_) | Kind::Children) => self.fail(identifier.span.start, format!("`{}` can't be assigned", identifier.name)),
-                Some(Kind::Prop(prop)) if self.context == Context::Script => {
-                    let text = format!("$p.{prop}");
-                    self.replace(identifier.span.start, identifier.span.end, text);
-                }
-                _ => {}
-            }
-            return;
-        }
-        if let Some(text) = self.read(identifier) {
-            self.replace(identifier.span.start, identifier.span.end, text);
-        }
+            .get_reference(identifier.reference_id())
+            .is_write()
     }
-
-    fn visit_object_property(&mut self, property: &ObjectProperty<'a>) {
-        if property.shorthand {
-            if let Expression::Identifier(identifier) = &property.value {
-                if let Some(text) = self.read(identifier) {
-                    let name = identifier.name.as_str();
-                    self.replace(
-                        identifier.span.start,
-                        identifier.span.end,
-                        format!("{name}: {text}"),
-                    );
-                }
-                return;
-            }
-        }
-        walk::walk_object_property(self, property);
+    fn source(&self) -> &str {
+        self.lowering.source
     }
-
-    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if let Expression::Identifier(callee) = &call.callee {
-            if let Some(Kind::Callback(event)) = self.lowering.kind_of(callee).cloned() {
-                // `onPick(a)` / `onPick?.(a)` → `emit("pick", a)`: replace up to the `(`.
-                let rest = &self.lowering.source[callee.span.end as usize..];
-                let Some(open) = rest.find('(') else { return };
-                let mut text = format!("{EMIT}(\"{event}\"");
-                if !call.arguments.is_empty() {
-                    text.push_str(", ");
-                }
-                self.replace(callee.span.start, callee.span.end + open as u32 + 1, text);
-                self.visit_arguments(&call.arguments);
-                return;
-            }
-        }
-        walk::walk_call_expression(self, call);
+    fn error(&self, offset: u32, message: String) -> Diagnostic {
+        self.lowering.error(offset, message)
     }
-
-    fn visit_assignment_expression(&mut self, assignment: &AssignmentExpression<'a>) {
-        let Some(name) = self.state_target(&assignment.left) else {
-            return walk::walk_assignment_expression(self, assignment);
-        };
-        let name = name.to_owned();
-        let operator = match assignment.operator {
-            AssignmentOperator::Assign => None,
-            AssignmentOperator::Addition => Some("+"),
-            AssignmentOperator::Subtraction => Some("-"),
-            AssignmentOperator::Multiplication => Some("*"),
-            AssignmentOperator::Division => Some("/"),
-            AssignmentOperator::Remainder => Some("%"),
-            AssignmentOperator::Exponential => Some("**"),
-            AssignmentOperator::ShiftLeft => Some("<<"),
-            AssignmentOperator::ShiftRight => Some(">>"),
-            AssignmentOperator::ShiftRightZeroFill => Some(">>>"),
-            AssignmentOperator::BitwiseOR => Some("|"),
-            AssignmentOperator::BitwiseXOR => Some("^"),
-            AssignmentOperator::BitwiseAnd => Some("&"),
-            AssignmentOperator::LogicalAnd => Some("&&"),
-            AssignmentOperator::LogicalOr => Some("||"),
-            AssignmentOperator::LogicalNullish => Some("??"),
-        };
-        let right = assignment.right.span();
-        let open = match operator {
-            None => format!("{ASSIGN}({name}, "),
-            Some(operator) => format!("{ASSIGN}({name}, {name}.get() {operator} ("),
-        };
-        let close = if operator.is_some() { "))" } else { ")" };
-        self.replace(assignment.span.start, right.start, open);
-        self.visit_expression(&assignment.right);
-        self.replace(right.end, assignment.span.end, close.to_owned());
-    }
-
-    fn visit_update_expression(&mut self, update: &UpdateExpression<'a>) {
-        let SimpleAssignmentTarget::AssignmentTargetIdentifier(identifier) = &update.argument
-        else {
-            return walk::walk_update_expression(self, update);
-        };
-        if self.lowering.kind_of(identifier) != Some(&Kind::State) {
-            return walk::walk_update_expression(self, update);
-        }
-        let name = identifier.name.as_str();
-        let delta = if update.operator == UpdateOperator::Increment {
-            "1"
-        } else {
-            "-1"
-        };
-        let text = format!("{UPDATE}({name}, {delta}, {})", update.prefix);
-        self.replace(update.span.start, update.span.end, text);
+    fn in_script(&self) -> bool {
+        self.context == Context::Script
     }
 }

@@ -153,8 +153,15 @@ fn lower_component(
 ) -> Result<ir::Component, Diagnostic> {
     validate_custom_element(&component.tag, component.tag_span)?;
 
-    let locals = evaluate_script(&component.script)?;
-    let props = evaluate_props(component, &locals, overrides)?;
+    let prop_names: Vec<String> = component
+        .props
+        .iter()
+        .map(|prop| prop.name.clone())
+        .collect();
+    // Defaults first (they can use script bindings), then the script with the props' values.
+    let defaults = evaluate_script_with(&component.script, &prop_names, None)?;
+    let props = evaluate_props(component, &defaults, overrides)?;
+    let locals = evaluate_script_with(&component.script, &prop_names, Some(&props))?;
 
     let context = Context {
         component,
@@ -258,7 +265,12 @@ impl PropInterface {
 
 pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
     validate_custom_element(&component.tag, component.tag_span)?;
-    let locals = evaluate_script(&component.script)?;
+    let prop_names: Vec<String> = component
+        .props
+        .iter()
+        .map(|prop| prop.name.clone())
+        .collect();
+    let locals = evaluate_script_with(&component.script, &prop_names, None)?;
     let mut props = Vec::new();
     let mut runtime_defaults = HashSet::new();
     for declaration in &component.props {
@@ -353,7 +365,14 @@ pub(crate) fn needs_text_anchor(siblings: &[ast::Node], node: &ast::Node, block_
 
 // ---- 1. script and props -------------------------------------------------------------------
 
-fn evaluate_script(script: &ast::Script) -> Result<Vec<(String, Local)>, Diagnostic> {
+/// The script's bindings. A prop's name is the prop in the script (2.0): with `values` (the
+/// props' values, once known) a binding that reads one is evaluated with it; before that (prop
+/// defaults can use script bindings) it's runtime-only.
+fn evaluate_script_with(
+    script: &ast::Script,
+    prop_names: &[String],
+    values: Option<&[Prop]>,
+) -> Result<Vec<(String, Local)>, Diagnostic> {
     let mut locals: Vec<(String, Local)> = Vec::new();
     let mut seen = HashSet::new();
     for name in &script.runtime_names {
@@ -379,9 +398,16 @@ fn evaluate_script(script: &ast::Script) -> Result<Vec<(String, Local)>, Diagnos
                 // it runtime-only too).
                 let mut runtime = false;
                 let mut unknown = None;
+                let prop = |name: &str| {
+                    values.and_then(|values| values.iter().find(|prop| prop.name == name))
+                };
                 init.for_each_identifier(&mut |name| match find_local(&locals, name) {
                     Some(Local::Runtime) => runtime = true,
                     Some(Local::Value(_)) => {}
+                    None if prop(name).is_some_and(|prop| !prop.unknown) => {}
+                    None if prop(name).is_some() || prop_names.iter().any(|prop| prop == name) => {
+                        runtime = true
+                    }
                     // The browser's globals exist only at runtime.
                     None if RUNTIME_GLOBALS.contains(&name) => runtime = true,
                     None => {
@@ -407,7 +433,8 @@ fn evaluate_script(script: &ast::Script) -> Result<Vec<(String, Local)>, Diagnos
                 } else {
                     let lookup = |name: &str| match find_local(&locals, name) {
                         Some(Local::Value(value)) => Some(value.clone()),
-                        _ => None,
+                        Some(Local::Runtime) => None,
+                        None => prop(name).map(|prop| prop.value.clone()),
                     };
                     Local::Value(init.evaluate(&lookup).map_err(|message| {
                         Diagnostic::new(binding.span, format!("in `{}`: {message}", binding.name))
@@ -645,12 +672,19 @@ impl Context<'_> {
             }
         });
         for name in expression.written_names() {
-            let prop = self.props.iter().any(|prop| prop.name == name);
+            // Props and state (a script's top-level `let`) can be assigned.
+            let prop = self.props.iter().any(|prop| prop.name == name)
+                || self
+                    .component
+                    .script
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.mutable && binding.name == name);
             let looped = scopes.iter().flatten().any(|scope| scope == name);
             if looped || !prop {
                 return Err(Diagnostic::new(
                     span,
-                    format!("`{name}` can't be assigned here: a template can assign to props only"),
+                    format!("`{name}` can't be assigned here: a template can assign props and state (a `let`) only"),
                 )
                 .with_help(if looped {
                     "a list item is read-only; change the list instead".to_owned()

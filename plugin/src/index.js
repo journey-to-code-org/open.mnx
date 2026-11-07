@@ -97,9 +97,10 @@ $mnxRegister(tag, (props, slots) => {
 
 export const unplugin = createUnplugin((options = {}, meta = {}) => {
   // The compiler: a CLI when one is given (option or $MNX_COMPILER); otherwise the WebAssembly
-  // build (@mnx/compiler) if it's installed, so no Rust toolchain is needed; else `mnix` on PATH.
+  // build (@mnx/compiler) if it's installed, so no Rust toolchain is needed; else `mnx` on PATH
+  // (or `mnix`, its 1.x name).
   const explicit = options.compiler ?? process.env.MNX_COMPILER;
-  const compiler = explicit ?? 'mnix';
+  let compiler = explicit ?? 'mnx';
   let wasm = null;
   async function chooseBackend() {
     if (explicit || wasm) return;
@@ -140,10 +141,14 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       if (!response.ok) throw new Error(response.error);
       return { code: response.output, warnings: response.warnings.join('').trim() };
     }
-    const result = spawnSync(compiler, ['compile', path, ...args], { encoding: 'utf8' });
+    let result = spawnSync(compiler, ['compile', path, ...args], { encoding: 'utf8' });
+    if (result.error?.code === 'ENOENT' && !explicit && compiler === 'mnx') {
+      compiler = 'mnix';
+      result = spawnSync(compiler, ['compile', path, ...args], { encoding: 'utf8' });
+    }
     if (result.error) {
       throw new Error(`mnx: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}). `
-        + 'Install @mnx/compiler (the WebAssembly build), install the CLI, or pass { compiler: "/path/to/mnix" }.');
+        + 'Install @mnx/compiler (the WebAssembly build), install the CLI, or pass { compiler: "/path/to/mnx" }.');
     }
     if (result.status !== 0) throw new Error(result.stderr.trim() || `mnx: the compiler exited with ${result.status}`);
     return { code: result.stdout, warnings: result.stderr.trim() };

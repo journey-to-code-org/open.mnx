@@ -138,8 +138,13 @@ export interface Definition {
   setup?: (props: Record<string, unknown>, emit: (name: string, detail?: unknown) => boolean) => unknown[];
 }
 
-/** Register a compiled component (what the compiler's JavaScript output calls). */
-export declare function define(tag: string, definition: Definition): MnxElementClass;
+/**
+ * @internal Register a compiled component: what the compiler's JavaScript output calls. Its
+ * arguments are the compiled-code interface, version `ABI`, not a public API.
+ */
+export declare function $define(tag: string, definition: Definition & { abi: number }): MnxElementClass;
+/** The compiled-code interface version this runtime implements. */
+export declare const ABI: number;
 
 /** Whether a URL is safe for `href`/`src`: relative, or http(s), mailto or tel. */
 export declare function isSafeUrl(value: string): boolean;

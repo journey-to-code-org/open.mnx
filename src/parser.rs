@@ -31,6 +31,15 @@ const VOID_ELEMENTS: &[&str] = &[
 ];
 
 pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
+    parse_with(source, true)
+}
+
+/// Parse a 1.x file that may declare script names that are also props (for `mnx migrate`).
+pub(crate) fn parse_for_migration(source: &str) -> Result<ComponentAst, Diagnostic> {
+    parse_with(source, false)
+}
+
+fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnostic> {
     let normalized = normalize(source);
     let mut parser = TemplateParser::new(Cursor::new(&normalized));
     let leading_comment = parser.skip_whitespace_and_comments()?;
@@ -110,6 +119,34 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
             default,
             span: attribute.span,
         });
+    }
+
+    // A prop's name is the prop in the script too (2.0), so the script can't declare it.
+    for prop in props.iter().filter(|_| check_names) {
+        let declared = script
+            .bindings
+            .iter()
+            .find(|binding| binding.name == prop.name)
+            .map(|binding| binding.span)
+            .or_else(|| {
+                script
+                    .runtime_names
+                    .contains(&prop.name)
+                    .then_some(prop.span)
+            });
+        if let Some(span) = declared {
+            return Err(Diagnostic::new(
+                span,
+                format!(
+                    "the script declares `{}`, which is also a prop: a prop's name is the prop in the script too",
+                    prop.name
+                ),
+            )
+            .with_help(format!(
+                "rename the script's `{}` (e.g. `{}Default`, and `{}={{{}Default}}` on the host); `mnx migrate` does it",
+                prop.name, prop.name, kebab_attribute(&prop.name), prop.name
+            )));
+        }
     }
 
     // Events emitted from the template's runtime expressions count too.
@@ -969,4 +1006,18 @@ fn optional_text(element: &Element, name: &str) -> Result<Option<String>, Diagno
             format!("attribute `{name}` must be quoted text, e.g. {name}=\"item\""),
         )),
     }
+}
+
+/// `maxValue` → `max-value`.
+fn kebab_attribute(name: &str) -> String {
+    let mut out = String::new();
+    for character in name.chars() {
+        if character.is_ascii_uppercase() {
+            out.push('-');
+            out.push(character.to_ascii_lowercase());
+        } else {
+            out.push(character);
+        }
+    }
+    out
 }

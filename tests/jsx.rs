@@ -1,7 +1,7 @@
 //! The JSX front end (`.mnx.jsx` / `.mnx.tsx`): lowering to the `.mnx` format, and diagnostics
 //! placed in the JSX source.
 
-use mnix_compiler::{
+use mnx_compiler::{
     compile, compile_declarations_for, compile_js, compile_manifest, warnings, Framework,
 };
 

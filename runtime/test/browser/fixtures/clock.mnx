@@ -1,7 +1,7 @@
 <script>
   const started = window.clockStart ?? 1000
-  const zone = { name: "UTC" }
+  const zoneDefault = { name: "UTC" }
 </script>
-<mnx-clock since={started} zone={zone} label="Clock">
+<mnx-clock since={started} zone={zoneDefault} label="Clock">
   <p>{label}: {since} {zone.name}</p>
 </mnx-clock>

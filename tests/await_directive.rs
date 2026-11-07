@@ -1,6 +1,6 @@
 //! `<mnx-await>`: pending content, then `mnx-then` / `mnx-catch`.
 
-use mnix_compiler::{compile, compile_js};
+use mnx_compiler::{compile, compile_js};
 
 #[test]
 fn renders_the_pending_content_and_emits_three_blocks() {

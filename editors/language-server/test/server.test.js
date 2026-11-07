@@ -11,7 +11,7 @@ import { completions, contextAt, hostOf, tagAt } from '../analysis.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../../..');
-const compiler = join(repo, 'target/debug/mnix');
+const compiler = join(repo, 'target/debug/mnx');
 
 let server, dir, nextId = 1;
 const pending = new Map();
