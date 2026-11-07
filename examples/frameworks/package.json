@@ -4,6 +4,7 @@
   "type": "module",
   "description": "The toolchains for the framework examples, installed once, and the test that builds each one and uses it in a browser.",
   "scripts": {
+    "pretest": "node test/build-ui.mjs",
     "test": "node --test \"test/*.test.js\""
   },
   "devDependencies": {
