@@ -59,6 +59,9 @@ function parseAttribute(spec, raw) {
   if (fallback === undefined || fallback === null) {
     try { return JSON.parse(raw); } catch { return raw; }
   }
+  // A framework's server rendering stringified an object it sets as a property once it runs
+  // (Svelte does this): not given yet, rather than invalid.
+  if (raw === '[object Object]') return clone(fallback);
   try {
     return JSON.parse(raw);
   } catch {
@@ -952,6 +955,8 @@ function bindAttribute(part, node) {
       return node.removeAttribute(name);
     }
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    // No URL yet (a prop's "" default, before the app sets it): no attribute, and nothing to report.
+    if (part.url && text.trim() === '') return node.removeAttribute(name);
     if (part.url && !isSafeUrl(text)) {
       console.error(`mnx: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
       return node.removeAttribute(name);

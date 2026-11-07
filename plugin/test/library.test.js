@@ -87,6 +87,10 @@ test('the package: an element module per component, React and Vue entries, typin
   assert.equal(tags.length, 20);
   for (const module of manifest.modules) assert.ok(existsSync(join(lib, module.path)), module.path);
   assert.match(readFileSync(join(lib, 'index.js'), 'utf8'), /export \{ default as QuantityStepper \} from "\.\/quantity-stepper\.js";/);
+  // React's entries are client components, importable from React Server Components (Next.js).
+  assert.match(readFileSync(join(lib, 'react/index.js'), 'utf8'), /^'use client';\n/);
+  assert.match(readFileSync(join(lib, 'react/quantity-stepper.js'), 'utf8'), /^'use client';\n/);
+  assert.doesNotMatch(readFileSync(join(lib, 'vue/index.js'), 'utf8'), /use client/);
   // The modules need no bundler: no .mnx imports, only @mnx/runtime and each other.
   const code = readFileSync(join(lib, 'quantity-stepper.js'), 'utf8');
   assert.doesNotMatch(code, /\.mnx['"]/);

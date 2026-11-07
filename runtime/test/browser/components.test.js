@@ -490,3 +490,18 @@ test('hasSlot() follows whether a slot has content, in light and shadow DOM', as
     await page.close();
   }
 });
+
+test('an empty URL leaves the attribute off, quietly; "[object Object]" from a framework is not given yet', async () => {
+  // A prop's "" default before the app sets it (a link's href) isn't an unsafe URL to report.
+  const { page, messages } = await open('<mnx-link href=""></mnx-link><mnx-header data="[object Object]"></mnx-header>', { modules: ['link', 'header'] });
+  assert.equal(await page.$eval('mnx-link a', (a) => a.hasAttribute('href')), false);
+  await page.evaluate(() => { document.querySelector('mnx-link').href = 'javascript:alert(1)'; });
+  await page.evaluate(() => document.querySelector('mnx-link').updateComplete);
+  assert.equal(await page.$eval('mnx-link a', (a) => a.hasAttribute('href')), false, 'an unsafe one is still refused');
+  assert.equal(messages.filter((message) => message.includes('blocked an unsafe URL')).length, 1, 'and reported');
+  // Svelte's server HTML writes an object prop as "[object Object]", then sets the object: the
+  // element keeps its default meanwhile, without a warning.
+  assert.deepEqual(await page.$$eval('mnx-header li', (items) => items.map((item) => item.textContent)), ['sample data', 'additional data']);
+  assert.deepEqual(messages.filter((message) => !message.includes('blocked an unsafe URL')), []);
+  await page.close();
+});

@@ -14,7 +14,10 @@ Projects that use mnx 2 the way an app would, each with its own README:
 - **[`helpdesk/`](helpdesk/)**, the server one: a help-desk ticket tracker in Express, EJS and
   MongoDB. Components are rendered on the server inside EJS pages and hydrated in the browser
   without a bundler; every page works with JavaScript off.
+- **[`meta/`](meta/)**, the meta-framework ones: a conference app in Next.js, a bookshop in Nuxt
+  and a workout log in SvelteKit, each using mnx elements from server-rendered pages, with forms
+  posting to the framework's own server code. Its README lists what they found.
 
-`plugin/test/examples.test.js`, `frameworks/test/` and `helpdesk/test/` build each one and drive them in Chromium (the help desk also against MongoDB in CI).
+`plugin/test/examples.test.js`, `frameworks/test/`, `helpdesk/test/` and each `meta/*/test/` build each one and drive them in Chromium (the help desk also against MongoDB in CI).
 
 The loose `.mnx` files here are the small samples the CLI's README and tests refer to.

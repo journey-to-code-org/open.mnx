@@ -1,0 +1,26 @@
+<!--
+  One talk on the schedule: time, room, title, speaker and track, with a star to save it.
+  `starred` is two-way: the app keeps the list of starred sessions.
+  @fires starredchange - The star was toggled; `detail` is whether it's starred now.
+-->
+<style>
+  :host { display: block; }
+  article { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; gap: 0.25rem 1rem; padding: 0.9rem 1rem; background: white; border: 1px solid #e3e6ee; border-left: 4px solid var(--track, #8a90a0); border-radius: 0.7rem; }
+  .time { grid-row: span 2; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .time small { display: block; font-weight: 400; color: #61677a; }
+  h3 { margin: 0; font-size: 1rem; line-height: 1.35; }
+  h3 a { color: inherit; text-decoration: none; }
+  h3 a:hover { text-decoration: underline; }
+  .who { grid-column: 2; margin: 0; color: #61677a; font-size: 0.9rem; }
+  .track { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--track, #61677a); }
+  button { grid-row: 1 / span 2; grid-column: 3; align-self: center; width: 2.4rem; height: 2.4rem; border: 1px solid #e3e6ee; border-radius: 50%; background: white; font-size: 1.2rem; color: #c9ccd6; cursor: pointer; }
+  button[aria-pressed=true] { color: #e0a100; border-color: #f3d27a; background: #fff8e1; }
+</style>
+<session-card shadow id-text="" title-text="" speaker="" start="" end="" room="" track="" href="" starred:model={false}>
+  <article data-track={track}>
+    <div class="time">{start}<small>to {end}</small></div>
+    <h3><a href={href}>{titleText}</a></h3>
+    <p class="who">{speaker} · {room} · <span class="track">{track}</span></p>
+    <button type="button" aria-pressed={starred ? "true" : "false"} aria-label={starred ? `Unstar ${titleText}` : `Star ${titleText}`} onclick={() => (starred = !starred)}>★</button>
+  </article>
+</session-card>

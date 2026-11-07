@@ -2,6 +2,23 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.3 — 2026-11-07
+
+### Fixed
+
+- **An empty URL prop no longer logs an unsafe-URL error.** A URL attribute bound to a prop whose default is `""` (`href={href}` before the app sets it) is now left off quietly.
+- **An object prop written as `"[object Object]"` is treated as not given yet.** Svelte's server rendering writes object props that way. The element now uses the prop's default until Svelte sets the real object, instead of warning about invalid JSON.
+- **Library mode's React entries start with `'use client'`,** so React Server Components (Next.js) can import them.
+
+### Examples
+
+- **`examples/meta/`**: three meta-framework apps, each with a Chromium test in CI.
+  - `next-conference/`: Next.js 16 with the App Router. Components come from a library built with `mnx build --lib`, since Turbopack takes no bundler plugins. Feedback is posted through a Server Action with `useActionState`.
+  - `nuxt-bookshop/`: Nuxt 4 through the Vite plugin, with `v-model` on mnx controls and Nitro API routes.
+  - `sveltekit-workouts/`: SvelteKit 3 through the Vite plugin, with mnx form controls in a form action using `use:enhance`.
+
+  Their components use shadow DOM. Light-DOM components conflict with the frameworks' hydration today. That finding, and the others, are written up in `examples/meta/README.md` and planned in `plan/roadmap-server.md` (2.7 and 2.8).
+
 ## 2.6.2 — 2026-11-07
 
 ### Examples

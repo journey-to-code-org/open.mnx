@@ -1,0 +1,28 @@
+{
+  "name": "mnx-example-sveltekit-workouts",
+  "private": true,
+  "type": "module",
+  "description": "A workout log in SvelteKit, with mnx components through the Vite plugin and form actions.",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "node build",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@mnx/runtime": "file:../../../runtime"
+  },
+  "devDependencies": {
+    "@mnx/compiler": "file:../../../compiler",
+    "@mnx/unplugin": "file:../../../plugin",
+    "@sveltejs/adapter-node": "6.0.1",
+    "@sveltejs/kit": "3.1.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "playwright": "1.63.0",
+    "svelte": "5.57.3",
+    "vite": "8.3.6"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  }
+}

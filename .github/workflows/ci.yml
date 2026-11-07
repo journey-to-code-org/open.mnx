@@ -144,6 +144,32 @@ jobs:
         env:
           MONGODB_URI: mongodb://localhost:27017
 
+  meta:
+    name: Meta-framework examples (Next.js, Nuxt, SvelteKit)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [next-conference, nuxt-bookshop, sveltekit-workouts]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/meta/${{ matrix.app }}/package-lock.json
+      - run: cargo build --locked
+      - run: npm ci
+        working-directory: examples/meta/${{ matrix.app }}
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/meta/${{ matrix.app }}
+      - run: npm test
+        working-directory: examples/meta/${{ matrix.app }}
+
   wasm:
     name: WebAssembly compiler
     runs-on: ubuntu-latest

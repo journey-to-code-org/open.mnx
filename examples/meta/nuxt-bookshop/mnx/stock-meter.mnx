@@ -1,0 +1,24 @@
+<!--
+  How much of a book is in stock, against its reorder point: a bar, and words for it.
+-->
+<script>
+  const percent = max > 0 ? (stock > max ? 100 : stock * 100 / max) : 0
+  const level = stock === 0 ? "out" : stock <= reorder ? "low" : "ok"
+  const words = stock === 0 ? "Out of stock" : stock <= reorder ? stock + " left: reorder" : stock + " in stock"
+</script>
+<style>
+  :host { display: grid; gap: 0.25rem; min-width: 9rem; }
+  .bar { height: 0.45rem; border-radius: 999px; background: #e9ebf1; overflow: hidden; }
+  .fill { height: 100%; border-radius: inherit; background: #12805c; }
+  .low .fill { background: #d97706; }
+  .out .fill { background: #c62f3f; }
+  span { font-size: 0.8rem; color: #61677a; }
+  .low span, .out span { color: #b45309; font-weight: 600; }
+  .out span { color: #c62f3f; }
+</style>
+<stock-meter shadow stock={0} reorder={3} max={20}>
+  <div class:low={level === "low"} class:out={level === "out"} role="meter" aria-valuemin="0" aria-valuemax={max} aria-valuenow={stock} aria-label="Stock">
+    <div class="bar"><div class="fill" style:width={percent + "%"}></div></div>
+    <span>{words}</span>
+  </div>
+</stock-meter>

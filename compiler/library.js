@@ -72,7 +72,10 @@ export { $element as ${name} };
     write(`${module}.d.ts`, compile(path, { emit: 'dts', framework: 'none' }).output);
     const up = '../'.repeat(module.split('/').length);
     for (const framework of ['react', 'vue']) {
-      write(`${framework}/${module}.js`, `import Element from ${JSON.stringify(`${up}${module}.js`)};
+      // React's entries are client components (they use hooks): React Server Components need
+      // the directive to import them from a server component.
+      const directive = framework === 'react' ? "'use client';\n" : '';
+      write(`${framework}/${module}.js`, `${directive}import Element from ${JSON.stringify(`${up}${module}.js`)};
 import { wrap } from ${JSON.stringify(`${runtime}/${framework}`)};
 
 export * from ${JSON.stringify(`${up}${module}.js`)};
@@ -91,7 +94,7 @@ export default wrap(Element);
   write('index.js', index());
   write('index.d.ts', index());
   for (const framework of ['react', 'vue']) {
-    write(`${framework}/index.js`, index());
+    write(`${framework}/index.js`, (framework === 'react' ? "'use client';\n" : '') + index());
     write(`${framework}/index.d.ts`, index());
   }
   write('custom-elements.json', JSON.stringify({ schemaVersion: '2.1.0', readme: '', modules }, null, 2) + '\n');
