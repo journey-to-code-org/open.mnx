@@ -190,13 +190,34 @@ The element gets the native control API (`form`, `name`, `labels`, `validity`, `
 
 The HTML output is the server rendering: static, deterministic, escaped markup. Props that differ from their defaults are written onto the host (JSON for arrays and objects). When the element starts in the browser, it first checks that the markup has its template's shape. If it does, it binds to the existing DOM: nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match is replaced, with a warning.
 
+In an app's server, `@mnx/compiler` renders a component at request time, from Node and without Rust:
+
+```js
+import { render } from '@mnx/compiler';
+const { html, css } = render('src/inbox.mnx', { props: { heading: 'Mail' }, slots: { default: '<p>Hi</p>' } });
+```
+
+Slot content here is HTML your server already rendered and is kept as written (comments, scripts and braces included; `slotSource: 'template'` reads it as mnx syntax instead). A compiled module also loads on a server, where `define()` returns a stand-in carrying the element's description, so framework server rendering can import it. In a server build, `@mnx/unplugin` registers each component's renderer, and `renderToString(Element, { props, attributes, slots })` from `@mnx/runtime/server` renders the element class. With Astro, `@mnx/unplugin/astro` does all of this: components render on the server, and `client:load` (or any client directive) hydrates them. In Nuxt, SvelteKit and Next the framework renders the host and its children, and the element renders its template in the browser.
+
 The JavaScript output is a module that calls `define()` on `@mnx/runtime` with the component's props, template, parts and script. Parts are found by paths that count elements and comments only, because browsers merge and drop text nodes. Dynamic text beside other nodes follows an empty `<!---->` anchor, which both outputs emit.
 
 ## Using components in an app
 
 `@mnx/unplugin` (in `plugin/`) compiles `.mnx` imports in Vite, Rollup, webpack, esbuild and Rspack. What an import gives depends on the importing file: a React component in `.jsx`/`.tsx` files, a Vue component in `.vue` files, the element class elsewhere. Props, events, two-way binding and children all work without glue code, and typings are written next to each component. See `plugin/README.md`.
 
-The adapters it uses can also be used by hand: `wrap(Element)` from `@mnx/runtime/react` (React 18 and 19) or `@mnx/runtime/vue` (Vue 3). Other frameworks (Angular, Svelte, Solid, Lit) and plain HTML use the element directly: properties in, DOM events out.
+The adapters it uses can also be used by hand: `wrap(Element)` from `@mnx/runtime/react` (React 18 and 19) or `@mnx/runtime/vue` (Vue 3). Other frameworks (Svelte, Solid, Lit, Preact, Angular) and plain HTML use the element directly: properties in, DOM events out. The plugin detects Svelte, Solid and Preact projects and writes typings for them. Astro has an integration, `@mnx/unplugin/astro` (see above).
+
+Angular needs `CUSTOM_ELEMENTS_SCHEMA` and nothing else for props (`[heading]="x"`), events (`(valuechange)="…"`) and children. For forms, `MnxModel` from `@mnx/runtime/angular` makes the element a control through its `<prop>` + `<prop>change` pair (`[(value)]` can't work, because Angular listens for `valueChange`):
+
+```ts
+@Component({
+  imports: [FormsModule, MnxModel],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
+  template: `<mnx-rating mnxModel [(ngModel)]="stars"></mnx-rating>`,
+})
+```
+
+`mnxModel="checked"` names the pair when it isn't `value`. The Angular CLI's builder doesn't take Vite or esbuild plugins, so compile components with `mnix compile --emit js` (or `@mnx/compiler`) into `.js` modules and import those.
 
 ## Editors and tooling without Rust
 
@@ -218,25 +239,28 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 
 ```sh
 mnix check <component.mnx>... [--format human|json] [--stdin]
-mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json>]
-                             [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue]
+mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]]
+                             [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue|svelte|solid]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
+mnix request < request.json
 ```
 
-`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
+`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnix request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
 
 ## Stability
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters.
+Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, async data and streaming server rendering. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
 
 ## Repository and tests
 
 - `src/`: the compiler (Rust): scanner, parser, script analysis with oxc, resolver and lowering, HTML renderer, JavaScript and interface emitters, CLI.
-- `runtime/`: `@mnx/runtime`, with the React and Vue adapters.
-- `plugin/`: `@mnx/unplugin`.
+- `runtime/`: `@mnx/runtime`, with the React, Vue and Angular adapters and the server registry.
+- `plugin/`: `@mnx/unplugin`, with the Astro integration.
+- `compiler/`: `@mnx/compiler`, the compiler as WebAssembly; `wasm/` is its Rust shim.
+- `editors/`: the language server and the VS Code extension.
 
 Install Rust 1.97 or newer and Node 20 or newer.
 
@@ -245,9 +269,10 @@ cargo test --locked
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
 (cd runtime && npm ci && npm test)       # unit tests, incl. Signals differential tests
-(cd runtime && npm run test:browser)     # Chromium: components, hydration, slots, events, adapters
+(cd runtime && npm run test:browser)     # Chromium: components, hydration, slots, events, React/Vue/Angular
 (cd runtime && npm run test:tools)       # manifest schema and TypeScript checks
-(cd plugin && npm ci && npm test)        # real Vite apps with React, Vue and no framework
+(cd plugin && npm ci && npm test)        # real apps: React, Vue, Svelte, Solid, Lit, Astro, Tailwind; Rollup, webpack, esbuild
+(cd compiler && npm test)                # render API (and, with mnx.wasm built, parity with the CLI)
 ```
 
 The browser and plugin suites need Playwright's Chromium (`npx playwright install chromium`). `.github/workflows/ci.yml` runs every suite on each push. Behaviour is mutation-checked: each feature's code was deliberately broken in turn to confirm a test fails.

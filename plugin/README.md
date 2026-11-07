@@ -43,7 +43,29 @@ Every variant defines the custom element, so `<mnx-rating>` also works in plain 
 
 - **React**: props are set as properties; `on<Event>` in any casing listens for the component's events (`onValueChange` for `valuechange`); `value` + `onValueChange` is the controlled pattern. Children go into the component's slots (`slot="name"` for named slots) and stay live as React updates them.
 - **Vue**: props are set as DOM properties before the element starts; events are Vue events (`@valuechange`); every `<prop>` + `<prop>change` pair supports `v-model:<prop>`, and `v-model` binds `value`. Named slots (`<template #title>`) become `slot="title"` content.
-- **Anything else** (Angular, Svelte, Solid, Lit, plain DOM) uses the element directly: properties in, DOM events out, as with built-in elements.
+- **Anything else** (Svelte, Solid, Preact, Lit, Angular, plain DOM) uses the element directly: properties in, DOM events out, as with built-in elements. In Svelte, Solid and Preact projects (detected from their Vite plugins) every file gets the element, and the typings are written for that framework.
+
+## Server builds and Astro
+
+In a server build (Vite's SSR), each component module also registers its server renderer, which renders with `@mnx/compiler` from the component's sources embedded in the bundle. `renderToString(Element, { props, attributes, slots })` from `@mnx/runtime/server` uses it. Install `@mnx/compiler` in apps that render on the server, or pass `ssr: false` to leave it out.
+
+For Astro, add the integration (it adds this plugin to Astro's Vite config):
+
+```js
+// astro.config.mjs
+import mnx from '@mnx/unplugin/astro'
+export default { integrations: [mnx()] }
+```
+
+```astro
+---
+import Rating from '../components/rating.mnx'
+---
+<Rating value={3} class="big" />          <!-- server-rendered HTML, no JavaScript -->
+<Rating value={3} client:load />          <!-- server-rendered, then hydrated -->
+```
+
+Props go to the component, other attributes to its host, children to its slots (`slot="name"` for a named one).
 
 ## Styles
 
@@ -53,10 +75,11 @@ With Vite, a component's `<style>` is a CSS module in Vite's pipeline, so PostCS
 
 ```js
 mnx({
-  compiler: '/path/to/mnix',   // default: $MNX_COMPILER, then `mnix` on PATH
+  compiler: '/path/to/mnix',   // default: $MNX_COMPILER, then @mnx/compiler, then `mnix` on PATH
   framework: 'auto',           // or 'react' | 'vue' | 'element': the default for plain files
   dts: true,                   // write typings next to each component
   runtime: '@mnx/runtime',     // the runtime module compiled code imports
+  ssr: true,                   // server builds register a renderer (needs @mnx/compiler at run time)
 })
 ```
 
