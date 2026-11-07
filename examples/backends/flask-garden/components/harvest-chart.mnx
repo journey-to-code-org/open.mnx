@@ -1,9 +1,12 @@
 <!--
-  Harvest by crop, as horizontal bars. Rendered completely on the server (by the Rust
-  compiler), so the chart is in the page's HTML: the app passes each bar's share as `pct`,
-  since the server's renderer evaluates arithmetic but not `Math.max(…)` or `.reduce(…)`.
-  `rows` is `[{ crop, label, kg, pct }]`.
+  Harvest by crop, as horizontal bars, with the total. Rendered completely on the server (by
+  the Rust compiler, scripts included), so the chart is in the page's HTML.
+  `rows` is `[{ crop, label, kg }]`.
 -->
+<script>
+  const top = Math.max(1, ...rows.map((row) => row.kg))
+  const total = Math.round(rows.reduce((sum, row) => sum + row.kg, 0) * 10) / 10
+</script>
 <style>
   figure { margin: 0; }
   figcaption { margin-bottom: 0.6rem; font-weight: 600; }
@@ -13,7 +16,7 @@
   .kg { text-align: right; font-variant-numeric: tabular-nums; color: #4a4f40; }
   p { color: #6b705f; }
 </style>
-<harvest-chart rows={[]} total={0} heading="Harvest">
+<harvest-chart rows={[]} heading="Harvest">
   <figure>
     <figcaption>{heading} <small>({total} kg)</small></figcaption>
     <mnx-if test={rows.length > 0}>
@@ -21,7 +24,7 @@
         <mnx-each items={rows} as="row" key={row.crop}>
           <li data-crop={row.crop}>
             <span>{row.label}</span>
-            <span class="bar" style:width={row.pct + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
+            <span class="bar" style:width={Math.round((row.kg / top) * 100) + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
             <span class="kg">{row.kg} kg</span>
           </li>
         </mnx-each>

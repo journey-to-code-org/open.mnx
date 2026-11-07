@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { html, raw } from 'hono/html';
-import { createMnx } from './mnx.js';
+import { mnx as mnxMiddleware } from '@mnx/server/hono';
 import { CATEGORIES } from './store.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,9 +21,11 @@ const HTMX_CONFIG = JSON.stringify({ responseHandling: [{ code: '204', swap: fal
 
 export function createApp({ store, cache = true }) {
   const app = new Hono();
-  const mnx = createMnx({ cache });
+  // @mnx/server: renders components, and serves their modules and @mnx/runtime under /_mnx.
+  const middleware = mnxMiddleware({ components: join(here, '../components'), cache });
+  const mnx = middleware.mnx;
+  app.use(middleware);
   const c = (name, props) => raw(mnx.render(name, props));
-  mnx.routes(app);
   app.get('/vendor/htmx.js', (ctx) => ctx.body(HTMX, 200, { 'content-type': 'text/javascript' }));
   app.get('/app.css', (ctx) => ctx.body(CSS, 200, { 'content-type': 'text/css' }));
 
@@ -95,17 +97,14 @@ export function createApp({ store, cache = true }) {
   <meta name="htmx-config" content="${HTMX_CONFIG}">
   <title>${title} · Spoke & Chain</title>
   <link rel="stylesheet" href="/app.css">
-  <style data-mnx-components>${raw(mnx.css())}</style>
-  <script type="importmap">{ "imports": { "@mnx/runtime": "/vendor/mnx/index.js" } }</script>
+  ${raw(mnx.head()) /* every component's CSS and the import map: htmx fragments can bring any of them */}
   ${parserFix(ctx)}
   <script src="/vendor/htmx.js" defer></script>
 </head>
 <body>
   <header class="top"><a class="brand" href="/">Spoke & Chain</a> ${lowCount()}</header>
   <main>${body}</main>
-  <script type="module">
-${raw(mnx.names.map((name) => `    import '/components/${name}.js';`).join('\n'))}
-  </script>
+  ${raw(mnx.scripts())}
 </body>
 </html>`;
 

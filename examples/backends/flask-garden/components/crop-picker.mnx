@@ -2,8 +2,7 @@
   Pick up to `max` crops. Native checkboxes in the page (light DOM), so the choice submits with
   its form before any JavaScript; in the browser the count updates as you pick, and the boxes
   you can't add any more to are disabled.
-  `options` is `[{ value, label, chosen }]`: `chosen` is how the server marks the checked ones
-  (the server's renderer doesn't run `value.includes(…)`; see the README).
+  `options` is `[{ value, label }]`.
   @fires valuechange - The chosen crops changed; `detail` is their values.
 -->
 <script>
@@ -29,7 +28,7 @@
     <legend>{legend} <small class:full={value.length >= max}>{value.length} of {max}</small></legend>
     <mnx-each items={options} as="option" key={option.value}>
       <label>
-        <input type="checkbox" name={name} value={option.value} checked={option.chosen}
+        <input type="checkbox" name={name} value={option.value} checked={value.includes(option.value)}
                disabled={live && value.length >= max && !value.includes(option.value)}
                onchange={(event) => toggle(event, option.value)}>
         {option.label}

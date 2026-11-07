@@ -12,6 +12,7 @@
     "@hono/node-server": "2.1.6",
     "@mnx/compiler": "file:../../../compiler",
     "@mnx/runtime": "file:../../../runtime",
+    "@mnx/server": "file:../../../server",
     "hono": "4.13.17",
     "htmx.org": "2.0.11"
   },

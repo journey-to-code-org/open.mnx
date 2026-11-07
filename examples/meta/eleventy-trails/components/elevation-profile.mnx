@@ -1,7 +1,14 @@
 <!--
-  An elevation profile as an SVG line. `points` is the polyline's points, in a 100 × 40 box
-  (worked out in the site's data, since the server's renderer doesn't run `.map()`).
+  An elevation profile as an SVG line, from `elevation` (metres, evenly spaced). Rendered at
+  build time with the rest of the page (the script's map and Math run there too).
 -->
+<script>
+  const low = Math.min(...elevation)
+  const high = Math.max(...elevation)
+  const span = high - low || 1
+  const round = (number) => Math.round(number * 10) / 10
+  const points = elevation.map((meters, index) => round((index / Math.max(1, elevation.length - 1)) * 100) + "," + round(40 - ((meters - low) / span) * 36 - 2)).join(" ")
+</script>
 <style>
   figure { margin: 0; }
   svg { display: block; width: 100%; height: auto; }
@@ -9,7 +16,7 @@
   polygon { fill: #2f6f4f22; }
   figcaption { display: flex; justify-content: space-between; color: #5d6758; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 </style>
-<elevation-profile points="" low={0} high={0} label="Elevation">
+<elevation-profile elevation={[0, 0]} label="Elevation">
   <figure>
     <svg viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label={label + ": " + low + " to " + high + " m"}>
       <polygon points={"0,40 " + points + " 100,40"}></polygon>

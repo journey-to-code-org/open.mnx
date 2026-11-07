@@ -51,8 +51,8 @@ def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
     def runtime_module(path: str):
         return send_from_directory(runtime, path, mimetype="text/javascript")
 
-    def crop_options(chosen: list[str]) -> list[dict]:
-        return [{"value": value, "label": label, "chosen": value in chosen} for value, label in CROPS]
+    def crop_options() -> list[dict]:
+        return [{"value": value, "label": label} for value, label in CROPS]
 
     @app.get("/")
     def home():
@@ -64,7 +64,7 @@ def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
         signup = signup or {"name": "", "email": "", "crops": [], "household": 1}
         return page(
             "plot.html", status, title=f"Plot {plot['id']}", plot=plot, plots=store.plots(),
-            signup=signup, crops=crop_options(signup["crops"]), max_crops=MAX_CROPS,
+            signup=signup, crops=crop_options(), max_crops=MAX_CROPS,
             errors=errors or {}, done=request.args.get("done"),
         )
 
@@ -109,14 +109,10 @@ def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
     @app.get("/harvest")
     def harvest():
         rows = store.harvest_by_crop()
-        top = max((row["kg"] for row in rows), default=0)
-        bars = [
-            {**row, "label": CROP_NAMES[row["crop"]], "pct": round(row["kg"] / top * 100) if top else 0}
-            for row in rows
-        ]
+        bars = [{**row, "label": CROP_NAMES[row["crop"]]} for row in rows]
         taken = [plot["id"] for plot in store.plots() if plot["status"] == "taken"]
         return page(
-            "harvest.html", title="Harvest", bars=bars, total=round(sum(row["kg"] for row in rows), 1),
+            "harvest.html", title="Harvest", bars=bars,
             plots=taken, crops=CROPS, chosen_plot=request.args.get("plot", taken[0] if taken else ""),
             logged=request.args.get("logged"),
         )

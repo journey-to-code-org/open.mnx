@@ -34,6 +34,10 @@ export interface Mnx {
    * those out).
    */
   injectShadowRoots(html: string, options?: { forms?: boolean }): string;
+  /** A component's browser module (JavaScript). */
+  module(name: string): string;
+  /** Static sites: write the browser modules and @mnx/runtime under `dir` (at `<dir>/_mnx/…`). */
+  writeAssets(dir: string): void;
 }
 
 export interface MnxOptions {

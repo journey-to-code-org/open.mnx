@@ -14,7 +14,7 @@
 // SolidStart, Next): `mnx.injectShadowRoots(html)` puts each shadow-DOM component's
 // server-rendered template into the page as a declarative shadow root, and gives
 // form-associated ones a hidden input, so the page is complete before JavaScript.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findCompiler } from './compiler.js';
@@ -189,7 +189,23 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     return out + html.slice(last);
   }
 
+  /**
+   * For static sites: write every component's browser module and @mnx/runtime under `dir`, at
+   * the paths the pages import (`<dir>/_mnx/components/…`, `<dir>/_mnx/runtime/…`).
+   */
+  function writeAssets(dir) {
+    const out = join(resolve(dir), ...base.split('/').filter(Boolean));
+    for (const name of files.keys()) {
+      const file = join(out, 'components', `${name}.js`);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, js(name));
+    }
+    cpSync(runtimeDir, join(out, 'runtime'), { recursive: true });
+  }
+
   return {
+    writeAssets,
+    module: (name) => js(nameOf(name) ?? name),
     names: [...files.keys()],
     describe: (name) => describe(nameOf(name) ?? name),
     render: (name, props, slots) => render(nameOf(name) ?? name, props, slots),

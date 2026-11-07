@@ -1,16 +1,16 @@
 <!--
-  A price from whole cents, as dollars: 129900 → $1,299.00. Pure arithmetic, so the server
-  renders it completely (the server's renderer doesn't run `Intl.NumberFormat`).
+  A price from whole cents, as dollars: 129900 → $1,299.00. The server renders it completely
+  (toFixed and slice run there too; `Intl.NumberFormat` wouldn't, since its output depends on
+  the platform).
 -->
 <script>
-  const dollars = (cents - cents % 100) / 100
-  const thousands = (dollars - dollars % 1000) / 1000
-  const rest = dollars % 1000
-  const change = cents % 100
+  const fixed = (cents / 100).toFixed(2)
+  const whole = fixed.slice(0, -3)
+  const grouped = whole.length > 6 ? whole.slice(0, -6) + "," + whole.slice(-6, -3) + "," + whole.slice(-3) : whole.length > 3 ? whole.slice(0, -3) + "," + whole.slice(-3) : whole
 </script>
 <style>
   data { font-variant-numeric: tabular-nums; font-weight: 600; }
 </style>
 <price-tag cents={0}>
-  <data value={cents / 100}>${thousands > 0 ? thousands + "," + (rest < 100 ? "0" : "") + (rest < 10 ? "0" : "") + rest : rest}.{change < 10 ? "0" : ""}{change}</data>
+  <data value={cents / 100}>${grouped}{fixed.slice(-3)}</data>
 </price-tag>

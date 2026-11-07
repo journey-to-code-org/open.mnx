@@ -1,5 +1,5 @@
-// The trails, with what the components need worked out here: both units, and the elevation
-// profile as SVG points (the server's renderer evaluates arithmetic, not .map()).
+// The trails. (The elevation profile works out its own SVG points: components' JavaScript runs
+// at build time too, since 2.8.)
 const TRAILS = [
   ['Laurel Run Loop', 'easy', 4.2, [520, 540, 575, 560, 590, 610, 585, 540, 520], 'A shaded loop along the run, with three footbridges and a picnic meadow at the halfway point.'],
   ['Spruce Knob Summit', 'moderate', 7.8, [1180, 1230, 1290, 1340, 1410, 1460, 1482, 1440, 1360, 1250], 'Up through red spruce to the highest point in the state, with an observation tower at the top.'],
@@ -17,8 +17,6 @@ const round = (number) => Math.round(number * 10) / 10;
 export default TRAILS.map(([name, difficulty, km, elevation, summary]) => {
   const low = Math.min(...elevation);
   const high = Math.max(...elevation);
-  const span = high - low || 1;
-  const points = elevation.map((meters, index) => `${round((index / (elevation.length - 1)) * 100)},${round(40 - ((meters - low) / span) * 36 - 2)}`).join(' ');
   const climb = elevation.slice(1).reduce((sum, meters, index) => sum + Math.max(0, meters - elevation[index]), 0);
-  return { name, slug: slug(name), url: `/trails/${slug(name)}/`, difficulty, km, mi: round(km * 0.621371), summary, low, high, climb, points };
+  return { name, slug: slug(name), url: `/trails/${slug(name)}/`, difficulty, km, mi: round(km * 0.621371), summary, low, high, climb, elevation };
 });

@@ -12,7 +12,8 @@
   "dependencies": {
     "@11ty/eleventy": "3.1.8",
     "@mnx/compiler": "file:../../../compiler",
-    "@mnx/runtime": "file:../../../runtime"
+    "@mnx/runtime": "file:../../../runtime",
+    "@mnx/server": "file:../../../server"
   },
   "devDependencies": {
     "html-minifier-terser": "7.2.0",
