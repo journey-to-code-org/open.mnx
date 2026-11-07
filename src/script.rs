@@ -133,7 +133,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                 // The specifier's quotes included; relative to the import statement's text.
                 let specifier_range = (import.source.span.start as usize - range.start)
                     ..(import.source.span.end as usize - range.start);
-                if specifier.ends_with(".mnx") {
+                if crate::components::is_component(&specifier) {
                     script.components.push(ComponentImport {
                         specifier: specifier.clone(),
                         span: at(import.source.span.start),

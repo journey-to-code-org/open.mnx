@@ -56,15 +56,16 @@ function native(compiler, body) {
   return JSON.parse(result.stdout);
 }
 
-/** The `.mnx` files `path` imports, recursively, with their sources (the path itself included). */
+/** The components (`.mnx`, `.mnx.jsx`, `.mnx.tsx`) `path` imports, recursively, with their sources (the path itself included). */
 export function sources(path, files = {}) {
   const absolute = resolve(path);
   if (absolute in files) return files;
   let source;
   try { source = readFileSync(absolute, 'utf8'); } catch { return files; }
   files[absolute] = source;
-  const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
-  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx)['"]/g)) {
+  // A JSX component's imports are the whole file's; an .mnx file's are its <script>'s.
+  const script = /\.[jt]sx$/.test(absolute) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
+  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx(?:\.[jt]sx)?)['"]/g)) {
     if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files);
   }
   return files;

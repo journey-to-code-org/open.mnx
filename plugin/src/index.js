@@ -27,6 +27,8 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
 
 const VARIANTS = ['element', 'react', 'vue'];
+/** A component file: `.mnx`, or a JSX component (`.mnx.jsx` / `.mnx.tsx`). */
+const COMPONENT = /\.mnx(?:\.[jt]sx)?$/;
 const QUERY = '?mnx=';
 
 const split = (id) => {
@@ -40,7 +42,7 @@ export function variantFor(query, importer, project) {
   if (asked) return asked;
   if (!importer) return project;
   const [file] = split(importer);
-  if (file.endsWith('.mnx')) return 'element'; // a component, or a wrapper (`x.mnx?mnx=react`)
+  if (COMPONENT.test(file)) return 'element'; // a component, or a wrapper (`x.mnx?mnx=react`)
   if (file.endsWith('.vue')) return 'vue';
   // JSX is React's, or Vue's in a Vue project (vue-jsx); Solid and Preact use custom elements
   // directly.
@@ -54,8 +56,9 @@ function dependencies(path, seen = new Set()) {
   seen.add(path);
   let source = '';
   try { source = readFileSync(path, 'utf8'); } catch { return seen; }
-  const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
-  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx)['"]/g)) {
+  // A JSX component's imports are the whole file's; an .mnx file's are its <script>'s.
+  const script = /\.[jt]sx$/.test(path) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
+  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx(?:\.[jt]sx)?)['"]/g)) {
     if (specifier.startsWith('.')) dependencies(resolve(dirname(path), specifier), seen);
   }
   return seen;
@@ -156,7 +159,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
 
     async resolveId(source, importer) {
       const [specifier, query] = split(source);
-      if (!specifier.endsWith('.mnx')) return null;
+      if (!COMPONENT.test(specifier)) return null;
       let path;
       if (specifier.startsWith('/') && existsSync(specifier)) path = specifier;
       else if (importer && specifier.startsWith('.')) path = resolve(dirname(split(importer)[0]), specifier);
@@ -174,7 +177,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     },
 
     loadInclude(id) {
-      return id.includes(`.mnx${QUERY}`);
+      return /\.mnx(?:\.[jt]sx)?\?mnx=/.test(id);
     },
 
     load(id, loadOptions) {
@@ -198,10 +201,11 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
           + `export { tag } from ${element};\nexport default wrap(Element);\n`;
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
-      if (typings) writeTypings(path);
+      // (A JSX component is typed by its own source: TypeScript reads the function.)
+      if (typings && path.endsWith('.mnx')) writeTypings(path);
       // With Vite, a <style> goes through Vite's CSS pipeline; elsewhere it's inlined as written.
       const styles = [];
-      if (meta.framework === 'vite' && /<style[\s>]/i.test(readFileSync(path, 'utf8'))) {
+      if (meta.framework === 'vite' && path.endsWith('.mnx') && /<style[\s>]/i.test(readFileSync(path, 'utf8'))) {
         const lang = readFileSync(path, 'utf8').match(/<style[^>]*\slang=["']([a-z0-9]+)["']/i)?.[1] ?? 'css';
         styles.push('--css-import', `${path}?mnx=style&lang.${lang}`, '--css-import-inline', `${path}?mnx=style&inline&lang.${lang}`);
       }
@@ -231,7 +235,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         else project = 'element';
       },
       handleHotUpdate({ file, server }) {
-        if (extname(file) !== '.mnx') return;
+        if (!COMPONENT.test(file)) return;
         server.ws.send({ type: 'full-reload' });
         return [];
       },

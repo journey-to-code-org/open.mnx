@@ -51,8 +51,14 @@ fn load_from(
                 format!("import cycle: {} → {child_path}", stack.join(" → ")),
             ));
         }
-        let mut child = parser::parse(&source)
-            .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
+        let mut child = if crate::jsx::is_jsx(&child_path) {
+            let lowered = crate::jsx::lower(&source, &child_path, Some(loader))
+                .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
+            parser::parse(&lowered.text)
+        } else {
+            parser::parse(&source)
+        }
+        .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
         stack.push(child_path.clone());
         let loaded = load_from(&mut child, &child_path, Some(loader), stack);
         stack.pop();
@@ -95,4 +101,17 @@ pub fn filesystem(specifier: &str, from: &str) -> Result<(String, String), Strin
     let source =
         std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     Ok((path.to_string_lossy().into_owned(), source))
+}
+
+/// Whether an import specifier names a component (`.mnx`, or a JSX component `.mnx.jsx` /
+/// `.mnx.tsx`).
+pub fn is_component(specifier: &str) -> bool {
+    component_extension(specifier).is_some()
+}
+
+/// The component extension `specifier` ends with.
+pub fn component_extension(specifier: &str) -> Option<&'static str> {
+    [".mnx.jsx", ".mnx.tsx", ".mnx"]
+        .into_iter()
+        .find(|extension| specifier.ends_with(extension))
 }

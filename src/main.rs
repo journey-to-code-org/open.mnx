@@ -109,10 +109,11 @@ fn run() -> Result<(), String> {
             });
         // The JavaScript module the manifest describes: header.mnx → header.js by default.
         let module_path = module_path.unwrap_or_else(|| {
-            Path::new(&name)
-                .with_extension("js")
-                .to_string_lossy()
-                .into_owned()
+            let stem = mnix_compiler::component_extension(&name)
+                .map_or(name.as_str(), |extension| {
+                    &name[..name.len() - extension.len()]
+                });
+            format!("{stem}.js")
         });
         let output = match emit.as_str() {
             "js" if css_import.is_some() || css_import_inline.is_some() => {

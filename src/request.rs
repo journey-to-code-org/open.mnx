@@ -157,7 +157,10 @@ fn respond(request: &Map<String, Value>) -> Value {
             crate::compile_declarations_for(source, file_name(&path), framework)
         }
         ("compile", "manifest") => {
-            let default_module = format!("{}.js", file_name(&path).trim_end_matches(".mnx"));
+            let name = file_name(&path);
+            let stem = crate::components::component_extension(name)
+                .map_or(name, |extension| &name[..name.len() - extension.len()]);
+            let default_module = format!("{stem}.js");
             crate::compile_manifest(source, text("modulePath").unwrap_or(&default_module))
         }
         ("compile", other) => {

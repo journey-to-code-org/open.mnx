@@ -88,13 +88,13 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     for import in &component.script.imports {
         let mut text = import.text.clone();
         // A component import loads the compiled module, which defines the element.
-        if let (Some(extension), true) = (
+        if let (Some(extension), Some(component)) = (
             options.component_extension,
-            import.specifier.ends_with(".mnx"),
+            crate::components::component_extension(&import.specifier),
         ) {
             let rewritten = format!(
                 "{}{extension}",
-                &import.specifier[..import.specifier.len() - 4]
+                &import.specifier[..import.specifier.len() - component.len()]
             );
             text.replace_range(import.specifier_range.clone(), &json(&rewritten));
         }

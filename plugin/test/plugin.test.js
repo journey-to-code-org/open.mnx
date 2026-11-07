@@ -42,7 +42,7 @@ function app(name) {
   return root;
 }
 
-const plugins = { react: () => [react()], vue: () => [vue()], plain: () => [], tailwind: () => [tailwindcss()], svelte: () => [svelte()], solid: () => [solid()], lit: () => [] };
+const plugins = { jsx: () => [react()], react: () => [react()], vue: () => [vue()], plain: () => [], tailwind: () => [tailwindcss()], svelte: () => [svelte()], solid: () => [solid()], lit: () => [] };
 
 async function bundle(name, root = app(name)) {
   await build({
@@ -461,4 +461,25 @@ test('astro: server-rendered pages, hydrated with a client directive', async () 
     if (saved === undefined) delete process.env.MNX_COMPILER;
     else process.env.MNX_COMPILER = saved;
   }
+});
+
+// JSX components (`.mnx.tsx`) in a React app: the React wrapper from a React file, the element
+// with `?element`, an .mnx child inside, and the same element in the page's HTML.
+test('JSX components: imported from React as React components, and as elements', async () => {
+  const root = await bundle('jsx');
+  const { page, messages } = await visit(root);
+  await settle(page);
+  assert.equal(await page.evaluate(() => window.kind), 'mnx-counter');
+  const read = (id) => page.$eval(`#${id}`, (el) => [el.querySelector('mnx-badge i').textContent, el.querySelector('.doubled').textContent]);
+  assert.deepEqual(await read('react'), ['1', '2']);
+  assert.deepEqual(await read('plain'), ['5', '10'], 'the element in plain HTML');
+  await page.click('#react button');
+  await settle(page);
+  assert.equal(await page.textContent('#count'), '3', 'onCountChange through the React wrapper');
+  assert.deepEqual(await read('react'), ['3', '6']);
+  await page.click('#plain button');
+  await settle(page);
+  assert.deepEqual(await read('plain'), ['6', '12']);
+  assert.deepEqual(messages, []);
+  await page.close();
 });
