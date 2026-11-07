@@ -51,7 +51,7 @@ jobs:
       - run: node registry/build-index.mjs --check
 
   plugin:
-    name: Build plugin (Vite, React, Vue)
+    name: Build plugin (Vite, React, Vue) and @mnx/server
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +72,16 @@ jobs:
         working-directory: plugin
       - run: npm test
         working-directory: plugin
+      # @mnx/server (Express, Fastify, Hono, injectShadowRoots) and the compiler's checks of
+      # server-side evaluation against V8.
+      - run: npm ci
+        working-directory: server
+      - run: npm test
+        working-directory: server
+      - run: npm ci
+        working-directory: compiler
+      - run: node --test test/server-evaluation.test.js
+        working-directory: compiler
 
   frameworks:
     name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular)

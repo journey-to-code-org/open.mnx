@@ -26,7 +26,8 @@ npm run dev                 # or: npm run build && npm start
   still hydrated without errors. Solid claims only the nodes it marked, and leaves an element's
   own children alone. That's unlike React, Vue and Svelte (`../README.md`). The components are
   shadow DOM anyway, for consistency with the other apps.
-- **The same server gap.** Solid renders the hosts with no inner markup. `prop:` values are
-  properties, so they aren't in the server HTML either. Without JavaScript the action gets no
-  course and no head count, and refuses the sign-up.
+- **The same server gap** (fixed in 2.8). Solid renders the hosts with no inner markup, and
+  `prop:` values are properties, so they weren't in the server HTML either. Now the hosts carry
+  `mnx-props`, and `src/middleware.js` runs `mnx.injectShadowRoots` on each page. Without
+  JavaScript the action gets the course and head count, and the sign-up goes through.
 - **The template wants Node.js 24** (`engines`). It builds and runs on 22, which CI uses.

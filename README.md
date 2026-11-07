@@ -226,6 +226,7 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 ```
 
 - **Scoped with the platform's own `@scope`.** In light DOM, a component's `<style>` applies to its own elements and stops at content callers put in its slots. The runtime and the HTML output mark each slotted element `data-mnx-slotted="mnx-card"`, and the stylesheet is `@scope (mnx-card) to ([data-mnx-slotted="mnx-card"])`. The marker names the component, so a parent's content placed in a child's slot is still the parent's to style, as with shadow DOM. The marker is removed when content leaves the slot. In shadow DOM the shadow root does the scoping and the CSS is used as written. `:host` means the host either way, so one stylesheet works with or without `shadow`.
+- **`host-reset`** (with `shadow`) is for components on pages you don't control: embeds and extensions' widgets. The host is in the page, so a page's `* { … !important }` matches it and beats `:host`, and fonts and colours inherit into the shadow root. `host-reset` starts the host from `all: initial` and makes the component's own top-level `:host` declarations `!important`, which wins across the shadow boundary.
 - **Utilities and app CSS win.** The CSS goes in the `components` cascade layer, and the sheet declares Tailwind's layer order (`theme, base, components, utilities`). Utility classes override a component's defaults, base and reset styles come before them, and unlayered page CSS overrides both, whichever stylesheet loads first. `<style layer="…">` picks another layer; `<style layer="none">` leaves the CSS unlayered.
 - **Page CSS still applies in light DOM.** Tailwind, Bootstrap or your own global classes work on a component's elements as on any element. A parent's styles can also reach into a light-DOM child's elements, as page CSS does; use `shadow` when a component needs full isolation.
 - **Delivery.** In the browser, each component's stylesheet is one constructed `CSSStyleSheet`, shared by every instance. A light-DOM component's sheet is adopted by the document, or by the shadow root it lives in. A shadow component's sheet is adopted by each of its shadow roots. In the HTML output, a shadow component carries a `<style>` in its declarative shadow root. Light-DOM styles go in the page once: `--emit css` writes the stylesheets of a component and everything it imports, for the page's `<head>`.
@@ -331,26 +332,67 @@ The markers are HTML comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`, `
 
 In Next.js, React Router, Nuxt and SvelteKit, the framework hydrates the server's HTML around the elements. A light-DOM component renders its template into its host before the framework hydrates, and the framework then finds children it didn't render: React redoes the page, Vue removes them, and Svelte fails. Use `shadow` for components those apps server-render. `@mnx/unplugin` warns when a light-DOM component is server-rendered in React Router, Nuxt or SvelteKit. Solid doesn't mind. See `examples/meta/README.md`.
 
+**The SSR bridge.** A framework renders only the host tag. For the element's markup to be in the page before JavaScript, there are two steps:
+1. **Props on the host.** The React and Vue wrappers write the props as one JSON attribute, `mnx-props`, on the server and in the browser alike. In Svelte and Solid, which use elements directly, add `mnx-props={JSON.stringify({ … })}` for object props (and for Solid's `prop:` values). The element starts with these props before the framework sets them.
+2. **Shadow roots in the HTML.** `@mnx/server`'s `injectShadowRoots(html)`, or `injectShadowRootsStream()` for a streamed page, gives each shadow-DOM component's host its server-rendered template as a declarative shadow root. The browser attaches it while parsing, before any framework hydrates, and the element then hydrates it in place. A form-associated component with a `name` also gets `<input type="hidden" data-mnx-fallback>` holding its value, so the form submits without JavaScript. The element removes it when it starts.
+
+Where to call it:
+
+| Framework | Hook |
+|---|---|
+| SvelteKit | `handle`'s `transformPageChunk` |
+| Nuxt | a Nitro plugin on `render:html` |
+| React Router | `app/entry.server.jsx` (the stream) |
+| SolidStart | a middleware |
+
+`examples/meta/` has each. Next.js streams React Server Components with no hook for its HTML, so it isn't covered yet. A control the user types into (a text field inside a shadow root) still needs JavaScript to submit. Its server-rendered value goes, but not an edit.
+
 ### What the server can render
 
-The HTML output evaluates literals, props, member access, arithmetic, comparisons, logic and ternaries. A call (`.includes()`, `Math.round()`), a template literal or a runtime-only value is left for the browser. `mnx check --server` lists those places, rendering with the defaults. It's an error for `checked`, `selected`, `value` and `disabled`, because without JavaScript the form would be wrong.
+The HTML output evaluates the component's JavaScript where the answer is the same everywhere:
+- in templates and in the script's `const`s and `let`s: literals, props, member access, arithmetic, comparisons, logic, ternaries and template literals;
+- arrow functions defined in the script (`const money = (cents) => …`), and arrow callbacks;
+- string, array and number methods: `.includes`, `.map`, `.filter`, `.reduce`, `.join`, `.slice`, `.padStart`, `.toFixed`, `.toSorted`, …;
+- `Math` (except `random`), `Number()`, `String()` and `Object.keys()`, `Object.values()` and `Object.entries()`.
+
+That's the same in the Rust CLI, the WebAssembly build and every server. `compiler/test/server-evaluation.test.js` checks it against V8. What isn't deterministic (`Date`, `Intl`, `Math.random()`, `toLocaleString()`), what reaches the browser (`window`, `document`), and anything else outside the subset is left for the browser. `mnx check --server` lists those places, rendering with the defaults. It's an error for `checked`, `selected`, `value` and `disabled`, because without JavaScript the form would be wrong.
 
 **Partial rendering.** A component may use what only the browser can compute: JavaScript expressions, runtime-only script values, or defaults computed in the browser. `--partial` (or `partial: true` in a request) renders everything else and leaves those parts for the element. Their text renders empty, their attributes are left out, and their conditionals and lists become empty `<!--[?-->` regions that the element renders when it starts, without a hydration warning. Without it, the HTML output reports the first such part as an error. `@mnx/compiler`'s `render()` and the plugin's server builds render partially, so every component (JSX ones with state included) can be server-rendered.
 
-In an app's server, `@mnx/compiler` renders a component at request time, from Node and without Rust:
+In an app's server, **`@mnx/server`** does the whole job with any template engine. It renders components into a page, adds their CSS and module scripts, and serves the browser modules and `@mnx/runtime`, with no bundler:
+
+```js
+import { mnx } from '@mnx/server/express';          // or /fastify, /hono; or createMnx() from '@mnx/server'
+app.use(mnx({ components: 'components' }));
+app.get('/', (req, res) => {
+  const page = res.locals.mnx;
+  res.send(page.finish(layout(page.render('ticket-table', { tickets }))));
+});
+```
+
+`page.finish(html)` puts the used components' CSS and the import map before `</head>`, and their modules before `</body>`. `page.head()` and `page.scripts()` give you the same pieces to place yourself. `mnx.handle(req, res)` (Node) and `mnx.fetch(request)` (fetch-style servers) serve `/_mnx/…`. For a static site, `mnx.writeAssets(dir)` writes those files. `examples/helpdesk/` (Express and EJS), `examples/hypermedia/` (Hono) and `examples/meta/eleventy-trails/` use it.
+
+`@mnx/compiler` underneath renders a single component, from Node and without Rust:
 
 ```js
 import { render } from '@mnx/compiler';
 const { html, css } = render('src/inbox.mnx', { props: { heading: 'Mail' }, slots: { default: '<p>Hi</p>' } });
 ```
 
-Slot content here is HTML your server already rendered and is kept as written (comments, scripts and braces included; `slotSource: 'template'` reads it as mnx syntax instead). A compiled module also loads on a server, where `define()` returns a stand-in carrying the element's description, so framework server rendering can import it. In a server build, `@mnx/unplugin` registers each component's renderer, and `renderToString(Element, { props, attributes, slots })` from `@mnx/runtime/server` renders the element class. With Astro, `@mnx/unplugin/astro` does all of this: components render on the server, and `client:load` (or any client directive) hydrates them. In Nuxt, SvelteKit and Next the framework renders the host and its children, and the element renders its template in the browser.
+Slot content here is HTML your server already rendered and is kept as written (comments, scripts and braces included; `slotSource: 'template'` reads it as mnx syntax instead). A compiled module also loads on a server, where `define()` returns a stand-in carrying the element's description, so framework server rendering can import it. In a server build, `@mnx/unplugin` registers each component's renderer, and `renderToString(Element, { props, attributes, slots })` from `@mnx/runtime/server` renders the element class. With Astro, `@mnx/unplugin/astro` does all of this: components render on the server, and `client:load` (or any client directive) hydrates them. In Nuxt, SvelteKit, React Router and SolidStart, the framework renders the host and its children, and `@mnx/server` adds the shadow roots (see "The SSR bridge").
 
 The JavaScript output is a module that calls `define()` on `@mnx/runtime` with the component's props, template, parts and script. Parts are found by paths that count elements and comments only, because browsers merge and drop text nodes. Dynamic text beside other nodes follows an empty `<!---->` anchor, which both outputs emit.
 
 ## Using components in an app
 
 `@mnx/unplugin` (in `plugin/`) compiles `.mnx` imports in Vite, Rollup, webpack, esbuild and Rspack. What an import gives depends on the importing file: a React component in `.jsx`/`.tsx` files, a Vue component in `.vue` files, the element class elsewhere. Props, events, two-way binding and children all work without glue code, and typings are written next to each component. See `plugin/README.md`.
+
+**Next.js** (Turbopack) and other bundlers that take webpack-style loaders, but not plugins, use `@mnx/unplugin/loader`. The module it makes defines the element and, as its default export, wraps it as a React client component (`?element` gives the element alone):
+
+```js
+// next.config.mjs
+export default { turbopack: { rules: { '*.mnx': { loaders: ['@mnx/unplugin/loader'], as: '*.js' } } } };
+```
 
 The adapters it uses can also be used by hand: `wrap(Element)` from `@mnx/runtime/react` (React 18 and 19) or `@mnx/runtime/vue` (Vue 3). Other frameworks (Svelte, Solid, Lit, Preact, Angular) and plain HTML use the element directly: properties in, DOM events out. The plugin detects Svelte, Solid and Preact projects and writes typings for them. Astro has an integration, `@mnx/unplugin/astro` (see above).
 

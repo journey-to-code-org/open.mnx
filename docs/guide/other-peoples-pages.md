@@ -10,11 +10,16 @@ The host element itself is in the page, though:
 - a page's `* { font-family: Georgia !important }` matches it and beats your `:host` rules;
 - inherited properties (font, colour, line height) then flow into your shadow root.
 
-`all: initial` in `:host` isn't enough on its own. Make the host's rules `!important`: across a shadow boundary, the inner `!important` wins.
+`all: initial` in `:host` isn't enough on its own: the host's rules have to be `!important`, because across a shadow boundary the inner `!important` wins. `host-reset` on the host does both:
 
-```css
-:host { all: initial !important; position: fixed !important; font: 14px/1.4 system-ui, sans-serif !important; color: #1d2130 !important; }
+```html
+<style>
+  :host { position: fixed; font: 14px/1.4 system-ui, sans-serif; color: #1d2130; }
+</style>
+<my-widget shadow host-reset>…</my-widget>
 ```
+
+The host starts from `all: initial`, and each declaration in a top-level `:host` rule becomes `!important`.
 
 ## Content scripts can't define elements
 

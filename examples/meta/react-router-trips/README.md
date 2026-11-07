@@ -32,9 +32,11 @@ npm run dev                 # or: npm run build && npm start
   light-DOM component is server-rendered here, since React would redo the page on hydration.
 - **The same three findings as Next.js** (`../README.md`):
   - the components are shadow DOM, because light DOM would make React redo the page on hydration;
-  - the server HTML has the hosts only: no balances, no amount field;
-  - without JavaScript, the form posts without the mnx controls' values. The test shows the
-    action's "An amount above $0.", which is the case for the hidden-input fallback in roadmap
-    challenge 11.
+  - the server HTML had the hosts only (2.8 fixes it: `app/entry.server.jsx` pipes React's
+    stream through `mnx.injectShadowRootsStream()`, so balances and the amount field are in the
+    page);
+  - without JavaScript, the form posted without the mnx controls' values. Now each named control
+    has a hidden input until it starts, so the action gets the payer and category; the amount
+    is a text field, whose edits need JavaScript, so the test still sees "An amount above $0.".
 - **Form-associated controls work with React Router's `<Form>`.** `FormData` picks up their
   values, a form `reset()` clears them, and the action reads them like any other field.

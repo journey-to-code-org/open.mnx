@@ -62,11 +62,12 @@ The server renders with the compiler's build-time expression subset: literals, m
 arithmetic, comparisons, logic and ternaries. That subset is the whole story on a non-JS server,
 so its gaps show up here first. `plan/roadmap-server.md` has the details and the plan.
 
-- **`value.includes(x)` and template literals aren't evaluated on the server.** The region is
-  left for the browser: an attribute is omitted, and text is left empty. For a checkbox, that
-  means *unchecked* in the server's HTML, so a form re-rendered after an error would lose its
-  choices without JavaScript. The app passes each option's `chosen` flag instead, and the chart
-  gets each bar's `pct` from Python rather than computing `Math.max(…)` in the component.
+- **`value.includes(x)` and template literals weren't evaluated on the server** (fixed in 2.8).
+  The region was left for the browser: an attribute omitted, text left empty. For a checkbox,
+  that meant *unchecked* in the server's HTML, so a form re-rendered after an error lost its
+  choices without JavaScript. The app used to pass each option's `chosen` flag and each bar's
+  `pct` from Python. Now the server evaluates the script's deterministic JavaScript, and the
+  components use `value.includes(…)` and `Math.max(…)` themselves.
 - **It was silent** (2.7 reports it). Nothing said that `checked={value.includes(o.value)}` won't
   render on the server. In a form, that's a bug you only find with JavaScript off. Now
   `mnx check --server` reports it, as an error for form state (`checked`, `selected`, `value`,

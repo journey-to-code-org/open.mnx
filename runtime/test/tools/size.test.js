@@ -11,8 +11,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const BUDGETS = {
   // Everything, the Signals implementation included. (12 KB until 2.7, whose progressive
   // enhancement — hydrated(), the .submit and .mod modifiers, the missing-markers warning — took
-  // it to 12.5 KB.)
-  'src/index.js': { gzip: 12.5 * 1024 },
+  // it to 12.5 KB, and 2.8's server bridge — reading `mnx-props`, dropping form fallbacks — to
+  // 13 KB.)
+  'src/index.js': { gzip: 13 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
 };

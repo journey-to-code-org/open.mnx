@@ -5,22 +5,34 @@ Every component also compiles to HTML: the same markup the element would render,
 ## In a framework
 
 - **Astro**: add `@mnx/unplugin/astro` to the integrations (`npm create mnx -- --framework astro` does). Components render on the server, and a client directive (`client:load`, `client:visible`, …) hydrates one in the browser.
-- **Nuxt, SvelteKit, Next**: the framework renders the element's tag and children on the server, and the element renders its template in the browser.
+- **SvelteKit, Nuxt, React Router, SolidStart**: the framework renders the element's tag, and `@mnx/server` adds its shadow root to the page. Use `shadow` components there.
+
+  ```js
+  // SvelteKit: src/hooks.server.js
+  import { createMnx } from '@mnx/server';
+  const mnx = createMnx({ components: 'src/components' });
+  export const handle = ({ event, resolve }) => resolve(event, { transformPageChunk: ({ html }) => mnx.injectShadowRoots(html) });
+  ```
+
+  The page is complete before JavaScript, and form controls submit their server-rendered values (`examples/meta/` has each framework).
+- **Next.js**: import `.mnx` files through the Turbopack loader. The framework renders the element's tag on the server, and the element renders its template in the browser.
 
 ## In your own server
 
-`@mnx/compiler` renders from Node, without Rust:
+`@mnx/server` works with any template engine (Express, Fastify and Hono have adapters):
 
 ```js
-import { render } from '@mnx/compiler';
+import { createMnx } from '@mnx/server';
+const mnx = createMnx({ components: 'src/components' });
 
-const { html, css } = render('src/components/user-card.mnx', {
-  props: { userId: '1' },
-  slots: { default: '<p>Already rendered by your server</p>' },
-});
+// per request
+if (mnx.handle(req, res)) return;               // the browser modules and @mnx/runtime
+const page = mnx.page();
+const card = page.render('user-card', { user }); // HTML, inside your template
+res.end(page.finish(myLayout(card)));            // + the components' CSS and module scripts
 ```
 
-What only the browser can compute (a handler, a value from `fetch`, `Date.now()`) is left for the element: its text renders empty and its region renders when the element starts, without a hydration warning.
+The component's script runs on the server too, as far as it's deterministic: `.map()`, `.filter()`, `toFixed()`, `Math`, template literals, and arrow functions from the script. What only the browser can compute (a handler, `Date`, `Intl`, a value from `fetch`) is left for the element: its text renders empty and its region renders when the element starts, without a hydration warning. `mnx check --server` lists those places.
 
 ## From the command line
 

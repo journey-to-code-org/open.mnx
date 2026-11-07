@@ -2,6 +2,30 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.8.0 — 2026-11-07
+
+Server-first (`plan/roadmap-server.md`, 2.8). All additive.
+
+### Added
+
+- **`@mnx/server`**, a new package for rendering mnx components from any Node.js server. `createMnx({ components })` compiles a folder of components and caches them. `page()` renders components into a page and adds their CSS and module scripts (`finish(html)`). `handle(req, res)` and `fetch(request)` serve the browser modules and `@mnx/runtime`, and `writeAssets(dir)` writes them for a static site. Express, Fastify and Hono have adapters (`@mnx/server/express`, `/fastify`, `/hono`).
+- **The SSR bridge for frameworks.** `injectShadowRoots(html)` (and `injectShadowRootsStream()` for a stream) finds the hosts of shadow-DOM components in a framework's HTML and renders their shadow roots into it (`<template shadowrootmode="open">`), from the host's attributes and a `mnx-props` JSON attribute. For a form-associated component with a model prop and a `name`, it adds a hidden input carrying the value, which the element removes when it starts. With it, SvelteKit, Nuxt, React Router and SolidStart pages show their elements and submit their forms before JavaScript. The React and Vue adapters write `mnx-props`; in Svelte and Solid the app writes it.
+- **The server evaluates the script's deterministic JavaScript.** Arrow functions, `.map()`, `.filter()`, `.reduce()`, `.includes()`, `toFixed()`, `padStart()`, `Math`, `Object.entries()`, template literals, spread and more now render on the server, in the CLI, `mnx serve` and `@mnx/compiler` alike. What isn't deterministic (`Date`, `Intl`, `Math.random`, `toLocaleString`, anything from `fetch`) is still left for the browser, and `mnx check --server` still lists it. A differential test runs each supported expression in V8 and checks the server agrees.
+- **`--emit interface`** (and `emit: 'interface'`): a component's tag, shadow and form flags, props (with attribute names, types, defaults and which is the model) and events, as JSON, for a server.
+- **The Turbopack and webpack loader** (`@mnx/unplugin/loader`): Next.js imports `.mnx` files directly as client React components, with no `mnx build --lib` step.
+- **`host-reset`** on a shadow host: `:host { all: initial !important }`, so a page's styles (even `!important` ones) don't reach the host. For components on pages you don't control.
+
+### Changed
+
+- **The runtime reads `mnx-props`** when an element starts, and a form-associated element removes its server fallback input.
+- **The runtime's size budget is 13 KB gzipped** (it was 12.5 KB) for the above.
+
+### Examples and docs
+
+- The help desk and the Eleventy guide use `@mnx/server` instead of their own compiler glue. The SvelteKit, Nuxt, React Router and SolidStart apps add the SSR bridge, and each one's no-JavaScript test now submits its form. The Next.js app uses the loader.
+- The Flask garden computes its checkbox state and chart in the components again, and the Hono price tag formats with `toFixed`. The page-notes widget uses `host-reset`.
+- The README and the guide's server-rendering page cover `@mnx/server`, the SSR bridge and what the server evaluates.
+
 ## 2.7.0 — 2026-11-07
 
 Progressive enhancement, said once (`plan/roadmap-server.md`, 2.7). All additive.

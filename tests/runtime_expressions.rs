@@ -52,7 +52,7 @@ fn static_html_reports_them_as_browser_only() {
         error.message
     );
     let error = compile(
-        r#"<mnx-x items={[1]}><p>{items.join(",")}</p></mnx-x>"#,
+        r#"<mnx-x items={[1]}><p>{items.toLocaleString()}</p></mnx-x>"#,
         "{}",
     )
     .unwrap_err();
@@ -157,12 +157,12 @@ fn partial_html_leaves_browser_only_parts_to_the_element() {
     };
     assert_eq!(
         partial(SOURCE, "{}").unwrap(),
-        "<mnx-x>\n  <p></p>\n  <button>+</button>\n  <!--[?--><!--]-->\n</mnx-x>",
-        "the text, the list and the browser-computed default are left out"
+        "<mnx-x>\n  <p></p>\n  <button>+</button>\n  <!--[--><!--[-->\n    <i>1.0</i>\n  <!--]--><!--[-->\n    <i>2.0</i>\n  <!--]--><!--[-->\n    <i>3.0</i>\n  <!--]--><!--]-->\n</mnx-x>",
+        "the text and the browser-computed default are left out; the list's map and toFixed render"
     );
     assert_eq!(
         partial(SOURCE, r#"{"stamp":5,"min":2}"#).unwrap(),
-        "<mnx-x min=\"2\" stamp=\"5\">\n  <p></p>\n  <button>+</button>\n  <!--[?--><!--]-->\n</mnx-x>"
+        "<mnx-x min=\"2\" stamp=\"5\">\n  <p></p>\n  <button>+</button>\n  <!--[--><!--[-->\n    <i>1.0</i>\n  <!--]--><!--[-->\n    <i>2.0</i>\n  <!--]--><!--[-->\n    <i>3.0</i>\n  <!--]--><!--]-->\n</mnx-x>"
     );
     assert_eq!(
         partial("<script>const now = Date.now()</script>\n<mnx-x a=\"x\"><p title={now} class=\"c {now}\">{a}</p><mnx-if test={now > 0}><b>later</b></mnx-if></mnx-x>", "{}").unwrap(),

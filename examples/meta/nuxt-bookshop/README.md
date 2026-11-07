@@ -37,5 +37,5 @@ Inside this repository, the mnx compiler is the CLI from `cargo build` (the test
 These are recorded in the project's server roadmap (`plan/roadmap-server.md`).
 
 - **The components are shadow DOM here, for the same reason as in the Next.js app, with a worse failure.** Nuxt server-renders each element's host tag, and the browser defines the elements before Vue hydrates. A light-DOM element renders its template into the host, and Vue fixes the mismatch by *removing* the nodes it didn't expect. Those nodes are the element's template, so the element ends up empty. Shadow-DOM elements hydrate cleanly.
-- **Props aren't in the server HTML.** The Vue adapter renders a bare `<stock-meter>` on the server, so each element shows its defaults ("Out of stock") until hydration hands it its props.
+- **Props weren't in the server HTML** (fixed in 2.8). The Vue adapter rendered a bare `<stock-meter>` on the server. Now it writes `mnx-props`, and `server/plugins/mnx.ts` adds each element's shadow root to the page, so the meters are right before JavaScript.
 - `mnx add` from a locally installed `@mnx/compiler` has no registry: the registry is copied into the package when it's published. The repository's own `compiler/cli.js add` was used here.
