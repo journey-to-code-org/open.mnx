@@ -1,0 +1,59 @@
+<!--
+  The ticket queue. Server-rendered as a plain table of links; in the browser, J and K move
+  through the rows and Enter opens the highlighted one (as in many mail and issue apps).
+  `tickets` is `[{ id, subject, status, priority, requester, assignee, updated, due, solved, href }]`.
+-->
+<script>
+  import './status-badge.mnx'
+  import './sla-timer.mnx'
+  import { onMount } from '@mnx/runtime'
+
+  let active = -1
+  let live = false
+  onMount(() => (live = true))
+  function move(step) {
+    if (tickets.length === 0) return
+    active = Math.max(0, Math.min(tickets.length - 1, active + step))
+  }
+  function open() {
+    if (active >= 0) location.href = tickets[active].href
+  }
+</script>
+<style>
+  table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #e3e6ee; border-radius: 0.75rem; overflow: hidden; }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #eef0f5; vertical-align: middle; }
+  th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: #61677a; background: #f7f8fb; }
+  tr:last-child td { border-bottom: 0; }
+  tr.active td { background: #eef0ff; }
+  td.id { color: #61677a; font-variant-numeric: tabular-nums; }
+  td.priority { text-transform: capitalize; }
+  td.priority[data-priority=urgent] { color: #c62f3f; font-weight: 700; }
+  a { color: inherit; font-weight: 600; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .empty { padding: 2rem; text-align: center; color: #61677a; background: white; border: 1px dashed #d6dae3; border-radius: 0.75rem; }
+  .keys { margin: 0.5rem 0 0; color: #8a90a0; font-size: 0.8rem; }
+</style>
+<ticket-table tickets={[]}>
+  <mnx-document onkeydown.j={() => move(1)} onkeydown.k={() => move(-1)} onkeydown.enter={open}></mnx-document>
+  <mnx-if test={tickets.length > 0}>
+    <table>
+      <thead><tr><th>#</th><th>Subject</th><th>Status</th><th>Priority</th><th>Requester</th><th>Assignee</th><th>Response</th><th>Updated</th></tr></thead>
+      <tbody>
+        <mnx-each items={tickets} as="ticket" index="i" key={ticket.id}>
+          <tr class:active={i === active} data-id={ticket.id}>
+            <td class="id">{ticket.id}</td>
+            <td><a href={ticket.href}>{ticket.subject}</a></td>
+            <td><status-badge status={ticket.status}></status-badge></td>
+            <td class="priority" data-priority={ticket.priority}>{ticket.priority}</td>
+            <td>{ticket.requester}</td>
+            <td>{ticket.assignee}</td>
+            <td><sla-timer due={ticket.due} now={ticket.now} solved={ticket.solved}></sla-timer></td>
+            <td>{ticket.updated}</td>
+          </tr>
+        </mnx-each>
+      </tbody>
+    </table>
+    <mnx-if test={live}><p class="keys">J / K to move, Enter to open</p></mnx-if>
+    <mnx-else><p class="empty">No tickets match.</p></mnx-else>
+  </mnx-if>
+</ticket-table>

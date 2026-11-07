@@ -1,0 +1,34 @@
+<!--
+  Time left until a ticket's response is due (its SLA), or how long it's overdue. The server
+  renders it for the moment of the request (`now`); in the browser it keeps counting.
+  Everything it shows is arithmetic the compiler can also do at build time, so the server's HTML
+  has the text, not an empty placeholder.
+-->
+<script>
+  import { onMount } from '@mnx/runtime'
+
+  let clock = now
+  const left = due - clock
+  const span = left < 0 ? -left : left
+  const days = (span - span % 86400000) / 86400000
+  const hours = (span - span % 3600000) / 3600000
+  const minutes = (span % 3600000 - span % 60000) / 60000
+  // "2d 5h" past two days, "6h 10m" past an hour, "35m" under.
+  const amount = hours >= 48 ? days + "d " + (hours - days * 24) + "h" : hours > 0 ? hours + "h " + minutes + "m" : minutes + "m"
+  const label = solved ? "met" : left < 0 ? "overdue by " + amount : "due in " + amount
+
+  onMount(() => {
+    clock = Date.now()
+    const timer = setInterval(() => (clock = Date.now()), 30000)
+    return () => clearInterval(timer)
+  })
+</script>
+<style>
+  time { font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+  time.overdue { color: #c62f3f; font-weight: 700; }
+  time.soon { color: #9a5b00; font-weight: 600; }
+  time.met { color: #12704a; }
+</style>
+<sla-timer due={0} now={0} solved={false}>
+  <time class:overdue={!solved && left < 0} class:soon={!solved && left >= 0 && left < 3600000} class:met={solved} title="Response due">{label}</time>
+</sla-timer>

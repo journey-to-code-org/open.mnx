@@ -1,0 +1,23 @@
+<div class="page-head">
+  <h1>Dashboard</h1>
+  <a class="button" href="/tickets?status=open">Open queue</a>
+</div>
+<section class="cards" aria-label="Overview">
+  <div class="card"><b><%= stats.byStatus.open %></b><span>Open</span></div>
+  <div class="card"><b><%= stats.byStatus.pending %></b><span>Pending</span></div>
+  <div class="card"><b><%= stats.byStatus.solved %></b><span>Solved</span></div>
+  <div class="card<%= stats.overdue ? ' alert' : '' %>"><b><%= stats.overdue %></b><span>Overdue</span></div>
+</section>
+<section class="charts">
+  <div class="panel">
+    <h2>By status</h2>
+    <%- mnx('donut-chart', { segments, label: 'Tickets by status' }) %>
+  </div>
+  <div class="panel">
+    <h2>New tickets, last 14 days</h2>
+    <%- mnx('spark-line', { points: stats.perDay, label: 'New tickets per day' }) %>
+    <p class="muted"><%= stats.perDay.reduce((a, b) => a + b, 0) %> in the last two weeks</p>
+  </div>
+</section>
+<h2>Your queue <small class="muted">assigned to you, or to no one</small></h2>
+<%- mnx('ticket-table', { tickets: queue }) %>

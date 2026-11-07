@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Help desk</title>
+  <link rel="stylesheet" href="/app.css">
+  <%# The styles of the mnx components this page rendered. %>
+  <style data-mnx-components><%- styles %></style>
+  <script type="importmap">{ "imports": { "@mnx/runtime": "/vendor/mnx/index.js" } }</script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">Help desk</a>
+    <% if (user) { %>
+      <nav aria-label="Main">
+        <a href="/">Home</a>
+        <a href="/tickets">Tickets</a>
+        <a href="/tickets/new">New ticket</a>
+      </nav>
+      <form method="post" action="/logout" class="who">
+        <span><%= user.name %> <small><%= user.role %></small></span>
+        <button>Sign out</button>
+      </form>
+    <% } %>
+  </header>
+  <main>
+<%- body %>
+  </main>
+  <% if (modules.length) { %>
+  <%# The page works as it is; these make its components interactive, binding to the markup above. %>
+  <script type="module">
+<% for (const name of modules) { %>    import '/components/<%= name %>.js';
+<% } %>  </script>
+  <% } %>
+</body>
+</html>

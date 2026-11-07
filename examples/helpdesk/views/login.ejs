@@ -1,0 +1,13 @@
+<section class="narrow">
+  <h1>Sign in</h1>
+  <p class="muted">A demo: choose who you are. Agents see every ticket and can assign, update and leave internal notes; customers see their own.</p>
+  <form method="post" action="/login" class="people">
+    <input type="hidden" name="next" value="<%= next %>">
+    <% for (const person of people) { %>
+      <button name="user" value="<%= person.id %>" class="person">
+        <strong><%= person.name %></strong>
+        <span><%= person.role %> · <%= person.email %></span>
+      </button>
+    <% } %>
+  </form>
+</section>

@@ -1,0 +1,46 @@
+<!--
+  The queue's filters: a GET form, so they work (and make shareable URLs) without JavaScript.
+  In the browser, choosing a status or priority applies it at once, and the Apply button,
+  no longer needed, goes away.
+-->
+<script>
+  import { onMount } from '@mnx/runtime'
+
+  let form = null
+  let live = false
+  onMount(() => (live = true))
+  const apply = () => form.requestSubmit()
+</script>
+<style>
+  form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; margin-bottom: 1rem; }
+  label { display: grid; gap: 0.2rem; font-size: 0.8rem; font-weight: 600; color: #3d4356; }
+  select, input { font: inherit; font-weight: 400; padding: 0.4rem 0.55rem; border: 1px solid #d6dae3; border-radius: 0.45rem; background: white; }
+  input[type=search] { min-width: 16rem; }
+  form.live .apply { display: none; }
+  button { font: inherit; padding: 0.42rem 0.9rem; border: 0; border-radius: 0.45rem; background: #4f5df5; color: white; font-weight: 600; cursor: pointer; }
+</style>
+<filter-bar action="/tickets" status="" priority="" q="">
+  <form method="get" action={action} role="search" aria-label="Filter tickets" ref={form} class:live>
+    <label>Status
+      <select name="status" onchange={apply}>
+        <option value="" selected={status === ""}>Any</option>
+        <option value="open" selected={status === "open"}>Open</option>
+        <option value="pending" selected={status === "pending"}>Pending</option>
+        <option value="solved" selected={status === "solved"}>Solved</option>
+      </select>
+    </label>
+    <label>Priority
+      <select name="priority" onchange={apply}>
+        <option value="" selected={priority === ""}>Any</option>
+        <option value="urgent" selected={priority === "urgent"}>Urgent</option>
+        <option value="high" selected={priority === "high"}>High</option>
+        <option value="normal" selected={priority === "normal"}>Normal</option>
+        <option value="low" selected={priority === "low"}>Low</option>
+      </select>
+    </label>
+    <label>Search
+      <input type="search" name="q" value={q} placeholder="Subject or message">
+    </label>
+    <button class="apply">Apply</button>
+  </form>
+</filter-bar>

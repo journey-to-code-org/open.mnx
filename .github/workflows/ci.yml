@@ -107,6 +107,43 @@ jobs:
       # The first ten minutes, scripted: npm create mnx → mnx add → test → mnx build --lib → pack.
       - run: node scripts/adoption-check.mjs --budget-minutes 10
 
+  helpdesk:
+    name: Server example (Express, EJS, MongoDB)
+    runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/helpdesk/package-lock.json
+      - run: cargo build --locked
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: examples/helpdesk
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/helpdesk
+      # The in-memory store, then everything again on MongoDB.
+      - run: npm test
+        working-directory: examples/helpdesk
+      - run: npm test
+        working-directory: examples/helpdesk
+        env:
+          MONGODB_URI: mongodb://localhost:27017
+
   wasm:
     name: WebAssembly compiler
     runs-on: ubuntu-latest

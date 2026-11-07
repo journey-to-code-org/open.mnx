@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.2 — 2026-11-07
+
+### Examples
+
+- **`examples/helpdesk/`**: a help-desk ticket tracker built with Express, EJS and MongoDB. Its mnx components are rendered on the server inside EJS pages (with `@mnx/compiler`), and the browser hydrates them in place without a bundler. Every page works with JavaScript off, because the components render native form controls in light DOM. With JavaScript on, they add keyboard navigation, live filters, a smarter reply box and running SLA timers. The dashboard charts came from the registry with `mnx add`. Its tests drive every page in Chromium with and without JavaScript, and check the store contract. CI runs them on the in-memory store and on a MongoDB service container.
+
 ## 2.6.1 — 2026-11-07
 
 ### Fixed

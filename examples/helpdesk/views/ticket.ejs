@@ -1,0 +1,42 @@
+<div class="ticket">
+  <div class="main">
+    <p class="muted"><a href="/tickets">Tickets</a> / #<%= ticket.id %></p>
+    <h1><%= ticket.subject %></h1>
+    <p class="meta">
+      <%- mnx('status-badge', { status: ticket.status }) %>
+      <span class="priority" data-priority="<%= ticket.priority %>"><%= ticket.priority %></span>
+      <span>from <%= ticket.requester %></span>
+      <span>· response <%- mnx('sla-timer', { due: ticket.due, now: ticket.now, solved: ticket.solved }) %></span>
+    </p>
+    <% if (updated) { %><p class="notice" role="status">Ticket updated.</p><% } %>
+    <%- mnx('ticket-thread', { messages }) %>
+    <form method="post" action="/tickets/<%= ticket.id %>/replies" class="reply" id="latest">
+      <h2>Reply</h2>
+      <%- mnx('reply-composer', { agent, label: agent ? 'Reply to the customer' : 'Your reply' }) %>
+    </form>
+  </div>
+  <% if (agent) { %>
+  <aside class="side">
+    <form method="post" action="/tickets/<%= ticket.id %>" class="stack">
+      <h2>Ticket</h2>
+      <label class="field">Status
+        <select name="status">
+          <% for (const status of ['open', 'pending', 'solved']) { %>
+            <option value="<%= status %>" <%= ticket.status === status ? 'selected' : '' %>><%= status %></option>
+          <% } %>
+        </select>
+      </label>
+      <%- mnx('priority-picker', { name: 'priority', value: ticket.priority }) %>
+      <label class="field">Assignee
+        <select name="assignee">
+          <option value="">Unassigned</option>
+          <% for (const person of agents) { %>
+            <option value="<%= person.id %>" <%= assigneeId === person.id ? 'selected' : '' %>><%= person.name %></option>
+          <% } %>
+        </select>
+      </label>
+      <button class="button">Save</button>
+    </form>
+  </aside>
+  <% } %>
+</div>

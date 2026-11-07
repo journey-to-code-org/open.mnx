@@ -1,0 +1,7 @@
+<div class="page-head">
+  <h1>Tickets</h1>
+  <a class="button" href="/tickets/new">New ticket</a>
+</div>
+<%- mnx('filter-bar', filter) %>
+<p class="muted count"><%= tickets.length %> ticket<%= tickets.length === 1 ? '' : 's' %></p>
+<%- mnx('ticket-table', { tickets }) %>
