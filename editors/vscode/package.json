@@ -1,0 +1,73 @@
+{
+  "name": "mnx",
+  "displayName": "mnx",
+  "description": "Language support for mnx Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
+  "version": "1.2.0",
+  "publisher": "journey-to-code",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/journey-to-code-org/open.mnx.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mnx",
+        "aliases": [
+          "mnx"
+        ],
+        "extensions": [
+          ".mnx"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mnx",
+        "scopeName": "text.html.mnx",
+        "path": "./syntaxes/mnx.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.js": "javascript",
+          "source.ts": "typescript",
+          "source.css": "css",
+          "source.css.scss": "scss",
+          "meta.embedded.expression.mnx": "javascript"
+        }
+      }
+    ],
+    "configuration": {
+      "title": "mnx",
+      "properties": {
+        "mnx.compiler": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the mnix CLI. Empty: use @mnx/compiler (WebAssembly) if installed in the workspace, else `mnix` on PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@mnx/language-server": "file:../language-server",
+    "vscode-languageclient": "11.0.0"
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
+  },
+  "overrides": {
+    "minimatch": "11.0.5"
+  }
+}

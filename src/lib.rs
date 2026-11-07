@@ -360,6 +360,11 @@ pub fn compile_manifest(source: &str, module_path: &str) -> Result<String, Diagn
     emit_interface::manifest(&parser::parse(source)?, module_path)
 }
 
+/// HTML custom data for editors (VS Code's `html.customData` format).
+pub fn compile_html_data(source: &str) -> Result<String, Diagnostic> {
+    emit_interface::html_data(&parser::parse(source)?)
+}
+
 /// TypeScript declarations (`.d.ts`) for the JavaScript output.
 pub fn compile_declarations(source: &str, source_name: &str) -> Result<String, Diagnostic> {
     emit_interface::declarations(&parser::parse(source)?, source_name, Framework::None)

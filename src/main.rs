@@ -26,7 +26,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -123,9 +123,10 @@ fn run() -> Result<(), String> {
             "js" => mnix_compiler::compile_js_file(&source_path, &runtime),
             "dts" => mnix_compiler::compile_declarations_for(&source, &name, framework),
             "manifest" => mnix_compiler::compile_manifest(&source, &module_path),
+            "html-data" => mnix_compiler::compile_html_data(&source),
             _ => {
                 return Err(format!(
-                    "unknown --emit `{emit}`; expected html, js, css, dts or manifest"
+                    "unknown --emit `{emit}`; expected html, js, css, dts, manifest or html-data"
                 ))
             }
         }
@@ -213,6 +214,7 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
 fn check(arguments: Vec<String>) -> Result<(), String> {
     let mut files = Vec::new();
     let mut json = false;
+    let mut stdin = false;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -226,27 +228,40 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
                     ))
                 }
             },
+            // An editor's unsaved text, checked as if it were at the one path given.
+            "--stdin" => stdin = true,
             _ if argument.starts_with("--") => {
                 return Err(format!("unexpected argument `{argument}`"))
             }
             _ => files.push(argument),
         }
     }
-    if files.is_empty() {
-        return Err("usage: mnix check <component.mnx>... [--format human|json]".into());
+    if files.is_empty() || (stdin && files.len() != 1) {
+        return Err("usage: mnix check <component.mnx>... [--format human|json] [--stdin (one path; source from standard input)]".into());
     }
     let mut report = Vec::new();
     let mut errors = 0;
     let mut human = String::new();
     for path in &files {
-        let source = fs::read_to_string(path)
-            .map_err(|error| format!("{path}: unable to read source: {error}"))?;
+        let source = if stdin {
+            std::io::read_to_string(std::io::stdin())
+                .map_err(|error| format!("unable to read standard input: {error}"))?
+        } else {
+            fs::read_to_string(path)
+                .map_err(|error| format!("{path}: unable to read source: {error}"))?
+        };
         for warning in mnix_compiler::warnings(&source) {
             human.push_str(&warning.render_warning(&source, path));
             report.push(entry(path, &source, &warning, "warning"));
         }
         // The JavaScript output runs every check that doesn't need prop values.
-        if let Err(error) = mnix_compiler::compile_js_file(path, "@mnx/runtime") {
+        if let Err(error) = mnix_compiler::compile_js_with(
+            &source,
+            path,
+            "@mnx/runtime",
+            Some(".js"),
+            &mnix_compiler::filesystem,
+        ) {
             errors += 1;
             human.push_str(&error.render_in(&source, path));
             report.push(entry(path, &source, &error, "error"));

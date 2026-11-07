@@ -198,6 +198,12 @@ The JavaScript output is a module that calls `define()` on `@mnx/runtime` with t
 
 The adapters it uses can also be used by hand: `wrap(Element)` from `@mnx/runtime/react` (React 18 and 19) or `@mnx/runtime/vue` (Vue 3). Other frameworks (Angular, Svelte, Solid, Lit) and plain HTML use the element directly: properties in, DOM events out.
 
+## Editors and tooling without Rust
+
+- **`@mnx/compiler`** (`compiler/`) is the compiler built to WebAssembly, for Node: the same output and errors as the CLI, with no Rust toolchain. `@mnx/unplugin` uses it automatically when it's installed.
+- **Editor support** (`editors/`): a language server (diagnostics as you type, completion, hover, go to definition) and a VS Code extension with syntax highlighting. See `editors/README.md`.
+- **`--emit html-data`** writes VS Code HTML custom data, for completing mnx elements in plain `.html` files.
+
 ## Describing components to tools
 
 - `--emit manifest` writes a [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest) (`custom-elements.json`, schema 2.1.0): the tag, each prop as an attribute and a field with its type and default, events with their `CustomEvent<…>` types, slots (the default slot is `""`) and the description. Editors, Storybook and documentation tools read this format. `--module-path` sets the module path it records.
@@ -211,20 +217,20 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 ## The CLI
 
 ```sh
-mnix check <component.mnx>... [--format human|json]
-mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>]
+mnix check <component.mnx>... [--format human|json] [--stdin]
+mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json>]
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
 ```
 
-`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
+`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
 
 ## Stability
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, a `wasm32` build of the compiler, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters.
+Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters.
 
 ## Repository and tests
 

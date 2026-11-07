@@ -268,3 +268,26 @@ test('a TypeScript component\'s typings carry its own types', async () => {
   `);
   assert.equal(bad.split('\n').filter((line) => /error TS\d+/.test(line)).length, 2, bad);
 });
+
+test('HTML custom data drives completions in the HTML language service (what VS Code uses)', async () => {
+  const { getLanguageService, newHTMLDataProvider } = await import('vscode-html-languageservice');
+  const { TextDocument } = await import('vscode-languageserver-textdocument');
+  const data = JSON.parse(execFileSync(join(repo, 'target/debug/mnix'),
+    ['compile', join(here, '../browser/fixtures/rating.mnx'), '--emit', 'html-data'], { encoding: 'utf8' }));
+  const service = getLanguageService({ customDataProviders: [newHTMLDataProvider('mnx', data)] });
+  const complete = (text) => {
+    const offset = text.indexOf('|');
+    const document = TextDocument.create('file:///page.html', 'html', 1, text.replace('|', ''));
+    return service.doComplete(document, document.positionAt(offset), service.parseHTMLDocument(document));
+  };
+  const tags = complete('<body><mnx-|').items.map((item) => item.label);
+  assert.ok(tags.includes('mnx-rating'), tags.join(', '));
+  const attributes = complete('<body><mnx-rating |></mnx-rating>').items;
+  const value = attributes.find((item) => item.label === 'value');
+  assert.ok(value, attributes.map((item) => item.label).join(', '));
+  assert.match(value.documentation?.value ?? value.documentation, /Type: `number`\. Default: `0`\./);
+  assert.ok(attributes.some((item) => item.label === 'onvaluechange'));
+  const hover = service.doHover(TextDocument.create('file:///p.html', 'html', 1, '<mnx-rating></mnx-rating>'), { line: 0, character: 3 },
+    service.parseHTMLDocument(TextDocument.create('file:///p.html', 'html', 1, '<mnx-rating></mnx-rating>')));
+  assert.match(JSON.stringify(hover), /A two-star rating/);
+});

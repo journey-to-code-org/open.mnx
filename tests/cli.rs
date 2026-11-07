@@ -97,3 +97,37 @@ fn emit_css_collects_imported_components_unless_asked_not_to() {
         "{own}"
     );
 }
+
+#[test]
+fn check_reads_unsaved_text_from_standard_input() {
+    use std::io::Write;
+    let dir = temp_dir("stdin");
+    fs::write(
+        dir.join("badge.mnx"),
+        "<mnx-badge label=\"x\"><b>{label}</b></mnx-badge>",
+    )
+    .unwrap();
+    let page = dir.join("page.mnx");
+    fs::write(&page, "<mnx-page><p>saved, fine</p></mnx-page>").unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_mnix"))
+        .args([
+            "check",
+            page.to_str().unwrap(),
+            "--stdin",
+            "--format",
+            "json",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Unsaved: imports a sibling (resolved from the file's real directory) with a typo'd prop.
+    child.stdin.take().unwrap().write_all(b"<script>import './badge.mnx'</script>\n<mnx-page><mnx-badge lable={1}></mnx-badge></mnx-page>").unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(!output.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report[0]["message"], "<mnx-badge> has no prop `lable`");
+    assert_eq!(report[0]["line"], 2);
+    let (ok, _, stderr) = mnix(&["check", "a.mnx", "b.mnx", "--stdin"]);
+    assert!(!ok && stderr.contains("one path"), "{stderr}");
+}

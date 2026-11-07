@@ -11,6 +11,7 @@ import { available, compileFile, request, sources } from '../index.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
 const fixtures = join(repo, 'runtime/test/browser/fixtures');
+if (process.env.MNX_REQUIRE_WASM && !available()) throw new Error('MNX_REQUIRE_WASM is set but mnx.wasm is missing');
 const skip = available() ? false : 'mnx.wasm is not built (npm run build)';
 const cli = (...args) => execFileSync(join(repo, 'target/debug/mnix'), ['compile', ...args], { encoding: 'utf8' });
 

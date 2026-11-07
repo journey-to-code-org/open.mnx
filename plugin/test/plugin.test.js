@@ -319,7 +319,10 @@ test('styles go through the bundler: Tailwind (@apply, utilities, layer order) a
 
 test('without a CLI, the WebAssembly compiler (@mnx/compiler) builds the app', async (t) => {
   const { available } = await import('@mnx/compiler').catch(() => ({ available: () => false }));
-  if (!available()) return t.skip('@mnx/compiler has no mnx.wasm (npm run build in compiler/)');
+  if (!available()) {
+    if (process.env.MNX_REQUIRE_WASM) throw new Error('MNX_REQUIRE_WASM is set but @mnx/compiler has no mnx.wasm');
+    return t.skip('@mnx/compiler has no mnx.wasm (npm run build in compiler/)');
+  }
   const saved = process.env.MNX_COMPILER;
   delete process.env.MNX_COMPILER;
   try {

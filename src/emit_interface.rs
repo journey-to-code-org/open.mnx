@@ -192,6 +192,49 @@ pub fn manifest(component: &ComponentAst, module_path: &str) -> Result<String, D
     Ok(serde_json::to_string_pretty(&manifest).expect("JSON serializes") + "\n")
 }
 
+/// HTML custom data (the format VS Code and other editors read for completions in `.html`
+/// files): the tag, its description, each prop as an attribute, and `on<event>` attributes.
+pub fn html_data(component: &ComponentAst) -> Result<String, Diagnostic> {
+    let interface = validate::analyze(component)?;
+    let mut attributes = Vec::new();
+    for prop in &interface.props {
+        let mut description = format!("Type: `{}`.", prop_type(prop));
+        match (&prop.default, prop.runtime_default.is_some()) {
+            (Some(default), _) => description.push_str(&format!(" Default: `{default}`.")),
+            (None, true) => description.push_str(" Default: computed by the component."),
+            (None, false) => description.push_str(" Required."),
+        }
+        if matches!(prop.default, Some(Value::Array(_) | Value::Object(_))) {
+            description.push_str(" JSON in HTML.");
+        }
+        let mut attribute = Map::new();
+        attribute.insert("name".into(), json!(prop.attribute));
+        attribute.insert("description".into(), json!(description));
+        if matches!(prop.default, Some(Value::Bool(_))) {
+            attribute.insert("valueSet".into(), json!("v"));
+        }
+        attributes.push(Value::Object(attribute));
+    }
+    for event in &interface.events {
+        let description = event
+            .description
+            .clone()
+            .unwrap_or_else(|| format!("The `{}` event.", event.name));
+        attributes.push(json!({
+            "name": format!("on{}", event.name),
+            "description": format!("{description} `event.detail`: `{}`.", event.detail),
+        }));
+    }
+    let mut tag = Map::new();
+    tag.insert("name".into(), json!(component.tag));
+    if let Some(description) = &interface.description {
+        tag.insert("description".into(), json!(description));
+    }
+    tag.insert("attributes".into(), Value::Array(attributes));
+    let data = json!({ "version": 1.1, "tags": [Value::Object(tag)] });
+    Ok(serde_json::to_string_pretty(&data).expect("JSON serializes") + "\n")
+}
+
 /// TypeScript declarations for the module the JavaScript backend writes.
 /// Which framework's component the module's default export is: the element class itself, or the
 /// React or Vue wrapper the build plugin gives files of that framework.
