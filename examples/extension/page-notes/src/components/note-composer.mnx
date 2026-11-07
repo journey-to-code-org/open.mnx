@@ -1,0 +1,35 @@
+<!--
+  Writing a note: the text, a colour, and Add (or Ctrl+Enter, ⌘+Enter on a Mac).
+  @fires add - Add was chosen; `detail` is `{ text, color }`.
+  @fires colorchange - The colour was changed; `detail` is the new one.
+-->
+<script>
+  import { emit } from '@mnx/runtime'
+  import './color-swatches.mnx'
+
+  let text = ""
+  let box = null
+  const empty = text.trim() === ""
+  function add() {
+    if (empty) return
+    emit('add', { text: text.trim(), color })
+    text = ""
+    box.focus()
+  }
+</script>
+<style>
+  :host { display: grid; gap: 0.5rem; }
+  textarea { width: 100%; min-height: 4.5rem; box-sizing: border-box; padding: 0.5rem 0.6rem; font: inherit; border: 1px solid #cfd3dd; border-radius: 0.5rem; resize: vertical; }
+  div { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+  button { padding: 0.4rem 0.9rem; border: 0; border-radius: 0.4rem; background: #3341c4; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.45; cursor: default; }
+</style>
+<note-composer color:model="#16a34a" colors={["#16a34a", "#2563eb", "#db2777", "#ea580c", "#7c3aed"]}>
+  <textarea ref={box} aria-label="New note" placeholder="Write a note for this site…" value={text}
+            oninput={(event) => (text = event.target.value)}
+            onkeydown.ctrl.enter.prevent={add} onkeydown.meta.enter.prevent={add}></textarea>
+  <div>
+    <color-swatches value={color} onvaluechange={(event) => (color = event.detail)} colors={colors} label="Note colour"></color-swatches>
+    <button type="button" disabled={empty} onclick={add}>Add note</button>
+  </div>
+</note-composer>

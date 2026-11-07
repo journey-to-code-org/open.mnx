@@ -23,6 +23,10 @@ Projects that use mnx 2 the way an app would, each with its own README:
 - **[`hypermedia/`](hypermedia/)**: a bike shop's inventory in Hono and htmx, on Node.js or
   Bun. htmx swaps server-rendered fragments in, and the mnx elements in them hydrate where they
   land.
+- **[`extension/`](extension/)**: a Chrome extension (Manifest V3) with mnx components in its
+  popup, its options page, and a widget on other people's pages.
+- **[`desktop/`](desktop/)**: a focus timer in Electron, with a sandboxed renderer under a strict
+  Content Security Policy.
 
 Each one has tests that build it and drive it in Chromium: `plugin/test/examples.test.js`, and the
 `test/` (or `tests/`) folder of each app. The help desk's also run against MongoDB in CI.

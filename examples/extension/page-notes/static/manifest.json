@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Page Notes (mnx example)",
+  "version": "1.0.0",
+  "description": "Notes for each site, in the toolbar popup and on the page. An mnx example.",
+  "permissions": ["storage", "tabs"],
+  "action": { "default_popup": "popup.html", "default_title": "Page notes" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "content_scripts": [
+    { "matches": ["http://*/*", "https://*/*"], "js": ["bridge.js"], "run_at": "document_idle" },
+    { "matches": ["http://*/*", "https://*/*"], "js": ["widget.js"], "run_at": "document_idle", "world": "MAIN" }
+  ]
+}

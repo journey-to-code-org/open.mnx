@@ -1,0 +1,22 @@
+{
+  "name": "mnx-example-focus-timer",
+  "private": true,
+  "type": "module",
+  "main": "main.js",
+  "description": "A desktop focus timer in Electron, with mnx components in a sandboxed renderer under a strict Content Security Policy.",
+  "scripts": {
+    "build": "node build.mjs",
+    "prestart": "node build.mjs",
+    "start": "electron .",
+    "pretest": "node build.mjs",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "devDependencies": {
+    "@mnx/compiler": "file:../../../compiler",
+    "@mnx/runtime": "file:../../../runtime",
+    "@mnx/unplugin": "file:../../../plugin",
+    "electron": "45.2.3",
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0"
+  }
+}

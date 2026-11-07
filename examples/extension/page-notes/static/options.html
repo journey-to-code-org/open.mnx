@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Page notes options</title>
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="options.js"></script>
+</head>
+<body class="options">
+  <h1>Page notes</h1>
+  <section><toggle-switch label="Show notes on pages" description="A small widget in the corner of sites that have notes."></toggle-switch></section>
+  <section><h2>Default colour</h2><color-swatches label="Default colour"></color-swatches></section>
+  <section hidden><h2>Hidden on</h2><ul id="hidden"></ul></section>
+  <section><button id="export" type="button">Export all notes (JSON)</button></section>
+</body>
+</html>

@@ -449,6 +449,25 @@ test('esbuild builds the app', async () => {
   await checkBundle(root);
 });
 
+test('esbuild reports a compile error as the compiler wrote it', async () => {
+  // (esbuild's plugin context records errors rather than throwing them, so the plugin has to
+  // stop by itself, or the build fails with an unrelated TypeError instead.)
+  const { build: esbuild } = await import('esbuild');
+  const { default: mnxEsbuild } = await import('../src/esbuild.js');
+  const root = bundlerApp('esbuild-error');
+  writeFileSync(join(root, 'components/child-thing.mnx'), '<child-thing value={0}>\n  <p>{value}</p>\n</child-thing>\n');
+  writeFileSync(join(root, 'components/broken.mnx'), [
+    '<script>', "  import './child-thing.mnx'", '</script>',
+    '<broken-thing count={0}>', '  <child-thing value:model={count}></child-thing>', '</broken-thing>', '',
+  ].join('\n'));
+  writeFileSync(join(root, 'src/entry.js'), "import '../components/broken.mnx';\n");
+  const error = await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', write: false, plugins: [mnxEsbuild({ compiler })], logLevel: 'silent' }).then(() => null, (failure) => failure);
+  assert.ok(error, 'the build fails');
+  assert.equal(error.errors.length, 1, error.message);
+  assert.match(error.errors[0].text, /<child-thing> has no prop `value:model`/);
+  assert.doesNotMatch(error.message, /Cannot read properties/);
+});
+
 // Astro: components server-rendered at build time through the renderer (with @mnx/compiler,
 // or the native CLI standing in for its WebAssembly), hydrated on the client with client:load.
 test('astro: server-rendered pages, hydrated with a client directive', async () => {

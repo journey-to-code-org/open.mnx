@@ -174,20 +174,25 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
 
   /**
    * A compile error for the bundler: with Vite, `loc` and `frame` put it in the dev overlay with
-   * the source line and the compiler's help.
+   * the source line and the compiler's help. Always throws: Rollup's and Vite's `error()` throw,
+   * but esbuild's and Bun's (through unplugin) only record the error, and drop it when the hook
+   * returns nothing.
    */
   function fail(context, error, id) {
     const text = String(error.message ?? error);
     const at = text.match(/-->\s+(.+?):(\d+):(\d+)/);
     const message = text.split('\n')[0].replace(/^error:\s*/, '');
-    if (!at) return context.error(text);
-    context.error({
-      message: `${message}\n\n${text}`,
-      id,
-      loc: { file: at[1], line: Number(at[2]), column: Number(at[3]) },
-      frame: text.split('\n').slice(1).join('\n'),
-      plugin: 'mnx',
-    });
+    if (!at) context.error(text);
+    else {
+      context.error({
+        message: `${message}\n\n${text}`,
+        id,
+        loc: { file: at[1], line: Number(at[2]), column: Number(at[3]) },
+        frame: text.split('\n').slice(1).join('\n'),
+        plugin: 'mnx',
+      });
+    }
+    throw new Error(text);
   }
 
   function writeTypings(path) {
@@ -241,7 +246,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         try {
           return compile(path, '--emit', 'css', '--no-imports').code;
         } catch (error) {
-          fail(this, error, path);
+          return fail(this, error, path);
         }
       }
       if (variant === 'react' || variant === 'vue') {
@@ -264,7 +269,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       try {
         output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles);
       } catch (error) {
-        fail(this, error, path);
+        return fail(this, error, path);
       }
       if (output.warnings) this.warn(output.warnings);
       if (server) return serverRendering ? output.code + serverRenderer(path, compilerModule, runtime) : output.code;

@@ -1,0 +1,9 @@
+:root { color-scheme: light dark; --accent: #d9480f; --calm: #2b8a3e; --ink: #1d2130; --muted: #6a7186; --surface: #ffffff; --line: #d7dae3; --page: #f6f4f1; }
+@media (prefers-color-scheme: dark) { :root { --ink: #eceef3; --muted: #9aa1b3; --surface: #23262f; --line: #383c48; --page: #17191f; } }
+body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--page); }
+body[data-mode=short], body[data-mode=long] { --accent: var(--calm); }
+main { display: grid; justify-items: center; gap: 1.4rem; max-width: 26rem; margin: 0 auto; padding: 1.5rem 1rem 2rem; }
+.task { display: grid; gap: 0.3rem; width: 100%; font-weight: 600; font-size: 0.85rem; }
+.task input { padding: 0.55rem 0.7rem; font: inherit; font-weight: 400; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 0.5rem; }
+.task input:disabled { opacity: 0.5; }
+session-log { width: 100%; }

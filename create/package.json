@@ -1,6 +1,6 @@
 {
   "name": "create-mnx",
-  "version": "2.6.5",
+  "version": "2.6.6",
   "description": "Start an app with mnx web components: `npm create mnx`",
   "license": "ISC",
   "repository": {

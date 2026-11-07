@@ -2,6 +2,24 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.6 — 2026-11-07
+
+### Fixed
+
+- **The esbuild plugin reports compile errors as the compiler wrote them.** Under esbuild and Bun, unplugin's `this.error()` records an error rather than throwing it, and it drops the error when the hook returns nothing. Depending on the file, a compile error came out as "Do not know how to load path" or as a `TypeError`. The plugin now always throws.
+
+### Examples
+
+- **`examples/extension/page-notes/`**: a Chrome extension (Manifest V3).
+  - mnx components appear in its popup, its options page, and a shadow-DOM widget on other sites' pages. It also has a service worker for the toolbar badge.
+  - Content scripts can't define custom elements (`customElements` is `null` in their isolated world). So the widget runs in the page's own world, and a bridge script passes it data as text.
+  - A host's `:host` rules lose to a page's `!important` styles, so the widget's are `!important` too.
+- **`examples/desktop/focus-timer/`**: a focus timer in Electron.
+  - The renderer is sandboxed and exposes a three-call preload.
+  - Its Content Security Policy allows no inline scripts, `eval` or inline styles. mnx works under it unchanged, because component CSS is adopted as constructed stylesheets.
+  - Its tests drive the app with Playwright's Electron support and a fake clock.
+- CI runs both in a new `clients` job.
+
 ## 2.6.5 — 2026-11-07
 
 ### Examples

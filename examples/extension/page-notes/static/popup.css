@@ -1,0 +1,9 @@
+body { width: 22rem; margin: 0; padding: 0.9rem; font: 14px/1.45 system-ui, sans-serif; color: #1d2130; background: #f6f7fa; display: grid; gap: 0.8rem; }
+body.options { width: auto; max-width: 36rem; margin: 0 auto; padding: 2rem 1rem; }
+header { display: flex; align-items: baseline; gap: 0.5rem; }
+h1 { margin: 0; font-size: 1.1rem; }
+h2 { margin: 0 0 0.4rem; font-size: 0.95rem; }
+#site { color: #5b6275; overflow-wrap: anywhere; }
+section { padding: 0.9rem; background: white; border: 1px solid #e3e5ec; border-radius: 0.6rem; }
+ul { margin: 0; padding-left: 1.1rem; }
+#export, #hidden button { padding: 0.4rem 0.8rem; font: inherit; border: 1px solid #cfd3dd; border-radius: 0.4rem; background: white; cursor: pointer; }
