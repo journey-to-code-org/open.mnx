@@ -17,6 +17,7 @@ useBrowser({
   state: join(here, 'fixtures/state.mnx'),
   'row-counter': join(here, 'fixtures/row-counter.mnx'),
   'row-list': join(here, 'fixtures/row-list.mnx'),
+  'mnx-sugar': join(here, 'fixtures/sugar.mnx'),
   'svg-dots': join(here, 'fixtures/svg-dots.mnx'),
   'pick-list': join(here, 'fixtures/pick-list.mnx'),
 });
@@ -393,6 +394,45 @@ test('list rows and branches inside <svg> are SVG elements', async () => {
   await page.evaluate(() => document.querySelector('svg-dots').updateComplete);
   assert.deepEqual(await shapes(), ['circle:true', 'circle:true', 'circle:true', 'rect:true']);
   assert.ok(await page.$eval('svg-dots circle:last-of-type', (el) => el.getBBox().width > 0), 'it renders');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('2.2 template sugar: class and style directives, event modifiers, ref, global listeners, else-if', async () => {
+  const { page, messages } = await open('<mnx-sugar></mnx-sugar>', { modules: ['mnx-sugar'] });
+  const settle = () => page.evaluate(async () => { await new Promise((resolve) => setTimeout(resolve)); await document.querySelector('mnx-sugar').updateComplete; });
+  const log = () => page.textContent('mnx-sugar output');
+  const state = () => page.$eval('mnx-sugar p', (p) => ({ className: p.className, size: p.style.fontSize, tone: p.style.getPropertyValue('--tone') }));
+  assert.deepEqual(await state(), { className: 'base', size: '10px', tone: 'red' });
+  assert.equal(await page.$eval('mnx-sugar dialog', (dialog) => dialog.isConnected), true);
+
+  // Modifiers: .prevent keeps the form from navigating; .self ignores clicks from inside.
+  await page.click('mnx-sugar button:not(.change)');
+  await page.click('mnx-sugar .inner');
+  const outer = await page.locator('mnx-sugar .outer').boundingBox();
+  await page.mouse.click(outer.x + outer.width - 4, outer.y + outer.height / 2);
+  await page.focus('mnx-sugar input');
+  await page.keyboard.press('a');
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.press('Enter');
+  // Document listeners: Shift+K and Escape, wherever focus is.
+  await page.keyboard.press('k');
+  await page.keyboard.press('Shift+K');
+  await page.keyboard.press('Escape');
+  await settle();
+  // The button submits; the inner click is ignored, the outer one counted; Shift+Enter doesn't
+  // match `.enter` (modifier keys are exact with a key filter) but still submits; Enter does both.
+  assert.equal(await log(), 'submit,self,submit,enter,submit,K,esc');
+  assert.equal(page.url().endsWith('.html'), true, 'the submit was prevented');
+
+  // The change button: class and style follow state; null removes a property; else-if moves on.
+  await page.click('mnx-sugar .change');
+  await settle();
+  assert.deepEqual(await state(), { className: 'base on big', size: '30px', tone: '' });
+  assert.equal(await page.$eval('mnx-sugar', (el) => el.textContent.includes('B')), true);
+  await page.click('mnx-sugar .change');
+  await settle();
+  assert.equal(await page.$eval('mnx-sugar', (el) => el.textContent.includes('C')), true);
   assert.deepEqual(messages, []);
   await page.close();
 });

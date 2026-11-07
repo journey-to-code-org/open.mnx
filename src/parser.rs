@@ -581,6 +581,11 @@ impl<'a> TemplateParser<'a> {
             });
         };
 
+        let attributes = if self.html {
+            attributes
+        } else {
+            expand_directives(attributes)?
+        };
         let raw_text = ["script", "style", "textarea", "title"]
             .iter()
             .any(|raw| name.eq_ignore_ascii_case(raw));
@@ -700,6 +705,19 @@ impl<'a> TemplateParser<'a> {
                     ));
                 }
                 let (expression, span) = self.parse_braced_expression()?;
+                // `{{ name }}` is a shorthand object to JavaScript, but in text it's almost
+                // certainly v0.2's interpolation.
+                if let Expression::Object(entries) = &expression {
+                    if let [(key, Expression::Identifier(value))] = entries.as_slice() {
+                        if key == value {
+                            return Err(Diagnostic::new(
+                                span,
+                                "`{{ … }}` is v0.2 syntax; v0.3 uses single braces",
+                            )
+                            .with_help(format!("write {{{key}}} instead of {{{{ {key} }}}}")));
+                        }
+                    }
+                }
                 parts.push(Part::Expression { expression, span });
                 literal_start = self.cursor.position();
                 continue;
@@ -740,27 +758,319 @@ impl<'a> TemplateParser<'a> {
 fn check_attribute(name: &str, value: &AttributeValue, span: Span) -> Result<(), Diagnostic> {
     let lower = name.to_ascii_lowercase();
     if lower == "style" {
-        return Err(Diagnostic::new(
-            span,
-            "inline style attributes are not supported; use component styles in a later release",
-        ));
+        match value {
+            AttributeValue::Text(parts)
+                if parts
+                    .iter()
+                    .any(|part| matches!(part, Part::Expression { .. })) =>
+            {
+                return Err(Diagnostic::new(span, "a style attribute can't interpolate values")
+                    .with_help("set each property with style:name={…} (e.g. style:width={`${percent}%`}), or pass an object: style={{ … }}"));
+            }
+            AttributeValue::Expression(Expression::Object(_), _)
+            | AttributeValue::Text(_)
+            | AttributeValue::None => {}
+            AttributeValue::Expression(..) => {
+                return Err(Diagnostic::new(
+                    span,
+                    "style={…} takes an object literal of properties",
+                )
+                .with_help("style={{ color: tone, \"--size\": size }}, or style:color={tone}"));
+            }
+        }
     }
-    if is_event_attribute(&lower) && !matches!(value, AttributeValue::Expression(..)) {
-        return Err(
-            Diagnostic::new(span, "inline event-handler attributes are not allowed")
-                .with_help(format!("pass a function from <script>: {name}={{handler}}")),
-        );
+    if let Some(rest) = lower.strip_prefix("on") {
+        if rest.contains('.') || is_event_attribute(&lower) {
+            if !matches!(value, AttributeValue::Expression(..)) {
+                return Err(Diagnostic::new(
+                    span,
+                    "inline event-handler attributes are not allowed",
+                )
+                .with_help(format!("pass a function from <script>: {name}={{handler}}")));
+            }
+            event_parts(&lower).map_err(|message| Diagnostic::new(span, message))?;
+        }
     }
     Ok(())
 }
 
+/// An event attribute (`onclick`, `onsubmit.prevent`, `onkeydown.shift.enter`).
 pub(crate) fn is_event_attribute(name: &str) -> bool {
-    name.starts_with("on")
-        && name.len() > 2
-        && name[2..].bytes().all(|byte| byte.is_ascii_alphabetic())
+    let base = name.split('.').next().unwrap_or(name);
+    base.starts_with("on")
+        && base.len() > 2
+        && base[2..].bytes().all(|byte| byte.is_ascii_alphabetic())
+        && name[base.len()..].split('.').skip(1).all(|modifier| {
+            !modifier.is_empty() && modifier.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        })
+}
+
+/// What an event attribute's modifiers ask for.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Modifiers {
+    pub prevent: bool,
+    pub stop: bool,
+    pub once: bool,
+    pub self_only: bool,
+    pub capture: bool,
+    pub passive: bool,
+    /// `event.key` values, any of which matches (`enter` → "Enter"); a single letter or digit
+    /// matches case-insensitively.
+    pub keys: Vec<String>,
+    /// Shift, Ctrl, Alt and Meta: those named must be held, the others not (with a key filter).
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub meta: bool,
+}
+
+pub const MODIFIERS: &[&str] = &[
+    "prevent",
+    "stop",
+    "once",
+    "self",
+    "capture",
+    "passive",
+    "shift",
+    "ctrl",
+    "alt",
+    "meta",
+    "enter",
+    "tab",
+    "space",
+    "esc",
+    "escape",
+    "up",
+    "down",
+    "left",
+    "right",
+    "arrowup",
+    "arrowdown",
+    "arrowleft",
+    "arrowright",
+    "delete",
+    "backspace",
+    "home",
+    "end",
+    "pageup",
+    "pagedown",
+];
+
+/// `onkeydown.shift.enter` → `("keydown", modifiers)`; an error for an unknown modifier.
+pub fn event_parts(lower: &str) -> Result<(String, Modifiers), String> {
+    let mut pieces = lower.split('.');
+    let base = pieces.next().unwrap_or_default();
+    let event = base.strip_prefix("on").unwrap_or(base).to_owned();
+    let mut modifiers = Modifiers::default();
+    let key_event = matches!(event.as_str(), "keydown" | "keyup" | "keypress");
+    for modifier in pieces {
+        let key = |name: &str| name.to_owned();
+        match modifier {
+            "prevent" => modifiers.prevent = true,
+            "stop" => modifiers.stop = true,
+            "once" => modifiers.once = true,
+            "self" => modifiers.self_only = true,
+            "capture" => modifiers.capture = true,
+            "passive" => modifiers.passive = true,
+            "shift" => modifiers.shift = true,
+            "ctrl" => modifiers.ctrl = true,
+            "alt" => modifiers.alt = true,
+            "meta" => modifiers.meta = true,
+            _ if !key_event => {
+                return Err(if MODIFIERS.contains(&modifier) || modifier.len() == 1 {
+                    format!(
+                        "`.{modifier}` filters keys, so it only goes on keydown, keyup or keypress"
+                    )
+                } else {
+                    unknown_modifier(modifier)
+                });
+            }
+            "enter" => modifiers.keys.push(key("Enter")),
+            "tab" => modifiers.keys.push(key("Tab")),
+            "space" => modifiers.keys.push(key(" ")),
+            "esc" | "escape" => modifiers.keys.push(key("Escape")),
+            "up" | "arrowup" => modifiers.keys.push(key("ArrowUp")),
+            "down" | "arrowdown" => modifiers.keys.push(key("ArrowDown")),
+            "left" | "arrowleft" => modifiers.keys.push(key("ArrowLeft")),
+            "right" | "arrowright" => modifiers.keys.push(key("ArrowRight")),
+            "delete" => modifiers.keys.push(key("Delete")),
+            "backspace" => modifiers.keys.push(key("Backspace")),
+            "home" => modifiers.keys.push(key("Home")),
+            "end" => modifiers.keys.push(key("End")),
+            "pageup" => modifiers.keys.push(key("PageUp")),
+            "pagedown" => modifiers.keys.push(key("PageDown")),
+            single if single.len() == 1 => modifiers.keys.push(single.to_owned()),
+            other => return Err(unknown_modifier(other)),
+        }
+    }
+    if modifiers.passive && modifiers.prevent {
+        return Err("`.passive` and `.prevent` contradict each other: a passive listener can't prevent the default".to_owned());
+    }
+    Ok((event, modifiers))
+}
+
+fn unknown_modifier(modifier: &str) -> String {
+    let close = MODIFIERS
+        .iter()
+        .min_by_key(|candidate| crate::validate::edit_distance(modifier, candidate))
+        .filter(|candidate| crate::validate::edit_distance(modifier, candidate) <= 2);
+    match close {
+        Some(close) => format!("unknown event modifier `.{modifier}`; did you mean `.{close}`?"),
+        None => format!(
+            "unknown event modifier `.{modifier}` (modifiers: {}, or a single letter or digit key)",
+            MODIFIERS.join(", ")
+        ),
+    }
+}
+
+/// `class={{ … }}` and `style={{ … }}` become one `class:name`/`style:name` attribute per entry;
+/// bare `class:active` means `class:active={active}`. Checks that `class:` and `style:` are well
+/// formed, and don't meet a dynamic `class` that would overwrite them.
+fn expand_directives(attributes: Vec<Attribute>) -> Result<Vec<Attribute>, Diagnostic> {
+    let mut out = Vec::with_capacity(attributes.len());
+    for attribute in attributes {
+        let lower = attribute.name.to_ascii_lowercase();
+        if lower == "class" || lower == "style" {
+            if let AttributeValue::Expression(Expression::Object(entries), span) = &attribute.value
+            {
+                for (key, value) in entries {
+                    let name = if lower == "style" && !key.starts_with("--") {
+                        kebab_attribute(key)
+                    } else {
+                        key.clone()
+                    };
+                    out.push(Attribute {
+                        name: format!("{lower}:{name}"),
+                        value: AttributeValue::Expression(value.clone(), *span),
+                        span: attribute.span,
+                    });
+                }
+                continue;
+            }
+        }
+        if lower == "ref" {
+            // `ref={dialog}`: assign the element to `dialog`; or a function that takes it.
+            let value = match &attribute.value {
+                AttributeValue::Expression(Expression::Identifier(name), span) => {
+                    let source = format!("($el) => ({name} = $el)");
+                    let names = crate::runtime_expression::parse(&source)
+                        .map_err(|(_, message)| Diagnostic::new(*span, message))?;
+                    AttributeValue::Expression(Expression::Runtime { source, names }, *span)
+                }
+                AttributeValue::Expression(expression @ Expression::Runtime { .. }, span) => {
+                    AttributeValue::Expression(expression.clone(), *span)
+                }
+                _ => {
+                    return Err(Diagnostic::new(
+                        attribute.span,
+                        "ref takes a `let` to assign the element to (ref={dialog}), or a function that receives it",
+                    ));
+                }
+            };
+            out.push(Attribute {
+                name: "ref".to_owned(),
+                value,
+                span: attribute.span,
+            });
+            continue;
+        }
+        if let Some((kind, name)) = lower
+            .split_once(':')
+            .filter(|(kind, _)| *kind == "class" || *kind == "style")
+        {
+            let original = attribute.name[kind.len() + 1..].to_owned();
+            let valid = if kind == "class" {
+                !original.is_empty() && !original.contains(char::is_whitespace)
+            } else {
+                (name.starts_with("--")
+                    && name.len() > 2
+                    && original[2..]
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+                    || (!original.is_empty()
+                        && original
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b == b'-'))
+            };
+            if !valid {
+                return Err(Diagnostic::new(
+                    attribute.span,
+                    format!(
+                        "`{}` doesn't name a {}",
+                        attribute.name,
+                        if kind == "class" {
+                            "class"
+                        } else {
+                            "CSS property (lowercase, or a --custom-property)"
+                        }
+                    ),
+                ));
+            }
+            let value = match attribute.value {
+                AttributeValue::Expression(..) => attribute.value,
+                AttributeValue::None => {
+                    let variable = if kind == "class" {
+                        original.clone()
+                    } else if name.starts_with("--") {
+                        String::new()
+                    } else {
+                        crate::validate::camel(name)
+                    };
+                    if !is_identifier(&variable) {
+                        return Err(Diagnostic::new(
+                            attribute.span,
+                            format!("bare `{}` reads a variable named `{variable}`, which isn't a valid name: give it a value, {}={{…}}", attribute.name, attribute.name),
+                        ));
+                    }
+                    AttributeValue::Expression(Expression::Identifier(variable), attribute.span)
+                }
+                AttributeValue::Text(_) => {
+                    return Err(Diagnostic::new(
+                        attribute.span,
+                        format!(
+                            "`{}` takes an expression: {}={{…}}",
+                            attribute.name, attribute.name
+                        ),
+                    ));
+                }
+            };
+            out.push(Attribute {
+                name: format!("{kind}:{original}"),
+                value,
+                span: attribute.span,
+            });
+            continue;
+        }
+        out.push(attribute);
+    }
+    let toggles = out
+        .iter()
+        .any(|attribute| attribute.name.starts_with("class:"));
+    if toggles {
+        if let Some(dynamic) = out.iter().find(|attribute| {
+            attribute.name.eq_ignore_ascii_case("class")
+                && match &attribute.value {
+                    AttributeValue::Expression(..) => true,
+                    AttributeValue::Text(parts) => parts
+                        .iter()
+                        .any(|part| matches!(part, Part::Expression { .. })),
+                    AttributeValue::None => false,
+                }
+        }) {
+            return Err(Diagnostic::new(
+                dynamic.span,
+                "a computed `class` would overwrite the class: toggles on the same element",
+            )
+            .with_help("keep `class` static text, and toggle the rest with class:name={…}"));
+        }
+    }
+    Ok(out)
 }
 
 // ---- directives ----------------------------------------------------------------------------
+
+/// One branch of an `mnx-if` chain: its test (none for `mnx-else`), content and position.
+type Branch = (Option<(Expression, Span)>, Vec<Node>, Span);
 
 fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
     let lower = element.name.to_ascii_lowercase();
@@ -779,34 +1089,60 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
         "mnx-if" => {
             allow_attributes(&element, &["test"])?;
             let (test, test_span) = required_expression(&element, "test")?;
-            let mut consequent = Vec::new();
-            let mut alternate = None;
+            // The branches in order: the mnx-if's own, then each mnx-else-if, then mnx-else.
+            let mut branches: Vec<Branch> =
+                vec![(Some((test, test_span)), Vec::new(), element.span)];
+            let mut closed = false;
             for child in element.children {
                 match child {
-                    Node::Else { children, span } => {
-                        if alternate.is_some() {
-                            return Err(Diagnostic::new(span, "mnx-if may contain only one mnx-else"));
+                    Node::Else { test, children, span } => {
+                        if closed {
+                            return Err(Diagnostic::new(
+                                span,
+                                if test.is_some() {
+                                    "mnx-else-if must come before mnx-else"
+                                } else {
+                                    "mnx-if may contain only one mnx-else"
+                                },
+                            ));
                         }
-                        alternate = Some(children);
+                        closed = test.is_none();
+                        branches.push((test, children, span));
                     }
                     Node::Text(parts)
-                        if alternate.is_some()
+                        if branches.len() > 1
                             && parts.iter().all(|part| matches!(part, Part::Literal(text) if text.trim().is_empty())) => {}
                     child => {
-                        if alternate.is_some() {
-                            return Err(Diagnostic::new(element.span, "mnx-else must be the final child of mnx-if"));
+                        if branches.len() > 1 {
+                            return Err(Diagnostic::new(
+                                element.span,
+                                "mnx-else-if and mnx-else must be the final children of mnx-if",
+                            ));
                         }
-                        consequent.push(child);
+                        branches[0].1.push(child);
                     }
                 }
             }
-            Ok(Node::If {
-                test,
-                test_span,
-                consequent,
-                alternate: alternate.unwrap_or_default(),
-                span: element.span,
-            })
+            // Fold from the last branch: each else-if is an mnx-if in the previous one's else.
+            let mut alternate = Vec::new();
+            if closed {
+                alternate = branches
+                    .pop()
+                    .map(|(_, children, _)| children)
+                    .unwrap_or_default();
+            }
+            while let Some((test, consequent, span)) = branches.pop() {
+                let (test, test_span) = test.expect("only mnx-else has no test");
+                let node = Node::If {
+                    test,
+                    test_span,
+                    consequent,
+                    alternate,
+                    span,
+                };
+                alternate = vec![node];
+            }
+            Ok(alternate.pop().expect("mnx-if has a branch"))
         }
         "mnx-each" => {
             allow_attributes(&element, &["items", "as", "index", "key"])?;
@@ -926,6 +1262,36 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 ));
             }
             Ok(Node::Else {
+                test: None,
+                children: element.children,
+                span: element.span,
+            })
+        }
+        "mnx-window" | "mnx-document" => {
+            for attribute in &element.attributes {
+                if !is_event_attribute(&attribute.name.to_ascii_lowercase()) {
+                    return Err(Diagnostic::new(
+                        attribute.span,
+                        format!(
+                            "<{}> takes event listeners only (on<event>={{…}})",
+                            element.name
+                        ),
+                    ));
+                }
+            }
+            if element.children.iter().any(|child| !matches!(child, Node::Text(parts) if parts.iter().all(|part| matches!(part, Part::Literal(text) if text.trim().is_empty())))) {
+                return Err(Diagnostic::new(element.span, format!("<{}> can't have content", element.name)));
+            }
+            Ok(Node::Element(Element {
+                children: Vec::new(),
+                ..element
+            }))
+        }
+        "mnx-else-if" => {
+            allow_attributes(&element, &["test"])?;
+            let test = required_expression(&element, "test")?;
+            Ok(Node::Else {
+                test: Some(test),
                 children: element.children,
                 span: element.span,
             })

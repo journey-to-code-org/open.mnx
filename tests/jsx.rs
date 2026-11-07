@@ -140,11 +140,6 @@ fn mistakes_are_reported_in_the_jsx() {
             .contains("spread")
     );
     assert!(
-        error("export default function MnxX({ a = 1 }) {\n  return <p ref={a} />\n}\n")
-            .0
-            .contains("`ref`")
-    );
-    assert!(
         error("export default function MnxX({ a = 1 }) {\n  return <p title={<b />} />\n}\n")
             .0
             .contains("render prop")
@@ -182,5 +177,40 @@ fn interfaces_typings_and_warnings() {
         (warned[0].span.line, warned[0].span.column),
         (5, 49),
         "at the parameter"
+    );
+}
+
+#[test]
+fn class_style_ref_and_global_listeners_in_jsx() {
+    let source = r#"import { prevent, keys } from '@mnx/runtime'
+export default function MnxPanel({ open = false, size = 10, tone = "red" }) {
+  let box = null
+  let presses = 0
+  return (
+    <>
+      <mnx-document onKeyDown={keys('escape', () => (open = false))} />
+      <div ref={box} className={{ open, big: size > 20 }} style={{ fontSize: size + "px", "--tone": tone }} class:wide={size > 5}>
+        <form onSubmit={prevent(() => presses++)}>send</form>
+      </div>
+    </>
+  )
+}
+"#;
+    let code = js(source);
+    for part in [
+        r#"global: "document", on: "keydown""#,
+        r#"ref: () => (($el) => __mnxAssign(box, $el))"#,
+        r#"toggle: "open", value: () => $p.open"#,
+        r#"toggle: "big", value: () => ($p.size > 20)"#,
+        r#"toggle: "wide""#,
+        r#"style: "font-size", value: () => ($p.size + "px")"#,
+        r#"style: "--tone", value: () => $p.tone"#,
+        r#"on: "submit", handler: () => (prevent("#,
+    ] {
+        assert!(code.contains(part), "{part}\n{code}");
+    }
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<mnx-panel><!----><div class=\"wide\" style=\"font-size: 10px; --tone: red\"><form>send</form></div></mnx-panel>"
     );
 }

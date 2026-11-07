@@ -56,6 +56,11 @@ pub struct StyleImports<'a> {
     pub inline: &'a str,
 }
 
+/// `<mnx-window>` and `<mnx-document>`: listeners on the window or document while rendered.
+pub(crate) fn is_global_listener(name: &str) -> bool {
+    name.eq_ignore_ascii_case("mnx-window") || name.eq_ignore_ascii_case("mnx-document")
+}
+
 pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, Diagnostic> {
     let interface = validate::analyze(component)?;
     for name in &interface.script_names {
@@ -460,6 +465,48 @@ impl<'a> Emitter<'a> {
         })
     }
 
+    /// An event listener part's fields: the event, its handler, and its modifiers.
+    fn listener(&self, lower: &str, expression: &Expression) -> String {
+        let (event, modifiers) = crate::parser::event_parts(lower).unwrap_or_default();
+        let mut fields = format!(
+            "on: {}, handler: () => {}",
+            json(&event),
+            self.js(expression)
+        );
+        if modifiers != crate::parser::Modifiers::default() {
+            let mut flags = Vec::new();
+            for (on, name) in [
+                (modifiers.prevent, "prevent"),
+                (modifiers.stop, "stop"),
+                (modifiers.once, "once"),
+                (modifiers.self_only, "self"),
+                (modifiers.capture, "capture"),
+                (modifiers.passive, "passive"),
+                (modifiers.shift, "shift"),
+                (modifiers.ctrl, "ctrl"),
+                (modifiers.alt, "alt"),
+                (modifiers.meta, "meta"),
+            ] {
+                if on {
+                    flags.push(format!("{name}: true"));
+                }
+            }
+            if !modifiers.keys.is_empty() {
+                flags.push(format!(
+                    "keys: [{}]",
+                    modifiers
+                        .keys
+                        .iter()
+                        .map(|key| json(key))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            fields.push_str(&format!(", modifiers: {{ {} }}", flags.join(", ")));
+        }
+        fields
+    }
+
     /// Text parts as one string-valued JavaScript expression.
     fn text_js(&self, parts: &[Part]) -> String {
         let pieces: Vec<String> = parts
@@ -536,6 +583,23 @@ impl<'a> Emitter<'a> {
                             path,
                             format!("text: () => {}", self.text_js(parts)),
                         ));
+                    }
+                }
+                Node::Element(element) if is_global_listener(&element.name) => {
+                    // <mnx-window>/<mnx-document>: a placeholder comment, and listeners there.
+                    self.template.push_str("<!---->");
+                    let at = next(path);
+                    let target = &element.name.to_ascii_lowercase()[4..];
+                    for attribute in &element.attributes {
+                        if let AttributeValue::Expression(expression, _) = &attribute.value {
+                            let lower = attribute.name.to_ascii_lowercase();
+                            let body = format!(
+                                "global: {}, {}",
+                                json(target),
+                                self.listener(&lower, expression)
+                            );
+                            self.parts.push(JsPart::at(&at, body));
+                        }
                     }
                 }
                 Node::Element(element) => {
@@ -723,11 +787,27 @@ impl<'a> Emitter<'a> {
                     self.template.push('"');
                 }
                 AttributeValue::Expression(expression, _) if is_event_attribute(&lower) => {
+                    let body = self.listener(&lower, expression);
+                    self.parts.push(JsPart::at(path, body));
+                }
+                AttributeValue::Expression(expression, _) if lower.starts_with("class:") => {
                     let body = format!(
-                        "on: {}, handler: () => {}",
-                        json(&lower[2..]),
+                        "toggle: {}, value: () => {}",
+                        json(&attribute.name[6..]),
                         self.js(expression)
                     );
+                    self.parts.push(JsPart::at(path, body));
+                }
+                AttributeValue::Expression(expression, _) if lower.starts_with("style:") => {
+                    let body = format!(
+                        "style: {}, value: () => {}",
+                        json(&attribute.name[6..]),
+                        self.js(expression)
+                    );
+                    self.parts.push(JsPart::at(path, body));
+                }
+                AttributeValue::Expression(expression, _) if lower == "ref" => {
+                    let body = format!("ref: () => {}", self.js(expression));
                     self.parts.push(JsPart::at(path, body));
                 }
                 value => {

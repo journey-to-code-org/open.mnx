@@ -6,5 +6,6 @@ export {
   define, $define, ABI, state, computed, watch, onMount, onUnmount, id, props, host, emit, adoptStyles,
   createContext, provide, inject, ContextRequestEvent, ContextProviderEvent,
   formValue, validity, onFormReset, onFormRestore, onFormDisabled,
+  prevent, stop, selfOnly, keys,
   isSafeUrl, $r, $t,
 } from './element.js';

@@ -1132,12 +1132,6 @@ impl Lowering<'_, '_> {
             let mut name = attribute_name(&attribute.name);
             match name.as_str() {
                 "key" => continue, // a list row's key (see directive_each)
-                "ref" => {
-                    return Err(self.error(
-                        attribute.span.start,
-                        "`ref` isn't supported; use host() in the component, or an id",
-                    ))
-                }
                 "className" => name = "class".to_owned(),
                 "htmlFor" => name = "for".to_owned(),
                 _ if event_of(&name).is_some() => name = name.to_ascii_lowercase(),
@@ -1175,6 +1169,21 @@ impl Lowering<'_, '_> {
                             let expression = expression.as_expression().expect("not empty");
                             if let Some(jsx) = contains_jsx(expression) {
                                 return Err(self.error(jsx, "JSX in an attribute (a render prop) isn't supported; use a named slot"));
+                            }
+                            if let (true, Expression::Identifier(identifier)) =
+                                (name == "ref", expression)
+                            {
+                                // `ref={box}` names the variable to assign, not a value to read.
+                                let assign = match self.kind_of(identifier) {
+                                    Some(Kind::State) => format!(
+                                        "($el) => {}({}, $el)",
+                                        reactive::ASSIGN,
+                                        identifier.name
+                                    ),
+                                    _ => format!("($el) => ({} = $el)", identifier.name),
+                                };
+                                out.synthetic(&format!(" ref={{{assign}}}"), start);
+                                continue;
                             }
                             out.synthetic(&format!(" {name}="), start);
                             self.expression(out, expression, "{", "}")?;

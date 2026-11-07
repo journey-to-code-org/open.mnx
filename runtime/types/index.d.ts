@@ -51,6 +51,21 @@ export declare function host<E extends HTMLElement = HTMLElement>(): E;
  */
 export declare function emit(name: string, detail?: unknown): boolean;
 
+// ---- event helpers (the template's event modifiers, as functions) ---------------------------
+
+type Handler<E extends Event = Event> = (this: unknown, event: E) => unknown;
+/** A handler that calls `event.preventDefault()` first (`.prevent`). */
+export declare function prevent<E extends Event>(fn?: Handler<E>): Handler<E>;
+/** A handler that calls `event.stopPropagation()` first (`.stop`). */
+export declare function stop<E extends Event>(fn?: Handler<E>): Handler<E>;
+/** A handler that ignores events from inside the element (`.self`). */
+export declare function selfOnly<E extends Event>(fn?: Handler<E>): Handler<E>;
+/**
+ * A keyboard handler for `'enter'`, `'shift+enter'`, `'ctrl+k'`, … (several: `'enter, space'`).
+ * The modifier keys named must be held, and the others not.
+ */
+export declare function keys(combinations: string, fn?: Handler<KeyboardEvent>): Handler<KeyboardEvent>;
+
 // ---- styles ---------------------------------------------------------------------------------
 
 /**

@@ -940,6 +940,10 @@ impl Context<'_> {
         match node {
             ast::Node::Text(parts) => Ok(vec![Node::Text(self.lower_parts(parts, state)?)]),
             ast::Node::Element(element) => {
+                if crate::emit_js::is_global_listener(&element.name) {
+                    // Listeners only: a placeholder the element finds them by.
+                    return Ok(vec![Node::Anchor]);
+                }
                 if let Some(child) = self.component.child(&element.name) {
                     return Ok(vec![self.lower_child(element, child, state)?]);
                 }
@@ -950,6 +954,7 @@ impl Context<'_> {
                         attributes.push(lowered);
                     }
                 }
+                self.lower_directives(element, &mut attributes, state)?;
                 Ok(vec![Node::Element(ir::Element {
                     name: element.name.clone(),
                     attributes,
@@ -1216,6 +1221,7 @@ impl Context<'_> {
                 attributes.push(lowered);
             }
         }
+        self.lower_directives(element, &mut attributes, state)?;
         check_child_required(&child.ast.tag, &interface, element)?;
         for prop in &interface.props {
             if prop.runtime_default.is_some() && !overrides.contains_key(&prop.name) && !partial() {
@@ -1296,6 +1302,82 @@ impl Context<'_> {
         }))
     }
 
+    /// `class:name` and `style:name`, merged into the `class` and `style` attributes. A value only
+    /// the browser knows (partial rendering) is left for the element to set.
+    fn lower_directives(
+        &self,
+        element: &ast::Element,
+        attributes: &mut Vec<ir::Attribute>,
+        state: &LowerState,
+    ) -> Result<(), Diagnostic> {
+        let mut classes = Vec::new();
+        let mut styles = Vec::new();
+        for attribute in &element.attributes {
+            let AttributeValue::Expression(expression, span) = &attribute.value else {
+                continue;
+            };
+            let lower = attribute.name.to_ascii_lowercase();
+            let Some((kind, _)) = lower
+                .split_once(':')
+                .filter(|(kind, _)| *kind == "class" || *kind == "style")
+            else {
+                continue;
+            };
+            let Some(value) = self.evaluate_known(expression, *span, state)? else {
+                continue;
+            };
+            if kind == "class" {
+                if expression::is_truthy(&value) {
+                    classes.push(attribute.name[6..].to_owned());
+                }
+                continue;
+            }
+            if value.is_null() || value == Value::Bool(false) {
+                continue;
+            }
+            let text = expression::to_display_string(&value)
+                .map_err(|message| Diagnostic::new(*span, message))?;
+            if !is_safe_css_value(&text) {
+                return Err(Diagnostic::new(
+                    *span,
+                    format!("`{}`'s value `{text}` isn't a single CSS value (it can't contain `;`, braces, `<`, a backslash, or url())", attribute.name),
+                ));
+            }
+            styles.push(format!("{}: {text}", &attribute.name[6..]));
+        }
+        let mut merge = |name: &str, extra: Vec<String>, separator: &str| {
+            if extra.is_empty() {
+                return;
+            }
+            let joined = extra.join(separator);
+            match attributes
+                .iter_mut()
+                .find(|attribute| attribute.name.eq_ignore_ascii_case(name))
+            {
+                Some(attribute) => {
+                    let mut parts = attribute.value.take().unwrap_or_default();
+                    let existing = joined_parts(&parts);
+                    let glue = if existing.trim().is_empty() {
+                        ""
+                    } else if separator == "; " && !existing.trim_end().ends_with(';') {
+                        "; "
+                    } else {
+                        " "
+                    };
+                    parts.push(Part::Escaped(format!("{glue}{joined}")));
+                    attribute.value = Some(parts);
+                }
+                None => attributes.push(ir::Attribute {
+                    name: name.to_owned(),
+                    value: Some(vec![Part::Escaped(joined)]),
+                }),
+            }
+        };
+        merge("class", classes, " ");
+        merge("style", styles, "; ");
+        Ok(())
+    }
+
     fn lower_attribute(
         &self,
         attribute: &ast::Attribute,
@@ -1303,6 +1385,10 @@ impl Context<'_> {
         custom_element: bool,
     ) -> Result<Option<ir::Attribute>, Diagnostic> {
         let lower = attribute.name.to_ascii_lowercase();
+        if lower == "ref" || lower.starts_with("class:") || lower.starts_with("style:") {
+            // References exist only in the browser; directives are merged by lower_directives.
+            return Ok(None);
+        }
         if crate::parser::is_event_attribute(&lower)
             && matches!(attribute.value, AttributeValue::Expression(..))
         {
@@ -1366,6 +1452,20 @@ impl Context<'_> {
             value,
         }))
     }
+}
+
+fn joined_parts(parts: &[Part]) -> String {
+    joined(parts)
+}
+
+/// One CSS value, safe to write into a style attribute: nothing that ends the declaration, opens
+/// a block, escapes, or loads a URL.
+fn is_safe_css_value(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    !text.contains([';', '{', '}', '<', '\\'])
+        && !lower.contains("url(")
+        && !lower.contains("expression(")
+        && !lower.contains("@import")
 }
 
 fn joined(parts: &[Part]) -> String {
@@ -1647,7 +1747,8 @@ pub(crate) fn check_child_event(
     if !crate::parser::is_event_attribute(&lower) {
         return Ok(());
     }
-    let event = &lower[2..];
+    let base = lower.split('.').next().unwrap_or(&lower);
+    let event = &base[2..];
     if NATIVE_EVENTS.contains(&event)
         || interface
             .events
@@ -1890,7 +1991,7 @@ pub(crate) fn with_suggestion(
 }
 
 /// Edit distance counting an adjacent swap as one edit (`nmae` → `name`), the commonest typo.
-fn edit_distance(a: &str, b: &str) -> usize {
+pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let mut table = vec![vec![0usize; b.len() + 1]; a.len() + 1];

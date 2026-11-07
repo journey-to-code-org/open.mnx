@@ -23,6 +23,7 @@
 //! postfix        → primary ( "." IDENT | "?." IDENT | "[" expression "]" | "?.[" expression "]" )*
 //! primary        → NUMBER | STRING | "true" | "false" | "null" | "undefined" | IDENT
 //!                | "(" expression ")" | "[" elements? "]" | "{" properties? "}"
+//! property       → ( IDENT | STRING ) ":" expression | IDENT        (shorthand)
 //! ```
 //!
 //! `==` and `!=` are accepted for familiarity but mean strict equality; loose coercion is the
@@ -785,17 +786,21 @@ impl Parser<'_> {
                 self.advance(1);
                 let properties = self.parse_list(b'}', |parser| {
                     parser.skip_whitespace();
-                    let key = match parser.peek() {
-                        Some(b'\'' | b'"') => parser.parse_string()?,
+                    let (key, quoted) = match parser.peek() {
+                        Some(b'\'' | b'"') => (parser.parse_string()?, true),
                         _ => {
                             let identifier = parser.take_identifier();
                             if identifier.is_empty() {
                                 return Err(parser.error("expected a property name"));
                             }
-                            identifier
+                            (identifier, false)
                         }
                     };
                     parser.skip_whitespace();
+                    // `{ open }`: shorthand for `{ open: open }`.
+                    if !quoted && matches!(parser.peek(), Some(b',' | b'}')) {
+                        return Ok((key.clone(), Expression::Identifier(key)));
+                    }
                     if !parser.consume(":") {
                         return Err(parser.error("expected : after object key"));
                     }

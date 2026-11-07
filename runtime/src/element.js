@@ -373,7 +373,7 @@ function locate(range, parts, hydrating = false) {
     const node = walk(range, hydrating && part.hydrate ? part.hydrate : part.path);
     const fits = !node ? false
       : part.when || part.each || part.slot || part.await ? isOpen(node) && matchingClose(node) !== null
-      : part.anchor ? node.nodeType === COMMENT && node.data === ''
+      : part.anchor || part.global ? node.nodeType === COMMENT && node.data === ''
       : node.nodeType === 1;
     if (!fits) return null;
     nodes.push(node);
@@ -462,6 +462,67 @@ const signature = (range) =>
 
 // ---- binding parts -------------------------------------------------------------------------
 
+// ---- event helpers: the modifiers, as functions (for JSX, and for handlers built in scripts) --
+
+/** `prevent(fn)`: a handler that calls `event.preventDefault()` first. */
+export const prevent = (fn) => function (event) { event.preventDefault(); return fn?.call(this, event); };
+/** `stop(fn)`: a handler that calls `event.stopPropagation()` first. */
+export const stop = (fn) => function (event) { event.stopPropagation(); return fn?.call(this, event); };
+/** `selfOnly(fn)`: a handler that ignores events from inside the element (`.self`). */
+export const selfOnly = (fn) => function (event) { if (event.target === event.currentTarget) return fn?.call(this, event); };
+
+const KEY_NAMES = {
+  enter: 'Enter', tab: 'Tab', space: ' ', esc: 'Escape', escape: 'Escape', up: 'ArrowUp', down: 'ArrowDown',
+  left: 'ArrowLeft', right: 'ArrowRight', arrowup: 'ArrowUp', arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft',
+  arrowright: 'ArrowRight', delete: 'Delete', backspace: 'Backspace', home: 'Home', end: 'End', pageup: 'PageUp', pagedown: 'PageDown',
+};
+/**
+ * `keys('shift+enter', fn)`: a keyboard handler for one key, with exactly the modifier keys named
+ * (the same rule as `onkeydown.shift.enter` in a template). Several combinations: `'enter, space'`.
+ */
+export function keys(combinations, fn) {
+  const wanted = String(combinations).split(',').map((combination) => {
+    const pieces = combination.trim().toLowerCase().split('+');
+    const key = pieces.pop();
+    return { key: KEY_NAMES[key] ?? key, shift: pieces.includes('shift'), ctrl: pieces.includes('ctrl'), alt: pieces.includes('alt'), meta: pieces.includes('meta') };
+  });
+  return function (event) {
+    const key = event.key ?? '';
+    const match = wanted.some((w) => (w.key.length === 1 ? key.toLowerCase() === w.key : key === w.key)
+      && w.shift === event.shiftKey && w.ctrl === event.ctrlKey && w.alt === event.altKey && w.meta === event.metaKey);
+    if (match) return fn?.call(this, event);
+  };
+}
+
+/**
+ * An event part's listener and its options: the handler, read when the event fires, behind the
+ * modifiers' checks (`.self`, key filters) and effects (`.prevent`, `.stop`).
+ */
+function listen(part, node) {
+  const m = part.modifiers;
+  const listener = (event) => {
+    if (m) {
+      if (m.self && event.target !== node) return;
+      if (m.keys) {
+        const key = event.key ?? '';
+        if (!m.keys.some((wanted) => (wanted.length === 1 ? key.toLowerCase() === wanted : key === wanted))) return;
+        // With a key, the named modifier keys must be held and the others not.
+        if (!!m.shift !== event.shiftKey || !!m.ctrl !== event.ctrlKey || !!m.alt !== event.altKey || !!m.meta !== event.metaKey) return;
+      } else if ((m.shift && !event.shiftKey) || (m.ctrl && !event.ctrlKey) || (m.alt && !event.altKey) || (m.meta && !event.metaKey)) {
+        return;
+      }
+      if (m.prevent) event.preventDefault();
+      if (m.stop) event.stopPropagation();
+    }
+    const handler = $r(part.handler());
+    if (typeof handler === 'function') handler.call(node, event);
+  };
+  const options = m && (m.once || m.capture || m.passive)
+    ? { once: !!m.once, capture: !!m.capture, passive: !!m.passive }
+    : undefined;
+  return [listener, options];
+}
+
 function bind(part, node, hydrating, context) {
   if (part.text) {
     effect(() => {
@@ -478,11 +539,35 @@ function bind(part, node, hydrating, context) {
       }
       if (target.data !== text) target.data = text;
     });
+  } else if (part.global) {
+    // <mnx-window>/<mnx-document>: listening while this part of the template is rendered.
+    const target = part.global === 'window' ? window : document;
+    effect(() => {
+      const [listener, options] = listen(part, target);
+      target.addEventListener(part.on, listener, options);
+      return () => target.removeEventListener(part.on, listener, options);
+    });
   } else if (part.on) {
     // The handler is read when the event fires, so swapping it never re-subscribes.
-    node.addEventListener(part.on, (event) => {
-      const handler = $r(part.handler());
-      if (typeof handler === 'function') handler.call(node, event);
+    const [listener, options] = listen(part, node);
+    node.addEventListener(part.on, listener, options);
+  } else if (part.toggle) {
+    effect(() => {
+      node.classList.toggle(part.toggle, !!$r(part.value()));
+    });
+  } else if (part.style) {
+    // One property at a time, through the CSSOM: a value can't add declarations.
+    effect(() => {
+      const value = $r(part.value());
+      if (value == null || value === false) node.style.removeProperty(part.style);
+      else if (node.style.getPropertyValue(part.style) !== String(value)) node.style.setProperty(part.style, String(value));
+    });
+  } else if (part.ref) {
+    effect(() => {
+      const assign = $r(part.ref());
+      if (typeof assign !== 'function') return;
+      untrack(() => assign(node));
+      return () => untrack(() => assign(null));
     });
   } else if (part.property) {
     // A child component's prop: always a property, so objects and arrays arrive as they are.

@@ -407,8 +407,8 @@ fn rejects_malformed_html_and_unsafe_template_features() {
             "event-handler",
         ),
         (
-            "<mnx-x><div style=\"color:red\">Text</div></mnx-x>",
-            "inline style",
+            "<mnx-x c=\"red\"><div style=\"color: {c}\">Text</div></mnx-x>",
+            "can't interpolate",
         ),
         (
             "<mnx-x><p title=bare>x</p></mnx-x>",

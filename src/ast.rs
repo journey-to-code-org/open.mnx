@@ -166,7 +166,10 @@ pub enum Node {
         fallback: Vec<Node>,
         span: Span,
     },
+    /// `<mnx-else>`, or `<mnx-else-if test={…}>` (with its test), before it's attached to its
+    /// `mnx-if`.
     Else {
+        test: Option<(Expression, Span)>,
         children: Vec<Node>,
         span: Span,
     },
@@ -273,7 +276,12 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
                 for_each_expression(children, visit);
             }
             Node::Slot { fallback, .. } => for_each_expression(fallback, visit),
-            Node::Else { children, .. } => for_each_expression(children, visit),
+            Node::Else { test, children, .. } => {
+                if let Some((test, span)) = test {
+                    visit(test, *span);
+                }
+                for_each_expression(children, visit);
+            }
             Node::Await {
                 value,
                 value_span,
