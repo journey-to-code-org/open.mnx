@@ -130,13 +130,22 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     }
     // The stylesheet: inlined, or through the bundler.
     let mut styles = None;
+    let mut in_page = false;
     if let Some(style) = &component.style {
         match options.style_imports {
             Some(imports) if component.shadow => {
                 out.push_str(&format!("import $styles from {};\n", json(imports.inline)));
                 styles = Some("$styles".to_owned());
             }
-            Some(imports) => out.push_str(&format!("import {};\n", json(imports.stylesheet))),
+            Some(imports) => {
+                // Light DOM: the bundler puts the CSS in the page, and the text comes too, for
+                // when the element is inside someone else's shadow root (a Lit app, say), where
+                // page CSS doesn't reach.
+                out.push_str(&format!("import {};\n", json(imports.stylesheet)));
+                out.push_str(&format!("import $styles from {};\n", json(imports.inline)));
+                styles = Some("$styles".to_owned());
+                in_page = true;
+            }
             None => {
                 if let Some(lang) = &style.lang {
                     return Err(Diagnostic::new(
@@ -182,6 +191,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         match (component.style.is_some(), styles) {
             (false, _) => String::new(),
             (true, None) => "  styled: true,\n".to_owned(),
+            (true, Some(styles)) if in_page => format!("  styled: true,\n  styles: {styles},\n  inPage: true,\n"),
             (true, Some(styles)) => format!("  styled: true,\n  styles: {styles},\n"),
         },
         json(&emitter.template),

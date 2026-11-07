@@ -16,6 +16,7 @@
     "@angular/forms": "22.2.5",
     "@angular/platform-browser": "22.2.5",
     "@babel/core": "7.29.13",
+    "@lit/context": "1.1.6",
     "@mnx/compiler": "file:../../compiler",
     "@mnx/runtime": "file:../../runtime",
     "@mnx/unplugin": "file:../../plugin",

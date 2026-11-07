@@ -1133,7 +1133,7 @@ export function $define(tag, definition) {
   return defineElement(tag, definition);
 }
 
-function defineElement(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, setup }) {
+function defineElement(tag, { props = {}, template = '', shadow = false, form = false, slots = [], events = [], styled = false, styles = null, inPage = false, setup }) {
   // On a server (no DOM), a stand-in with the same `mnx` description, so a module that imports a
   // component loads there: adapters render the host tag, and `@mnx/runtime/server` renders it.
   if (typeof HTMLElement === 'undefined') return serverElement(tag, { props, shadow, form, slots, events, styled });
@@ -1201,7 +1201,12 @@ function defineElement(tag, { props = {}, template = '', shadow = false, form = 
 
     connectedCallback() {
       // A light-DOM component's styles go where it is: the document, or a shadow root.
-      if (!shadow && styles != null) adopt(this.getRootNode(), ownSheets());
+      if (!shadow && styles != null) {
+        // A light-DOM component's sheet goes to the root it's in, unless the bundler already put
+        // it in the page (`inPage`) and that root is the document.
+        const root = this.getRootNode();
+        if (!(inPage && root === document)) adopt(root, ownSheets());
+      }
       if (this.#scope) this.#scope.resume();
       else this.#boot();
       this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
