@@ -1,17 +1,17 @@
 # Migrating to 2.0
 
-2.0 changes three things for `.mnx` files, and nothing for JSX components (`.mnx.jsx`/`.mnx.tsx`), which have 2.0's semantics already. 1.7 warns about each one; `mnix migrate` does the only rewrite needed.
+2.0 changes three things for `.mnx` files, and nothing for JSX components (`.mnx.jsx`/`.mnx.tsx`), which have 2.0's semantics already. 1.7 warns about each one; `mnx migrate` does the only rewrite needed.
 
 ```sh
-mnix migrate src/**/*.mnx --check   # what would change (exit status 1 if anything would)
-mnix migrate src/**/*.mnx           # rewrite in place
+mnx migrate src/**/*.mnx --check    # what would change (exit status 1 if anything would)
+mnx migrate src/**/*.mnx            # rewrite in place
 ```
 
 ## 1. Props are names in the script
 
 In 2.0 a prop's name means the prop in the script, as it already does in the template: read `value`, assign `value = 2`. `props()` still works.
 
-So a script binding can't share a prop's name. The usual case is a default taken from the script, which `mnix migrate` renames:
+So a script binding can't share a prop's name. The usual case is a default taken from the script, which `mnx migrate` renames:
 
 ```html
 <script>const title = "Hi"</script>            <script>const titleDefault = "Hi"</script>
@@ -24,7 +24,7 @@ The binding and its uses in the script and in host defaults are renamed. In the 
 
 In 2.0 a top-level `let` in the script is state: assigning it updates the template, as `state()` does. `let count = 0` and `count++` in a handler is a counter. `state()` and `computed()` keep working.
 
-Nothing needs rewriting. A `let` the script changes and the template reads starts updating it, which is almost always what was meant. `mnix migrate` and 1.7's warnings list each one so you can check.
+Nothing needs rewriting. A `let` the script changes and the template reads starts updating it, which is almost always what was meant. `mnx migrate` and 1.7's warnings list each one so you can check.
 
 ## 3. The CLI is `mnx`
 

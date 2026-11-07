@@ -4,15 +4,15 @@ mnx is a compiler for Web Components. You write a component as HTML with `{expr}
 
 The runtime is built on what the web platform is standardizing: the TC39 Signals API, template parts in the shape of DOM Parts, the Context Protocol, form-associated custom elements and declarative shadow DOM. The aim is for the platform to absorb what mnx proves, so the runtime shrinks as native features ship. See `runtime/README.md`.
 
-**Status: 1.0.** The `.mnx` format, the CLI and the runtime's public API are stable: no breaking changes before 2.0. See `CHANGELOG.md`, and `docs/migrating-from-0.2.md` for components written for 0.2.
+**Status: 2.0.** The `.mnx` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 3.0. See `CHANGELOG.md`, `docs/migrating-to-2.0.md` for components written for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
 ```html
 <!-- header.mnx -->
 <script>
-  const title = "Mikey Nichols"
-  const data = { sample: "sample data", sampleTwo: "additional data" }
+  const titleDefault = "Mikey Nichols"
+  const dataDefault = { sample: "sample data", sampleTwo: "additional data" }
 </script>
-<mnx-header title={title} data={data}>
+<mnx-header title={titleDefault} data={dataDefault}>
   <header>
     <nav>
       <h1>{title}</h1>
@@ -26,8 +26,8 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 ```
 
 ```sh
-mnix compile header.mnx                # server-rendered HTML
-mnix compile header.mnx --emit js      # the custom element
+mnx compile header.mnx                 # server-rendered HTML
+mnx compile header.mnx --emit js       # the custom element
 ```
 
 ```tsx
@@ -38,10 +38,10 @@ import Header from './header.mnx';
 
 ## Writing a component
 
-- **The host tag declares the component.** Its name is the custom element. Its attributes are the props: `title={title}` declares a prop whose default comes from the script, `label="Hi"` a string default, and a bare `name` a required prop. Kebab-case attributes become camelCase props (`max-value` → `maxValue`). The default's type is the prop's type. `shadow` opts into shadow DOM (light DOM is the default) and `form-associated` makes the element a form control. A comment above the component becomes its description in the generated docs and types.
+- **The host tag declares the component.** Its name is the custom element. Its attributes are the props: `title={titleDefault}` declares a prop whose default comes from the script, `label="Hi"` a string default, and a bare `name` a required prop. Kebab-case attributes become camelCase props (`max-value` → `maxValue`). The default's type is the prop's type. `shadow` opts into shadow DOM (light DOM is the default) and `form-associated` makes the element a form control. A comment above the component becomes its description in the generated docs and types.
 - **The host is the root**: the template can have any number of top-level nodes.
 - **Defaults computed in the browser.** A prop whose default uses a value only the browser has (`since={start}` with `const start = Date.now()`, or anything reading `window`, `document`, `Math` and other globals) gets it per element, after the script runs, unless the prop was given by an attribute or property. The HTML output needs that prop from `--props` (or from the parent), and says so.
-- **`<script>` is real JavaScript** (parsed with oxc). Top-level `const`/`let` initializers written in the expression language are evaluated at build time for the HTML output. Functions, imports and everything else run in the browser, once per element. Using a runtime-only value in static HTML is a compile error that says so.
+- **`<script>` is real JavaScript** (parsed with oxc), run once per element. Top-level `const`/`let` initializers written in the expression language (they may use props) are also evaluated at build time for the HTML output. A top-level `let` is state, and props are names (see Script, state and hooks). Using a runtime-only value in static HTML is a compile error that says so (or, with `--partial`, left for the element).
 - **`<script lang="ts">`** is TypeScript, reduced to JavaScript by removing its types in place, so every line and column stays where it was and errors point into your source. Only erasable syntax is accepted, as with Node's type stripping or TypeScript's `erasableSyntaxOnly`. `enum`, `namespace`, parameter properties, `<T>x` assertions and `import x = require()` are errors that say what to write instead. The types aren't lost: a prop whose default is an annotated binding (`const options: Option[] = …`, then `options={options}`) has that type, `emit<Picked>("pick", …)` types the event's `detail`, and the script's `type`/`interface` declarations are exported from the generated typings.
 - **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). An expression in the build-time subset is evaluated by the HTML output too: literals, arrays and objects, member and index access (with `?.`), `!` `-` `+` `*` `/` `%`, comparisons, `==`/`!=` (strict), `&&` `||` `??` and `? :`, with JavaScript's truthiness. Signals read in the template (`{count}`) are reactive.
 - **Any other JavaScript expression runs in the browser**: calls (`{format(price)}`, `{items.filter((item) => item.done).length}`), arrow-function handlers that close over list items (`onclick={() => remove(item.id)}`), `new`. Names mean what they mean in the script, so a `state()` is read with `.get()` there (`{count.get() * 2}`); props and list items read as in the subset. A template can assign to props only (`onclick={() => { open = !open }}`), and `emit()` in a template declares its event like one in the script. The HTML output can't evaluate these, so a component that renders one needs the JavaScript output (handlers are never rendered, so inline handlers don't count).
@@ -100,16 +100,24 @@ In the HTML output, directives are expanded at build time and wrapped in `<!--[-
 
 ```html
 <script>
-  import { state, computed, onMount } from '@mnx/runtime'
-  const count = state(0)
-  const doubled = computed(() => count.get() * 2)
-  function increment() { count.set(count.get() + 1) }
+  import { onMount } from '@mnx/runtime'
+  let count = 0                        // state: assigning it updates the template
+  const doubled = count * 2            // derived from state and props: stays in sync
+  function increment() {
+    count++
+    if (count > 9) label = "Many"      // props are names in the script, readable and writable
+  }
   onMount(() => console.log('connected'))
 </script>
 <mnx-counter label="Clicks">
   <button type="button" onclick={increment}>{label}: {count} ({doubled})</button>
 </mnx-counter>
 ```
+
+- **A prop's name is the prop**, in the script as in the template: read `label`, assign `label = …` (the element updates as if it were set from outside). So the script can't declare a name a prop has. A default taken from the script uses another name: `<mnx-card title={titleDefault}>`.
+- **A top-level `let` is state.** Reading it in the template, in a `computed` or an effect tracks it, and assigning it (`count++`, `count = 0`, `count += 2`) updates what reads it. Its initial value renders on the server.
+- **A top-level `const` that reads props or state** (outside nested functions) is derived: it's recomputed when they change. Other `const`s, functions and imports are plain JavaScript, run once per element.
+- `state()` and `computed()` give explicit signals, for custom hooks and shared state.
 
 Hooks are plain functions called while the script runs (once per element; nothing re-renders, so there are no hook rules beyond that):
 
@@ -118,7 +126,7 @@ Hooks are plain functions called while the script runs (once per element; nothin
 | `state(value)`, `computed(fn)` | Signals (`Signal.State`, `Signal.Computed`) |
 | `effect(fn)`, `watch(source, (next, prev) => …)` | Run on change; `effect` may return a cleanup |
 | `onMount(fn)`, `onUnmount(fn)` | Connected / disconnected; `onMount` may return a cleanup |
-| `props()` | The element's props: reading one tracks it, writing one updates the element |
+| `props()` | The element's props as an object, for custom hooks (in the script, use the names) |
 | `host()` | The element |
 | `emit(name, detail)` | Fire an event (see Events) |
 | `id()` | An id unique to this element and call, for `id`/`for`/`aria-*` |
@@ -279,7 +287,7 @@ Angular needs `CUSTOM_ELEMENTS_SCHEMA` and nothing else for props (`[heading]="x
 })
 ```
 
-`mnxModel="checked"` names the pair when it isn't `value`. The Angular CLI's builder doesn't take Vite or esbuild plugins, so compile components with `mnix compile --emit js` (or `@mnx/compiler`) into `.js` modules and import those.
+`mnxModel="checked"` names the pair when it isn't `value`. The Angular CLI's builder doesn't take Vite or esbuild plugins, so compile components with `mnx compile --emit js` (or `@mnx/compiler`) into `.js` modules and import those.
 
 ## Editors and tooling without Rust
 
@@ -300,16 +308,16 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 ## The CLI
 
 ```sh
-mnix check <component.mnx>... [--format human|json] [--stdin]
-mnix migrate <component.mnx>... [--check]
-mnix compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial]
+mnx check <component.mnx>... [--format human|json] [--stdin]
+mnx migrate <component.mnx>... [--check]
+mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial]
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue|svelte|solid]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
-mnix request < request.json
+mnx request < request.json
 ```
 
-`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnix request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
+`mnx check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnx request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
 
 ## Standards
 
@@ -321,9 +329,14 @@ mnx is meant to be absorbed by the platform. These reports give the standards di
 
 ## Stability
 
-1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
+2.0 freezes, until 3.0:
+- the authoring formats (`.mnx`: script semantics, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`; JSX components);
+- the CLI's commands and options, and the outputs' behaviour;
+- the runtime's documented exports.
 
-2.0 makes props names in the script, makes `let` state, and renames the CLI to `mnx`. 1.7 warns about each change, and `mnix migrate` rewrites what needs it; see `docs/migrating-to-2.0.md`. Streaming server rendering (sending resolved `mnx-await` content as it arrives) is planned after 2.0. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
+The generated JavaScript's internal shape (`$define()`'s arguments, parts) is not public API. It is versioned (`abi`): a runtime refuses modules compiled for another major version with an error that says to recompile, instead of misbehaving.
+
+Upgrading from 1.x: `mnx migrate` rewrites what 2.0 needs; see `docs/migrating-to-2.0.md`. The CLI's 1.x name, `mnix`, is an alias through 2.x. Browser support: `docs/browser-support.md`. Planned after 2.0: streaming server rendering (sending resolved `mnx-await` content as it arrives).
 
 ## Repository and tests
 
