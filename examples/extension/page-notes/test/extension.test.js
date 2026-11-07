@@ -116,10 +116,17 @@ test('the widget on the site: in a corner, out of reach of the site\'s CSS, live
 test('the page can talk to the widget, but only as text: it can\'t inject markup', async () => {
   await reset();
   const page = await open(site + '/');
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('page-notes:data', {
-    detail: JSON.stringify([{ id: 'x', text: '<img src=x onerror="window.pwned = true">', color: 'red', at: 1 }]),
-  })));
-  await page.locator('page-notes-widget').getByRole('button', { name: '1 note' }).click();
+  // The bridge sends this site's (empty) notes once or twice as the page loads, and the last
+  // send wins: send the page's own until the bridge has finished.
+  const chip = page.locator('page-notes-widget').getByRole('button', { name: '1 note' });
+  for (let attempt = 0; attempt < 20; attempt++) {
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('page-notes:data', {
+      detail: JSON.stringify([{ id: 'x', text: '<img src=x onerror="window.pwned = true">', color: 'red', at: 1 }]),
+    })));
+    await page.waitForTimeout(250);
+    if (await chip.isVisible()) break;
+  }
+  await chip.click();
   assert.equal(await page.locator('page-notes-widget .card p').textContent(), '<img src=x onerror="window.pwned = true">');
   assert.equal(await page.locator('page-notes-widget img').count(), 0);
   assert.equal(await page.evaluate(() => window.pwned), undefined);

@@ -19,7 +19,8 @@ Hydrating stripped pages, and props for Svelte and Solid (`plan/roadmap-3.0.md`,
 
 ### Fixed
 
-- 2.9.0 said Firefox doesn't focus an invalid mnx form control's input when a form won't submit. It does; it only logs "The invalid form control … is not focusable" as it goes. A new test checks the focus in every engine, and `docs/browser-support.md` is corrected.
+- 2.9.0 said Firefox doesn't focus an invalid mnx form control's input when a form won't submit. It does; it only logs "The invalid form control … is not focusable" as it goes. A new test checks the focus in every engine, and `docs/browser-support.md` is corrected. (Its message also comes without a name, "An invalid form control is not focusable", for a control created by script.)
+- The page-notes extension's injection test raced the bridge's own sends as the page loaded; it now sends until the bridge is done.
 
 ### Changed
 

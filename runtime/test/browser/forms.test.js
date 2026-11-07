@@ -98,7 +98,7 @@ test('submitting a form with an invalid control focuses the input inside it, in 
     assert.deepEqual(result, { submitted: false, focused: 'input' }, how);
     // Firefox focuses the input too, but also logs that the control "is not focusable"
     // (docs/browser-support.md).
-    const noise = (message) => engine === 'firefox' && /The invalid form control with name=.* is not focusable/.test(message);
+    const noise = (message) => engine === 'firefox' && /[Ii]nvalid form control.* is not focusable/.test(message);
     assert.deepEqual(messages.filter((message) => !noise(message)), [], `${how}: no "invalid form control is not focusable" error`);
     await page.close();
   }

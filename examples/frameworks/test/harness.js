@@ -21,7 +21,7 @@ export const examples = join(here, '..');
  * other engines do, but also logs that the element is "not focusable".
  * `docs/browser-support.md` lists it.
  */
-export const engineNoise = (message) => (process.env.MNX_BROWSER === 'firefox' && /The invalid form control with name=.* is not focusable/.test(message));
+export const engineNoise = (message) => (process.env.MNX_BROWSER === 'firefox' && /[Ii]nvalid form control.* is not focusable/.test(message));
 const repo = join(examples, '../..');
 const out = join(examples, '.tmp');
 let browser;
