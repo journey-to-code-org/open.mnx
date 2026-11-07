@@ -19,7 +19,7 @@
   let confirming = false
 
   const summary = computed(() => {
-    const e = event.get()
+    const e = event
     if (!e) return null
     const yes = e.guests.filter((guest) => guest.rsvp === "yes")
     return {
@@ -32,7 +32,7 @@
   })
 
   function download() {
-    const e = event.get()
+    const e = event
     const link = document.createElement('a')
     link.href = URL.createObjectURL(new Blob([toIcs(e)], { type: 'text/calendar' }))
     link.download = `${e.title.replace(/[^\w]+/g, '-').toLowerCase() || 'event'}.ics`

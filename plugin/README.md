@@ -79,7 +79,7 @@ With Vite, a component's `<style>` is a CSS module in Vite's pipeline, so PostCS
 
 ```js
 mnx({
-  compiler: '/path/to/mnx',    // default: $MNX_COMPILER, then @mnx/compiler, then `mnx` (or `mnix`) on PATH
+  compiler: '/path/to/mnx',    // default: $MNX_COMPILER, then @mnx/compiler, then `mnx` on PATH
   framework: 'auto',           // or 'react' | 'vue' | 'element': the default for plain files
   dts: true,                   // write typings next to each component
   runtime: '@mnx/runtime',     // the runtime module compiled code imports

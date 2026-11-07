@@ -1,6 +1,11 @@
 # Browser support
 
-mnx 2.0 targets browsers with **Baseline 2025** features: everything Baseline Widely available, plus the features below, which became Baseline (newly available) by the end of 2025. When a newer feature is used, it's used only where the browser has it.
+mnx 3.0 targets browsers with **Baseline 2026** features: everything Baseline Widely available, plus the features below. (2.x targeted Baseline 2025.) When a newer feature is used, it's used only where the browser has it.
+
+Moving the target dropped no fallback. Each one is still for a feature that isn't Widely available, so the policy below keeps it:
+- `moveBefore()` isn't in Safari (Limited availability);
+- `ElementInternals.states` (for `:state(hydrated)`) became Baseline in 2024, so it isn't Widely available yet: where it's missing, the host just doesn't get the state;
+- no browser ships TC39 Signals.
 
 | Feature | Used for | Without it |
 |---|---|---|

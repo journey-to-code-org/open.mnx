@@ -53,7 +53,7 @@ export declare function emit(name: string, detail?: unknown): boolean;
 
 /**
  * The signal itself, where a script passes a signal `const` along: `watch(signal(count), …)`.
- * The identity in 2.x; in 3.0, where a signal `const` in a script means its value, it keeps
+ * The identity function; since 3.0, where a signal `const` in a script means its value, it keeps
  * meaning the signal.
  */
 export declare function signal<T>(value: T): T;

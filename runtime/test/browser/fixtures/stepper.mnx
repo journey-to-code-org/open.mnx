@@ -1,10 +1,10 @@
 <!-- A number stepper that submits with its form. -->
 <script>
-  import { state, formValue, validity, onFormReset, onFormRestore, onFormDisabled } from '@mnx/runtime'
+  import { state, formValue, validity, onFormReset, onFormRestore, onFormDisabled, signal } from '@mnx/runtime'
 
   const count = state(0)
   const disabled = state(false)
-  formValue(count)
+  formValue(signal(count))
   validity(() => (count.get() < 0 ? 'Must be zero or more' : ''))
   onFormReset(() => count.set(0))
   onFormRestore((saved) => count.set(Number(saved)))

@@ -1,8 +1,9 @@
-//! What 3.0 changes, found in 2.x code (`plan/decisions/3.0-scope.md`).
+//! What 3.0 changed, found in 2.x code (`plan/decisions/3.0-scope.md`).
 //!
-//! In 3.0, a signal `const` in a script (from `state()`, `computed()`, `inject()` or `hasSlot()`)
-//! means its value, as it already does in templates. `count.get()` and `count.set(…)` keep
-//! working, so the only code that changes meaning passes the signal itself:
+//! Since 3.0, a signal `const` in a script (from `state()`, `computed()`, `inject()`,
+//! `hasSlot()` or `hydrated()`) means its value, as it already did in templates. `count.get()`
+//! and `count.set(…)` keep working, so the only 2.x code that changes meaning passes the signal
+//! itself:
 //!
 //! ```js
 //! const count = state(0)
@@ -10,8 +11,9 @@
 //! watch(signal(count), log)    // the signal, in 2.x and 3.0 alike
 //! ```
 //!
-//! 2.6 warns about those uses (`warnings`), and `mnx migrate --to 3` wraps them in `signal(…)`
-//! (`prepare`), which is the identity in 2.x.
+//! 2.6–2.11 warned about those uses, and `mnx migrate --to 3` wraps them in `signal(…)`
+//! (`prepare`), which is the identity in 2.x. Run it once, on 2.x code: in 3.0 code, a bare name
+//! is its value on purpose. `mnx migrate --to 3 --check` lists the places (`uses`).
 
 use oxc_allocator::Allocator;
 use oxc_ast::{
@@ -150,8 +152,8 @@ fn analyse(source: &str) -> Option<Analysis> {
     })
 }
 
-/// 2.6's warnings for code whose meaning 3.0 changes.
-pub fn warnings(source: &str) -> Vec<Diagnostic> {
+/// The places in 2.x code whose meaning 3.0 changes, for `mnx migrate --to 3 --check`.
+pub fn uses(source: &str) -> Vec<Diagnostic> {
     let Some(analysis) = analyse(source) else {
         return Vec::new();
     };
@@ -163,10 +165,10 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
         .map(|found| {
             Diagnostic::new(
                 span_after(script_start, script, found.start as usize),
-                format!("in 3.0, `{0}` in a script means its value (as in the template), not the signal", found.name),
+                format!("in 2.x, `{0}` here is the signal; since 3.0 it's its value (as in the template)", found.name),
             )
             .with_help(format!(
-                "to pass the signal itself, write `signal({0})` (from @mnx/runtime; it means the same in 2.x); `mnx migrate --to 3` does it, and `{0}.get()` is fine as it is",
+                "`mnx migrate --to 3` writes `signal({0})`, which keeps passing the signal itself (it means the same in 2.x)",
                 found.name
             ))
         })

@@ -82,8 +82,8 @@ function hooks(name) {
 
 /**
  * The signal itself, where a script passes a signal `const` along (`watch(signal(count), …)`).
- * In 2.x it returns what it's given; in 3.0, where a signal `const` in a script means its value,
- * it keeps meaning the signal. (`plan/decisions/3.0-scope.md`.)
+ * It returns what it's given: since 3.0 a signal `const` in a script means its value, and the
+ * compiler leaves `signal(name)`'s argument alone, so it's the signal. (`plan/decisions/3.0-scope.md`.)
  */
 export const signal = (value) => value;
 

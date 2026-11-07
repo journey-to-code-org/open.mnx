@@ -76,7 +76,9 @@ test('the package: an element module per component, React and Vue entries, typin
   assert.equal(pkg.name, '@demo/ui');
   assert.equal(pkg.version, '1.2.3');
   assert.equal(pkg.customElements, './custom-elements.json');
-  assert.match(pkg.peerDependencies['@mnx/runtime'], /^\^2\./);
+  // The runtime this compiler's major version targets.
+  const major = JSON.parse(readFileSync(new URL('../../compiler/package.json', import.meta.url), 'utf8')).version.split('.')[0];
+  assert.equal(pkg.peerDependencies['@mnx/runtime'], `^${major}.0.0`);
   for (const target of Object.values(pkg.exports).flatMap((entry) => (typeof entry === 'string' ? [entry] : Object.values(entry)))) {
     assert.ok(existsSync(join(lib, target)), `${target} exists`);
   }

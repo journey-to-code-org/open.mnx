@@ -2,6 +2,26 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.0.0 — 2026-11-07
+
+The first major version since 2.0 (`plan/roadmap-3.0.md`). One change in meaning, one removal; `docs/migrating-to-3.0.md` has the upgrade. Compiled code is unchanged (`abi: 2`), so components built with 2.x run on the 3.0 runtime.
+
+### Changed (breaking)
+
+- **A signal `const` in a script means its value**, as it already did in templates. A `const` holding a signal from `state()`, `computed()`, `inject()`, `hasSlot()` or `hydrated()` reads as `.get()` wherever the script names it, and a `const` derived from it stays in sync. `count.get()` and `count.set(…)` written out keep working, and `signal(count)` is the signal itself. Only 2.x code that passed the signal itself changes meaning (`watch(count, …)`, `formValue(count)`): run `mnx migrate --to 3` once, on the 2.x code, to wrap those in `signal(…)`. `--check` now lists each place. 2.6–2.11 warned at each; in this repository it touched two runtime test fixtures.
+- **The CLI's 1.x name, `mnix`, is gone.** `@mnx/unplugin` and the language server no longer fall back to it.
+- **`@mnx/server` needs `@mnx/compiler` and `@mnx/runtime` 3.**
+
+### Unchanged
+
+- The hydration markers, and `<mnx-each>` as the way to write lists.
+- **Browser support: the target is Baseline 2026, and no fallback was dropped.** `moveBefore()` isn't in Safari, `ElementInternals.states` isn't Widely available yet, and no browser ships TC39 Signals. `docs/browser-support.md` lists them.
+
+### Examples and docs
+
+- The planner's event page reads its `computed()` event as a value.
+- `docs/migrating-to-3.0.md`; the README, the guide's props page and the runtime's `signal()` docs describe 3.0's reads.
+
 ## 2.11.0 — 2026-11-07
 
 Next.js in the SSR bridge (`plan/roadmap-3.0.md`, 2.11). All additive.

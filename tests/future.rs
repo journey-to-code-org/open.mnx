@@ -1,7 +1,8 @@
-//! 2.6's preparation for 3.0: signal `const`s passed as themselves in scripts are flagged, and
-//! `mnx migrate --to 3` wraps them in `signal(…)`.
+//! 3.0: a signal `const` in a script means its value, as in the template. `.get()`/`.set()`
+//! written out stay, `signal(name)` is the signal itself, and `mnx migrate --to 3` prepares 2.x
+//! code (it wraps the bare uses that passed the signal in `signal(…)`).
 
-use mnx_compiler::{compile_js, prepare_for_3, warnings};
+use mnx_compiler::{compile_js, prepare_for_3, uses_for_3, warnings};
 
 const SOURCE: &str = r#"<script>
   import { state, computed, watch, formValue } from '@mnx/runtime'
@@ -15,32 +16,64 @@ const SOURCE: &str = r#"<script>
 <mnx-n><button onclick={reset}>{count} {doubled}</button></mnx-n>"#;
 
 #[test]
-fn passing_a_signal_itself_warns_and_get_set_do_not() {
-    let found: Vec<String> = warnings(SOURCE)
+fn a_signal_const_reads_as_its_value_in_the_script() {
+    let js = compile_js(
+        r#"<script>
+  import { state, signal, watch } from '@mnx/runtime'
+  const count = state(1)
+  const total = count + 1
+  function log() { console.log(count, { count }) }
+  count.set(2)
+  watch(signal(count), log)
+</script>
+<mnx-n><p>{count} {total}</p></mnx-n>"#,
+        "@mnx/runtime",
+        "n.mnx",
+    )
+    .unwrap();
+    assert!(
+        js.contains("const total = __mnxComputed(() => (count.get() + 1))"),
+        "derived from the value: {js}"
+    );
+    assert!(
+        js.contains("console.log(count.get(), { count: count.get() })"),
+        "{js}"
+    );
+    assert!(
+        js.contains("  count.set(2)\n"),
+        "`.set()` written out stays: {js}"
+    );
+    assert!(
+        js.contains("watch(signal(count), log)"),
+        "`signal(count)` is the signal: {js}"
+    );
+    // Nothing warns about it: in 3.0 code, a bare name is its value on purpose.
+    assert!(warnings(SOURCE).is_empty());
+}
+
+#[test]
+fn migrate_to_3_lists_and_wraps_2x_uses_once_and_imports_signal() {
+    let found: Vec<String> = uses_for_3(SOURCE)
         .iter()
-        .map(|warning| {
+        .map(|found| {
             format!(
                 "{}:{} {}",
-                warning.span.line, warning.span.column, warning.message
+                found.span.line, found.span.column, found.message
             )
         })
         .collect();
     assert_eq!(
         found,
         [
-            "6:13 in 3.0, `count` in a script means its value (as in the template), not the signal",
-            "7:9 in 3.0, `doubled` in a script means its value (as in the template), not the signal",
+            "6:13 in 2.x, `count` here is the signal; since 3.0 it's its value (as in the template)",
+            "7:9 in 2.x, `doubled` here is the signal; since 3.0 it's its value (as in the template)",
         ]
     );
-    let help = warnings(SOURCE)[0].help.clone().unwrap();
-    assert!(
-        help.contains("`signal(count)`") && help.contains("mnx migrate --to 3"),
-        "{help}"
-    );
-}
-
-#[test]
-fn migrate_to_3_wraps_them_once_and_imports_signal() {
+    assert!(uses_for_3(SOURCE)[0]
+        .help
+        .as_deref()
+        .unwrap()
+        .contains("`signal(count)`"));
     let (output, wrapped) = prepare_for_3(SOURCE);
     assert_eq!(wrapped, 2);
     assert!(
@@ -52,15 +85,19 @@ fn migrate_to_3_wraps_them_once_and_imports_signal() {
         "{output}"
     );
     assert!(output.contains("count.get() * 2") && output.contains("count.set(0)"));
-    // Nothing left to warn about or wrap, and it still compiles.
-    assert!(warnings(&output).is_empty());
+    // Nothing left to wrap, and it compiles to what 2.x meant: the signals themselves.
+    assert!(uses_for_3(&output).is_empty());
     assert_eq!(prepare_for_3(&output), (output.clone(), 0));
-    compile_js(&output, "@mnx/runtime", "n.mnx").unwrap();
+    let js = compile_js(&output, "@mnx/runtime", "n.mnx").unwrap();
+    assert!(
+        js.contains("formValue(signal(count))") && js.contains("watch(signal(doubled)"),
+        "{js}"
+    );
 }
 
 #[test]
 fn no_signals_no_changes() {
     let source = "<script>\n  let count = 0\n</script>\n<mnx-n><p>{count}</p></mnx-n>";
-    assert!(warnings(source).is_empty());
+    assert!(uses_for_3(source).is_empty());
     assert_eq!(prepare_for_3(source), (source.to_owned(), 0));
 }

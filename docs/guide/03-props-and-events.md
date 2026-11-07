@@ -93,7 +93,7 @@ The declaration only types the prop (the default still comes from the host tag),
 
 ## Signals that read like values
 
-For state shared between components, or anything outside one element, `state()` and `computed()` from `@mnx/runtime` make explicit signals. A `const` holding one reads like a value in the template:
+For state shared between components, or anything outside one element, `state()` and `computed()` from `@mnx/runtime` make explicit signals. A `const` holding one reads like a value, in the script and the template:
 
 ```html
 <script>
@@ -101,13 +101,13 @@ For state shared between components, or anything outside one element, `state()` 
   import { session } from '../session.js'
 
   const user = inject(session)                 // a signal that follows the nearest provider
-  const greeting = `Hi, ${user.get()?.name}`   // derived: stays in sync
+  const greeting = `Hi, ${user?.name}`         // derived: stays in sync
 </script>
 <user-badge>
   <span>{greeting}</span> <small>{user.email}</small>
 </user-badge>
 ```
 
-In the script, call `.get()` and `.set()`. In the template, `{user.email}` means `user.get().email`.
+`user.email` means `user.get().email`. To change a `state()`, call `.set(…)`. To pass the signal itself to something that takes one (`watch()`, `formValue()`, `provide()`), write `signal(user)`. (Before 3.0, a script read it with `.get()`; that still works.)
 
 **Next:** [Composition and slots](04-composition.md)

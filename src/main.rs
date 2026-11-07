@@ -596,6 +596,11 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
             let (output, wrapped) = mnx_compiler::prepare_for_3(&source);
             if wrapped > 0 {
                 pending += 1;
+                if check {
+                    for found in mnx_compiler::uses_for_3(&source) {
+                        eprint!("{}", found.render_warning(&source, path));
+                    }
+                }
                 eprintln!(
                     "{path}: {} the signal{} passed as {} in `signal(…)`, which 3.0 needs",
                     if check { "would wrap" } else { "wrapped" },

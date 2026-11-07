@@ -31,9 +31,13 @@ mod validate;
 pub use components::component_extension;
 pub use components::{filesystem, Loader};
 pub use convert::{convert, Conversion};
-/// 3.0 preparation: `mnx migrate --to 3`.
+/// `mnx migrate --to 3`: wrap 2.x code's bare uses of a signal `const` in `signal(…)`.
 pub fn prepare_for_3(source: &str) -> (String, usize) {
     future::prepare(source)
+}
+/// Where `prepare_for_3` would wrap, as warnings.
+pub fn uses_for_3(source: &str) -> Vec<Diagnostic> {
+    future::uses(source)
 }
 pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
@@ -505,11 +509,6 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
             None => diagnostic,
         })
         .collect();
-    let mut warnings = warnings;
-    // What 3.0 changes (`.mnx` scripts only: a JSX component's signals are its own `let`s).
-    if lowered.is_none() {
-        warnings.extend(future::warnings(source));
-    }
     warnings
 }
 

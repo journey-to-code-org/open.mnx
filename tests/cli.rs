@@ -221,19 +221,6 @@ fn migrate_rewrites_in_place_and_check_reports() {
 }
 
 #[test]
-fn mnix_is_still_the_same_cli() {
-    let output = Command::new(env!("CARGO_BIN_EXE_mnix"))
-        .args(["compile", "--help-me"])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("missing component source path")
-            || String::from_utf8_lossy(&output.stderr).contains("unable to read")
-    );
-}
-
-#[test]
 fn serve_answers_a_request_per_line_and_batches() {
     use std::io::{BufRead, BufReader, Write};
     let mut child = Command::new(env!("CARGO_BIN_EXE_mnx"))

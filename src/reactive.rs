@@ -41,9 +41,10 @@ pub enum Kind {
     Callback(String),
     /// JSX `children`.
     Children,
-    /// A top-level `const` holding a signal from `state()`, `computed()` or `inject()`: the
-    /// script reads it with `.get()`; templates read it like a value, and a `const` that reads it
-    /// is derived.
+    /// A top-level `const` holding a signal from `state()`, `computed()`, `inject()`, `hasSlot()`
+    /// or `hydrated()`: the script and the template read it like a value (since 3.0; `.get()`
+    /// and `.set()` written out stay, and `signal(name)` is the signal), and a `const` that reads
+    /// it is derived.
     Signal,
 }
 
@@ -260,13 +261,25 @@ impl<'n, N: Names> Rewriter<'n, N> {
         match self.names.kind(identifier)? {
             Kind::Prop(prop) => self.names.in_script().then(|| format!("$p.{prop}")),
             Kind::State | Kind::Derived => Some(format!("{name}.get()")),
-            // In a template, a signal reads like a value; `.get()`/`.set()` written out stay.
+            // A signal reads like a value, in the template and (since 3.0) in the script.
+            // `.get()`/`.set()` written out stay, and `signal(count)` is the signal itself.
             Kind::Signal => {
-                let rest = &self.names.source()[identifier.span.end as usize..];
+                let source = self.names.source();
+                let rest = source[identifier.span.end as usize..].trim_start();
                 let explicit = [".get(", ".set(", "?.get("]
                     .iter()
-                    .any(|call| rest.trim_start().starts_with(call));
-                (!self.names.in_script() && !explicit).then(|| format!("{name}.get()"))
+                    .any(|call| rest.starts_with(call));
+                let passed = source[..identifier.span.start as usize]
+                    .trim_end()
+                    .strip_suffix('(')
+                    .is_some_and(|before| {
+                        before.ends_with("signal")
+                            && !before[..before.len() - "signal".len()].ends_with(|c: char| {
+                                c.is_alphanumeric() || c == '_' || c == '$' || c == '.'
+                            })
+                    })
+                    && rest.starts_with(')');
+                (!explicit && !passed).then(|| format!("{name}.get()"))
             }
             Kind::Callback(_) => {
                 self.fail(

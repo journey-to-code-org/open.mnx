@@ -1,5 +1,5 @@
 // How the language server reaches the compiler: the WebAssembly build (@mnx/compiler) when it's
-// installed, otherwise the `mnx` CLI (or `mnix`, its 1.x name, or the one in `compiler`). Both give the same diagnostics.
+// installed, otherwise the `mnx` CLI (or the one in `compiler`). Both give the same diagnostics.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -15,7 +15,7 @@ export async function createBackend({ compiler } = {}) {
   }
   const chosen = compiler ?? process.env.MNX_COMPILER;
   if (chosen) return cliBackend(chosen);
-  return cliBackend(spawnSync('mnx', ['--version']).error?.code === 'ENOENT' ? 'mnix' : 'mnx');
+  return cliBackend('mnx');
 }
 
 function wasmBackend(wasm) {
