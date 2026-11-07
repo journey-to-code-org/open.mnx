@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mnx/runtime": "file:../../../runtime",
+    "@mnx/server": "file:../../../server",
     "@solidjs/meta": "0.29.4",
     "@solidjs/router": "1.0.1",
     "@solidjs/start": "2.2.2",

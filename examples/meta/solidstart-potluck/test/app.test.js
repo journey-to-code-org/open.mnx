@@ -75,13 +75,18 @@ test('signing up: the mnx controls submit with the action\'s form, and the board
   await page.done();
 });
 
-test('without JavaScript: the form posts to the action, but the mnx controls aren\'t in it', async () => {
+test('without JavaScript: the board is in the server HTML, and signing up posts the controls\' values', async () => {
   const page = await open({ javascript: false });
-  assert.equal(await page.locator('dish-board li').count(), 0, 'the server HTML has the host only');
+  // The shadow roots came with the page (src/middleware.js runs it through @mnx/server).
+  assert.equal(await meter(page, 'Mains'), 'Mains: 1 of 3');
+  assert.equal((await page.locator('dish-board li[data-course=dessert] ul li').textContent()).trim(), 'Ines +2');
   await page.fill('input[name=name]', 'Uma');
+  await page.fill('input[name=dish]', 'Slaw');
   await page.getByRole('button', { name: 'Sign up' }).click();
   await page.waitForLoadState();
-  const signups = await (await fetch(`${url}/`)).text();
-  assert.doesNotMatch(signups, /Uma/, 'no course or guests arrived, so the action refused it');
+  // The course and guest count went with the form, as hidden inputs (Sides, 1 person).
+  await page.goto(url);
+  assert.equal((await page.textContent('.lede')).trim(), '4 households, 7 people so far.');
+  assert.equal((await page.locator('dish-board li[data-course=side] ul li').allTextContents()).join('|'), 'Omar|Uma');
   await page.done();
 });

@@ -1500,6 +1500,15 @@ function defineElement(tag, definition) {
 
     #boot(kept = null, reloading = false) {
       const element = this;
+      // Props a framework's server rendering wrote as JSON (the adapters' `mnx-props`), for
+      // starting with them before the framework sets them as properties.
+      if (!reloading && this.hasAttribute('mnx-props')) {
+        let given = null;
+        try { given = JSON.parse(this.getAttribute('mnx-props')); } catch {}
+        for (const [name, value] of Object.entries(given ?? {})) {
+          if (Object.hasOwn(props, name) && !this.#given.has(name)) this[name] = value;
+        }
+      }
       // The server's stand-in for this control's value, for submitting before JavaScript
       // (@mnx/server's injectShadowRoots): the element's own form value takes over now.
       if (form) for (const child of [...this.children]) if (child.localName === 'input' && child.hasAttribute('data-mnx-fallback')) child.remove();

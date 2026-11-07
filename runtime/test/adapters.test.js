@@ -34,8 +34,10 @@ test('the React wrapper renders on the server: the element, its attributes and c
   assert.equal(Picker.displayName, 'MnxPicker');
   const html = renderToString(React.createElement(Picker, { value: 2, info: { a: 2 }, id: 'p', className: 'big', onValueChange() {} },
     React.createElement('b', { slot: 'icon' }, 'hi')));
-  assert.equal(html, '<mnx-picker id="p" class="big"><b slot="icon">hi</b></mnx-picker>',
-    'props and event handlers are not attributes; they are set in the browser');
+  assert.equal(html, '<mnx-picker id="p" class="big" mnx-props="{&quot;value&quot;:2,&quot;info&quot;:{&quot;a&quot;:2}}"><b slot="icon">hi</b></mnx-picker>',
+    'props are written once, as JSON in mnx-props (for the element, and for @mnx/server\'s shadow roots); event handlers are set in the browser');
+  // No props given: no mnx-props.
+  assert.equal(renderToString(React.createElement(Picker, { id: 'q' })), '<mnx-picker id="q"></mnx-picker>');
 });
 
 test('the Vue wrapper declares the props, events and v-model it supports', () => {

@@ -165,9 +165,9 @@ for (const version of ['react19', 'react18']) {
     assert.deepEqual(await page.$eval('mnx-rating', (el) => [el.id, el.className, el === window.ratingRef]), ['r', 'big', true],
       'other props and the ref reach the element');
     assert.equal(await page.evaluate(() => window.cardRef.current === document.querySelector('mnx-card')), true, 'object refs too');
-    // React 19 sets the props as it creates the element, so a script that seeds state from a
-    // prop sees it. (React 18 sets them after insertion: the script saw the default.)
-    assert.equal(await page.textContent('mnx-seeded output'), version === 'react19' ? '5' : '0');
+    // A script that seeds state from a prop sees it: React 19 sets the props as it creates the
+    // element, and in React 18 the element reads them from `mnx-props` when it starts (2.8).
+    assert.equal(await page.textContent('mnx-seeded output'), '5');
 
     await page.click('mnx-rating .two');
     await settle(page);

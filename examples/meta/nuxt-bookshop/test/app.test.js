@@ -60,6 +60,18 @@ test('the list: server-rendered, filtered by genre through v-model on an mnx ele
   await direct.page.close();
 });
 
+test('without JavaScript: the stock meters and the genre switch are in the server HTML (declarative shadow roots)', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  assert.match(html, /<stock-meter mnx-props="[^"]*"><template shadowrootmode="open">/, 'the Vue wrapper wrote mnx-props, and @mnx/server the shadow root');
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto(`${base}/`);
+  assert.equal(await page.textContent('li[data-id=b4] stock-meter span'), 'Out of stock');
+  assert.equal(await page.textContent('li[data-id=b2] stock-meter span'), '2 left: reorder');
+  assert.equal(await page.locator('segmented-control button').count() >= 3, true);
+  await context.close();
+});
+
 test('editing: money, stock, tags and featured on v-model, saved through the API', async () => {
   const { page, messages } = await open('/books/b2');
   await page.waitForSelector('quantity-stepper button.more');

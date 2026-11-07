@@ -34,6 +34,8 @@ export interface Mnx {
    * those out).
    */
   injectShadowRoots(html: string, options?: { forms?: boolean }): string;
+  /** `injectShadowRoots` as a Node Transform stream, for streamed pages. */
+  injectShadowRootsStream(options?: { forms?: boolean }): import('node:stream').Transform;
   /** A component's browser module (JavaScript). */
   module(name: string): string;
   /** Static sites: write the browser modules and @mnx/runtime under `dir` (at `<dir>/_mnx/…`). */

@@ -8,4 +8,4 @@ import { defineConfig } from 'vite';
 const cli = ['debug', 'release'].map((profile) => new URL(`../../../target/${profile}/mnx${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url).pathname).find(existsSync);
 if (cli) process.env.MNX_COMPILER ??= cli;
 
-export default defineConfig({ plugins: [mnx(), solidStart(), nitro()] });
+export default defineConfig({ plugins: [mnx(), solidStart({ middleware: './src/middleware.js' }), nitro()] });

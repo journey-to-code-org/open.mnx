@@ -20,7 +20,7 @@
     </div>
     <div class="panel">
       <h2>Last 8 weeks</h2>
-      <streak-grid log={data.log} today={data.today} weeks={8} goal={1} label="Workout days"></streak-grid>
+      <streak-grid log={data.log} mnx-props={JSON.stringify({ log: data.log })} today={data.today} weeks={8} goal={1} label="Workout days"></streak-grid>
     </div>
   </section>
 
@@ -36,7 +36,7 @@
     <div class="numbers">
       <div class="field">Sets <quantity-stepper name="sets" value={form?.values?.sets || 3} min={1} max={10} label="sets"></quantity-stepper></div>
       <div class="field">Reps <quantity-stepper name="reps" value={form?.values?.reps || 8} min={1} max={50} label="reps"></quantity-stepper></div>
-      <div class="field">Effort <star-rating name="effort" label="Effort" required></star-rating></div>
+      <div class="field">Effort <star-rating name="effort" value={form?.values?.effort || 3} label="Effort" required></star-rating></div>
     </div>
     {#if form?.errors}<p class="error" role="alert">{Object.values(form.errors).join(' ')}</p>{/if}
     {#if form?.logged}<p class="ok" role="status">Logged: {form.logged}.</p>{/if}

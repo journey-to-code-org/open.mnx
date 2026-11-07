@@ -36,6 +36,17 @@ function named(name, nodes) {
 
 const same = (a, b) => Object.is(a, b);
 
+/** The given props as JSON for the host's `mnx-props`, or null. */
+function propsJson(values) {
+  const given = Object.entries(values).filter(([, value]) => value !== undefined && typeof value !== 'function');
+  if (!given.length) return null;
+  try {
+    return JSON.stringify(Object.fromEntries(given));
+  } catch {
+    return null;
+  }
+}
+
 // Props are set by a directive, after Vue creates the element and before it's inserted (so before
 // the element starts) and before each update. Not as `.name` DOM props: Vue turns `null` into
 // `0`, `''` or `false` there, by the property's current type, and a prop's null is meaningful.
@@ -96,7 +107,9 @@ export function wrap(Element) {
           const nodes = slot() ?? [];
           children.push(...(name === 'default' ? nodes : named(name, nodes)));
         }
-        return withDirectives(h(tag, { ...attrs, ...listeners, ref: (node) => { element = node; } }, children), [[setProps, values]]);
+        // The given props as JSON, on the server and in the browser alike (see the React adapter).
+        const json = propsJson(Object.fromEntries(Object.keys(props).map((name) => [name, primary && name === primary.prop && given.modelValue !== undefined ? given.modelValue : given[name]])));
+        return withDirectives(h(tag, { ...attrs, ...listeners, ...(json ? { 'mnx-props': json } : {}), ref: (node) => { element = node; } }, children), [[setProps, values]]);
       };
     },
   });

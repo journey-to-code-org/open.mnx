@@ -33,6 +33,17 @@ const attributes = (rest) => {
   return others;
 };
 
+/** The given props as JSON for the host's `mnx-props`, or null (none, or not serializable). */
+export function propsJson(values) {
+  const given = Object.entries(values).filter(([, value]) => value !== undefined && typeof value !== 'function');
+  if (!given.length) return null;
+  try {
+    return JSON.stringify(Object.fromEntries(given));
+  } catch {
+    return null;
+  }
+}
+
 export function wrap(Element) {
   const meta = Element?.mnx;
   if (!meta) throw new TypeError('mnx: wrap() needs a compiled mnx element (the default export of a .mnx module)');
@@ -88,7 +99,11 @@ export function wrap(Element) {
     // the component's script sees them when it runs (`let draft = card`). (React 18 would write
     // them as attributes; there, and for later changes and removals, the effect above sets them.)
     const early = legacy || typeof window === 'undefined' ? {} : values;
-    return React.createElement(tag, { ...early, ...attributes(rest), ref }, all.children);
+    // The props as JSON, on the server and in the browser alike (so hydration matches): the
+    // element starts with them before React sets them, and @mnx/server's injectShadowRoots
+    // renders the element's shadow root from them.
+    const json = propsJson(values);
+    return React.createElement(tag, { ...early, ...attributes(rest), ...(json ? { 'mnx-props': json } : {}), ref }, all.children);
   });
   Component.displayName = pascal(tag);
   Component.element = Element;

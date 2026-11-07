@@ -10,7 +10,8 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime"
+    "@mnx/runtime": "file:../../../runtime",
+    "@mnx/server": "file:../../../server"
   },
   "devDependencies": {
     "@mnx/compiler": "file:../../../compiler",

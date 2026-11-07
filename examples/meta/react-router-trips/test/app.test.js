@@ -87,12 +87,16 @@ test('the server\'s validation comes back through the action', async () => {
   await page.done();
 });
 
-test('without JavaScript the form still posts, but the mnx controls aren\'t in it (they need JavaScript to be form controls)', async () => {
+test('without JavaScript: the balances are in the server HTML; the category submits, a typed amount can\'t yet', async () => {
   const page = await open({ javascript: false });
-  assert.equal(await page.locator('balance-list li').count(), 0, 'the server HTML has the host only');
+  // The shadow roots came with the page (app/entry.server.jsx streams it through @mnx/server).
+  assert.equal(await page.locator('balance-list li').count(), 4);
+  assert.equal(await page.locator('balance-list').getByRole('img', { name: /^Ana:/ }).getAttribute('aria-label'), 'Ana: $294.87');
   await page.fill('input[name=what]', 'Firewood');
   await page.getByRole('button', { name: 'Add expense' }).click();
-  // No amount and no category arrived: the action says so.
+  // The category control's value arrived (a hidden input the element removes when it starts);
+  // the amount is typed into a field inside a shadow root, which a form can't see until the
+  // element is defined: the action asks for it.
   assert.deepEqual(await page.locator('.error').allTextContents(), ['An amount above $0.']);
   await page.done();
 });

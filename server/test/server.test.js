@@ -140,3 +140,20 @@ test('injectShadowRoots: shadow components complete before JavaScript, form valu
   assert.deepEqual(page.errors, []);
   await page.done();
 });
+
+test('injectShadowRootsStream: the same result as the whole page, however the chunks fall', async () => {
+  const mnx = createMnx({ components });
+  const html = FRAMEWORK_HTML.replace('<button>Send</button>', '<button>Send → café</button>');
+  const whole = mnx.injectShadowRoots(html);
+  const bytes = Buffer.from(html);
+  for (const size of [1, 3, 7, 64, 4096]) {
+    const stream = mnx.injectShadowRootsStream();
+    const out = [];
+    stream.on('data', (chunk) => out.push(chunk));
+    const done = new Promise((resolve) => stream.on('end', resolve));
+    for (let at = 0; at < bytes.length; at += size) stream.write(bytes.subarray(at, at + size));
+    stream.end();
+    await done;
+    assert.equal(Buffer.concat(out.map((chunk) => Buffer.from(chunk))).toString(), whole, `chunks of ${size} bytes`);
+  }
+});

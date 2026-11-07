@@ -17,6 +17,8 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { StringDecoder } from 'node:string_decoder';
+import { Transform } from 'node:stream';
 import { findCompiler } from './compiler.js';
 
 export { findCompiler };
@@ -203,8 +205,36 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     cpSync(runtimeDir, join(out, 'runtime'), { recursive: true });
   }
 
+  /**
+   * `injectShadowRoots` for a streamed page (React's renderToPipeableStream, any Node stream of
+   * HTML): a Transform that passes the page through as it comes, holding back only an unfinished
+   * tag at the end of a chunk until the next one completes it.
+   */
+  function injectShadowRootsStream(options) {
+    const decoder = new StringDecoder('utf8');
+    let carry = '';
+    const pass = (text, flush) => {
+      const all = carry + text;
+      // Hold back from an unclosed `<` (a tag cut in two), and from an opened host tag whose
+      // next characters might start its <template> (to not inject twice): flushing at '>'.
+      const open = flush ? -1 : all.lastIndexOf('<');
+      const cut = open > all.lastIndexOf('>') ? open : all.length;
+      carry = all.slice(cut);
+      return injectShadowRoots(all.slice(0, cut), options);
+    };
+    return new Transform({
+      transform(chunk, _encoding, callback) {
+        callback(null, pass(decoder.write(chunk), false));
+      },
+      flush(callback) {
+        callback(null, pass(decoder.end(), true));
+      },
+    });
+  }
+
   return {
     writeAssets,
+    injectShadowRootsStream,
     module: (name) => js(nameOf(name) ?? name),
     names: [...files.keys()],
     describe: (name) => describe(nameOf(name) ?? name),
