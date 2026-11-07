@@ -2,6 +2,19 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the `.mnx` format, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 1.6.0 — 2026-11-06
+
+### Added
+
+- **Leak suite**: removed elements, including ones React and Vue unmount and ones that read a signal that outlives them, are garbage-collected. Checked in Chromium by counting live instances through the DevTools protocol.
+- **Benchmarks**: the js-framework-benchmark operations on 1,000 keyed rows, and hydration against fresh rendering, with budgets that catch quadratic operations and hydration that re-renders.
+- **Size budgets**: the runtime, the Signals implementation included, within 11 KB gzip (9.7 KB).
+- **Standards write-ups** in `docs/standards/`: a Signals integration report, a parts usage report for DOM Parts and declarative templating, and the `.mnx` format as a declarative custom elements explainer.
+
+### Fixed
+
+- Clearing or replacing a long list was quadratic: each removed row unwatched its effects separately. A subtree now unwatches in one pass, so clearing 1,000 rows went from 112 ms to 28 ms and replacing them from 118 ms to 46 ms. New rows are built in one fragment and inserted once.
+
 ## 1.5.0 — 2026-11-06
 
 ### Added

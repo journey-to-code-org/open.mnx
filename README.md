@@ -310,11 +310,19 @@ mnix request < request.json
 
 `mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `mnix request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`).
 
+## Standards
+
+mnx is meant to be absorbed by the platform. These reports give the standards discussions evidence from using it:
+
+- [`docs/standards/signals.md`](docs/standards/signals.md): an integration report for the TC39 Signals proposal, including two reference-polyfill behaviours the README rules out and the cost of unwatching one effect at a time.
+- [`docs/standards/dom-parts.md`](docs/standards/dom-parts.md): what a parts model needed in practice (markers, regions, hydration), for DOM Parts and declarative templating.
+- [`docs/standards/declarative-custom-elements.md`](docs/standards/declarative-custom-elements.md): the `.mnx` format as a worked declarative custom elements explainer.
+
 ## Stability
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Planned: benchmarks and a leak suite in CI, and standards write-ups (1.6), deprecation warnings and `mnix migrate` for 2.0 (1.7). Streaming server rendering (sending resolved `mnx-await` content as it arrives) is planned after 2.0. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
+Planned: deprecation warnings and `mnix migrate` for 2.0 (1.7). Streaming server rendering (sending resolved `mnx-await` content as it arrives) is planned after 2.0. `plan/roadmap-2.0.md` in the project docs has the plan to 2.0.
 
 ## Repository and tests
 
@@ -331,8 +339,8 @@ cargo test --locked
 cargo fmt --all -- --check
 cargo clippy --all-targets --locked -- -D warnings
 (cd runtime && npm ci && npm test)       # unit tests, incl. Signals differential tests
-(cd runtime && npm run test:browser)     # Chromium: components, hydration, slots, events, React/Vue/Angular
-(cd runtime && npm run test:tools)       # manifest schema and TypeScript checks
+(cd runtime && npm run test:browser)     # Chromium: components, hydration, slots, events, adapters, leaks, benchmarks
+(cd runtime && npm run test:tools)       # manifest schema, TypeScript checks, size budgets
 (cd plugin && npm ci && npm test)        # real apps: React, Vue, Svelte, Solid, Lit, Astro, Tailwind; Rollup, webpack, esbuild
 (cd compiler && npm test)                # render API (and, with mnx.wasm built, parity with the CLI)
 ```
