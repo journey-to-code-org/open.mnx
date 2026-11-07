@@ -714,6 +714,10 @@ function routeChildren(host, context, slots, tag) {
   for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
 }
 
+// Form controls' live state: bound as properties, so `value={draft}` keeps up with typing and
+// `checked={done}` with clicks.
+const LIVE = new Set(['input.value', 'textarea.value', 'select.value', 'input.checked', 'option.selected']);
+
 function bindAttribute(part, node) {
   const name = part.attribute;
   effect(() => {
@@ -728,7 +732,18 @@ function bindAttribute(part, node) {
         console.error(`mnx: "${name}" is a boolean attribute; got`, value);
         return;
       }
+      // A control's live state is its property (the attribute is only the default once the
+      // user has touched it).
+      if (LIVE.has(`${node.localName}.${name}`)) {
+        if (node[name] !== value) node[name] = value;
+        return;
+      }
       node.toggleAttribute(name, value);
+      return;
+    }
+    if (LIVE.has(`${node.localName}.${name}`)) {
+      const text = value == null ? '' : String(value);
+      if (node[name] !== text) node[name] = text;
       return;
     }
     if (value == null) return node.removeAttribute(name);
