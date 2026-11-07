@@ -42,8 +42,10 @@ export function variantFor(query, importer, project) {
   const [file] = split(importer);
   if (file.endsWith('.mnx')) return 'element'; // a component, or a wrapper (`x.mnx?mnx=react`)
   if (file.endsWith('.vue')) return 'vue';
-  if (/\.[jt]sx$/.test(file)) return 'react';
-  return project;
+  // JSX is React's, or Vue's in a Vue project (vue-jsx); Solid and Preact use custom elements
+  // directly.
+  if (/\.[jt]sx$/.test(file)) return project === 'vue' ? 'vue' : project === 'react' || project === 'element' ? 'react' : 'element';
+  return project === 'react' || project === 'vue' ? project : 'element';
 }
 
 /** `.mnx` files a component imports, recursively, so changing one recompiles its importers. */
@@ -110,7 +112,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   }
 
   function writeTypings(path) {
-    const framework = project === 'react' || project === 'vue' ? project : 'none';
+    const framework = ['react', 'vue', 'svelte', 'solid'].includes(project) ? project : 'none';
     const target = resolve(dirname(path), `${basename(path, '.mnx')}.d.mnx.ts`);
     const contents = compile(path, '--emit', 'dts', '--framework', framework).code;
     // Only when changed, so watchers don't loop.
@@ -193,6 +195,9 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         const names = config.plugins.map((plugin) => plugin.name);
         if (names.some((name) => /^vite:react/.test(name))) project = 'react';
         else if (names.includes('vite:vue')) project = 'vue';
+        else if (names.includes('solid')) project = 'solid';
+        else if (names.some((name) => name.startsWith('preact'))) project = 'preact';
+        else if (names.some((name) => name.startsWith('vite-plugin-svelte'))) project = 'svelte';
         else project = 'element';
       },
       handleHotUpdate({ file, server }) {

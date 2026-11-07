@@ -465,14 +465,21 @@ function bindSlot(part, open, hydrating, context) {
   const region = {
     open,
     close,
+    provided: false,
     update() {
       const hydrate = first;
       first = false;
-      if (slot.nodes.length) {
+      region.provided = slot.nodes.some(isContent);
+      if (region.provided) {
         if (fallback) { fallback.dispose(); fallback = null; clearBetween(open, close); }
         open.data = '[!';
         place(slot.nodes, open, context.slotted);
-      } else if (part.fallback) {
+        return;
+      }
+      // Only markers and whitespace (a framework's bookkeeping): they wait in the park, where
+      // the framework can still add content next to them, while the fallback shows.
+      if (slot.nodes.length) slot.park.append(...slot.nodes);
+      if (part.fallback) {
         if (fallback) return;
         if (!hydrate || open.data !== '[') clearBetween(open, close);
         open.data = '[';
@@ -538,6 +545,22 @@ function move(parent, node, before) {
 }
 
 const slotName = (node) => (node.nodeType === 1 && node.getAttribute('slot')) || 'default';
+/** An element or non-blank text: what fills a slot (comments and whitespace don't). */
+const isContent = (node) => node.nodeType === 1 || (node.nodeType === TEXT && node.data.trim() !== '');
+
+/**
+ * The slot for each of `nodes` (an element's children, in order). Comments and whitespace are
+ * frameworks' markers (Lit's parts, Svelte's anchors): a comment goes with the content after it
+ * and whitespace with the content before it, so a framework's range stays together in one slot.
+ */
+function assignSlots(nodes) {
+  const named = nodes.map((node) => (isContent(node) ? slotName(node) : null));
+  const after = (i) => { for (let j = i + 1; j < nodes.length; j++) if (named[j]) return named[j]; return null; };
+  const before = (i) => { for (let j = i - 1; j >= 0; j--) if (named[j]) return named[j]; return null; };
+  return nodes.map((node, i) => named[i]
+    ?? (node.nodeType === COMMENT ? after(i) ?? before(i) : before(i) ?? after(i))
+    ?? 'default');
+}
 const nativeText = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
 const nativeHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
 
@@ -550,7 +573,7 @@ function routeChildren(host, context, slots, tag) {
   // Drop content that left through its real parent (or was moved elsewhere), except `keep`,
   // which is arriving now.
   const prune = (slot, keep) => {
-    const home = slot.region ? slot.region.open.parentNode : slot.park;
+    const home = slot.region?.provided ? slot.region.open.parentNode : slot.park;
     const kept = slot.nodes.filter((node) => node === keep || node.parentNode === home);
     for (const node of slot.nodes) if (!kept.includes(node)) unmark(node, context.slotted);
     const changed = kept.length !== slot.nodes.length;
@@ -573,8 +596,9 @@ function routeChildren(host, context, slots, tag) {
       return;
     }
     const from = take(node);
-    const name = slotName(node);
-    if (!slots.includes(name)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
+    // A marker or whitespace goes in the slot of what it's inserted before.
+    const name = isContent(node) ? slotName(node) : (before && holding(before)?.name) || 'default';
+    if (!slots.includes(name) && isContent(node)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
     const slot = slotRecord(context, name);
     const at = before ? slot.nodes.indexOf(before) : -1;
     if (at >= 0) slot.nodes.splice(at, 0, node);
@@ -645,7 +669,23 @@ function routeChildren(host, context, slots, tag) {
       const slot = record.type === 'attributes' && holding(record.target);
       if (slot && slotName(record.target) !== slot.name) insert(record.target, null);
     }
-    for (const slot of context.slots.values()) if (prune(slot)) show(slot);
+    // Each slot's nodes are what's actually in it: frameworks also insert and remove content
+    // next to their own markers there, without going through the host.
+    for (const slot of context.slots.values()) {
+      let actual;
+      if (slot.region?.provided) {
+        actual = [];
+        for (let node = slot.region.open.nextSibling; node && node !== slot.region.close; node = node.nextSibling) actual.push(node);
+      } else {
+        actual = [...slot.park.childNodes];
+      }
+      if (actual.length === slot.nodes.length && actual.every((node, i) => node === slot.nodes[i])) continue;
+      for (const node of slot.nodes) if (!actual.includes(node)) unmark(node, context.slotted);
+      slot.nodes = actual;
+      // An element that belongs to another slot (added next to a marker here) goes there.
+      for (const node of actual) if (node.nodeType === 1 && slotName(node) !== slot.name) insert(node, null);
+      show(slot);
+    }
     // Content a parent adds inside a slot itself (its mnx-if or mnx-each there) is slotted too.
     if (context.slotted) {
       for (const slot of context.slots.values()) {
@@ -1055,12 +1095,10 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
         } else {
           if (server && !shadow && slots.length) {
             // Not server markup: the page's own children for this element, to be slotted.
-            for (const node of [...root.childNodes]) {
-              if (node.nodeType === TEXT && node.data.trim() === '') continue;
-              slotRecord(context, slotName(node)).nodes.push(node);
-            }
-            for (const name of context.slots.keys()) {
-              if (!slots.includes(name)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
+            const children = [...root.childNodes];
+            assignSlots(children).forEach((name, i) => slotRecord(context, name).nodes.push(children[i]));
+            for (const [name, slot] of context.slots) {
+              if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown`);
             }
           } else if (server) {
             console.warn(`mnx: <${tag}>'s markup doesn't match its template; rendering it fresh`);

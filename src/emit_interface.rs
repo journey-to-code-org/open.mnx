@@ -243,6 +243,10 @@ pub enum Framework {
     None,
     React,
     Vue,
+    /// The element itself, typed for Svelte templates (`svelte/elements`).
+    Svelte,
+    /// The element itself, typed for Solid's JSX (`prop:` / `on:`).
+    Solid,
 }
 
 /// `<prop>` + `<prop>change` pairs: the component's two-way bindings (as the adapters find them).
@@ -280,6 +284,10 @@ pub fn declarations(
         Framework::None => {}
         Framework::React => out.push_str("import type * as React from \"react\";\n\n"),
         Framework::Vue => out.push_str("import type { DefineComponent } from \"vue\";\n\n"),
+        Framework::Svelte => {
+            out.push_str("import type { HTMLAttributes } from \"svelte/elements\";\n\n")
+        }
+        Framework::Solid => out.push_str("import type { JSX } from \"solid-js\";\n\n"),
     }
     // A TypeScript script's own types, which the interface may mention.
     for import in &component.script.type_imports {
@@ -386,6 +394,10 @@ pub fn declarations(
         Framework::None => out.push_str(&format!("export default {class};\n")),
         Framework::React => out.push_str(&react_component(component, &interface, &class)),
         Framework::Vue => out.push_str(&vue_component(component, &interface, &class)),
+        Framework::Svelte | Framework::Solid => {
+            out.push_str(&format!("export default {class};\n"));
+            out.push_str(&intrinsic_element(component, &interface, &class, framework));
+        }
     }
     out.push_str(&format!(
         "\ndeclare global {{\n  interface HTMLElementTagNameMap {{\n    {tag}: {class};\n  }}\n}}\n"
@@ -459,6 +471,45 @@ fn react_component(
         members.join("\n"),
         tag = component.tag
     )
+}
+
+/// Svelte and Solid use the element directly: declare it among their template elements, with
+/// its props and events (`onvaluechange` in Svelte; `prop:value` / `on:valuechange` in Solid).
+fn intrinsic_element(
+    component: &ComponentAst,
+    interface: &validate::Interface,
+    class: &str,
+    framework: Framework,
+) -> String {
+    let tag = serde_json::to_string(&component.tag).expect("strings serialize");
+    let mut members = Vec::new();
+    for prop in &interface.props {
+        let optional = if prop.required() { "" } else { "?" };
+        let key = property_key(&prop.name);
+        members.push(format!("{key}{optional}: {}", prop_type(prop)));
+        if framework == Framework::Solid {
+            members.push(format!("\"prop:{}\"?: {}", prop.name, prop_type(prop)));
+        }
+    }
+    for event in &interface.events {
+        let handler = match framework {
+            Framework::Solid => format!("\"on:{}\"", event.name),
+            _ => format!("on{}", event.name),
+        };
+        members.push(format!(
+            "{handler}?: (event: {}) => void",
+            event_type(class, event)
+        ));
+    }
+    let own = format!("{{ {} }}", members.join("; "));
+    match framework {
+        Framework::Svelte => format!(
+            "\ndeclare module \"svelte/elements\" {{\n  interface SvelteHTMLElements {{\n    {tag}: Omit<HTMLAttributes<{class}>, keyof {own}> & {own};\n  }}\n}}\n"
+        ),
+        _ => format!(
+            "\ndeclare module \"solid-js\" {{\n  namespace JSX {{\n    interface IntrinsicElements {{\n      {tag}: Omit<JSX.HTMLAttributes<{class}>, keyof {own}> & {own};\n    }}\n  }}\n}}\n"
+        ),
+    }
 }
 
 /// The Vue wrapper: props (plus `modelValue` for `v-model`), the events, and `update:` events for

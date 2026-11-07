@@ -60,10 +60,12 @@ fn run() -> Result<(), String> {
                 framework = match arguments.next().as_deref() {
                     Some("react") => mnix_compiler::Framework::React,
                     Some("vue") => mnix_compiler::Framework::Vue,
+                    Some("svelte") => mnix_compiler::Framework::Svelte,
+                    Some("solid") => mnix_compiler::Framework::Solid,
                     Some("none") => mnix_compiler::Framework::None,
                     other => {
                         return Err(format!(
-                            "unknown --framework `{}`; expected react, vue or none",
+                            "unknown --framework `{}`; expected react, vue, svelte, solid or none",
                             other.unwrap_or_default()
                         ))
                     }

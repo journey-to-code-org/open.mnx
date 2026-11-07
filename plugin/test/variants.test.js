@@ -5,14 +5,23 @@ import { variantFor } from '../src/index.js';
 
 test('the importer decides: React files, Vue files, components, everything else', () => {
   for (const project of ['react', 'vue', 'element']) {
-    assert.equal(variantFor('', '/app/App.tsx', project), 'react');
-    assert.equal(variantFor('', '/app/App.jsx', project), 'react');
+    assert.equal(variantFor('', '/app/App.tsx', project), project === 'vue' ? 'vue' : 'react', 'Vue JSX in a Vue project');
+    assert.equal(variantFor('', '/app/App.jsx', project), project === 'vue' ? 'vue' : 'react');
     assert.equal(variantFor('', '/app/App.vue', project), 'vue');
     assert.equal(variantFor('', '/app/App.vue?vue&type=script&setup=true&lang.ts', project), 'vue', 'a .vue file\'s script block');
     assert.equal(variantFor('', '/app/inbox.mnx', project), 'element', 'components import elements');
     assert.equal(variantFor('', '/app/badge.mnx?mnx=react', project), 'element', 'a wrapper imports its element');
     assert.equal(variantFor('', '/app/util.ts', project), project, 'plain files get the project\'s framework');
     assert.equal(variantFor('', undefined, project), project, 'an entry point too');
+  }
+});
+
+test('in Solid, Preact and Svelte projects, components are the elements themselves', () => {
+  for (const project of ['solid', 'preact', 'svelte']) {
+    assert.equal(variantFor('', '/app/App.tsx', project), 'element');
+    assert.equal(variantFor('', '/app/App.svelte', project), 'element');
+    assert.equal(variantFor('', '/app/util.ts', project), 'element');
+    assert.equal(variantFor('react', '/app/App.tsx', project), 'react', 'unless asked');
   }
 });
 

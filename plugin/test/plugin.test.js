@@ -14,6 +14,8 @@ import { build } from 'vite';
 import react from '@vitejs/plugin-react';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+import solid from 'vite-plugin-solid';
 import mnx from '../src/vite.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,7 +42,7 @@ function app(name) {
   return root;
 }
 
-const plugins = { react: () => [react()], vue: () => [vue()], plain: () => [], tailwind: () => [tailwindcss()] };
+const plugins = { react: () => [react()], vue: () => [vue()], plain: () => [], tailwind: () => [tailwindcss()], svelte: () => [svelte()], solid: () => [solid()], lit: () => [] };
 
 async function bundle(name, root = app(name)) {
   await build({
@@ -339,3 +341,35 @@ test('without a CLI, the WebAssembly compiler (@mnx/compiler) builds the app', a
     if (saved !== undefined) process.env.MNX_COMPILER = saved;
   }
 });
+
+// Frameworks that use custom elements directly: the same component, the same checks.
+for (const name of ['svelte', 'solid', 'lit']) {
+  test(`${name}: props as properties, events, two-way updates and framework-managed slot content`, async () => {
+    const root = await bundle(name);
+    const { page, messages } = await visit(root);
+    await settle(page);
+    const card = () => page.$eval('mnx-card', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML].map((html) => html.replace(/<!--.*?-->/g, '').replace(/\s+/g, ' ').trim()));
+    assert.deepEqual(await card(), ['<h2 slot="title">Custom</h2>', '<p>a</p><p>b</p>']);
+    assert.equal(await page.$eval('mnx-badge .badge', (el) => el.dataset.color), 'red', 'objects arrive as properties');
+
+    await page.click('mnx-rating .two');
+    await settle(page);
+    assert.equal(await page.textContent('#stars'), '2', 'the event updated the app, which set the prop back');
+    assert.equal(await page.$eval('mnx-rating', (el) => el.value), 2);
+    assert.equal(await page.textContent('#log'), 'change');
+
+    await page.evaluate(() => window.app.setItems(['c', 'a', 'b']));
+    await settle(page);
+    assert.equal((await card())[1], '<p>c</p><p>a</p><p>b</p>', 'a keyed reorder by the framework');
+    await page.evaluate(() => { window.app.setItems(['b']); window.app.setTitle(false); window.app.setInfo({ color: 'blue' }); });
+    await settle(page);
+    const heading = { svelte: 'Svelte', solid: 'Solid', lit: 'Lit' }[name];
+    assert.deepEqual(await card(), [`<h2>${heading}</h2>`, '<p>b</p>'], 'removals, and the fallback comes back');
+    assert.equal(await page.$eval('mnx-badge .badge', (el) => el.dataset.color), 'blue');
+    await page.evaluate(() => { window.app.setItems([]); window.app.setTitle(true); });
+    await settle(page);
+    assert.deepEqual(await card(), ['<h2 slot="title">Custom</h2>', '<p>No content</p>']);
+    assert.deepEqual(messages.filter((message) => !/Download the|development build/.test(message)), []);
+    await page.close();
+  });
+}

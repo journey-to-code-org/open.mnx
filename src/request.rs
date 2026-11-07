@@ -136,10 +136,12 @@ fn respond(request: &Map<String, Value>) -> Value {
             let framework = match text("framework") {
                 Some("react") => Framework::React,
                 Some("vue") => Framework::Vue,
+                Some("svelte") => Framework::Svelte,
+                Some("solid") => Framework::Solid,
                 None | Some("none") => Framework::None,
                 Some(other) => {
                     return failure(&format!(
-                        "unknown framework `{other}`; expected react, vue or none"
+                        "unknown framework `{other}`; expected react, vue, svelte, solid or none"
                     ))
                 }
             };

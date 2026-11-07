@@ -27,7 +27,7 @@ test("the element's own children are moved into its slots", async () => {
     modules: ['card'],
   });
   assert.deepEqual(await readCard(page), {
-    header: '<h2 slot="title">Mine</h2>',
+    header: '<h2 slot="title">Mine</h2>\n  ', // whitespace goes with the content before it
     section: '<p>Body <b>text</b></p>',
     footer: 'Card footer',
   });
@@ -279,5 +279,46 @@ test('content removed through its real parent stays out when the host gets new c
     el.insertBefore(document.createTextNode('new'), null);
   });
   assert.equal(card.section, 'new');
+  await page.close();
+});
+
+test("framework markers stay with their content, so a framework can update a slot by its markers (Lit's parts)", async () => {
+  // Lit renders `${cond ? html`<h2 slot="title">…` : nothing}` as: start comment, content, then
+  // the whitespace after it as the end. It clears and refills between those, through their parent.
+  const { page, messages } = await open('<mnx-card><!--start--><h2 slot="title">T</h2>\n<!--items--><p>1</p></mnx-card>', {
+    beforeModules: "window.start = document.querySelector('mnx-card').firstChild; window.end = document.querySelector('mnx-card h2').nextSibling;",
+    modules: ['card'],
+  });
+  let card = await readCard(page);
+  assert.equal(card.header, '<h2 slot="title">T</h2>\n');
+  card = await change(page, () => { while (window.start.nextSibling !== window.end) window.start.nextSibling.remove(); });
+  assert.equal(card.header, '<h2>Card</h2>', 'emptied through its markers: the fallback shows');
+  card = await change(page, () => {
+    const h2 = Object.assign(document.createElement('h2'), { textContent: 'again', slot: 'title' });
+    window.end.parentNode.insertBefore(h2, window.end);
+  });
+  assert.equal(card.header, '<h2 slot="title">again</h2>\n', 'refilled next to its markers, while they waited in the park');
+  assert.equal(card.section, '<p>1</p>');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test("content inserted next to another slot's marker moves to its own slot (Svelte's anchors)", async () => {
+  const { page } = await open('<mnx-card><p>1</p><!--anchor--></mnx-card>', {
+    beforeModules: "window.anchor = document.querySelector('mnx-card').lastChild;",
+    modules: ['card'],
+  });
+  const card = await change(page, () => {
+    const h2 = Object.assign(document.createElement('h2'), { textContent: 'T', slot: 'title' });
+    window.anchor.parentNode.insertBefore(h2, window.anchor);
+  });
+  assert.equal(card.header, '<h2 slot="title">T</h2>');
+  assert.equal(card.section, '<p>1</p>');
+  await page.close();
+});
+
+test('markers and whitespace alone leave a slot empty', async () => {
+  const { page } = await open('<mnx-card>\n  <!--marker-->\n</mnx-card>', { modules: ['card'] });
+  assert.deepEqual(await readCard(page), { header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer' });
   await page.close();
 });
