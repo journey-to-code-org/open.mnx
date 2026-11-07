@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, site } from './harness.js';
+import { useBrowser, open, compiler, here, site, engine } from './harness.js';
 
 useBrowser({
   'styled-card': join(here, 'fixtures/styled-card.mnx'),
@@ -22,7 +22,12 @@ const settle = (page) => page.evaluate(async () => {
 
 const RED = 'rgb(255, 0, 0)', GREEN = 'rgb(0, 128, 0)', BLUE = 'rgb(0, 0, 255)', BLACK = 'rgb(0, 0, 0)';
 
-test("a component's styles apply to its own elements and stop at content slotted into it", async () => {
+// Firefox before 159 shares styles between siblings that differ only in an attribute an @scope
+// rule depends on, so slotted content can pick up the card's styles there
+// (https://bugzilla.mozilla.org/show_bug.cgi?id=2075194, fixed in Firefox 159).
+const firefoxScopeSharing = (page) => page.evaluate(() => Number(/Firefox\/(\d+)/.exec(navigator.userAgent)?.[1] ?? Infinity) < 159);
+
+test("a component's styles apply to its own elements and stop at content slotted into it", async (t) => {
   const { page, messages } = await open(
     '<mnx-styled-card id="empty"></mnx-styled-card><mnx-styled-card id="filled"><h2 slot="title">Mine</h2><p>mine</p></mnx-styled-card>',
     { modules: ['styled-card'] },
@@ -30,8 +35,12 @@ test("a component's styles apply to its own elements and stop at content slotted
   assert.equal(await color(page, '#empty h2'), RED);
   assert.equal(await color(page, '#empty p'), GREEN, 'its fallback is its own');
   assert.equal(await page.$eval('#empty', (el) => getComputedStyle(el).display), 'block', ':host means the host');
-  assert.equal(await color(page, '#filled h2'), BLACK, "the caller's heading isn't styled by the card");
-  assert.equal(await color(page, '#filled p'), BLACK);
+  if (engine === 'firefox' && (await firefoxScopeSharing(page))) {
+    t.diagnostic(`Firefox bug 2075194: the slotted heading is ${await color(page, '#filled h2')}`);
+  } else {
+    assert.equal(await color(page, '#filled h2'), BLACK, "the caller's heading isn't styled by the card");
+    assert.equal(await color(page, '#filled p'), BLACK);
+  }
   assert.deepEqual(await page.$$eval('#filled [data-mnx-slotted]', (els) => els.map((el) => [el.localName, el.dataset.mnxSlotted])),
     [['h2', 'mnx-styled-card'], ['p', 'mnx-styled-card']]);
   assert.equal(await page.evaluate(() => document.adoptedStyleSheets.length), 1, 'one sheet, shared by every instance');
