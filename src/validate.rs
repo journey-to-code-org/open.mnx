@@ -81,6 +81,8 @@ const RESERVED_CUSTOM_ELEMENTS: &[&str] = &[
 #[derive(Clone, Debug)]
 enum Local {
     Value(Value),
+    /// An arrow function the server can call (`const money = (cents) => …`).
+    Function(crate::pure::Val),
     /// Declared, but its value only exists at runtime (a function, an import, a call result…).
     Runtime,
 }
@@ -481,7 +483,40 @@ fn evaluate_script_with(
             ));
         }
         let local = match &binding.init {
-            None => Local::Runtime,
+            // Outside the subset: an arrow function the server can call, or a value the server
+            // can compute anyway (`items.filter(…).length`, `Math.round(…)`), or runtime-only.
+            None => match &binding.source {
+                Some(source) => match crate::pure::function(source) {
+                    Some(function) => Local::Function(function),
+                    None => {
+                        let prop = |name: &str| {
+                            values.and_then(|values| {
+                                values
+                                    .iter()
+                                    .find(|prop| prop.name == name && !prop.unknown)
+                            })
+                        };
+                        let lookup = |name: &str| match find_local(&locals, name) {
+                            Some(Local::Value(value)) => {
+                                Some(crate::pure::Val::Json(value.clone()))
+                            }
+                            Some(Local::Function(function)) => Some(function.clone()),
+                            Some(Local::Runtime) => None,
+                            None if prop_names.iter().any(|prop| prop == name) => {
+                                prop(name).map(|prop| crate::pure::Val::Json(prop.value.clone()))
+                            }
+                            None => None,
+                        };
+                        match crate::pure::evaluate(source, &lookup)
+                            .and_then(crate::pure::Val::into_json)
+                        {
+                            Ok(value) => Local::Value(value),
+                            Err(_) => Local::Runtime,
+                        }
+                    }
+                },
+                None => Local::Runtime,
+            },
             Some(init) => {
                 // A binding can use bindings declared before it (and runtime names, which make
                 // it runtime-only too).
@@ -491,7 +526,7 @@ fn evaluate_script_with(
                     values.and_then(|values| values.iter().find(|prop| prop.name == name))
                 };
                 init.for_each_identifier(&mut |name| match find_local(&locals, name) {
-                    Some(Local::Runtime) => runtime = true,
+                    Some(Local::Runtime | Local::Function(_)) => runtime = true,
                     Some(Local::Value(_)) => {}
                     None if prop(name).is_some_and(|prop| !prop.unknown) => {}
                     None if prop(name).is_some() || prop_names.iter().any(|prop| prop == name) => {
@@ -522,7 +557,7 @@ fn evaluate_script_with(
                 } else {
                     let lookup = |name: &str| match find_local(&locals, name) {
                         Some(Local::Value(value)) => Some(value.clone()),
-                        Some(Local::Runtime) => None,
+                        Some(Local::Runtime | Local::Function(_)) => None,
                         None => prop(name).map(|prop| prop.value.clone()),
                     };
                     Local::Value(init.evaluate(&lookup).map_err(|message| {
@@ -638,7 +673,9 @@ fn prop_default(
                 }
                 match find_local(locals, name) {
                     Some(Local::Value(_)) => {}
-                    Some(Local::Runtime) => problem = Some(Err(name.to_owned())),
+                    Some(Local::Runtime | Local::Function(_)) => {
+                        problem = Some(Err(name.to_owned()))
+                    }
                     None if runtime && RUNTIME_GLOBALS.contains(&name) => {}
                     None => problem = Some(Ok(name.to_owned())),
                 }
@@ -731,6 +768,7 @@ struct LowerState {
 
 enum Binding<'v> {
     Value(&'v Value),
+    Function(&'v crate::pure::Val),
     Runtime,
 }
 
@@ -912,6 +950,7 @@ impl Context<'_> {
         }
         find_local(self.locals, name).map(|local| match local {
             Local::Value(value) => Binding::Value(value),
+            Local::Function(function) => Binding::Function(function),
             Local::Runtime => Binding::Runtime,
         })
     }
@@ -926,9 +965,17 @@ impl Context<'_> {
     ) -> Result<Option<Value>, Diagnostic> {
         if partial() {
             let mut runtime = expression.is_runtime();
+            let mut runtime_name = false;
             expression.for_each_identifier(&mut |name| {
-                runtime |= matches!(self.binding(name, state), Some(Binding::Runtime));
+                runtime_name |= matches!(self.binding(name, state), Some(Binding::Runtime));
             });
+            runtime |= runtime_name;
+            // JavaScript outside the subset that the server can still compute.
+            if runtime && !runtime_name {
+                if let Some(value) = self.pure_value(expression, state) {
+                    return Ok(Some(value));
+                }
+            }
             if runtime {
                 // `live && …` / `!live || …`: a known first operand can decide it alone (the
                 // progressive-enhancement pattern, where `live` is hydrated()'s false).
@@ -942,6 +989,21 @@ impl Context<'_> {
             }
         }
         self.evaluate(expression, span, state).map(Some)
+    }
+
+    /// A runtime expression the server evaluates anyway (`pure.rs`), or `None`.
+    fn pure_value(&self, expression: &Expression, state: &LowerState) -> Option<Value> {
+        let Expression::Runtime { source, .. } = expression else {
+            return None;
+        };
+        let lookup = |name: &str| match self.binding(name, state) {
+            Some(Binding::Value(value)) => Some(crate::pure::Val::Json(value.clone())),
+            Some(Binding::Function(function)) => Some(function.clone()),
+            _ => None,
+        };
+        crate::pure::evaluate(source, &lookup)
+            .and_then(crate::pure::Val::into_json)
+            .ok()
     }
 
     /// `name && rest`, `!name && rest`, `name || rest`, `!name || rest`, where `name` is known
@@ -997,6 +1059,11 @@ impl Context<'_> {
                 runtime = Some(name.to_owned());
             }
         });
+        if runtime.is_none() && expression.is_runtime() {
+            if let Some(value) = self.pure_value(expression, state) {
+                return Ok(value);
+            }
+        }
         if let Some(name) = runtime {
             return Err(Diagnostic::new(
                 span,
@@ -2122,6 +2189,8 @@ pub(crate) const RUNTIME_GLOBALS: &[&str] = &[
     "Event",
     "CustomEvent",
     "AbortController",
+    "parseInt",
+    "parseFloat",
 ];
 
 /// Common DOM events an element can receive, so a listener for one is never taken for a typo.

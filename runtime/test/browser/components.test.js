@@ -312,10 +312,12 @@ test('inline JavaScript in the template: calls, handlers that close over list it
 });
 
 test('partially server-rendered markup: the element fills in what only the browser could compute', async () => {
-  // --partial leaves JavaScript expressions empty and their regions marked <!--[?-->.
+  // --partial renders the JavaScript the server can compute (the filtered list, format(), the
+  // upper-casing), and leaves the rest (a state signal's .get()) empty for the element.
   const html = compiler(join(here, 'fixtures/inline.mnx'), '--partial');
-  assert.match(html, /<!--\[\?--><!--\]-->/);
-  const { page, messages } = await open(html, { modules: ['inline'], beforeModules: "window.serverButton = document.querySelector('mnx-inline .raise');" });
+  assert.match(html, /<p class="summary"><\/p>/);
+  assert.match(html, /<li>#2 LINUS<\/li>[^]*<li>#3 GRACE<\/li>/);
+  const { page, messages } = await open(html, { modules: ['inline'], beforeModules: "window.serverButton = document.querySelector('mnx-inline .raise'); window.serverRow = document.querySelector('mnx-inline li');" });
   await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
   const read = () => page.evaluate(() => ({
     summary: document.querySelector('.summary').textContent,
@@ -323,6 +325,7 @@ test('partially server-rendered markup: the element fills in what only the brows
   }));
   assert.deepEqual(await read(), { summary: '2 of 3; none', rows: ['#2 LINUS', '#3 GRACE'] });
   assert.equal(await page.evaluate(() => document.querySelector('mnx-inline .raise') === window.serverButton), true, 'the server markup was kept');
+  assert.equal(await page.evaluate(() => document.querySelector('mnx-inline li') === window.serverRow), true, 'the server-rendered rows too');
   await page.click('mnx-inline li:last-child');
   await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
   assert.equal((await read()).summary, '2 of 3; grace', 'and it works as usual');

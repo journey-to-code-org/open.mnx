@@ -103,6 +103,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             script.bindings.push(Binding {
                                 name: identifier.name.to_string(),
                                 init: expression::parse(text).ok(),
+                                source: Some(text.to_owned()),
                                 mutable,
                                 span: at(identifier.span.start),
                             });
@@ -110,6 +111,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         (Some(identifier), None) => script.bindings.push(Binding {
                             name: identifier.name.to_string(),
                             init: Some(expression::Expression::Null),
+                            source: None,
                             mutable,
                             span: at(identifier.span.start),
                         }),

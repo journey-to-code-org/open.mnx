@@ -40,8 +40,8 @@ test('errors are CompileErrors with diagnostics', () => {
 
 test('what only the browser can compute is left for the element, unless partial is false', () => {
   const html = renderToString(join(fixtures, 'inline.mnx'));
-  assert.match(html, /<p class="summary"><\/p>/);
-  assert.match(html, /<!--\[\?--><!--\]-->/);
+  assert.match(html, /<p class="summary"><\/p>/, 'a state signal\'s .get() is left for the element');
+  assert.match(html, /<li>#2 LINUS<\/li>/, 'the JavaScript the server can compute is rendered (2.8)');
   assert.throws(() => renderToString(join(fixtures, 'inline.mnx'), { partial: false }), /only exists at runtime|runs in the browser only/);
   // JSX components too.
   assert.match(renderToString(join(fixtures, 'jsx/rating.mnx.jsx'), { props: { label: 'Stars' } }), /<span class="label">Stars<\/span>/);

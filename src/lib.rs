@@ -17,6 +17,7 @@ mod ir;
 mod jsx;
 mod migrate;
 mod parser;
+mod pure;
 mod reactive;
 mod render;
 mod request;

@@ -286,7 +286,7 @@ fn check_server_reports_what_the_servers_html_leaves_out() {
     let picker = dir.join("picker.mnx");
     fs::write(
         &picker,
-        "<mnx-picker value={[\"kale\"]} options={[\"kale\", \"beans\"]}>\n  <mnx-each items={options} as=\"option\" key={option}>\n    <label><input type=\"checkbox\" name=\"crops\" checked={value.includes(option)}> {`${option}!`}</label>\n  </mnx-each>\n</mnx-picker>\n",
+        "<script>\n  const picked = new Set(value)\n</script>\n<mnx-picker value={[\"kale\"]} options={[\"kale\", \"beans\"]}>\n  <mnx-each items={options} as=\"option\" key={option}>\n    <label><input type=\"checkbox\" name=\"crops\" checked={picked.has(option)}> {option.toLocaleUpperCase()} {`${option}!`}</label>\n  </mnx-each>\n</mnx-picker>\n",
     )
     .unwrap();
     let path = picker.to_str().unwrap();
@@ -297,12 +297,15 @@ fn check_server_reports_what_the_servers_html_leaves_out() {
     assert!(!ok, "a form's state left out is an error");
     let text = format!("{stdout}{stderr}");
     assert!(
-        text.contains("`checked` is computed in the browser") && text.contains("picker.mnx:3:"),
+        text.contains("`checked` is computed in the browser") && text.contains("picker.mnx:6:"),
         "{text}"
     );
-    assert!(
-        text.contains("warning: this is computed in the browser"),
-        "the template literal: {text}"
+    // toLocaleUpperCase() is left for the browser; the template literal renders on the server.
+    assert_eq!(
+        text.matches("warning: this is computed in the browser")
+            .count(),
+        1,
+        "{text}"
     );
     fs::remove_dir_all(&dir).ok();
 }

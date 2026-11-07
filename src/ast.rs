@@ -141,6 +141,9 @@ pub struct Binding {
     /// `None` when the initializer is outside the build-time expression language (a call,
     /// a function, …): the binding exists, but only at runtime.
     pub init: Option<Expression>,
+    /// The initializer as written, for what the subset doesn't cover (calls, arrow functions):
+    /// the server may still evaluate it (`pure.rs`).
+    pub source: Option<String>,
     pub mutable: bool,
     pub span: Span,
 }
