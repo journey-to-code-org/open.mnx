@@ -42,7 +42,7 @@ pub struct Migration {
 }
 
 /// Where a component's `<script>` body is in its file, and whether it's TypeScript.
-fn script_body(source: &str) -> Option<(usize, usize, bool)> {
+pub(crate) fn script_body(source: &str) -> Option<(usize, usize, bool)> {
     let lower = source.to_ascii_lowercase();
     let mut at = 0;
     loop {

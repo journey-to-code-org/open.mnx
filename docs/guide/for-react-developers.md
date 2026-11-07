@@ -7,7 +7,7 @@ An mnx component is closer to a React function component than it looks. The diff
 | `function Counter({ label = "Clicks" })` | `<my-counter label="Clicks">` (or the same function in a `.mnx.jsx` file) |
 | `const [count, setCount] = useState(0)` | `let count = 0`, then `count++` |
 | `const doubled = useMemo(() => count * 2, [count])` | `const doubled = count * 2` |
-| `useEffect(() => { … }, [count])` | `effect(() => { … })`: tracks what it reads |
+| `useEffect(() => { … }, [count])` | `effect(() => { … })`: tracks what it reads (it runs before the DOM updates; `onMount(() => effect(…))` runs after, as React's does) |
 | `useEffect(() => { … return cleanup }, [])` | `onMount(() => { … return cleanup })` |
 | `useRef()` + `ref={input}` | `let input = null` + `ref={input}` |
 | `{cond && <X />}`, `cond ? <A /> : <B />` | `<mnx-if test={cond}>…<mnx-else>…</mnx-else></mnx-if>` (or the same JSX in `.mnx.jsx`) |
@@ -19,6 +19,10 @@ An mnx component is closer to a React function component than it looks. The diff
 | `children` | `<mnx-slot>`; named slots for more than one |
 | Context | `createContext` / `provide` / `inject` |
 | `use(promise)` with Suspense | `resource()` with `<mnx-await>` |
+
+## Converting a component
+
+`mnx convert src/TodoItem.jsx` rewrites a React function component as an mnx JSX component, converting the hooks above and reporting what it can't (README, "Moving in from React"). It's a good way to see how your own code maps.
 
 ## Prefer JSX?
 

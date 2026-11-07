@@ -6,10 +6,11 @@
 //   mnx add --list
 //   mnx compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
 //   mnx check <file>...
+//   mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]   React → mnx JSX
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compileFile } from './index.js';
+import { compileFile, request } from './index.js';
 import { buildLibrary } from './library.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -70,7 +71,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) rest.push(arg);
-    else if (['--lib', '--force', '--list', '--partial'].includes(arg)) flags[arg.slice(2)] = true;
+    else if (['--lib', '--force', '--list', '--partial', '--stdout'].includes(arg)) flags[arg.slice(2)] = true;
     else flags[arg.slice(2)] = args[++i];
   }
   return { flags, rest };
@@ -93,6 +94,23 @@ function main(argv) {
     if (!rest.length) throw new Error('usage: mnx add <component>... [--dir src/components] [--force]   (mnx add --list)');
     const files = add(rest, { target: flags.dir ?? 'src/components', force: flags.force });
     console.log(`mnx: added ${files.join(', ')}. They're yours now: edit them as you like.`);
+  } else if (command === 'convert') {
+    if (rest.length !== 1) throw new Error('usage: mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]');
+    const path = resolve(rest[0]);
+    const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix });
+    if (!response.ok) throw new Error(response.error);
+    for (const change of response.changes) process.stderr.write(`${rest[0]}: ${change}\n`);
+    if (flags.stdout) process.stdout.write(response.output);
+    else {
+      const target = flags.out ?? relative(process.cwd(), response.file);
+      writeFileSync(target, response.output);
+      process.stderr.write(`${rest[0]}: wrote ${target} (<${response.tag}>)\n`);
+    }
+    for (const warning of response.warnings) process.stderr.write(warning);
+    if (!response.complete) {
+      process.stderr.write(`${response.diagnostics.length} thing${response.diagnostics.length === 1 ? '' : 's'} to finish by hand (above)\n`);
+      process.exitCode = 1;
+    }
   } else if (command === 'compile' || command === 'check') {
     if (!rest.length) throw new Error(`usage: mnx ${command} <file>${command === 'check' ? '...' : ''}`);
     let failed = false;

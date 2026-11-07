@@ -373,6 +373,33 @@ export default { component: 'quantity-stepper' };
 export const Default = { args: { value: 2, max: 5 } };
 ```
 
+## Moving in from React
+
+`mnx convert` rewrites a React function component as an mnx JSX component next to it (`TodoItem.jsx` becomes `todo-item.mnx.jsx`, `<todo-item>`):
+
+```sh
+mnx convert src/TodoItem.jsx              # or npx mnx convert, from @mnx/compiler
+mnx convert src/Counter.jsx --prefix app  # one-word names need a prefix: <app-counter>
+```
+
+The body of an mnx component runs once per element, so the hooks become what they stand for:
+
+| React | becomes |
+|---|---|
+| `const [count, setCount] = useState(0)`, `setCount(c => c + 1)` | `let count = 0`, `count = ((c) => c + 1)(count)` |
+| `useMemo(() => x, deps)`, `useCallback(fn, deps)` | `x` (derived: it stays in sync), `fn` |
+| `useRef(null)` and `ref.current` | `let ref = null` and `ref` |
+| `useEffect(fn, [])` | `onMount(fn)` |
+| `useEffect(fn, deps)` | `onMount(() => effect(fn))`: after the DOM updates, re-run when what it reads changes |
+| `onChange` on a text field, `onDoubleClick` | `onInput`, `onDblClick` (the DOM's events) |
+
+Preact's hooks (`preact/hooks`) convert the same way. Comments and formatting are kept, since only what changes is rewritten. What it can't convert, it reports, with advice, and it exits with status 1:
+- other hooks (`useContext`, `useReducer`, custom hooks);
+- props taken as one object rather than destructured;
+- spread attributes and `dangerouslySetInnerHTML`.
+
+The result is compiled as part of the conversion, and a compile error is shown at its place in the output.
+
 ## Editors and tooling without Rust
 
 - **`@mnx/compiler`** (`compiler/`) is the compiler built to WebAssembly, for Node: the same output and errors as the CLI, with no Rust toolchain. `@mnx/unplugin` uses it automatically when it's installed.
@@ -419,6 +446,8 @@ mnx is meant to be absorbed by the platform. These reports give the standards di
 - the runtime's documented exports.
 
 The generated JavaScript's internal shape (`$define()`'s arguments, parts) is not public API. It is versioned (`abi`): a runtime refuses modules compiled for another major version with an error that says to recompile, instead of misbehaving.
+
+**Toward 3.0.** The one 3.0 change that touches code: a signal `const` in a script (from `state()`, `computed()`, `inject()` or `hasSlot()`) will mean its value, as it already does in templates. `count.get()` and `count.set(…)` keep working, so only a signal passed as itself (`watch(count, …)`, `formValue(count)`) changes meaning. `mnx check` warns at each such place, and `mnx migrate --to 3` wraps them in `signal(count)`, which means the signal in 2.x and 3.0 alike. The rest of 3.0 (keeping `<mnx-each>` canonical, keeping the hydration markers, a Baseline 2026 browser floor) needs nothing from you. The decision record is `plan/decisions/3.0-scope.md` in the project docs.
 
 Upgrading from 1.x: `mnx migrate` rewrites what 2.0 needs; see `docs/migrating-to-2.0.md`. The CLI's 1.x name, `mnix`, is an alias through 2.x. Browser support: `docs/browser-support.md`. Planned after 2.0: streaming server rendering (sending resolved `mnx-await` content as it arrives).
 

@@ -1,6 +1,6 @@
 {
   "name": "@mnx/language-server",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Language server for .mnx components: diagnostics, completion, hover and go to definition",
   "license": "ISC",
   "repository": {

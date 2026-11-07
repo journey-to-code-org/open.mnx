@@ -3,3 +3,4 @@ dist/
 .tmp/
 *.d.mnx.ts
 .tmp-create/
+.tmp-adoption/

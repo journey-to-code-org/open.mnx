@@ -52,6 +52,13 @@ export declare function host<E extends HTMLElement = HTMLElement>(): E;
 export declare function emit(name: string, detail?: unknown): boolean;
 
 /**
+ * The signal itself, where a script passes a signal `const` along: `watch(signal(count), …)`.
+ * The identity in 2.x; in 3.0, where a signal `const` in a script means its value, it keeps
+ * meaning the signal.
+ */
+export declare function signal<T>(value: T): T;
+
+/**
  * Whether content was given for a slot (`'default'` for the default slot), as a signal that
  * follows the content. Read it like a value in the template: `<mnx-if test={hasFooter}>`.
  */

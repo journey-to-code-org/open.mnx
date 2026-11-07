@@ -79,6 +79,50 @@ fn respond(request: &Map<String, Value>) -> Value {
             .ok_or_else(|| format!("{resolved}: not among the request's files"))
     };
 
+    // `convert`: a React component → an mnx JSX component (`prefix` names a one-word one).
+    if text("command") == Some("convert") {
+        return match crate::convert(source, &path, text("prefix")) {
+            Ok(conversion) => {
+                let target = match path.rsplit_once('/') {
+                    Some((directory, _)) => format!("{directory}/{}", conversion.file_name),
+                    None => conversion.file_name.clone(),
+                };
+                let mut diagnostics: Vec<Value> = conversion
+                    .unsupported
+                    .iter()
+                    .map(|diagnostic| entry(&path, diagnostic, "warning"))
+                    .collect();
+                let mut warnings: Vec<String> = conversion
+                    .unsupported
+                    .iter()
+                    .map(|diagnostic| diagnostic.render_warning(source, &path))
+                    .collect();
+                if let Some(error) = &conversion.compile_error {
+                    diagnostics.push(entry(&target, error, "warning"));
+                    warnings.push(error.render_warning(&conversion.output, &target));
+                }
+                json!({
+                    "ok": true,
+                    "output": conversion.output,
+                    "file": target,
+                    "tag": conversion.tag,
+                    "changes": conversion.changes,
+                    "complete": diagnostics.is_empty(),
+                    "error": null,
+                    "warnings": warnings,
+                    "diagnostics": diagnostics,
+                })
+            }
+            Err(error) => json!({
+                "ok": false,
+                "output": null,
+                "error": error.render_in(source, &path),
+                "warnings": [],
+                "diagnostics": [entry(&path, &error, "error")],
+            }),
+        };
+    }
+
     let warnings = crate::warnings(source);
     let mut diagnostics: Vec<Value> = warnings
         .iter()
@@ -184,7 +228,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         }
         (other, _) => {
             return failure(&format!(
-                "unknown command `{other}`; expected compile or check"
+                "unknown command `{other}`; expected compile, check or convert"
             ))
         }
     };

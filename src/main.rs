@@ -27,6 +27,9 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("migrate") {
         return migrate(arguments.collect());
     }
+    if command.as_deref() == Some("convert") {
+        return convert(arguments.collect());
+    }
     // `mnx request`: one JSON request on stdin, the JSON response on stdout (what the
     // WebAssembly build exposes, for anything embedding the native compiler instead).
     if command.as_deref() == Some("request") {
@@ -40,7 +43,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check]\n       mnx request < request.json\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -352,22 +355,133 @@ fn entry(
     })
 }
 
+/// `mnx convert`: a React function component, written out as an mnx JSX component next to it
+/// (`--out` elsewhere, `--stdout` to print it). What wasn't converted is reported, and the exit
+/// status is 1 then, so a script can tell.
+fn convert(arguments: Vec<String>) -> Result<(), String> {
+    let usage = "usage: mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]";
+    let mut path = None;
+    let mut prefix = None;
+    let mut out = None;
+    let mut stdout = false;
+    let mut iterator = arguments.into_iter();
+    while let Some(argument) = iterator.next() {
+        match argument.as_str() {
+            "--prefix" => prefix = Some(iterator.next().ok_or(usage)?),
+            "--out" => out = Some(iterator.next().ok_or(usage)?),
+            "--stdout" => stdout = true,
+            other if other.starts_with("--") => {
+                return Err(format!("unexpected argument `{other}`"))
+            }
+            _ if path.is_some() => return Err(usage.into()),
+            _ => path = Some(argument),
+        }
+    }
+    let path = path.ok_or(usage)?;
+    let source = fs::read_to_string(&path)
+        .map_err(|error| format!("{path}: unable to read source: {error}"))?;
+    let conversion = mnx_compiler::convert(&source, &path, prefix.as_deref())
+        .map_err(|diagnostic| diagnostic.render_in(&source, &path))?;
+    let target = out.unwrap_or_else(|| {
+        std::path::Path::new(&path)
+            .with_file_name(&conversion.file_name)
+            .to_string_lossy()
+            .into_owned()
+    });
+    for change in &conversion.changes {
+        eprintln!("{path}: {change}");
+    }
+    if stdout {
+        print!("{}", conversion.output);
+    } else {
+        write_atomically(&target, conversion.output.as_bytes())?;
+        eprintln!("{path}: wrote {target} (<{}>)", conversion.tag);
+    }
+    for diagnostic in &conversion.unsupported {
+        eprint!("{}", diagnostic.render_warning(&source, &path));
+    }
+    if let Some(error) = &conversion.compile_error {
+        // (In the output, where it is to be fixed.)
+        eprint!("{}", error.render_warning(&conversion.output, &target));
+    }
+    let left = conversion.unsupported.len() + usize::from(conversion.compile_error.is_some());
+    if left == 0 {
+        return Ok(());
+    }
+    Err(format!(
+        "{left} thing{} to finish by hand (above)",
+        if left == 1 { "" } else { "s" }
+    ))
+}
+
 /// `mnx migrate`: rewrite `.mnx` files for 2.0 in place (`--check`: only report, and fail if
 /// anything would change).
 fn migrate(arguments: Vec<String>) -> Result<(), String> {
+    let usage = "usage: mnx migrate <component.mnx>... [--check] [--to 3]";
     let check = arguments.iter().any(|argument| argument == "--check");
+    // `--to 3`: prepare 2.x code for 3.0 (`plan/decisions/3.0-scope.md`).
+    let to = arguments
+        .iter()
+        .position(|argument| argument == "--to")
+        .map(|at| arguments.get(at + 1).cloned().ok_or(usage))
+        .transpose()?;
+    if to.as_deref().is_some_and(|version| version != "3") {
+        return Err(format!(
+            "`--to {}`: the only target is 3",
+            to.unwrap_or_default()
+        ));
+    }
     let files: Vec<&String> = arguments
         .iter()
-        .filter(|argument| !argument.starts_with("--"))
+        .enumerate()
+        .filter(|(at, argument)| {
+            !argument.starts_with("--") && (*at == 0 || arguments[at - 1] != "--to")
+        })
+        .map(|(_, argument)| argument)
         .collect();
-    if let Some(unknown) = arguments
-        .iter()
-        .find(|argument| argument.starts_with("--") && *argument != "--check")
-    {
+    if let Some(unknown) = arguments.iter().find(|argument| {
+        argument.starts_with("--") && *argument != "--check" && *argument != "--to"
+    }) {
         return Err(format!("unexpected argument `{unknown}`"));
     }
     if files.is_empty() {
-        return Err("usage: mnx migrate <component.mnx>... [--check]".into());
+        return Err(usage.into());
+    }
+    if to.is_some() {
+        let mut pending = 0;
+        for path in files {
+            if mnx_compiler::component_extension(path) != Some(".mnx") {
+                eprintln!("{path}: skipped (only .mnx scripts have signal `const`s to prepare)");
+                continue;
+            }
+            let source = fs::read_to_string(path)
+                .map_err(|error| format!("{path}: unable to read source: {error}"))?;
+            let (output, wrapped) = mnx_compiler::prepare_for_3(&source);
+            if wrapped > 0 {
+                pending += 1;
+                eprintln!(
+                    "{path}: {} the signal{} passed as {} in `signal(…)`, which 3.0 needs",
+                    if check { "would wrap" } else { "wrapped" },
+                    if wrapped == 1 { "" } else { "s" },
+                    if wrapped == 1 { "itself" } else { "themselves" }
+                );
+                if !check {
+                    write_atomically(path, output.as_bytes())?;
+                }
+            }
+        }
+        if check && pending > 0 {
+            return Err(format!(
+                "{pending} file{} would change; run `mnx migrate --to 3` without --check",
+                if pending == 1 { "" } else { "s" }
+            ));
+        }
+        eprintln!(
+            "ready for 3.0: {pending} file{} {}",
+            if pending == 1 { "" } else { "s" },
+            if check { "to change" } else { "changed" }
+        );
+        return Ok(());
     }
     let mut pending = 0;
     for path in files {

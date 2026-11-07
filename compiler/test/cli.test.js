@@ -69,3 +69,21 @@ test('mnx build --lib and mnx check, from the command line', () => {
   run = mnx(['compile', 'src/components/toggle-switch.mnx', '--emit', 'js'], dir);
   assert.match(run.stdout, /\$define\(tag/);
 });
+
+test('mnx convert: a React component becomes an mnx JSX component next to it; what is left is reported', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mnx-convert-'));
+  writeFileSync(join(dir, 'Toggle.jsx'), "import { useState } from 'react';\n\nexport default function Toggle({ label = 'On' }) {\n  const [on, setOn] = useState(false);\n  return <button aria-pressed={on} onClick={() => setOn(!on)}>{label}</button>;\n}\n");
+  let run = mnx(['convert', 'Toggle.jsx', '--prefix', 'ui'], dir);
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stderr, /wrote ui-toggle\.mnx\.jsx \(<ui-toggle>\)/);
+  const out = readFileSync(join(dir, 'ui-toggle.mnx.jsx'), 'utf8');
+  assert.match(out, /export default function UiToggle\(\{ label = 'On' \}\) \{\n {2}let on = false;/);
+  assert.match(out, /onClick=\{\(\) => \(on = !on\)\}/);
+  assert.equal(mnx(['check', 'ui-toggle.mnx.jsx'], dir).status, 0);
+
+  writeFileSync(join(dir, 'Menu.jsx'), "import { useContext } from 'react';\nexport default function UserMenu() {\n  const theme = useContext(Theme);\n  return <nav />;\n}\n");
+  run = mnx(['convert', 'Menu.jsx', '--stdout'], dir);
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /`useContext` isn't converted/);
+  assert.match(run.stderr, /1 thing to finish by hand/);
+});

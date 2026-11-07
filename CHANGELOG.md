@@ -2,6 +2,26 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 2.6.0 — 2026-11-07
+
+Move in, and the 3.0 runway (`plan/roadmap-adoption.md`). The last release of the adoption roadmap.
+
+### Added
+
+- **`mnx convert <Component.jsx>`** rewrites a React (or Preact) function component as an mnx JSX component:
+  - `useState` → `let`, with setter calls as assignments;
+  - `useMemo` and `useCallback` → plain `const`s;
+  - `useRef` → a `let` without `.current`;
+  - `useEffect(fn, [])` → `onMount(fn)`, and `useEffect(fn, deps)` → `onMount(() => effect(fn))`, which keeps React's after-render timing;
+  - `onChange` on text fields → `onInput`, and `onDoubleClick` → `onDblClick`;
+  - a single named export becomes the default export.
+
+  Only what changes is rewritten. What it can't convert (other hooks, props not destructured, spread attributes, `dangerouslySetInnerHTML`) is reported with advice, and the output is compiled to check it. A converted component is tested in Chromium against its React behaviour. It's also available as `npx mnx convert` and through the request interface (`command: "convert"`).
+- **Preparing for 3.0** (`plan/decisions/3.0-scope.md`). In 3.0, a signal `const` in a script will mean its value, as in templates. `.get()` and `.set()` keep working, so only a signal passed as itself changes meaning.
+  - `mnx check` (and editors) warn at each such place.
+  - `mnx migrate --to 3` wraps them in `signal(…)`, new in `@mnx/runtime` as the identity, which means the signal in 2.x and 3.0 alike.
+- **The adoption check** (`scripts/adoption-check.mjs`, run in CI): `npm create mnx` → `mnx add` → an edit → `mnx check` → the app's browser test → `mnx build --lib` → `npm pack`, timed against a 10-minute budget. It takes under two seconds of tool time, not counting dependency installation.
+
 ## 2.5.0 — 2026-11-07
 
 Share components (`plan/roadmap-adoption.md`).

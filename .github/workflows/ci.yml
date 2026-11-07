@@ -104,6 +104,8 @@ jobs:
         working-directory: create
       # The playground, compiling through the native CLI, with React and Vue previews.
       - run: node --test "playground/test/*.test.js"
+      # The first ten minutes, scripted: npm create mnx → mnx add → test → mnx build --lib → pack.
+      - run: node scripts/adoption-check.mjs --budget-minutes 10
 
   wasm:
     name: WebAssembly compiler

@@ -76,6 +76,13 @@ function hooks(name) {
   return current;
 }
 
+/**
+ * The signal itself, where a script passes a signal `const` along (`watch(signal(count), …)`).
+ * In 2.x it returns what it's given; in 3.0, where a signal `const` in a script means its value,
+ * it keeps meaning the signal. (`plan/decisions/3.0-scope.md`.)
+ */
+export const signal = (value) => value;
+
 export const state = (value, options) => {
   // During a hot reload, a component's state keeps its value: by position, like hooks, unless
   // the edit changed what kind of value it holds.
