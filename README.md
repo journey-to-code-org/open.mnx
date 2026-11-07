@@ -40,6 +40,7 @@ import Header from './header.mnx';
 
 - **The host tag declares the component.** Its name is the custom element. Its attributes are the props: `title={title}` declares a prop whose default comes from the script, `label="Hi"` a string default, and a bare `name` a required prop. Kebab-case attributes become camelCase props (`max-value` → `maxValue`). The default's type is the prop's type. `shadow` opts into shadow DOM (light DOM is the default) and `form-associated` makes the element a form control. A comment above the component becomes its description in the generated docs and types.
 - **The host is the root**: the template can have any number of top-level nodes.
+- **Defaults computed in the browser.** A prop whose default uses a value only the browser has (`since={start}` with `const start = Date.now()`, or anything reading `window`, `document`, `Math` and other globals) gets it per element, after the script runs, unless the prop was given by an attribute or property. The HTML output needs that prop from `--props` (or from the parent), and says so.
 - **`<script>` is real JavaScript** (parsed with oxc). Top-level `const`/`let` initializers written in the expression language are evaluated at build time for the HTML output. Functions, imports and everything else run in the browser, once per element. Using a runtime-only value in static HTML is a compile error that says so.
 - **`<script lang="ts">`** is TypeScript, reduced to JavaScript by removing its types in place, so every line and column stays where it was and errors point into your source. Only erasable syntax is accepted, as with Node's type stripping or TypeScript's `erasableSyntaxOnly`. `enum`, `namespace`, parameter properties, `<T>x` assertions and `import x = require()` are errors that say what to write instead. The types aren't lost: a prop whose default is an annotated binding (`const options: Option[] = …`, then `options={options}`) has that type, `emit<Picked>("pick", …)` types the event's `detail`, and the script's `type`/`interface` declarations are exported from the generated typings.
 - **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). The expression language is a JavaScript subset: literals, arrays and objects, member and index access (with `?.`), `!` `-` `+` `*` `/` `%`, comparisons, `==`/`!=` (strict), `&&` `||` `??` and `? :`, with JavaScript's truthiness. Calls, assignment, `new` and `this` are rejected with a reason. Signals read in the template (`{count}`) are reactive.
@@ -210,19 +211,20 @@ Dynamic values are escaped or written as text. URL attributes must be relative o
 ## The CLI
 
 ```sh
+mnix check <component.mnx>... [--format human|json]
 mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>]
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
 ```
 
-`--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
+`mnix check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations). It runs every check that doesn't need prop values, for both outputs. `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component). `--emit js` writes the element module: `--runtime` changes the runtime import (default `@mnx/runtime`), and `--keep-imports` leaves `./x.mnx` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it. `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr.
 
 ## Stability
 
 1.0 freezes the authoring format (script, host tag and flags, `{expr}`, directives, slots, keys, imports, `emit`), the CLI's options and outputs' behaviour, and the runtime's documented exports. The generated JavaScript's internal shape (`define()`'s arguments, parts) is not public API, so components should be recompiled with the runtime version they run on.
 
-Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, a `wasm32` build of the compiler, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters, and prop defaults computed at runtime (prop defaults are build-time values in 1.0).
+Not in 1.0, and planned as additions in 1.x: a JSX authoring front end, a `wasm32` build of the compiler, SSR presets for meta-frameworks, dedicated Angular/Svelte/Solid adapters.
 
 ## Repository and tests
 

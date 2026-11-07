@@ -217,14 +217,23 @@ pub struct PropInterface {
     /// The TypeScript type, when the default is an annotated binding (`<script lang="ts">`).
     pub declared: Option<String>,
     pub attribute: String,
-    /// `None` for a required prop.
+    /// `None` for a required prop, or one whose default is only known at runtime.
     pub default: Option<Value>,
+    /// A default computed in the browser (it uses script names that only exist there).
+    pub runtime_default: Option<expression::Expression>,
+}
+
+impl PropInterface {
+    pub fn required(&self) -> bool {
+        self.default.is_none() && self.runtime_default.is_none()
+    }
 }
 
 pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
     validate_custom_element(&component.tag, component.tag_span)?;
     let locals = evaluate_script(&component.script)?;
     let mut props = Vec::new();
+    let mut runtime_defaults = HashSet::new();
     for declaration in &component.props {
         if props
             .iter()
@@ -238,14 +247,10 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         let default = match prop_default(declaration, &locals)? {
             None => None,
             Some(Ok(value)) => Some(value),
-            Some(Err(runtime)) => {
-                return Err(Diagnostic::new(
-                    declaration.span,
-                    format!(
-                        "the default for prop `{}` uses `{runtime}`, which only exists at runtime; prop defaults must be build-time values for now",
-                        declaration.name
-                    ),
-                ));
+            // Computed in the browser, per element, after the script runs.
+            Some(Err(_)) => {
+                runtime_defaults.insert(declaration.name.clone());
+                None
             }
         };
         props.push(Prop {
@@ -283,11 +288,25 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
                         }
                         _ => None,
                     });
+                let runtime_default = runtime_defaults
+                    .contains(&prop.name)
+                    .then(|| {
+                        component
+                            .props
+                            .iter()
+                            .find(|declaration| declaration.name == prop.name)
+                            .and_then(|declaration| match &declaration.default {
+                                PropDefault::Expression(expression, _) => Some(expression.clone()),
+                                _ => None,
+                            })
+                    })
+                    .flatten();
                 PropInterface {
                     name: prop.name,
                     declared,
                     attribute: prop.attribute,
                     default: prop.default,
+                    runtime_default,
                 }
             })
             .collect(),
@@ -335,6 +354,8 @@ fn evaluate_script(script: &ast::Script) -> Result<Vec<(String, Local)>, Diagnos
                 init.for_each_identifier(&mut |name| match find_local(&locals, name) {
                     Some(Local::Runtime) => runtime = true,
                     Some(Local::Value(_)) => {}
+                    // The browser's globals exist only at runtime.
+                    None if RUNTIME_GLOBALS.contains(&name) => runtime = true,
                     None => {
                         unknown.get_or_insert_with(|| name.to_owned());
                     }
@@ -962,34 +983,7 @@ impl Context<'_> {
         for attribute in &element.attributes {
             let prop_name = camel(&attribute.name);
             let lower = attribute.name.to_ascii_lowercase();
-            if crate::parser::is_event_attribute(&lower) {
-                // A near miss for one of the child's events is a typo: the listener would never
-                // run. Other names may be native events or bubble up from further inside.
-                let event = &lower[2..];
-                if !NATIVE_EVENTS.contains(&event)
-                    && !interface
-                        .events
-                        .iter()
-                        .any(|declared| declared.name == event)
-                {
-                    let names: Vec<&str> = interface
-                        .events
-                        .iter()
-                        .map(|declared| declared.name.as_str())
-                        .collect();
-                    let error = with_suggestion(
-                        Diagnostic::new(
-                            attribute.span,
-                            format!("<{}> never fires `{event}`", child.ast.tag),
-                        ),
-                        event,
-                        &names,
-                    );
-                    if error.help.is_some() {
-                        return Err(error);
-                    }
-                }
-            }
+            check_child_event(&child.ast.tag, &interface, attribute)?;
             if let Some(prop) = interface.props.iter().find(|prop| prop.name == prop_name) {
                 let (value, span) = match &attribute.value {
                     AttributeValue::None => (Value::Bool(true), attribute.span),
@@ -1001,47 +995,26 @@ impl Context<'_> {
                         (self.evaluate(expression, *span, state)?, *span)
                     }
                 };
-                if let Some(default) = &prop.default {
-                    if !same_type(default, &value) {
-                        return Err(Diagnostic::new(
-                            span,
-                            format!(
-                                "<{}> prop `{}` must be {} (like its default), found {}",
-                                child.ast.tag,
-                                prop.name,
-                                expression::type_name(default),
-                                expression::type_name(&value)
-                            ),
-                        ));
-                    }
-                }
+                check_child_prop_type(&child.ast.tag, prop, &value, span)?;
                 overrides.insert(prop.name.clone(), value);
             } else if matches!(attribute.value, AttributeValue::Expression(..))
                 && !crate::parser::is_event_attribute(&lower)
                 && !is_global_attribute(&lower)
             {
-                let names: Vec<&str> = interface
-                    .props
-                    .iter()
-                    .map(|prop| prop.name.as_str())
-                    .collect();
-                return Err(with_suggestion(
-                    Diagnostic::new(
-                        attribute.span,
-                        format!("<{}> has no prop `{prop_name}`", child.ast.tag),
-                    ),
-                    &prop_name,
-                    &names,
-                ));
+                return Err(unknown_child_prop(&child.ast.tag, &interface, attribute));
             } else if let Some(lowered) = self.lower_attribute(attribute, state, true)? {
                 attributes.push(lowered);
             }
         }
+        check_child_required(&child.ast.tag, &interface, element)?;
         for prop in &interface.props {
-            if prop.default.is_none() && !overrides.contains_key(&prop.name) {
+            if prop.runtime_default.is_some() && !overrides.contains_key(&prop.name) {
                 return Err(Diagnostic::new(
                     element.span,
-                    format!("<{}> requires the prop `{}`", child.ast.tag, prop.attribute),
+                    format!(
+                        "<{}> computes the default for `{}` in the browser; pass `{}` here to render it as HTML",
+                        child.ast.tag, prop.attribute, prop.attribute
+                    ),
                 ));
             }
         }
@@ -1429,6 +1402,175 @@ pub fn is_safe_url(value: &str) -> bool {
     }
     true
 }
+
+// ---- using a child component ---------------------------------------------------------------
+//
+// The checks both backends run on `<mnx-child …>`, from the child's interface alone.
+
+/// A listener for a near miss of one of the child's events is a typo: it would never run.
+/// Other names may be native events, or bubble up from further inside.
+pub(crate) fn check_child_event(
+    tag: &str,
+    interface: &Interface,
+    attribute: &ast::Attribute,
+) -> Result<(), Diagnostic> {
+    let lower = attribute.name.to_ascii_lowercase();
+    if !crate::parser::is_event_attribute(&lower) {
+        return Ok(());
+    }
+    let event = &lower[2..];
+    if NATIVE_EVENTS.contains(&event)
+        || interface
+            .events
+            .iter()
+            .any(|declared| declared.name == event)
+    {
+        return Ok(());
+    }
+    let names: Vec<&str> = interface
+        .events
+        .iter()
+        .map(|declared| declared.name.as_str())
+        .collect();
+    let error = with_suggestion(
+        Diagnostic::new(attribute.span, format!("<{tag}> never fires `{event}`")),
+        event,
+        &names,
+    );
+    if error.help.is_some() {
+        Err(error)
+    } else {
+        Ok(())
+    }
+}
+
+/// A value for a child's prop must have the type of the prop's default.
+pub(crate) fn check_child_prop_type(
+    tag: &str,
+    prop: &PropInterface,
+    value: &Value,
+    span: Span,
+) -> Result<(), Diagnostic> {
+    match &prop.default {
+        Some(default) if !same_type(default, value) => Err(Diagnostic::new(
+            span,
+            format!(
+                "<{tag}> prop `{}` must be {} (like its default), found {}",
+                prop.name,
+                expression::type_name(default),
+                expression::type_name(value)
+            ),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// An expression attribute that isn't one of the child's props (nor a global, data-/aria- or
+/// event attribute).
+pub(crate) fn unknown_child_prop(
+    tag: &str,
+    interface: &Interface,
+    attribute: &ast::Attribute,
+) -> Diagnostic {
+    let prop_name = camel(&attribute.name);
+    let names: Vec<&str> = interface
+        .props
+        .iter()
+        .map(|prop| prop.name.as_str())
+        .collect();
+    with_suggestion(
+        Diagnostic::new(attribute.span, format!("<{tag}> has no prop `{prop_name}`")),
+        &prop_name,
+        &names,
+    )
+}
+
+pub(crate) fn is_unknown_child_attribute(
+    interface: &Interface,
+    attribute: &ast::Attribute,
+) -> bool {
+    let lower = attribute.name.to_ascii_lowercase();
+    let prop_name = camel(&attribute.name);
+    !interface.props.iter().any(|prop| prop.name == prop_name)
+        && matches!(attribute.value, AttributeValue::Expression(..))
+        && !crate::parser::is_event_attribute(&lower)
+        && !is_global_attribute(&lower)
+}
+
+/// Every required prop of the child must be given.
+pub(crate) fn check_child_required(
+    tag: &str,
+    interface: &Interface,
+    element: &ast::Element,
+) -> Result<(), Diagnostic> {
+    for prop in &interface.props {
+        let given = element
+            .attributes
+            .iter()
+            .any(|attribute| camel(&attribute.name) == prop.name);
+        if prop.required() && !given {
+            return Err(Diagnostic::new(
+                element.span,
+                format!("<{tag}> requires the prop `{}`", prop.attribute),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Globals a component script can read in the browser (a binding that uses one is runtime-only).
+const RUNTIME_GLOBALS: &[&str] = &[
+    "window",
+    "self",
+    "globalThis",
+    "document",
+    "navigator",
+    "location",
+    "history",
+    "screen",
+    "localStorage",
+    "sessionStorage",
+    "performance",
+    "crypto",
+    "console",
+    "matchMedia",
+    "Date",
+    "Math",
+    "JSON",
+    "Number",
+    "String",
+    "Boolean",
+    "Array",
+    "Object",
+    "Symbol",
+    "BigInt",
+    "Map",
+    "Set",
+    "WeakMap",
+    "WeakSet",
+    "WeakRef",
+    "Promise",
+    "Intl",
+    "URL",
+    "URLSearchParams",
+    "Reflect",
+    "Proxy",
+    "Error",
+    "RegExp",
+    "Infinity",
+    "NaN",
+    "Signal",
+    "customElements",
+    "structuredClone",
+    "queueMicrotask",
+    "requestAnimationFrame",
+    "setTimeout",
+    "setInterval",
+    "fetch",
+    "Event",
+    "CustomEvent",
+    "AbortController",
+];
 
 /// Common DOM events an element can receive, so a listener for one is never taken for a typo.
 const NATIVE_EVENTS: &[&str] = &[

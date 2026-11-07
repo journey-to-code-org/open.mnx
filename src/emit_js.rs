@@ -137,7 +137,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             "    {}: {{ attribute: {}, default: {default}, required: {} }},\n",
             json(&prop.name),
             json(&prop.attribute),
-            prop.default.is_none()
+            prop.required()
         ));
     }
     let mut slots: Vec<String> = {
@@ -149,7 +149,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     let list =
         |names: &mut dyn Iterator<Item = &str>| names.map(json).collect::<Vec<_>>().join(", ");
     out.push_str(&format!(
-        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}  template: {},\n  setup($p, $emit) {{\n",
+        "  }},\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}  template: {},\n  setup($p, $emit{}) {{\n",
         component.shadow,
         component.form_associated,
         list(&mut slots.iter().map(String::as_str)),
@@ -160,7 +160,8 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             (true, None) => "  styled: true,\n".to_owned(),
             (true, Some(styles)) => format!("  styled: true,\n  styles: {styles},\n"),
         },
-        json(&emitter.template)
+        json(&emitter.template),
+        if interface.props.iter().any(|prop| prop.runtime_default.is_some()) { ", $initial" } else { "" }
     ));
     // `emit` from the runtime, bound to this element (handlers call it long after setup).
     if let Some(emit) = &component.script.emit {
@@ -170,6 +171,16 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     if !body.trim().is_empty() {
         out.push_str(body);
         out.push('\n');
+    }
+    // Defaults that use script values: computed now, unless the prop was already given.
+    for prop in &interface.props {
+        if let Some(default) = &prop.runtime_default {
+            let value = default.to_js_with(&|name| format!("$r({name})"));
+            out.push_str(&format!(
+                "    $initial({}, () => {value});\n",
+                json(&prop.name)
+            ));
+        }
     }
     out.push_str("    return [\n");
     for part in &emitter.parts {
@@ -182,6 +193,64 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
 }
 
 /// The children `component` imports, as its emitter needs them.
+/// The checks the HTML backend runs on a child component's attributes, with the values known at
+/// build time (literals); values from props and state are checked in the browser.
+fn check_child(element: &ast::Element, info: &ChildInfo) -> Result<(), Diagnostic> {
+    for attribute in &element.attributes {
+        validate::check_child_event(&element.name, &info.interface, attribute)?;
+        if validate::is_unknown_child_attribute(&info.interface, attribute) {
+            return Err(validate::unknown_child_prop(
+                &element.name,
+                &info.interface,
+                attribute,
+            ));
+        }
+        let prop_name = validate::camel(&attribute.name);
+        let Some(prop) = info
+            .interface
+            .props
+            .iter()
+            .find(|prop| prop.name == prop_name)
+        else {
+            continue;
+        };
+        let known = match &attribute.value {
+            AttributeValue::None => Some((serde_json::Value::Bool(true), attribute.span)),
+            AttributeValue::Text(parts)
+                if parts.iter().all(|part| matches!(part, Part::Literal(_))) =>
+            {
+                let text: String = parts
+                    .iter()
+                    .map(|part| match part {
+                        Part::Literal(text) => html_escape::decode_html_entities(text).into_owned(),
+                        Part::Expression { .. } => String::new(),
+                    })
+                    .collect();
+                Some((serde_json::Value::String(text), attribute.span))
+            }
+            AttributeValue::Text(_) => {
+                Some((serde_json::Value::String(String::new()), attribute.span))
+            }
+            AttributeValue::Expression(expression, span) => {
+                let mut free = false;
+                expression.for_each_identifier(&mut |_| free = true);
+                if free {
+                    None
+                } else {
+                    expression
+                        .evaluate(&|_| None)
+                        .ok()
+                        .map(|value| (value, *span))
+                }
+            }
+        };
+        if let Some((value, span)) = known {
+            validate::check_child_prop_type(&element.name, prop, &value, span)?;
+        }
+    }
+    validate::check_child_required(&element.name, &info.interface, element)
+}
+
 fn child_infos(component: &ComponentAst) -> Result<Vec<(String, ChildInfo)>, Diagnostic> {
     component
         .children
@@ -201,14 +270,17 @@ fn child_infos(component: &ComponentAst) -> Result<Vec<(String, ChildInfo)>, Dia
                     slot_paths: Vec::new(),
                 };
                 emitter.nodes(&child.ast.nodes, &[], false)?;
+                let slot_paths = std::mem::take(&mut emitter.slot_paths);
+                drop(emitter);
                 Ok(ChildInfo {
                     props: interface
                         .props
                         .iter()
                         .map(|prop| prop.name.clone())
                         .collect(),
+                    interface,
                     shadow: child.ast.shadow,
-                    slot_paths: emitter.slot_paths,
+                    slot_paths,
                 })
             })()
             .map_err(|error: Diagnostic| error.in_file(&child.path, &child.source))?;
@@ -264,6 +336,7 @@ fn path_js(path: &[usize]) -> String {
 
 /// What a parent needs to know about a child component it uses.
 struct ChildInfo {
+    interface: Interface,
     props: Vec<String>,
     shadow: bool,
     /// Where each slot region is in the child's template (light DOM only), for hydrate paths.
@@ -507,6 +580,9 @@ impl<'a> Emitter<'a> {
 
     fn element(&mut self, element: &ast::Element, path: &[usize]) -> Result<(), Diagnostic> {
         let child = self.child_info(&element.name);
+        if let Some(info) = child {
+            check_child(element, info)?;
+        }
         let custom = element.name.contains('-');
         self.template.push('<');
         self.template.push_str(&element.name);

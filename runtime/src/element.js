@@ -917,6 +917,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
     #signals = {};
+    #given = new Set(); // props set from outside (property, attribute, or before upgrade)
     #scope = null;
     #hooks = null;
     #cleanups = [];
@@ -927,7 +928,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
       for (const name of Object.keys(props)) {
         Object.defineProperty(this.prototype, name, {
           get() { return this.#signals[name].get(); },
-          set(value) { this.#signals[name].set(value); },
+          set(value) { this.#given.add(name); this.#signals[name].set(value); },
           configurable: true,
           enumerable: true,
         });
@@ -952,6 +953,7 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
         if (Object.hasOwn(this, name)) {
           const value = this[name];
           delete this[name];
+          this.#given.add(name);
           this.#signals[name].set(value);
         }
       }
@@ -1035,7 +1037,12 @@ export function define(tag, { props = {}, template = '', shadow = false, form = 
         const previous = current;
         current = this.#hooks;
         let parts;
-        try { parts = setup ? setup($p, (name, detail) => this.#emit(name, detail)) : []; } finally { current = previous; }
+        // A default computed from the script (`count={start}` where `const start = Date.now()`),
+        // unless the prop was given.
+        const initial = (name, compute) => {
+          if (!this.#given.has(name)) this.#signals[name].set(compute());
+        };
+        try { parts = setup ? setup($p, (name, detail) => this.#emit(name, detail), initial) : []; } finally { current = previous; }
 
         const context = { slots: new Map(), slotted: styled && !shadow ? tag : null };
         const server = hasContent(root);

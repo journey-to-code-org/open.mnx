@@ -266,6 +266,11 @@ pub fn declarations(
                 "  /** Attribute `{}`. Default: `{default}`. */\n",
                 prop.attribute
             ));
+        } else if prop.runtime_default.is_some() {
+            out.push_str(&format!(
+                "  /** Attribute `{}`. Default: computed by the component. */\n",
+                prop.attribute
+            ));
         } else {
             out.push_str(&format!(
                 "  /** Attribute `{}`. Required. */\n",
@@ -324,7 +329,7 @@ pub fn declarations(
         tag = component.tag
     ));
     for prop in &interface.props {
-        let optional = if prop.default.is_some() { "?" } else { "" };
+        let optional = if prop.required() { "" } else { "?" };
         out.push_str(&format!(
             "  {}{optional}: {};\n",
             property_key(&prop.name),
@@ -363,7 +368,7 @@ fn react_component(
     let mut members = Vec::new();
     let mut taken = Vec::new();
     for prop in &interface.props {
-        let optional = if prop.default.is_some() { "?" } else { "" };
+        let optional = if prop.required() { "" } else { "?" };
         members.push(format!(
             "  {}{optional}: {};",
             property_key(&prop.name),

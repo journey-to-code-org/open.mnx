@@ -12,6 +12,7 @@ useBrowser({
   greeting: join(here, 'fixtures/greeting.mnx'),
   pair: join(here, 'fixtures/pair.mnx'),
   typed: join(here, 'fixtures/typed.mnx'),
+  clock: join(here, 'fixtures/clock.mnx'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -183,6 +184,21 @@ test('a component written in TypeScript runs as its JavaScript', async () => {
   await page.evaluate(() => document.querySelector('mnx-typed').updateComplete);
   assert.equal(await page.textContent('mnx-typed p'), '#1');
   assert.deepEqual(await page.evaluate(() => window.picks), [{ option: { id: 2, label: '?' }, index: 1 }]);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a default computed by the script applies unless the prop was given', async () => {
+  const { page, messages } = await open(
+    '<mnx-clock id="a"></mnx-clock><mnx-clock id="b" since="5"></mnx-clock><mnx-clock id="c"></mnx-clock>',
+    { beforeModules: "window.clockStart = 42; document.getElementById('c').since = 7;", modules: ['clock'] },
+  );
+  const text = (id) => page.$eval(`#${id} p`, (p) => p.textContent);
+  assert.equal(await text('a'), 'Clock: 42 UTC', 'computed in the browser, per element');
+  assert.equal(await text('b'), 'Clock: 5 UTC', 'an attribute wins');
+  assert.equal(await text('c'), 'Clock: 7 UTC', 'a property set before the element was defined wins');
+  await page.evaluate(async () => { const a = document.getElementById('a'); a.since = 9; await a.updateComplete; });
+  assert.equal(await text('a'), 'Clock: 9 UTC');
   assert.deepEqual(messages, []);
   await page.close();
 });

@@ -199,3 +199,82 @@ fn a_bundler_keeps_mnx_import_specifiers() {
     let output = js(INBOX, &files(&[("./badge.mnx", BADGE)]), None).unwrap();
     assert!(output.contains("import './badge.mnx'"), "{output}");
 }
+
+#[test]
+fn a_child_default_computed_in_the_browser_must_be_passed_to_render_html() {
+    let child = "<script>const start = Date.now()</script>\n<mnx-clock since={start}><p>{since}</p></mnx-clock>";
+    let children = files(&[("./clock.mnx", child)]);
+    let error = html(
+        "<script>import './clock.mnx'</script>\n<mnx-x><mnx-clock></mnx-clock></mnx-x>",
+        &children,
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("computes the default for `since` in the browser"),
+        "{}",
+        error.message
+    );
+    assert_eq!(error.span.line, 2);
+    assert!(html(
+        "<script>import './clock.mnx'</script>\n<mnx-x><mnx-clock since={5}></mnx-clock></mnx-x>",
+        &children
+    )
+    .unwrap()
+    .contains("<p>5</p>"));
+}
+
+#[test]
+fn both_outputs_check_how_a_child_is_used() {
+    let children = files(&[("./badge.mnx", BADGE)]);
+    for (usage, expected) in [
+        (
+            "<mnx-badge count={\"three\"}></mnx-badge>",
+            "prop `count` must be a number",
+        ),
+        (
+            "<mnx-badge lable={\"x\"}></mnx-badge>",
+            "has no prop `lable`",
+        ),
+        ("<mnx-badge onlabelchang={go}></mnx-badge>", "never fires"),
+    ] {
+        let source = format!(
+            "<script>import './badge.mnx'\nfunction go() {{}}</script>\n<mnx-x>{usage}</mnx-x>"
+        );
+        let source = if expected == "never fires" {
+            source
+                .replace("./badge.mnx'", "./emitter.mnx'")
+                .replace("mnx-badge", "mnx-emitter")
+        } else {
+            source
+        };
+        let children = if expected == "never fires" {
+            files(&[("./emitter.mnx", "<script>import { emit } from '@mnx/runtime'\nemit('labelchange')</script>\n<mnx-emitter><p>x</p></mnx-emitter>")])
+        } else {
+            children.clone()
+        };
+        let in_html = html(&source, &children).unwrap_err();
+        let in_js = js(&source, &children, Some(".js")).unwrap_err();
+        assert!(
+            in_html.message.contains(expected),
+            "html: {}",
+            in_html.message
+        );
+        assert_eq!(
+            in_js.message, in_html.message,
+            "the same error from both outputs"
+        );
+        assert_eq!(in_js.help, in_html.help);
+    }
+    let required = "<mnx-req name><p>{name}</p></mnx-req>";
+    let children = files(&[("./req.mnx", required)]);
+    let source = "<script>import './req.mnx'</script>\n<mnx-x><mnx-req></mnx-req></mnx-x>";
+    assert!(js(source, &children, None)
+        .unwrap_err()
+        .message
+        .contains("requires the prop `name`"));
+    // Values only known in the browser aren't checked at build time.
+    let source = "<script>import './badge.mnx'</script>\n<mnx-x n={1}><mnx-badge count={n}></mnx-badge></mnx-x>";
+    assert!(js(source, &files(&[("./badge.mnx", BADGE)]), None).is_ok());
+}

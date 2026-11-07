@@ -849,3 +849,50 @@ fn props_that_shadow_built_in_element_properties_are_warned_about() {
         .starts_with("warning: prop `title`"));
     assert!(mnix_compiler::warnings("<mnx-x label=\"\"><p>x</p></mnx-x>").is_empty());
 }
+
+#[test]
+fn defaults_that_use_runtime_values_are_computed_in_the_browser() {
+    let source = "<script>\n  const start = Date.now()\n  const fallback = window.innerWidth ?? 0\n</script>\n<mnx-x since={start} width={fallback}>\n  <p>{since}</p>\n</mnx-x>";
+    let js = compile_js(source, "@mnx/runtime", "x.mnx").unwrap();
+    assert!(
+        js.contains("\"since\": { attribute: \"since\", default: undefined, required: false }"),
+        "{js}"
+    );
+    assert!(js.contains("  setup($p, $emit, $initial) {"), "{js}");
+    assert!(js.contains("    $initial(\"since\", () => $r(start));\n    $initial(\"width\", () => $r(fallback));"), "{js}");
+    let dts = mnix_compiler::compile_declarations(source, "x.mnx").unwrap();
+    assert!(dts.contains("Default: computed by the component."), "{dts}");
+    assert!(
+        dts.contains("  since?: unknown;"),
+        "optional in the props interface: {dts}"
+    );
+    // HTML needs the value from outside.
+    let error = compile(source, "{}").unwrap_err();
+    assert!(
+        error.message.contains("only exists at runtime"),
+        "{}",
+        error.message
+    );
+    assert!(compile(source, r#"{"since": 1, "width": 2}"#)
+        .unwrap()
+        .contains("<p>1</p>"));
+    // A typo is still a typo; only the browser's globals make a binding runtime-only.
+    let error = compile(
+        "<script>\n  const a = windw.x\n</script>\n<mnx-x><p>x</p></mnx-x>",
+        "{}",
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("`windw` is used before it is declared"),
+        "{}",
+        error.message
+    );
+    // Without runtime defaults, setup keeps its shape.
+    assert!(
+        compile_js("<mnx-x a=\"1\"><p>{a}</p></mnx-x>", "@mnx/runtime", "x.mnx")
+            .unwrap()
+            .contains("  setup($p, $emit) {")
+    );
+}

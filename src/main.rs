@@ -10,7 +10,9 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("{message}");
+            if !message.is_empty() {
+                eprintln!("{message}");
+            }
             ExitCode::FAILURE
         }
     }
@@ -18,9 +20,13 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
-    if arguments.next().as_deref() != Some("compile") {
+    let command = arguments.next();
+    if command.as_deref() == Some("check") {
+        return check(arguments.collect());
+    }
+    if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnix check <component.mnx>... [--format human|json]\n       mnix compile <component.mnx> [--emit html|js|css|dts|manifest] [--props <props.json>] [--slots <slots.json>] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -201,4 +207,95 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
         let _ = fs::remove_file(&temporary);
     }
     result
+}
+
+/// `mnix check`: every error and warning, for CI and editors; exits non-zero on errors.
+fn check(arguments: Vec<String>) -> Result<(), String> {
+    let mut files = Vec::new();
+    let mut json = false;
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--format" => match arguments.next().as_deref() {
+                Some("json") => json = true,
+                Some("human") => json = false,
+                other => {
+                    return Err(format!(
+                        "unknown --format `{}`; expected human or json",
+                        other.unwrap_or_default()
+                    ))
+                }
+            },
+            _ if argument.starts_with("--") => {
+                return Err(format!("unexpected argument `{argument}`"))
+            }
+            _ => files.push(argument),
+        }
+    }
+    if files.is_empty() {
+        return Err("usage: mnix check <component.mnx>... [--format human|json]".into());
+    }
+    let mut report = Vec::new();
+    let mut errors = 0;
+    let mut human = String::new();
+    for path in &files {
+        let source = fs::read_to_string(path)
+            .map_err(|error| format!("{path}: unable to read source: {error}"))?;
+        for warning in mnix_compiler::warnings(&source) {
+            human.push_str(&warning.render_warning(&source, path));
+            report.push(entry(path, &source, &warning, "warning"));
+        }
+        // The JavaScript output runs every check that doesn't need prop values.
+        if let Err(error) = mnix_compiler::compile_js_file(path, "@mnx/runtime") {
+            errors += 1;
+            human.push_str(&error.render_in(&source, path));
+            report.push(entry(path, &source, &error, "error"));
+        }
+    }
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).expect("JSON serializes")
+        );
+    } else {
+        eprint!("{human}");
+        if errors == 0 {
+            eprintln!(
+                "checked {} file{}: no errors",
+                files.len(),
+                if files.len() == 1 { "" } else { "s" }
+            );
+        }
+    }
+    if errors > 0 {
+        return Err(if json {
+            String::new()
+        } else {
+            format!(
+                "{errors} file{} with errors",
+                if errors == 1 { "" } else { "s" }
+            )
+        });
+    }
+    Ok(())
+}
+
+fn entry(
+    path: &str,
+    _source: &str,
+    diagnostic: &mnix_compiler::Diagnostic,
+    severity: &str,
+) -> serde_json::Value {
+    let file = diagnostic
+        .file
+        .as_ref()
+        .map_or(path, |(file, _)| file.as_str());
+    serde_json::json!({
+        "file": file,
+        "line": diagnostic.span.line,
+        "column": diagnostic.span.column,
+        "severity": severity,
+        "message": diagnostic.message,
+        "help": diagnostic.help,
+    })
 }
