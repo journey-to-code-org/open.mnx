@@ -70,6 +70,33 @@ jobs:
       - run: npm test
         working-directory: plugin
 
+  frameworks:
+    name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            plugin/package-lock.json
+            examples/frameworks/package-lock.json
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npm ci
+        working-directory: examples/frameworks
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/frameworks
+      - run: npm test
+        working-directory: examples/frameworks
+
   wasm:
     name: WebAssembly compiler
     runs-on: ubuntu-latest

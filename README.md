@@ -287,7 +287,11 @@ Angular needs `CUSTOM_ELEMENTS_SCHEMA` and nothing else for props (`[heading]="x
 })
 ```
 
-`mnxModel="checked"` names the pair when it isn't `value`. The Angular CLI's builder doesn't take Vite or esbuild plugins, so compile components with `mnx compile --emit js` (or `@mnx/compiler`) into `.js` modules and import those.
+`mnxModel="checked"` names the pair when it isn't `value`. With Analog's Vite plugin (`@analogjs/vite-plugin-angular`), which compiles Angular ahead of time inside Vite, `.mnx` files are imported directly like in any Vite app. The Angular CLI's builder doesn't take Vite or esbuild plugins, so there, compile components with `mnx compile --emit js` (or `@mnx/compiler`) into `.js` modules and import those.
+
+Lit apps put mnx elements in their shadow roots: a light-DOM component's styles are adopted into the shadow root it's in, with or without a bundler. Context crosses libraries too, since both follow the context protocol: a value from `@lit/context`'s `ContextProvider` reaches `inject()` with the same context key.
+
+`examples/frameworks/` has a complete app for each framework (React, Vue, Svelte, Solid, Lit, Preact, Angular), tested in a browser.
 
 ## Editors and tooling without Rust
 

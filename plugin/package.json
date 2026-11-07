@@ -1,6 +1,6 @@
 {
   "name": "@mnx/unplugin",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Compile .mnx components in Vite, Rollup, webpack, esbuild and Rspack, with React and Vue wrappers picked automatically",
   "license": "ISC",
   "repository": {
