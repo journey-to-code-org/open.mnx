@@ -254,14 +254,24 @@ fn serve_answers_a_request_per_line_and_batches() {
         request["props"]["name"] = name.into();
         writeln!(stdin, "{request}").unwrap();
         stdin.flush().unwrap();
-        let response: serde_json::Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+        let response: serde_json::Value =
+            serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
         assert_eq!(response["ok"], true);
-        assert!(response["output"].as_str().unwrap().contains(&format!("<p>Hi {name}</p>")));
+        assert!(response["output"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("<p>Hi {name}</p>")));
     }
     // A batch: one response per request, in order; `ok` only if all are.
-    writeln!(stdin, "\n{}", serde_json::json!({ "requests": [request, { "path": "/nope.mnx", "files": {} }] })).unwrap();
+    writeln!(
+        stdin,
+        "\n{}",
+        serde_json::json!({ "requests": [request, { "path": "/nope.mnx", "files": {} }] })
+    )
+    .unwrap();
     drop(stdin);
-    let response: serde_json::Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+    let response: serde_json::Value =
+        serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
     assert_eq!(response["ok"], false);
     assert_eq!(response["responses"][0]["ok"], true);
     assert_eq!(response["responses"][1]["ok"], false);
@@ -286,7 +296,13 @@ fn check_server_reports_what_the_servers_html_leaves_out() {
     let (ok, stdout, stderr) = mnx(&["check", "--server", path]);
     assert!(!ok, "a form's state left out is an error");
     let text = format!("{stdout}{stderr}");
-    assert!(text.contains("`checked` is computed in the browser") && text.contains("picker.mnx:3:"), "{text}");
-    assert!(text.contains("warning: this is computed in the browser"), "the template literal: {text}");
+    assert!(
+        text.contains("`checked` is computed in the browser") && text.contains("picker.mnx:3:"),
+        "{text}"
+    );
+    assert!(
+        text.contains("warning: this is computed in the browser"),
+        "the template literal: {text}"
+    );
     fs::remove_dir_all(&dir).ok();
 }

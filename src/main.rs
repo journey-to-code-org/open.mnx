@@ -339,7 +339,12 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
                         } else {
                             human.push_str(&gap.render_warning(&source, path));
                         }
-                        report.push(entry(path, &source, &gap, if error { "error" } else { "warning" }));
+                        report.push(entry(
+                            path,
+                            &source,
+                            &gap,
+                            if error { "error" } else { "warning" },
+                        ));
                     }
                 }
                 Err(error) => {

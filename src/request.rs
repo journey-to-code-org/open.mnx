@@ -31,19 +31,21 @@ pub fn handle(request: &str) -> String {
     let response = match serde_json::from_str::<Value>(request) {
         // `{ "requests": [ … ] }`: several at once, answered as `{ "ok", "responses": [ … ] }`
         // (each response as if it were sent alone), so a server renders a page in one call.
-        Ok(Value::Object(request)) if request.contains_key("requests") => match request.get("requests") {
-            Some(Value::Array(requests)) => {
-                let responses: Vec<Value> = requests
-                    .iter()
-                    .map(|request| match request {
-                        Value::Object(request) => respond(request),
-                        _ => failure("each of `requests` must be a JSON object"),
-                    })
-                    .collect();
-                json!({ "ok": responses.iter().all(|response| response["ok"] == true), "responses": responses })
+        Ok(Value::Object(request)) if request.contains_key("requests") => {
+            match request.get("requests") {
+                Some(Value::Array(requests)) => {
+                    let responses: Vec<Value> = requests
+                        .iter()
+                        .map(|request| match request {
+                            Value::Object(request) => respond(request),
+                            _ => failure("each of `requests` must be a JSON object"),
+                        })
+                        .collect();
+                    json!({ "ok": responses.iter().all(|response| response["ok"] == true), "responses": responses })
+                }
+                _ => failure("`requests` must be an array of requests"),
             }
-            _ => failure("`requests` must be an array of requests"),
-        },
+        }
         Ok(Value::Object(request)) => respond(&request),
         Ok(_) => failure("the request must be a JSON object"),
         Err(error) => failure(&format!("the request isn't JSON: {error}")),
@@ -253,7 +255,10 @@ fn respond(request: &Map<String, Value>) -> Value {
     // `"server": true` on a check: what a server without JavaScript leaves out.
     let mut gap_errors = Vec::new();
     let mut rendered_warnings = rendered_warnings;
-    if command == "check" && result.is_ok() && request.get("server").and_then(Value::as_bool) == Some(true) {
+    if command == "check"
+        && result.is_ok()
+        && request.get("server").and_then(Value::as_bool) == Some(true)
+    {
         match crate::server_gaps(source, &path, &loader) {
             Ok(gaps) => {
                 for (gap, error) in gaps {

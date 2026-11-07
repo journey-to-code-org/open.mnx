@@ -135,7 +135,7 @@ for (const runtime of ['node', 'bun']) {
       assert.equal(await page.text('#item-1 price-tag'), '$1,299.00');
       assert.deepEqual(await page.locator('#item-1 tag-list li').allTextContents(), ['mtb', '29"']);
       // Rendered fresh (with mnx's warning) where the markers were lost; hydrated where not.
-      if (drops) assert.ok(errors.length > 0 && errors.every((error) => /markup doesn't match its template; rendering it fresh/.test(error)), errors.join('\n'));
+      if (drops) assert.ok(errors.length > 0 && errors.every((error) => /hydration markers .* are missing, so it's rendered fresh/.test(error)), errors.join('\n'));
       else assert.deepEqual(errors, []);
       await close();
     });

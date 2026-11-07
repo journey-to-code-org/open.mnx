@@ -104,10 +104,13 @@ fn partial() -> bool {
     PARTIAL.with(std::cell::Cell::get)
 }
 
+/// A place partial rendering left for the browser, and, for an attribute, which one.
+pub type Gap = (Span, Option<String>);
+
 thread_local! {
     /// While `mnx check --server` runs: where partial rendering left something for the browser,
     /// and, for an attribute, which one.
-    static GAPS: std::cell::RefCell<Option<Vec<(Span, Option<String>)>>> = const { std::cell::RefCell::new(None) };
+    static GAPS: std::cell::RefCell<Option<Vec<Gap>>> = const { std::cell::RefCell::new(None) };
 }
 
 thread_local! {
@@ -118,10 +121,13 @@ thread_local! {
 fn gap(span: Span) {
     GAPS.with(|gaps| {
         if let Some(gaps) = gaps.borrow_mut().as_mut() {
-            let at = gaps.iter().position(|(at, _)| *at == span).unwrap_or_else(|| {
-                gaps.push((span, None));
-                gaps.len() - 1
-            });
+            let at = gaps
+                .iter()
+                .position(|(at, _)| *at == span)
+                .unwrap_or_else(|| {
+                    gaps.push((span, None));
+                    gaps.len() - 1
+                });
             LAST_GAP.with(|last| last.set(at));
         }
     });
@@ -138,7 +144,7 @@ fn gap_attribute(name: &str) {
 }
 
 /// Run `render` (a partial HTML render) recording what it leaves for the browser.
-pub fn record_gaps<T>(render: impl FnOnce() -> T) -> (T, Vec<(Span, Option<String>)>) {
+pub fn record_gaps<T>(render: impl FnOnce() -> T) -> (T, Vec<Gap>) {
     let previous = GAPS.with(|gaps| gaps.replace(Some(Vec::new())));
     let result = render();
     let gaps = GAPS.with(|gaps| gaps.replace(previous)).unwrap_or_default();
@@ -948,11 +954,17 @@ impl Context<'_> {
         };
         let length = text
             .char_indices()
-            .take_while(|(_, character)| character.is_alphanumeric() || *character == '_' || *character == '$')
+            .take_while(|(_, character)| {
+                character.is_alphanumeric() || *character == '_' || *character == '$'
+            })
             .map(|(index, character)| index + character.len_utf8())
             .last()?;
         let (name, rest) = text.split_at(length);
-        if name.chars().next().is_some_and(|first| first.is_ascii_digit()) {
+        if name
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_digit())
+        {
             return None;
         }
         let rest = rest.trim_start();
@@ -961,8 +973,14 @@ impl Context<'_> {
         if !and && !or {
             return None;
         }
-        let Some(Binding::Value(value)) = self.binding(name, state) else { return None };
-        let value = if negated { Value::Bool(!expression::is_truthy(value)) } else { value.clone() };
+        let Some(Binding::Value(value)) = self.binding(name, state) else {
+            return None;
+        };
+        let value = if negated {
+            Value::Bool(!expression::is_truthy(value))
+        } else {
+            value.clone()
+        };
         let truthy = expression::is_truthy(&value);
         ((and && !truthy) || (or && truthy)).then_some(value)
     }
@@ -1594,7 +1612,12 @@ fn form_value_as_html(element: &mut ir::Element) {
     else {
         return;
     };
-    let value = element.attributes.remove(position).value.map(|parts| joined(&parts)).unwrap_or_default();
+    let value = element
+        .attributes
+        .remove(position)
+        .value
+        .map(|parts| joined(&parts))
+        .unwrap_or_default();
     if name == "textarea" {
         element.children = vec![Node::Text(vec![Part::Escaped(value)])];
         return;
@@ -1611,7 +1634,9 @@ fn form_value_as_html(element: &mut ir::Element) {
     }
     fn mark(nodes: &mut [Node], value: &str) {
         for node in nodes {
-            let Node::Element(element) = node else { continue };
+            let Node::Element(element) = node else {
+                continue;
+            };
             match element.name.to_ascii_lowercase().as_str() {
                 "optgroup" => mark(&mut element.children, value),
                 "option" => {
@@ -1619,14 +1644,27 @@ fn form_value_as_html(element: &mut ir::Element) {
                         .attributes
                         .iter()
                         .find(|attribute| attribute.name.eq_ignore_ascii_case("value"))
-                        .map(|attribute| attribute.value.as_deref().map(joined).unwrap_or_default());
+                        .map(|attribute| {
+                            attribute.value.as_deref().map(joined).unwrap_or_default()
+                        });
                     let matches = match own {
                         Some(own) => own == value,
-                        None => text(&element.children).split_whitespace().collect::<Vec<_>>().join(" ") == value,
+                        None => {
+                            text(&element.children)
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                                == value
+                        }
                     };
-                    element.attributes.retain(|attribute| !attribute.name.eq_ignore_ascii_case("selected"));
+                    element
+                        .attributes
+                        .retain(|attribute| !attribute.name.eq_ignore_ascii_case("selected"));
                     if matches {
-                        element.attributes.push(ir::Attribute { name: "selected".into(), value: None });
+                        element.attributes.push(ir::Attribute {
+                            name: "selected".into(),
+                            value: None,
+                        });
                     }
                 }
                 _ => {}

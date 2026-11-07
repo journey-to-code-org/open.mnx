@@ -587,7 +587,8 @@ impl<'a> TemplateParser<'a> {
                 AttributeValue::None
                     if !self.html
                         && is_event_attribute(&attribute_name.to_ascii_lowercase())
-                        && event_parts(&attribute_name.to_ascii_lowercase()).is_ok_and(|(_, modifiers)| modifiers.submit) =>
+                        && event_parts(&attribute_name.to_ascii_lowercase())
+                            .is_ok_and(|(_, modifiers)| modifiers.submit) =>
                 {
                     AttributeValue::Expression(Expression::Null, attribute_span)
                 }
@@ -960,7 +961,10 @@ fn unknown_modifier(modifier: &str) -> String {
 /// `class={{ … }}` and `style={{ … }}` become one `class:name`/`style:name` attribute per entry;
 /// bare `class:active` means `class:active={active}`. Checks that `class:` and `style:` are well
 /// formed.
-fn expand_directives(attributes: Vec<Attribute>, element: &str) -> Result<Vec<Attribute>, Diagnostic> {
+fn expand_directives(
+    attributes: Vec<Attribute>,
+    element: &str,
+) -> Result<Vec<Attribute>, Diagnostic> {
     let mut out = Vec::with_capacity(attributes.len());
     for attribute in attributes {
         let lower = attribute.name.to_ascii_lowercase();
@@ -970,14 +974,23 @@ fn expand_directives(attributes: Vec<Attribute>, element: &str) -> Result<Vec<At
             if !element.contains('-') {
                 return Err(Diagnostic::new(
                     attribute.span,
-                    format!("`{}` binds a custom element's two-way prop; a native <{element}> has none", attribute.name),
+                    format!(
+                        "`{}` binds a custom element's two-way prop; a native <{element}> has none",
+                        attribute.name
+                    ),
                 )
-                .with_help(format!("write the pair: {prop}={{…}} oninput={{(event) => (… = event.target.{prop})}}")));
+                .with_help(format!(
+                    "write the pair: {prop}={{…}} oninput={{(event) => (… = event.target.{prop})}}"
+                )));
             }
-            let AttributeValue::Expression(Expression::Identifier(target), span) = &attribute.value else {
+            let AttributeValue::Expression(Expression::Identifier(target), span) = &attribute.value
+            else {
                 return Err(Diagnostic::new(
                     attribute.span,
-                    format!("`{}` takes a `let` or a prop to keep in step: {}={{color}}", attribute.name, attribute.name),
+                    format!(
+                        "`{}` takes a `let` or a prop to keep in step: {}={{color}}",
+                        attribute.name, attribute.name
+                    ),
                 ));
             };
             let source = format!("(event) => ({target} = event.detail)");

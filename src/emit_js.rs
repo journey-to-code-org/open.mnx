@@ -100,8 +100,10 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
                         _ => imported,
                     };
                     // `__mnx…` names come from JSX lowering, which writes its own `.get()`s.
-                    (matches!(imported, "state" | "computed" | "inject" | "hasSlot" | "hydrated")
-                        && !local.starts_with("__mnx"))
+                    (matches!(
+                        imported,
+                        "state" | "computed" | "inject" | "hasSlot" | "hydrated"
+                    ) && !local.starts_with("__mnx"))
                     .then(|| local.to_owned())
                 })
                 .collect::<Vec<_>>()

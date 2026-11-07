@@ -199,14 +199,21 @@ pub struct HtmlOptions {
 /// a component rendered with its defaults: each place partial rendering leaves for the browser,
 /// as `(diagnostic, error)`. An attribute that changes what a form submits or shows (`checked`,
 /// `selected`, `value`, `disabled`) is an error: without JavaScript, the form is wrong.
-pub fn server_gaps(source: &str, path: &str, loader: Loader<'_>) -> Result<Vec<(Diagnostic, bool)>, Diagnostic> {
+pub fn server_gaps(
+    source: &str,
+    path: &str,
+    loader: Loader<'_>,
+) -> Result<Vec<(Diagnostic, bool)>, Diagnostic> {
     let (rendered, gaps) = validate::record_gaps(|| {
         compile_html_with_options(
             source,
             path,
             "{}",
             "{}",
-            HtmlOptions { slot_source: SlotSource::Template, partial: true },
+            HtmlOptions {
+                slot_source: SlotSource::Template,
+                partial: true,
+            },
             loader,
         )
     });

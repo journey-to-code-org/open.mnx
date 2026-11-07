@@ -97,6 +97,6 @@ test('minified naively (every comment removed): no markers, so the elements rend
   const page = await open('naive', '/');
   await page.getByRole('button', { name: 'miles' }).click();
   assert.equal((await texts(page, 'trail-card .length'))[0], '2.6 mi', 'still right');
-  assert.ok(page.errors.length > 0 && page.errors.every((error) => /doesn't match its template; rendering it fresh/.test(error)), page.errors.join('\n'));
+  assert.ok(page.errors.length > 0 && page.errors.every((error) => /hydration markers .* are missing, so it's rendered fresh/.test(error)), page.errors.join('\n'));
   await page.done();
 });

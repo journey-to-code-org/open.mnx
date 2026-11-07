@@ -211,7 +211,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     // `hydrated()` is false until the element starts, so on the server it's `false`.
     for (index, text) in calls {
         let call = text.split_whitespace().collect::<String>();
-        if hydrated_names.iter().any(|name| call == format!("{name}()")) {
+        if hydrated_names
+            .iter()
+            .any(|name| call == format!("{name}()"))
+        {
             script.bindings[index].init = Some(expression::Expression::Boolean(false));
         }
     }
