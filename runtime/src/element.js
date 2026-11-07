@@ -9,7 +9,7 @@
 // Paths count element and comment children only. The browser merges and drops text nodes, so
 // text is reached through its element (an only child) or through an empty-comment anchor.
 import { Signal } from './signal.js';
-import { effect, scope, tick } from './effect.js';
+import { effect, scope, tick, batch } from './effect.js';
 import { RESOURCE } from './resource.js';
 
 const { untrack } = Signal.subtle;
@@ -380,6 +380,15 @@ function blueprint(source) {
 
 function clearBetween(open, close) {
   while (open.nextSibling && open.nextSibling !== close) open.nextSibling.remove();
+}
+
+/** Remove everything between `open` and `close` in one operation. */
+function deleteBetween(open, close) {
+  if (open.nextSibling === close) return;
+  const range = document.createRange();
+  range.setStartAfter(open);
+  range.setEndBefore(close);
+  range.deleteContents();
 }
 
 /**
@@ -881,18 +890,45 @@ function bindEach(part, open, hydrating, context) {
           rows[index].item.set(list[index]);
           rows[index].position.set(index);
         }
-        for (let index = rows.length; index < list.length; index++) {
-          const row = createRow(list[index], index);
-          placeRow(row, close);
-          rows.push(row);
+        if (rows.length < list.length) {
+          const fragment = new DocumentFragment();
+          for (let index = rows.length; index < list.length; index++) {
+            const row = createRow(list[index], index);
+            fragment.append(...nodesOf(row));
+            rows.push(row);
+          }
+          close.before(fragment);
         }
-        for (const row of rows.splice(list.length)) removeRow(row);
+        if (!list.length && rows.length) {
+          batch(() => { for (const row of rows) row.owner.dispose(); });
+          deleteBetween(open, close);
+          rows = [];
+        }
+        batch(() => { for (const row of rows.splice(list.length)) removeRow(row); });
         return;
       }
 
       // Keyed: reuse the row for each key, create the missing ones, drop the rest, then walk the
       // new order and move only rows that aren't already where they belong.
       const byKey = new Map(rows.map((row) => [row.key, row]));
+      // Nothing reused (cleared, or replaced wholesale): drop every row at once, then build the
+      // new ones in one fragment and insert it once.
+      if (rows.length && !keys.some((key) => byKey.has(key))) {
+        batch(() => { for (const row of rows) row.owner.dispose(); });
+        deleteBetween(open, close);
+        rows = [];
+        byKey.clear();
+      }
+      if (!rows.length) {
+        const fragment = new DocumentFragment();
+        rows = list.map((value, index) => {
+          const row = createRow(value, index, keys[index]);
+          fragment.append(...nodesOf(row));
+          return row;
+        });
+        close.before(fragment);
+        return;
+      }
       const next = list.map((value, index) => {
         const row = byKey.get(keys[index]);
         if (!row) return createRow(value, index, keys[index]);
@@ -901,7 +937,7 @@ function bindEach(part, open, hydrating, context) {
         row.position.set(index);
         return row;
       });
-      for (const row of byKey.values()) removeRow(row);
+      batch(() => { for (const row of byKey.values()) removeRow(row); });
       let at = open.nextSibling;
       while (at && at.nodeType === TEXT) at = at.nextSibling;
       for (const row of next) {

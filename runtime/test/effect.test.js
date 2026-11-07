@@ -281,3 +281,19 @@ test('parents still run first after disposals reorder the watched set', async ()
   assert.deepEqual(log, ['parent 0', 'child of 0 sees 0', 'parent 1', 'child of 1 sees 1']);
   dispose();
 });
+
+test('disposing a scope of many effects releases every subscription at once', async () => {
+  const { batch } = await import('../src/effect.js');
+  const shared = new Signal.State(0);
+  const rows = scope(() => { for (let i = 0; i < 2000; i++) effect(() => { shared.get(); }); });
+  assert.equal(hasSinks(shared), true);
+  rows.dispose();
+  assert.equal(hasSinks(shared), false, 'released synchronously');
+  // Inside batch(), the release happens at its end.
+  const more = [scope(() => effect(() => { shared.get(); })), scope(() => effect(() => { shared.get(); }))];
+  batch(() => {
+    for (const owner of more) owner.dispose();
+    assert.equal(hasSinks(shared), true, 'not yet');
+  });
+  assert.equal(hasSinks(shared), false);
+});

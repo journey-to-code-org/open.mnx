@@ -1,0 +1,10 @@
+<!-- The js-framework-benchmark table: keyed rows with a label and a selected state. -->
+<mnx-bench rows={[]}>
+  <table>
+    <tbody>
+      <mnx-each items={rows} as="row" key={row.id}>
+        <tr class={row.selected ? "danger" : ""}><td class="id">{row.id}</td><td><a class="label">{row.label}</a></td></tr>
+      </mnx-each>
+    </tbody>
+  </table>
+</mnx-bench>

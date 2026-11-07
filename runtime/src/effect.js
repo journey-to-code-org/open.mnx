@@ -34,6 +34,36 @@ const watcher = new Signal.subtle.Watcher(() => {
   }));
 });
 
+// Unwatching is batched: disposing or pausing a subtree (removing a list of 1,000 rows), or
+// anything inside `batch()`, unwatches everything in one pass over the watcher's signals,
+// instead of one pass per effect. Outside a batch it happens at once.
+const unwatching = new Set();
+let batching = 0;
+
+function unwatchLater(computed) {
+  if (batching) unwatching.add(computed);
+  else watcher.unwatch(computed);
+}
+
+/** Run `fn`, unwatching what it disposes or pauses in one pass at the end. */
+export function batch(fn) {
+  batching++;
+  try {
+    return fn();
+  } finally {
+    if (--batching === 0 && unwatching.size) {
+      const all = [...unwatching];
+      unwatching.clear();
+      for (let i = 0; i < all.length; i += 10000) watcher.unwatch(...all.slice(i, i + 10000));
+    }
+  }
+}
+
+/** Watch again (a resumed effect): if its unwatch is still pending, just cancel that. */
+function watchAgain(computed) {
+  if (!unwatching.delete(computed)) watcher.watch(computed);
+}
+
 function report(error) {
   if (typeof globalThis.reportError === 'function') globalThis.reportError(error);
   else console.error(error);
@@ -49,7 +79,9 @@ class Owner {
   }
 
   disposeChildren() {
-    for (const child of [...this.children]) child.dispose();
+    batch(() => {
+      for (const child of [...this.children]) child.dispose();
+    });
   }
 
   dispose() {
@@ -62,7 +94,9 @@ class Owner {
   pause() {
     if (this.paused || this.disposed) return;
     this.paused = true;
-    for (const child of [...this.children]) child.pause();
+    batch(() => {
+      for (const child of [...this.children]) child.pause();
+    });
   }
 
   resume() {
@@ -111,20 +145,20 @@ class Effect extends Owner {
   dispose() {
     if (this.disposed) return;
     super.dispose();
-    watcher.unwatch(this.computed);
+    unwatchLater(this.computed);
     try { this.runCleanup(); } catch (error) { report(error); }
   }
 
   pause() {
     if (this.paused || this.disposed) return;
     super.pause();
-    watcher.unwatch(this.computed);
+    unwatchLater(this.computed);
   }
 
   resume() {
     if (!this.paused || this.disposed) return;
     this.paused = false;
-    watcher.watch(this.computed);
+    watchAgain(this.computed);
     try { this.run(); } catch (error) { report(error); }
     for (const child of [...this.children]) if (!child.disposed) child.resume();
   }
