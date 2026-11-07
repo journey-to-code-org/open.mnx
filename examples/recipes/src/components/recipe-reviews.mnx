@@ -19,7 +19,7 @@
     const form = event.target
     const data = new FormData(form)
     const review = { id: `added-${added.length}`, name: data.get("name"), stars: Number(data.get("stars")), text: data.get("text") }
-    added = [review, ...added]
+    added.unshift(review)
     form.reset()
   }
 </script>

@@ -19,7 +19,7 @@ An `.mnx` file is one component: a script, styles, and a template whose root is 
 Read it top to bottom:
 
 - **`<like-button emoji="👍">`** is the host tag. Its name is the custom element's name (it needs a hyphen), and its attributes are the **props**, with their defaults: `emoji` is a string prop that defaults to `"👍"`. `size={2}` would be a number prop, `items={[]}` an array.
-- **`let pressed = 0`** is **state**. Assigning it (`pressed++`, `pressed = 0`) updates whatever reads it. There's no `useState` and no `.set()`.
+- **`let pressed = 0`** is **state**. Assigning it (`pressed++`, `pressed = 0`) updates whatever reads it. There's no `useState` and no `.set()`. Arrays and objects in state update when mutated, too: `items.push(x)` is enough.
 - **`const label = …`** reads state, so it's **derived**: it stays in sync with `pressed`, like a computed value.
 - **`{label}`** in the template reads it. Only the text node that shows it updates when it changes. Nothing re-renders, and the script runs once per element.
 - **`<style>`** applies to this component only. The selectors are scoped to it, even in light DOM.

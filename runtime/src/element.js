@@ -9,6 +9,7 @@
 // Paths count element and comment children only. The browser merges and drops text nodes, so
 // text is reached through its element (an only child) or through an empty-comment anchor.
 import { Signal } from './signal.js';
+import { wrap, raw } from './deep.js';
 import { effect, scope, root as rootScope, tick, batch } from './effect.js';
 import { RESOURCE } from './resource.js';
 
@@ -86,6 +87,9 @@ function hooks(name) {
  */
 export const signal = (value) => value;
 
+/** The original object behind reactive state (`let items = []` holds a proxy of the array). */
+export { raw };
+
 export const state = (value, options) => {
   // @hot (left out of the production build: scripts/build-production.js)
   // During a hot reload, a component's state keeps its value: by position, like hooks, unless
@@ -94,7 +98,10 @@ export const state = (value, options) => {
   const at = current?.states?.length ?? 0;
   if (kept && at < kept.length && kind(kept[at]) === kind(value)) value = kept[at];
   // @hot-end
-  const signal = new Signal.State(value, options);
+  const signal = new Signal.State(wrap(value), options);
+  // An array or plain object assigned later is wrapped the same way, so `items = [...]` followed
+  // by `items.push(x)` keeps updating.
+  signal.set = (next) => Signal.State.prototype.set.call(signal, wrap(next));
   current?.states?.push(signal);
   return signal;
 };
@@ -120,7 +127,7 @@ export function from(source, start) {
   const linked = new Signal.Computed(() => {
     const base = latest.get();
     const own = assigned.get();
-    return own && own.base === base ? own.value : base.value;
+    return wrap(own && own.base === base ? own.value : base.value);
   });
   linked.set = (value) => assigned.set({ base: untrack(() => latest.get()), value });
   // @hot (left out of the production build: scripts/build-production.js)
@@ -1185,6 +1192,9 @@ function bindEach(part, open, hydrating, context) {
       if (list != null) console.error('mnx: mnx-each items must be an array; got', list);
       list = [];
     }
+    // Reactive state (deep.js) tracks by property: reading the length and each index here means
+    // `items.push(x)`, `items.splice(…)` and `items[i] = x` re-run this effect.
+    for (let index = 0, { length } = list; index < length; index++) list[index];
     const hydrate = first;
     first = false;
     untrack(() => {

@@ -29,6 +29,7 @@ Templates are HTML with `{expressions}` and a few elements that start with `mnx-
 
 - `mnx-if` switches only when the chosen branch changes.
 - `mnx-each` with a `key` moves rows when the list reorders, along with their DOM state (focus, a half-typed input). Changing one item updates only that row.
+- Mutate the list the ordinary way: `items.push({ … })`, `items.splice(i, 1)`, `item.done = !item.done`. State tracks each property, so a push adds one row and a write to one item updates one row. (Reassigning, `items = items.filter(…)`, works too.)
 
 ## Classes and styles
 
