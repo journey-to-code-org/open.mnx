@@ -14,6 +14,7 @@ mod expression;
 mod ir;
 mod parser;
 mod render;
+mod request;
 mod scanner;
 mod script;
 mod styles;
@@ -220,6 +221,17 @@ pub fn compile_js_for_bundler(
 pub fn compile_css_file(path: &str) -> Result<String, Diagnostic> {
     let component = load(&read(path)?, path, Some(&components::filesystem))?;
     Ok(stylesheets(&component))
+}
+
+/// The scoped stylesheets of a component and what it imports, resolving imports with `loader`.
+pub fn css_with(source: &str, path: &str, loader: Loader<'_>) -> Result<String, Diagnostic> {
+    Ok(stylesheets(&load(source, path, Some(loader))?))
+}
+
+/// The compiler as one function: a JSON request in, a JSON response out (what the WebAssembly
+/// build exposes). See [`request`](crate::request) for the format.
+pub fn handle_request(request: &str) -> String {
+    request::handle(request)
 }
 
 /// The scoped stylesheet of a component with no `.mnx` imports.

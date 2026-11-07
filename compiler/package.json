@@ -1,0 +1,26 @@
+{
+  "name": "@mnx/compiler",
+  "version": "1.1.0",
+  "description": "The mnx compiler as WebAssembly: compile .mnx components from Node without installing Rust",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "directory": "compiler"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": ["index.js", "index.d.ts", "mnx.wasm"],
+  "scripts": {
+    "build": "cargo build -p mnx-wasm --target wasm32-unknown-unknown --release && cp ../target/wasm32-unknown-unknown/release/mnx_wasm.wasm mnx.wasm",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

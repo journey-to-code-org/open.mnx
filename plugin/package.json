@@ -33,6 +33,7 @@
     "@mnx/runtime": "^1.0.0"
   },
   "devDependencies": {
+    "@mnx/compiler": "file:../compiler",
     "@mnx/runtime": "file:../runtime",
     "@tailwindcss/vite": "4.3.5",
     "@types/react": "19.3.0",

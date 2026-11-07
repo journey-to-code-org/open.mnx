@@ -316,3 +316,23 @@ test('styles go through the bundler: Tailwind (@apply, utilities, layer order) a
   assert.deepEqual(messages, []);
   await page.close();
 });
+
+test('without a CLI, the WebAssembly compiler (@mnx/compiler) builds the app', async (t) => {
+  const { available } = await import('@mnx/compiler').catch(() => ({ available: () => false }));
+  if (!available()) return t.skip('@mnx/compiler has no mnx.wasm (npm run build in compiler/)');
+  const saved = process.env.MNX_COMPILER;
+  delete process.env.MNX_COMPILER;
+  try {
+    const root = app('react');
+    await build({ root, configFile: false, logLevel: 'silent', plugins: [mnx(), react()], build: { outDir: join(root, 'dist'), minify: false } });
+    const { page, messages } = await visit(root);
+    await settle(page);
+    await page.click('mnx-rating .two');
+    await settle(page);
+    assert.equal(await page.textContent('#stars'), '2');
+    assert.deepEqual(messages, []);
+    await page.close();
+  } finally {
+    if (saved !== undefined) process.env.MNX_COMPILER = saved;
+  }
+});
