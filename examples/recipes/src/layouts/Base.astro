@@ -1,0 +1,38 @@
+---
+const { title } = Astro.props;
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · mnx kitchen</title>
+  </head>
+  <body>
+    <header class="site"><a href="/">mnx kitchen</a></header>
+    <main><slot /></main>
+  </body>
+</html>
+
+<style is:global>
+  /* In the `base` layer, under the components' scoped styles (the `components` layer). */
+  @layer base {
+  :root { --bg: #f6f1ea; --card: #fffdf9; --ink: #2b2420; --accent: #c8582a; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1d1a17; --card: #2a2622; --ink: #efe7dc; --accent: #e9864f; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.55 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+  a { color: var(--accent); }
+  header.site { padding: 1rem 1.25rem; font-weight: 700; letter-spacing: 0.02em; }
+  header.site a { color: inherit; text-decoration: none; }
+  main { max-width: 56rem; margin: 0 auto; padding: 0 1.25rem 4rem; }
+  .tags { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .tag { font-size: 0.75rem; padding: 0.1rem 0.55rem; border-radius: 999px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+
+  /* recipe-servings is a JSX component in the light DOM, styled from here. */
+  recipe-servings { display: block; padding: 1rem 1.25rem; border-radius: 1rem; background: var(--card); }
+  recipe-servings .servings { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+  recipe-servings button { width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid #8886; background: none; color: inherit; font: inherit; cursor: pointer; }
+  recipe-servings button:disabled { opacity: 0.4; cursor: default; }
+  recipe-servings output { font-weight: 700; min-width: 1.5ch; text-align: center; }
+  recipe-servings ul { margin: 0; padding-left: 1.25rem; }
+  }
+</style>

@@ -1,0 +1,33 @@
+<!--
+  A star rating that is a form control: it submits its value under its `name`, is invalid while
+  `required` and unset, and goes back to 0 when its form resets. `readonly` shows a rating.
+  @fires change - The user picked a rating.
+-->
+<script>
+  import { emit, formValue, validity, onFormReset } from '@mnx/runtime'
+
+  let hovered = 0
+  const shown = hovered || value
+  const stars = Array.from({ length: max }, (_, index) => index + 1)
+
+  formValue(() => (value ? value : null))
+  validity(() => (required && !value ? "Pick a rating" : ""))
+  onFormReset(() => (value = 0))
+
+  function rate(stars) {
+    if (readonly) return
+    value = stars
+    emit('change')
+  }
+</script>
+<style>
+  :host { display: inline-flex; gap: 0.1rem; }
+  button { font: inherit; font-size: 1.25rem; line-height: 1; padding: 0; border: 0; background: none; color: #c9c2b8; cursor: pointer; }
+  button.on { color: var(--accent, #e07a2f); }
+  :host([readonly]) button { cursor: default; font-size: 1rem; }
+</style>
+<star-rating form-associated value={0} max={5} required={false} readonly={false} label="Rating">
+  <mnx-each items={stars} as="n" key={n}>
+    <button type="button" class={n <= shown ? "on" : ""} aria-label={`${n} of ${max}`} aria-pressed={n === value ? "true" : "false"} onclick={() => rate(n)} onmouseenter={() => (hovered = readonly ? 0 : n)} onmouseleave={() => (hovered = 0)}>★</button>
+  </mnx-each>
+</star-rating>

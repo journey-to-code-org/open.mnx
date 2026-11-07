@@ -1,0 +1,19 @@
+---
+import Base from '../layouts/Base.astro';
+import RecipeCard from '../components/recipe-card.mnx';
+import { recipes } from '../data/recipes.js';
+---
+<Base title="Recipes">
+  <h1>Recipes</h1>
+  <div class="grid">
+    {recipes.map((recipe) => (
+      <RecipeCard heading={recipe.title} href={`/recipes/${recipe.id}/`} summary={recipe.summary} minutes={recipe.minutes} servings={recipe.servings}>
+        <span class="tags">{recipe.tags.map((tag) => <span class="tag">{tag}</span>)}</span>
+      </RecipeCard>
+    ))}
+  </div>
+</Base>
+
+<style>
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
+</style>

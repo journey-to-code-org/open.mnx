@@ -1,0 +1,20 @@
+<!--
+  A recipe in the index. Rendered on the server only: the page ships no JavaScript for it.
+  @slot - Tags, under the summary.
+-->
+<style>
+  :host { display: block; }
+  a { display: flex; flex-direction: column; gap: 0.5rem; height: 100%; padding: 1.25rem; border-radius: 1rem; background: var(--card); color: inherit; text-decoration: none; box-shadow: 0 1px 2px #0001, 0 4px 16px #0000000a; transition: transform 0.15s; }
+  a:hover { transform: translateY(-2px); }
+  h2 { margin: 0; font-size: 1.25rem; }
+  p { margin: 0; opacity: 0.8; }
+  .meta { margin-top: auto; font-size: 0.875rem; opacity: 0.7; }
+</style>
+<recipe-card heading="" href="#" summary="" minutes={0} servings={1}>
+  <a href={href}>
+    <h2>{heading}</h2>
+    <p>{summary}</p>
+    <mnx-slot></mnx-slot>
+    <span class="meta">{minutes} min · serves {servings}</span>
+  </a>
+</recipe-card>

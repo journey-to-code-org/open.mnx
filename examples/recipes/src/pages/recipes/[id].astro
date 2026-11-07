@@ -1,0 +1,36 @@
+---
+import Base from '../../layouts/Base.astro';
+import RecipeServings from '../../components/recipe-servings.mnx.tsx';
+import RecipeReviews from '../../components/recipe-reviews.mnx';
+import { recipes, byId } from '../../data/recipes.js';
+
+export function getStaticPaths() {
+  return recipes.map((recipe) => ({ params: { id: recipe.id } }));
+}
+const recipe = byId(Astro.params.id);
+---
+<Base title={recipe.title}>
+  <p><a href="/">← All recipes</a></p>
+  <h1>{recipe.title}</h1>
+  <p class="lede">{recipe.summary} {recipe.minutes} minutes.</p>
+
+  <section class="columns">
+    <div>
+      <h2>Ingredients</h2>
+      <RecipeServings servings={recipe.servings} ingredients={recipe.ingredients} client:load />
+    </div>
+    <div>
+      <h2>Method</h2>
+      <ol class="steps">{recipe.steps.map((step) => <li>{step}</li>)}</ol>
+    </div>
+  </section>
+
+  <RecipeReviews recipe={recipe.id} client:visible />
+</Base>
+
+<style>
+  .lede { font-size: 1.125rem; opacity: 0.85; }
+  .columns { display: grid; grid-template-columns: minmax(16rem, 1fr) 2fr; gap: 2rem; margin-bottom: 2rem; }
+  @media (max-width: 40rem) { .columns { grid-template-columns: 1fr; } }
+  .steps li + li { margin-top: 0.5rem; }
+</style>
