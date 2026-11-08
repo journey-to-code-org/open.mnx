@@ -1,0 +1,12 @@
+<!--
+  An item's tags, as small chips.
+-->
+<style>
+  ul { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+  li { padding: 0.05rem 0.5rem; border-radius: 0.3rem; background: #eef1f6; color: #444b5a; font-size: 0.75rem; }
+</style>
+<tag-list tags={[]}>
+  <ul>
+    <zb-each items={tags} as="tag" key={tag}><li>{tag}</li></zb-each>
+  </ul>
+</tag-list>

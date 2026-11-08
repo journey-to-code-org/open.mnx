@@ -1,11 +1,11 @@
-// @mnx/server: pages for template engines, the adapters, and shadow roots for framework HTML.
+// @zubra/server: pages for template engines, the adapters, and shadow roots for framework HTML.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { createMnx } from '../src/index.js';
+import { createZubra } from '../src/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const components = join(here, 'components');
@@ -39,28 +39,28 @@ async function open(url, { javascript = true } = {}) {
 const layout = (body) => `<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body>${body}</body></html>`;
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
-  const mnx = createMnx({ components });
-  assert.deepEqual(mnx.names, ['book-card', 'count-stepper', 'hello-there', 'review-list']);
-  assert.equal(mnx.describe('count-stepper').form, true);
+  const zubra = createZubra({ components });
+  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list']);
+  assert.equal(zubra.describe('count-stepper').form, true);
   const url = await listen((req, res) => {
-    if (mnx.handle(req, res)) return;
-    const page = mnx.page();
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
     const body = page.render('hello-there', { name: 'Ada', items: [{ label: 'a', on: true }, { label: 'b' }, { label: 'c', on: true }] });
     res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
   });
   const html = await (await fetch(url)).text();
   assert.match(html, /<p>Hello Ada\. a, c<\/p>/, 'rendered on the server, JavaScript (filter, map, join) included');
-  assert.match(html, /<style data-mnx-components>[^]*color: rgb\(0, 128, 0\)/);
-  assert.match(html, /"@mnx\/runtime":"\/_mnx\/runtime\/index\.js"/);
-  assert.match(html, /import '\/_mnx\/components\/hello-there\.js';<\/script>\n?<\/body>/);
-  assert.equal((await fetch(`${url}/_mnx/components/nope.js`)).status, 404);
+  assert.match(html, /<style data-zb-components>[^]*color: rgb\(0, 128, 0\)/);
+  assert.match(html, /"@zubra\/runtime":"\/_zubra\/runtime\/index\.js"/);
+  assert.match(html, /import '\/_zubra\/components\/hello-there\.js';<\/script>\n?<\/body>/);
+  assert.equal((await fetch(`${url}/_zubra/components/nope.js`)).status, 404);
   // (fetch() would normalize the dots away: send the path as written.)
   const { request } = await import('node:http');
-  const body = await new Promise((resolve) => request(`${url}/`, { path: '/_mnx/runtime/../../package.json' }, (response) => {
+  const body = await new Promise((resolve) => request(`${url}/`, { path: '/_zubra/runtime/../../package.json' }, (response) => {
     let text = '';
     response.on('data', (chunk) => (text += chunk)).on('end', () => resolve(text));
   }).end());
-  assert.doesNotMatch(body, /"name": "@mnx\/runtime"/, 'no way out of the runtime folder (the dots resolve first)');
+  assert.doesNotMatch(body, /"name": "@zubra\/runtime"/, 'no way out of the runtime folder (the dots resolve first)');
   const page = await open(url);
   await page.waitForFunction(() => document.querySelector('hello-there p').textContent.startsWith('Hello Ada!'));
   assert.deepEqual(page.errors, [], 'it hydrated the server markup');
@@ -69,61 +69,61 @@ test('a page: render, finish (CSS, import map, modules), and the browser modules
 
 test('the Express, Fastify and Hono adapters', async () => {
   const { default: express } = await import('express');
-  const { mnx: expressMnx } = await import('../src/express.js');
+  const { zubra: expressZubra } = await import('../src/express.js');
   const app = express();
-  app.use(expressMnx({ components }));
-  app.get('/', (req, res) => res.send(res.locals.mnx.finish(layout(res.locals.mnx.render('hello-there', { name: 'Express' })))));
+  app.use(expressZubra({ components }));
+  app.get('/', (req, res) => res.send(res.locals.zubra.finish(layout(res.locals.zubra.render('hello-there', { name: 'Express' })))));
   const expressUrl = await listen(app);
-  assert.match(await (await fetch(expressUrl)).text(), /Hello Express\.[^]*import '\/_mnx\/components\/hello-there\.js'/);
-  assert.match(await (await fetch(`${expressUrl}/_mnx/components/hello-there.js`)).text(), /\$define\(/);
+  assert.match(await (await fetch(expressUrl)).text(), /Hello Express\.[^]*import '\/_zubra\/components\/hello-there\.js'/);
+  assert.match(await (await fetch(`${expressUrl}/_zubra/components/hello-there.js`)).text(), /\$define\(/);
 
   const { default: Fastify } = await import('fastify');
-  const { mnx: fastifyMnx } = await import('../src/fastify.js');
+  const { zubra: fastifyZubra } = await import('../src/fastify.js');
   const fastify = Fastify();
-  await fastify.register(fastifyMnx, { components });
-  fastify.get('/', (request, reply) => reply.type('text/html').send(request.mnx.finish(layout(request.mnx.render('hello-there', { name: 'Fastify' })))));
+  await fastify.register(fastifyZubra, { components });
+  fastify.get('/', (request, reply) => reply.type('text/html').send(request.zubra.finish(layout(request.zubra.render('hello-there', { name: 'Fastify' })))));
   await fastify.listen({ port: 0, host: '127.0.0.1' });
   const fastifyUrl = `http://127.0.0.1:${fastify.server.address().port}`;
   assert.match(await (await fetch(fastifyUrl)).text(), /Hello Fastify\./);
-  assert.match(await (await fetch(`${fastifyUrl}/_mnx/runtime/index.js`)).text(), /export/);
+  assert.match(await (await fetch(`${fastifyUrl}/_zubra/runtime/index.js`)).text(), /export/);
   await fastify.close();
 
   const { Hono } = await import('hono');
-  const { mnx: honoMnx } = await import('../src/hono.js');
+  const { zubra: honoZubra } = await import('../src/hono.js');
   const hono = new Hono();
-  hono.use(honoMnx({ components }));
-  hono.get('/', (c) => c.html(c.get('mnx').finish(layout(c.get('mnx').render('hello-there', { name: 'Hono' })))));
+  hono.use(honoZubra({ components }));
+  hono.get('/', (c) => c.html(c.get('zubra').finish(layout(c.get('zubra').render('hello-there', { name: 'Hono' })))));
   assert.match(await (await hono.request('/')).text(), /Hello Hono\./);
-  const module = await hono.request('/_mnx/components/hello-there.js');
+  const module = await hono.request('/_zubra/components/hello-there.js');
   assert.equal(module.headers.get('content-type'), 'text/javascript; charset=utf-8');
 });
 
-// What a framework's server renders: the host tags only, props as attributes (or mnx-props).
+// What a framework's server renders: the host tags only, props as attributes (or zb-props).
 const FRAMEWORK_HTML = layout(`
   <form method="get" action="/sent">
     <count-stepper name="qty" value="3" label="Tickets"></count-stepper>
-    <book-card mnx-props='{"book":{"title":"Dune","price":1299},"featured":true}'></book-card>
+    <book-card zb-props='{"book":{"title":"Dune","price":1299},"featured":true}'></book-card>
     <hello-there name="light"></hello-there>
     <button>Send</button>
   </form>
-  <script type="importmap">{ "imports": { "@mnx/runtime": "/_mnx/runtime/index.js" } }</script>
-  <script type="module">import '/_mnx/components/count-stepper.js'; import '/_mnx/components/book-card.js';</script>`);
+  <script type="importmap">{ "imports": { "@zubra/runtime": "/_zubra/runtime/index.js" } }</script>
+  <script type="module">import '/_zubra/components/count-stepper.js'; import '/_zubra/components/book-card.js';</script>`);
 
 test('injectShadowRoots: shadow components complete before JavaScript, form values submit, and hydration keeps it', async () => {
-  const mnx = createMnx({ components });
-  const injected = mnx.injectShadowRoots(FRAMEWORK_HTML);
-  assert.match(injected, /<count-stepper name="qty" value="3" label="Tickets"><template shadowrootmode="open">[^]*<output aria-label="Tickets">3<\/output>[^]*<\/template><input type="hidden" name="qty" value="3" data-mnx-fallback><\/count-stepper>/);
-  assert.match(injected, /<book-card mnx-props='[^']*'><template shadowrootmode="open">[^]*<h3>Dune<\/h3>[^]*\$12\.99[^]*<\/template><\/book-card>/);
+  const zubra = createZubra({ components });
+  const injected = zubra.injectShadowRoots(FRAMEWORK_HTML);
+  assert.match(injected, /<count-stepper name="qty" value="3" label="Tickets"><template shadowrootmode="open">[^]*<output aria-label="Tickets">3<\/output>[^]*<\/template><input type="hidden" name="qty" value="3" data-zb-fallback><\/count-stepper>/);
+  assert.match(injected, /<book-card zb-props='[^']*'><template shadowrootmode="open">[^]*<h3>Dune<\/h3>[^]*\$12\.99[^]*<\/template><\/book-card>/);
   assert.match(injected, /<hello-there name="light"><\/hello-there>/, 'light DOM is left alone');
-  assert.equal(mnx.injectShadowRoots(injected), injected, 'a second pass changes nothing');
+  assert.equal(zubra.injectShadowRoots(injected), injected, 'a second pass changes nothing');
   // `lightDom: true` (3.3): an empty light-DOM host gets its rendered children too, for a
   // framework that leaves nodes it didn't render alone (Solid).
-  const withLight = mnx.injectShadowRoots(FRAMEWORK_HTML, { lightDom: true });
+  const withLight = zubra.injectShadowRoots(FRAMEWORK_HTML, { lightDom: true });
   assert.match(withLight, /<hello-there name="light">\s*<p>Hello light\. <\/p>\s*<\/hello-there>/, withLight);
   assert.match(withLight, /<count-stepper name="qty" value="3" label="Tickets"><template shadowrootmode="open">/);
-  assert.equal(mnx.injectShadowRoots(withLight, { lightDom: true }), withLight, 'a second pass with lightDom changes nothing');
+  assert.equal(zubra.injectShadowRoots(withLight, { lightDom: true }), withLight, 'a second pass with lightDom changes nothing');
   const url = await listen((req, res) => {
-    if (mnx.handle(req, res)) return;
+    if (zubra.handle(req, res)) return;
     if (req.url.startsWith('/sent')) return res.writeHead(200, { 'content-type': 'text/plain' }).end(req.url);
     res.writeHead(200, { 'content-type': 'text/html' }).end(injected);
   });
@@ -139,7 +139,7 @@ test('injectShadowRoots: shadow components complete before JavaScript, form valu
   // With JavaScript: the elements hydrate their shadow roots (no warnings), the hidden input
   // is gone, and the form submits the element's own value, once.
   page = await open(url);
-  await page.waitForFunction(() => customElements.get('count-stepper') && !document.querySelector('[data-mnx-fallback]'));
+  await page.waitForFunction(() => customElements.get('count-stepper') && !document.querySelector('[data-zb-fallback]'));
   await page.locator('count-stepper .more').click();
   assert.equal(await page.locator('count-stepper output').textContent(), '4');
   assert.deepEqual(await page.evaluate(() => [...new FormData(document.querySelector('form'))]), [['qty', '4']]);
@@ -148,12 +148,12 @@ test('injectShadowRoots: shadow components complete before JavaScript, form valu
 });
 
 test('injectShadowRootsStream: the same result as the whole page, however the chunks fall', async () => {
-  const mnx = createMnx({ components });
+  const zubra = createZubra({ components });
   const html = FRAMEWORK_HTML.replace('<button>Send</button>', '<button>Send → café</button>');
-  const whole = mnx.injectShadowRoots(html);
+  const whole = zubra.injectShadowRoots(html);
   const bytes = Buffer.from(html);
   for (const size of [1, 3, 7, 64, 4096]) {
-    const stream = mnx.injectShadowRootsStream();
+    const stream = zubra.injectShadowRootsStream();
     const out = [];
     stream.on('data', (chunk) => out.push(chunk));
     const done = new Promise((resolve) => stream.on('end', resolve));
@@ -164,10 +164,10 @@ test('injectShadowRootsStream: the same result as the whole page, however the ch
   }
   // Hosts that already have their shadow root (the React wrapper renders it) get no second one,
   // even when a chunk ends right after the host's start tag.
-  assert.equal(mnx.injectShadowRoots(whole), whole);
+  assert.equal(zubra.injectShadowRoots(whole), whole);
   const bytesAgain = Buffer.from(whole);
   for (const size of [1, 5, 13, 4096]) {
-    const stream = mnx.injectShadowRootsStream();
+    const stream = zubra.injectShadowRootsStream();
     const out = [];
     stream.on('data', (chunk) => out.push(chunk));
     const done = new Promise((resolve) => stream.on('end', resolve));
@@ -179,11 +179,11 @@ test('injectShadowRootsStream: the same result as the whole page, however the ch
 });
 
 test('in production, the runtime served is its production build', async () => {
-  const body = (mnx) => mnx.fetch(new Request('http://x/_mnx/runtime/element.js')).then((response) => response.text());
-  const dev = await body(createMnx({ components: join(here, 'components'), production: false }));
-  const prod = await body(createMnx({ components: join(here, 'components'), production: true }));
-  assert.match(dev, /__MNX_HOT__/);
-  assert.doesNotMatch(prod, /__MNX_HOT__/);
+  const body = (zubra) => zubra.fetch(new Request('http://x/_zubra/runtime/element.js')).then((response) => response.text());
+  const dev = await body(createZubra({ components: join(here, 'components'), production: false }));
+  const prod = await body(createZubra({ components: join(here, 'components'), production: true }));
+  assert.match(dev, /__ZUBRA_HOT__/);
+  assert.doesNotMatch(prod, /__ZUBRA_HOT__/);
   assert.match(prod, /Generated by scripts\/build-production\.js/);
 });
 
@@ -191,12 +191,12 @@ test('in production, the runtime served is its production build', async () => {
 // resolved region with its value, for the element to hydrate (or to take as a property, if it
 // has already started).
 test('stream(): the shell first, then the resolved region, hydrated in place; a rejection shows the catch', async () => {
-  const mnx = createMnx({ components });
+  const zubra = createZubra({ components });
   let release;
   const reviews = () => new Promise((resolve) => { release = () => resolve([{ id: 1, name: 'Ada', stars: 5 }, { id: 2, name: 'Grace', stars: 4 }]); });
   const url = await listen((req, res) => {
-    if (mnx.handle(req, res)) return;
-    const page = mnx.page();
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
     const slow = req.url.includes('slow');
     const failing = req.url.includes('fail');
     const body = page.render('review-list', { heading: 'What people said', reviews: failing ? Promise.reject(new Error('no reviews today')) : slow ? reviews() : Promise.resolve([{ id: 1, name: 'Ada', stars: 5 }]) });
@@ -207,8 +207,8 @@ test('stream(): the shell first, then the resolved region, hydrated in place; a 
 
   // The whole response: the shell with the pending region, then the swap.
   const text = await (await fetch(url)).text();
-  assert.match(text, /<review-list data-mnx-stream="0" heading="What people said">\s*<h2>What people said<\/h2>\s*<!--\[\?-->\s*<p class="loading">Loading…<\/p>\s*<!--\]-->/);
-  assert.match(text, /<template data-mnx-swap="0"><div data-mnx-region="0"><!--\[-->[^]*<li>Ada: 5<\/li>[^]*<\/div><\/template><script>/);
+  assert.match(text, /<review-list data-zb-stream="0" heading="What people said">\s*<h2>What people said<\/h2>\s*<!--\[\?-->\s*<p class="loading">Loading…<\/p>\s*<!--\]-->/);
+  assert.match(text, /<template data-zb-swap="0"><div data-zb-region="0"><!--\[-->[^]*<li>Ada: 5<\/li>[^]*<\/div><\/template><script>/);
   assert.match(text, /"reviews":\{"value":\[\{"id":1,"name":"Ada","stars":5\}\]\}/);
 
   // Without JavaScript the swap can't run: the pending content stays (the page is still complete).

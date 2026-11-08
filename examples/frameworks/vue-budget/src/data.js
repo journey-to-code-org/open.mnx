@@ -43,7 +43,7 @@ function seed() {
 
 export function load() {
   try {
-    const saved = JSON.parse(localStorage.getItem('mnx-budget'));
+    const saved = JSON.parse(localStorage.getItem('zb-budget'));
     if (saved?.transactions) return saved;
   } catch {}
   return { transactions: seed(), limits: Object.fromEntries(CATEGORIES.map((c) => [c.name, c.limit])) };
@@ -51,7 +51,7 @@ export function load() {
 
 export function save(state) {
   try {
-    localStorage.setItem('mnx-budget', JSON.stringify(state));
+    localStorage.setItem('zb-budget', JSON.stringify(state));
   } catch {}
 }
 

@@ -1,0 +1,17 @@
+<!-- A user card that loads its user. -->
+<script>
+  import { resource, props } from '@zubra/runtime'
+  const p = props()
+  const user = resource(({ signal }) => window.loadUser(p.who, signal))
+</script>
+<zb-await-demo who="ada" plain={7}>
+  <zb-await value={user}>
+    <p class="pending">Loading {who}…</p>
+    <zb-then as="data"><p class="name">{data.name}</p></zb-then>
+    <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>
+  </zb-await>
+  <zb-await value={plain}>
+    <zb-then as="n"><b>{n}</b></zb-then>
+  </zb-await>
+  <span class="status">{user.status}</span>
+</zb-await-demo>

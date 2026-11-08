@@ -32,42 +32,42 @@ prop features: strings
 <script>
   const features = ["Static HTML", "Scoped slots", "Escaped output"]
 </script>
-<mnx-feature-list ready={true} mode="active" features={features}>
+<zb-feature-list ready={true} mode="active" features={features}>
   <main>
-    <mnx-if test={ready && mode == "active"}>
+    <zb-if test={ready && mode == "active"}>
       <ul>
-        <mnx-each items={features} as="feature">
+        <zb-each items={features} as="feature">
           <li>{feature}</li>
-        </mnx-each>
+        </zb-each>
       </ul>
-      <mnx-else><p>Features are not available.</p></mnx-else>
-    </mnx-if>
-    <mnx-slot name="actions"><a href="/">Continue</a></mnx-slot>
+      <zb-else><p>Features are not available.</p></zb-else>
+    </zb-if>
+    <zb-slot name="actions"><a href="/">Continue</a></zb-slot>
   </main>
-</mnx-feature-list>
+</zb-feature-list>
 ```
 
 ## Changes
 
 | 0.2 | 1.0 | What the compiler says |
 |---|---|---|
-| `component:` / `tag:` / `prop …` / `---` header | The host tag is the component: `<mnx-feature-list …>…</mnx-feature-list>` wraps the template | "the `component:`/`prop`/`---` header is v0.2 syntax; declare the component with its host tag instead" |
-| `prop name: string` (required) | A bare attribute on the host: `<mnx-x name>` | |
+| `component:` / `tag:` / `prop …` / `---` header | The host tag is the component: `<zb-feature-list …>…</zb-feature-list>` wraps the template | "the `component:`/`prop`/`---` header is v0.2 syntax; declare the component with its host tag instead" |
+| `prop name: string` (required) | A bare attribute on the host: `<zb-x name>` | |
 | typed props without defaults | Defaults on the host; the type comes from the default: `count={0}`, `label="Hi"`, `items={[]}`, `open={false}` | |
 | `prop profile: url` | A string prop; URL safety now applies to every URL attribute's final value, whatever its source | |
 | `prop features: strings` | Any array: `features={["a", "b"]}`, including arrays of objects | |
 | `{{ name }}` | `{name}`, and any expression: `{user.name ?? "anonymous"}` | "`{{ … }}` is v0.2 syntax; v0.3 uses single braces" |
-| `test='ready && mode == "active"'` (quoted) | `test={ready && mode == "active"}`. Expressions follow JavaScript's rules: truthiness, `==` is strict, `?.` `??` `? :` and arithmetic work | "`test` on <mnx-if> is an expression: write test={…}" |
+| `test='ready && mode == "active"'` (quoted) | `test={ready && mode == "active"}`. Expressions follow JavaScript's rules: truthiness, `==` is strict, `?.` `??` `? :` and arithmetic work | "`test` on <zb-if> is an expression: write test={…}" |
 | `items="features"` | `items={features}`, with optional `index="i"` and `key={item.id}` | |
-| `<mnix-if>` `<mnix-else>` `<mnix-each>` `<mnix-slot>` | `<mnx-if>` `<mnx-else>` `<mnx-each>` `<mnx-slot>` | "<mnix-if> was renamed to <mnx-if> in v0.3" |
-| `mnix-` custom element prefix | `mnx-` (any valid custom element name works) | |
+| `<mnix-if>` `<mnix-else>` `<mnix-each>` `<mnix-slot>` | `<zb-if>` `<zb-else>` `<zb-each>` `<zb-slot>` | "<mnix-if> was renamed to <zb-if> in v0.3" |
+| `mnix-` custom element prefix | `zb-` (any valid custom element name works) | |
 | exactly one root element | Any number of top-level nodes: the host is the root | |
 | props come only from `--props` | Defaults come from the component; `--props` overrides them | |
 
 ## What stays the same
 
 - `--props props.json` and `--slots slots.json` on the CLI, for the HTML output.
-- Slots: `<mnx-slot>` is the default slot, `name="…"` a named slot, children are the fallback.
+- Slots: `<zb-slot>` is the default slot, `name="…"` a named slot, children are the fallback.
 - Escaping and URL rules (now also applied at runtime; see `security.md`).
 - `--output <file>` with atomic writes.
 

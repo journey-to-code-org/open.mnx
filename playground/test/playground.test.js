@@ -1,7 +1,7 @@
-// The playground in Chromium: it compiles in the page (mnx.wasm when built, else the test
+// The playground in Chromium: it compiles in the page (zubra.wasm when built, else the test
 // server's native compiler), runs the component in each preview, shows every output, reports
 // errors, and keeps the example in a link. `node --test playground/test/`.
-// With MNX_REQUIRE_WASM=1, the site must have mnx.wasm and the page must use it.
+// With ZUBRA_REQUIRE_WASM=1, the site must have zubra.wasm and the page must use it.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -14,7 +14,7 @@ import { serve } from '../serve.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
 const { chromium } = createRequire(join(repo, 'runtime/package.json'))('playwright');
-const wasm = process.env.MNX_REQUIRE_WASM === '1';
+const wasm = process.env.ZUBRA_REQUIRE_WASM === '1';
 // React and Vue previews need examples/frameworks' toolchain (`npm ci` there).
 const frameworks = existsSync(join(repo, 'examples/frameworks/node_modules/react'));
 const out = join(here, '.tmp/site');
@@ -23,7 +23,7 @@ let server, browser;
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   execFileSync(process.execPath, [join(here, '../build.mjs'), '--out', out, ...(wasm ? ['--require-wasm'] : []), ...(frameworks ? [] : ['--no-frameworks'])], { stdio: 'inherit' });
-  server = await serve(out, { compiler: join(repo, 'target/debug/mnx') });
+  server = await serve(out, { compiler: join(repo, 'target/debug/zubra') });
   browser = await chromium.launch();
 });
 after(async () => {
@@ -49,7 +49,7 @@ const frame = async (page, kind) => {
 
 test('compiles in the page and runs the component in every preview', async () => {
   const { page, errors } = await openPlayground();
-  assert.equal(await page.textContent('#status'), `Compiled (${wasm ? 'WebAssembly' : existsSync(join(out, 'mnx.wasm')) ? 'WebAssembly' : 'server'})`);
+  assert.equal(await page.textContent('#status'), `Compiled (${wasm ? 'WebAssembly' : existsSync(join(out, 'zubra.wasm')) ? 'WebAssembly' : 'server'})`);
   const html = await frame(page, 'html');
   assert.deepEqual(await html.$$eval('hello-counter output', (els) => els.map((el) => el.textContent)), ['Apples: 0', 'Clicks: 5']);
   await html.click('hello-counter >> nth=0 >> button.more');
@@ -86,7 +86,7 @@ test('an edit recompiles; an error shows with its location; the link keeps the e
 
   await page.fill('#source', source.replace('onclick={() => count++}', 'onclick={() => count++'));
   await page.waitForSelector('#error:not([hidden])');
-  assert.match(await page.textContent('#error'), /component\.mnx:\d+:\d+/);
+  assert.match(await page.textContent('#error'), /component\.zb:\d+:\d+/);
   assert.equal(await page.textContent('#status'), 'Compile error');
 
   await page.fill('#source', source.replace('label="Clicks"', 'label="Taps"'));
@@ -117,9 +117,9 @@ test('the examples: slots with hasSlot, a list with directives, and a spread', a
   await list.click('todo-list li >> nth=1');
   await list.waitForFunction(() => document.querySelector('todo-list p').textContent === '1 left');
 
-  // A spread: the preview loads @mnx/runtime/spread through the import map.
+  // A spread: the preview loads @zubra/runtime/spread through the import map.
   await page.selectOption('#example', 'spread');
-  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('@mnx/runtime/spread'));
+  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('@zubra/runtime/spread'));
   const panel = await frame(page, 'html');
   await panel.waitForFunction(() => document.querySelector('disclosure-panel button')?.getAttribute('aria-expanded') === 'false');
   assert.equal(await panel.$eval('disclosure-panel [role=region]', (el) => el.hidden), true);

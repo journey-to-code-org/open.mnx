@@ -1,10 +1,10 @@
 //! `let x = from(prop)`: state that follows a prop until it's assigned, and starts over when the
 //! prop changes (`plan/roadmap-3.0.md`, challenge 3).
 
-use mnx_compiler::{compile, compile_js, convert};
+use zubra::{compile, compile_js, convert};
 
 const TIMER: &str = r#"<script>
-  import { from } from '@mnx/runtime'
+  import { from } from '@zubra/runtime'
   let left = from(seconds)
   let running = from(seconds, false)
 </script>
@@ -15,15 +15,15 @@ const TIMER: &str = r#"<script>
 
 #[test]
 fn the_compiler_passes_the_prop_as_a_function() {
-    let js = compile_js(TIMER, "@mnx/runtime", "x.mnx").unwrap();
+    let js = compile_js(TIMER, "@zubra/runtime", "x.zb").unwrap();
     assert!(js.contains("const left = from(() => ($p.seconds))"), "{js}");
     assert!(
         js.contains("const running = from(() => ($p.seconds), () => (false))"),
         "{js}"
     );
     // It's state: read with .get(), assigned with .set().
-    assert!(js.contains("__mnxUpdate(left, -1, false)"), "{js}");
-    assert!(!js.contains("__mnxState(from"), "{js}");
+    assert!(js.contains("__zubraUpdate(left, -1, false)"), "{js}");
+    assert!(!js.contains("__zubraState(from"), "{js}");
 }
 
 #[test]
@@ -41,9 +41,9 @@ fn the_server_renders_where_it_starts() {
 #[test]
 fn it_takes_a_let_and_the_runtime_import() {
     let error = compile_js(
-        "<script>\n  import { from } from '@mnx/runtime'\n  const left = from(seconds)\n</script>\n<x-t seconds={1}>{left}</x-t>",
-        "@mnx/runtime",
-        "x.mnx",
+        "<script>\n  import { from } from '@zubra/runtime'\n  const left = from(seconds)\n</script>\n<x-t seconds={1}>{left}</x-t>",
+        "@zubra/runtime",
+        "x.zb",
     )
     .unwrap_err();
     assert!(
@@ -57,9 +57,9 @@ fn it_takes_a_let_and_the_runtime_import() {
     );
     // Renamed on import, it still works; another `from` is just a call.
     let js = compile_js(
-        "<script>\n  import { from as linked } from '@mnx/runtime'\n  let left = linked(seconds)\n</script>\n<x-t seconds={1}>{left}</x-t>",
-        "@mnx/runtime",
-        "x.mnx",
+        "<script>\n  import { from as linked } from '@zubra/runtime'\n  let left = linked(seconds)\n</script>\n<x-t seconds={1}>{left}</x-t>",
+        "@zubra/runtime",
+        "x.zb",
     )
     .unwrap();
     assert!(
@@ -68,12 +68,12 @@ fn it_takes_a_let_and_the_runtime_import() {
     );
     let js = compile_js(
         "<script>\n  import { from } from './rows.js'\n  let left = from(seconds)\n</script>\n<x-t seconds={1}>{left}</x-t>",
-        "@mnx/runtime",
-        "x.mnx",
+        "@zubra/runtime",
+        "x.zb",
     )
     .unwrap();
     assert!(
-        js.contains("const left = __mnxState(from($p.seconds))"),
+        js.contains("const left = __zubraState(from($p.seconds))"),
         "{js}"
     );
 }
@@ -81,13 +81,13 @@ fn it_takes_a_let_and_the_runtime_import() {
 #[test]
 fn jsx_components_use_it_too() {
     let js = compile_js(
-        "import { from } from '@mnx/runtime'\nexport default function XT({ seconds = 5 }) {\n  let left = from(seconds)\n  return <button onClick={() => left--}>{left}</button>\n}\n",
-        "@mnx/runtime",
-        "x.mnx.jsx",
+        "import { from } from '@zubra/runtime'\nexport default function XT({ seconds = 5 }) {\n  let left = from(seconds)\n  return <button onClick={() => left--}>{left}</button>\n}\n",
+        "@zubra/runtime",
+        "x.zb.jsx",
     )
     .unwrap();
     assert!(js.contains("const left = from(() => ($p.seconds))"), "{js}");
-    assert!(js.contains("__mnxUpdate(left, -1, false)"), "{js}");
+    assert!(js.contains("__zubraUpdate(left, -1, false)"), "{js}");
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn convert_turns_a_reset_effect_into_from() {
         conversion.compile_error
     );
     assert!(
-        out.contains("import { from } from '@mnx/runtime';\n"),
+        out.contains("import { from } from '@zubra/runtime';\n"),
         "{out}"
     );
     assert!(

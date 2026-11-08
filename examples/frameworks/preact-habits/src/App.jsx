@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import './components/streak-grid.mnx';
-import './components/check-ring.mnx';
-import './components/color-swatches.mnx';
+import './components/streak-grid.zb';
+import './components/check-ring.zb';
+import './components/color-swatches.zb';
 import { bestStreak, currentStreak, dayOf, load, rate, save } from './habits.js';
 
 const today = dayOf(new Date());

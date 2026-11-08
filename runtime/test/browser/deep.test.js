@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { useBrowser, open, here } from './harness.js';
 
 useBrowser({
-  todo: join(here, 'fixtures/todo-mutable.mnx'),
+  todo: join(here, 'fixtures/todo-mutable.zb'),
 });
 
 const read = (page) =>

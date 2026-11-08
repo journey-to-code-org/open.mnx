@@ -1,4 +1,4 @@
-// End-to-end: .mnx files compiled by the Rust CLI, run in Chromium. `npm run test:browser`.
+// End-to-end: .zb files compiled by the Rust CLI, run in Chromium. `npm run test:browser`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
@@ -6,38 +6,38 @@ import { join } from 'node:path';
 import { useBrowser, open, compiler, here, repo, site } from './harness.js';
 
 useBrowser({
-  filters: join(here, 'fixtures/live-filters.mnx'),
-  header: join(repo, 'examples/header.mnx'),
-  counter: join(here, 'fixtures/counter.mnx'),
-  link: join(here, 'fixtures/link.mnx'),
-  greeting: join(here, 'fixtures/greeting.mnx'),
-  pair: join(here, 'fixtures/pair.mnx'),
-  typed: join(here, 'fixtures/typed.mnx'),
-  clock: join(here, 'fixtures/clock.mnx'),
-  inline: join(here, 'fixtures/inline.mnx'),
-  state: join(here, 'fixtures/state.mnx'),
-  'row-counter': join(here, 'fixtures/row-counter.mnx'),
-  'row-list': join(here, 'fixtures/row-list.mnx'),
-  'mnx-model-input': join(here, 'fixtures/model-input.mnx'),
-  'mnx-sugar': join(here, 'fixtures/sugar.mnx'),
-  'svg-dots': join(here, 'fixtures/svg-dots.mnx'),
-  'pick-list': join(here, 'fixtures/pick-list.mnx'),
-  'slot-card': join(here, 'fixtures/slot-card.mnx'),
-  'slot-card-shadow': join(here, 'fixtures/slot-card-shadow.mnx'),
-  countdown: join(here, 'fixtures/countdown.mnx'),
-  stripped: join(here, 'fixtures/stripped-card.mnx'),
-  'stripped-await': join(here, 'fixtures/stripped-await.mnx'),
+  filters: join(here, 'fixtures/live-filters.zb'),
+  header: join(repo, 'examples/header.zb'),
+  counter: join(here, 'fixtures/counter.zb'),
+  link: join(here, 'fixtures/link.zb'),
+  greeting: join(here, 'fixtures/greeting.zb'),
+  pair: join(here, 'fixtures/pair.zb'),
+  typed: join(here, 'fixtures/typed.zb'),
+  clock: join(here, 'fixtures/clock.zb'),
+  inline: join(here, 'fixtures/inline.zb'),
+  state: join(here, 'fixtures/state.zb'),
+  'row-counter': join(here, 'fixtures/row-counter.zb'),
+  'row-list': join(here, 'fixtures/row-list.zb'),
+  'zb-model-input': join(here, 'fixtures/model-input.zb'),
+  'zb-sugar': join(here, 'fixtures/sugar.zb'),
+  'svg-dots': join(here, 'fixtures/svg-dots.zb'),
+  'pick-list': join(here, 'fixtures/pick-list.zb'),
+  'slot-card': join(here, 'fixtures/slot-card.zb'),
+  'slot-card-shadow': join(here, 'fixtures/slot-card-shadow.zb'),
+  countdown: join(here, 'fixtures/countdown.zb'),
+  stripped: join(here, 'fixtures/stripped-card.zb'),
+  'stripped-await': join(here, 'fixtures/stripped-await.zb'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
 
 test('renders from its defaults and updates when props change', async () => {
-  const { page, messages } = await open('<mnx-header></mnx-header>', { modules: ['header'] });
-  const read = () => page.$$eval('mnx-header h1, mnx-header li', (nodes) => nodes.map((node) => node.textContent));
+  const { page, messages } = await open('<zb-header></zb-header>', { modules: ['header'] });
+  const read = () => page.$$eval('zb-header h1, zb-header li', (nodes) => nodes.map((node) => node.textContent));
   assert.deepEqual(await read(), ['Mikey Nichols', 'sample data', 'additional data']);
 
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-header');
+    const el = document.querySelector('zb-header');
     el.title = 'Journey to Code';
     el.data = { sample: 'one', sampleTwo: 'two' };
     await el.updateComplete;
@@ -45,7 +45,7 @@ test('renders from its defaults and updates when props change', async () => {
   assert.deepEqual(await read(), ['Journey to Code', 'one', 'two']);
 
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-header');
+    const el = document.querySelector('zb-header');
     el.setAttribute('data', '{"sample":"from","sampleTwo":"json"}');
     await el.updateComplete;
   });
@@ -55,9 +55,9 @@ test('renders from its defaults and updates when props change', async () => {
 });
 
 test('batches several writes into one DOM update', async () => {
-  const { page } = await open('<mnx-header></mnx-header>', { modules: ['header'] });
+  const { page } = await open('<zb-header></zb-header>', { modules: ['header'] });
   const result = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-header');
+    const el = document.querySelector('zb-header');
     const h1 = el.querySelector('h1');
     let mutations = 0;
     new MutationObserver((records) => { mutations += records.length; }).observe(h1, { childList: true, characterData: true, subtree: true });
@@ -74,11 +74,11 @@ test('batches several writes into one DOM update', async () => {
 });
 
 test('keeps properties set before the element was defined', async () => {
-  const { page } = await open('<mnx-header></mnx-header>', {
-    beforeModules: `document.querySelector('mnx-header').title = 'Set early';`,
+  const { page } = await open('<zb-header></zb-header>', {
+    beforeModules: `document.querySelector('zb-header').title = 'Set early';`,
     modules: ['header'],
   });
-  assert.equal(await page.$eval('mnx-header h1', (h1) => h1.textContent), 'Set early');
+  assert.equal(await page.$eval('zb-header h1', (h1) => h1.textContent), 'Set early');
   await page.close();
 });
 
@@ -87,15 +87,15 @@ test('keeps properties set before the element was defined', async () => {
 test('hydrates server markup in place, keeping every node', async () => {
   const props = join(site, 'header.props.json');
   writeFileSync(props, JSON.stringify({ title: 'From the server', data: { sample: 's1', sampleTwo: 's2' } }));
-  const html = compiler(join(repo, 'examples/header.mnx'), '--props', props);
+  const html = compiler(join(repo, 'examples/header.zb'), '--props', props);
   const { page, messages } = await open(html, {
     beforeModules: `
-      window.before = [...document.querySelectorAll('mnx-header *')];
-      window.textBefore = document.querySelector('mnx-header h1').firstChild;`,
+      window.before = [...document.querySelectorAll('zb-header *')];
+      window.textBefore = document.querySelector('zb-header h1').firstChild;`,
     modules: ['header'],
   });
   const result = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-header');
+    const el = document.querySelector('zb-header');
     const after = [...el.querySelectorAll('*')];
     const sameNodes = after.length === window.before.length && after.every((node, i) => node === window.before[i]);
     const sameText = el.querySelector('h1').firstChild === window.textBefore;
@@ -114,14 +114,14 @@ test('hydrates server markup in place, keeping every node', async () => {
 });
 
 test('hydrates dynamic text beside other nodes through its anchor', async () => {
-  const html = compiler(join(here, 'fixtures/greeting.mnx'));
+  const html = compiler(join(here, 'fixtures/greeting.zb'));
   assert.match(html, /<b>there<\/b><!---->, Ada! <i>glad<\/i>/);
   const { page, messages } = await open(html, {
-    beforeModules: `window.p = document.querySelector('mnx-greeting p'); window.nodes = [...window.p.childNodes];`,
+    beforeModules: `window.p = document.querySelector('zb-greeting p'); window.nodes = [...window.p.childNodes];`,
     modules: ['greeting'],
   });
   const result = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-greeting');
+    const el = document.querySelector('zb-greeting');
     const same = [...window.p.childNodes].every((node, i) => node === window.nodes[i]);
     el.name = 'Grace';
     el.mood = 'happy';
@@ -143,60 +143,60 @@ test('hydrates dynamic text beside other nodes through its anchor', async () => 
 });
 
 test('a fresh element with anchored text renders it too', async () => {
-  const { page } = await open('<mnx-greeting name="Linus"></mnx-greeting>', { modules: ['greeting'] });
-  assert.equal(await page.$eval('mnx-greeting p', (p) => p.textContent), 'Hello there, Linus! glad to see you.');
+  const { page } = await open('<zb-greeting name="Linus"></zb-greeting>', { modules: ['greeting'] });
+  assert.equal(await page.$eval('zb-greeting p', (p) => p.textContent), 'Hello there, Linus! glad to see you.');
   await page.close();
 });
 
 test('markup that does not match the template is re-rendered, with a warning', async () => {
-  const { page, messages } = await open('<mnx-header><p>stale markup</p></mnx-header>', { modules: ['header'] });
-  assert.equal(await page.$eval('mnx-header h1', (h1) => h1.textContent), 'Mikey Nichols');
-  assert.equal(await page.$('mnx-header > p'), null);
+  const { page, messages } = await open('<zb-header><p>stale markup</p></zb-header>', { modules: ['header'] });
+  assert.equal(await page.$eval('zb-header h1', (h1) => h1.textContent), 'Mikey Nichols');
+  assert.equal(await page.$('zb-header > p'), null);
   assert.ok(messages.some((message) => message.startsWith('warning:') && message.includes("doesn't match its template")));
   await page.close();
 });
 
 test('markup whose parts would line up but whose shape differs is re-rendered too', async () => {
   // Every part finds a <button> at its path, but the server never rendered the extra <p>.
-  const { page, messages } = await open('<mnx-counter><button type="button">x</button><p>extra</p></mnx-counter>', { modules: ['counter'] });
-  assert.equal(await page.$('mnx-counter > p'), null);
-  assert.equal(await page.$eval('mnx-counter button', (button) => button.textContent), 'Clicks: 0');
+  const { page, messages } = await open('<zb-counter><button type="button">x</button><p>extra</p></zb-counter>', { modules: ['counter'] });
+  assert.equal(await page.$('zb-counter > p'), null);
+  assert.equal(await page.$eval('zb-counter button', (button) => button.textContent), 'Clicks: 0');
   assert.ok(messages.some((message) => message.includes("doesn't match its template")));
   await page.close();
 });
 
 test('a template with several top-level nodes renders, hydrates and updates', async () => {
-  const read = (page) => page.$eval('mnx-pair', (pair) => pair.innerHTML.replace(/<!--.*?-->/g, ''));
-  const fresh = await open('<mnx-pair></mnx-pair>', { modules: ['pair'] });
+  const read = (page) => page.$eval('zb-pair', (pair) => pair.innerHTML.replace(/<!--.*?-->/g, ''));
+  const fresh = await open('<zb-pair></zb-pair>', { modules: ['pair'] });
   assert.equal(await read(fresh.page), 'Hi Ada <p>x</p><i>y</i>');
   await fresh.page.close();
 
   const props = join(site, 'pair.props.json');
   writeFileSync(props, JSON.stringify({ name: 'Lin' }));
-  const server = compiler(join(here, 'fixtures/pair.mnx'), '--props', props);
+  const server = compiler(join(here, 'fixtures/pair.zb'), '--props', props);
   const { page, messages } = await open(server, { modules: ['pair'] });
-  await page.evaluate(() => { window.p = document.querySelector('mnx-pair p'); });
+  await page.evaluate(() => { window.p = document.querySelector('zb-pair p'); });
   await page.evaluate(async () => {
-    const pair = document.querySelector('mnx-pair');
+    const pair = document.querySelector('zb-pair');
     pair.name = 'Grace';
     pair.on = false;
     await pair.updateComplete;
   });
   assert.equal(await read(page), 'Hi Grace <p>x</p>');
-  assert.equal(await page.evaluate(() => window.p === document.querySelector('mnx-pair p')), true, 'hydrated, not re-rendered');
+  assert.equal(await page.evaluate(() => window.p === document.querySelector('zb-pair p')), true, 'hydrated, not re-rendered');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test('a component written in TypeScript runs as its JavaScript', async () => {
-  const { page, messages } = await open('<mnx-typed></mnx-typed>', {
+  const { page, messages } = await open('<zb-typed></zb-typed>', {
     beforeModules: "window.picks = []; document.addEventListener('pick', (event) => window.picks.push(event.detail));",
     modules: ['typed'],
   });
-  assert.equal(await page.textContent('mnx-typed p'), 'none');
-  await page.click('mnx-typed li[data-index="1"]');
-  await page.evaluate(() => document.querySelector('mnx-typed').updateComplete);
-  assert.equal(await page.textContent('mnx-typed p'), '#1');
+  assert.equal(await page.textContent('zb-typed p'), 'none');
+  await page.click('zb-typed li[data-index="1"]');
+  await page.evaluate(() => document.querySelector('zb-typed').updateComplete);
+  assert.equal(await page.textContent('zb-typed p'), '#1');
   assert.deepEqual(await page.evaluate(() => window.picks), [{ option: { id: 2, label: '?' }, index: 1 }]);
   assert.deepEqual(messages, []);
   await page.close();
@@ -204,7 +204,7 @@ test('a component written in TypeScript runs as its JavaScript', async () => {
 
 test('a default computed by the script applies unless the prop was given', async () => {
   const { page, messages } = await open(
-    '<mnx-clock id="a"></mnx-clock><mnx-clock id="b" since="5"></mnx-clock><mnx-clock id="c"></mnx-clock>',
+    '<zb-clock id="a"></zb-clock><zb-clock id="b" since="5"></zb-clock><zb-clock id="c"></zb-clock>',
     { beforeModules: "window.clockStart = 42; document.getElementById('c').since = 7;", modules: ['clock'] },
   );
   const text = (id) => page.$eval(`#${id} p`, (p) => p.textContent);
@@ -220,15 +220,15 @@ test('a default computed by the script applies unless the prop was given', async
 // ---- state, events, lifecycle --------------------------------------------------------------
 
 test('state() in the script and an onclick handler make a working counter', async () => {
-  const { page, messages } = await open('<mnx-counter></mnx-counter>', { modules: ['counter'] });
-  const button = page.locator('mnx-counter button');
+  const { page, messages } = await open('<zb-counter></zb-counter>', { modules: ['counter'] });
+  const button = page.locator('zb-counter button');
   assert.equal(await button.textContent(), 'Clicks: 0');
   await button.click();
   await button.click();
   await button.click();
   assert.equal(await button.textContent(), 'Clicks: 3');
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-counter');
+    const el = document.querySelector('zb-counter');
     el.label = 'Taps';
     await el.updateComplete;
   });
@@ -238,9 +238,9 @@ test('state() in the script and an onclick handler make a working counter', asyn
 });
 
 test('mount/unmount hooks run on connect and disconnect; state survives a move', async () => {
-  const { page } = await open('<mnx-counter></mnx-counter><section></section>', { modules: ['counter'] });
+  const { page } = await open('<zb-counter></zb-counter><section></section>', { modules: ['counter'] });
   const result = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-counter');
+    const el = document.querySelector('zb-counter');
     el.querySelector('button').click();
     await el.updateComplete;
     el.remove();
@@ -260,12 +260,12 @@ test('mount/unmount hooks run on connect and disconnect; state survives a move',
 // ---- safety and attributes -----------------------------------------------------------------
 
 test('blocks unsafe URLs at runtime and handles boolean and interpolated attributes', async () => {
-  const { page, messages } = await open('<mnx-link></mnx-link>', { modules: ['link'] });
-  const read = () => page.$eval('mnx-link a', (a) => ({ href: a.getAttribute('href'), hidden: a.hidden, className: a.className }));
+  const { page, messages } = await open('<zb-link></zb-link>', { modules: ['link'] });
+  const read = () => page.$eval('zb-link a', (a) => ({ href: a.getAttribute('href'), hidden: a.hidden, className: a.className }));
   assert.deepEqual(await read(), { href: '/', hidden: false, className: 'link Home' });
 
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-link');
+    const el = document.querySelector('zb-link');
     el.href = 'javascript:alert(1)';
     el.hiddenLink = true;
     el.label = 'Away';
@@ -275,14 +275,14 @@ test('blocks unsafe URLs at runtime and handles boolean and interpolated attribu
   assert.ok(messages.some((message) => message.startsWith('error:') && message.includes('blocked an unsafe URL')));
 
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-link');
+    const el = document.querySelector('zb-link');
     el.href = 'https://mnix.dev/';
     el.setAttribute('hidden-link', '');
     await el.updateComplete;
   });
   assert.deepEqual(await read(), { href: 'https://mnix.dev/', hidden: true, className: 'link Away' });
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-link');
+    const el = document.querySelector('zb-link');
     el.removeAttribute('hidden-link');
     await el.updateComplete;
   });
@@ -291,25 +291,25 @@ test('blocks unsafe URLs at runtime and handles boolean and interpolated attribu
 });
 
 test('inline JavaScript in the template: calls, handlers that close over list items, emit()', async () => {
-  const { page, messages } = await open('<mnx-inline></mnx-inline>', { modules: ['inline'] });
+  const { page, messages } = await open('<zb-inline></zb-inline>', { modules: ['inline'] });
   const read = () => page.evaluate(() => ({
     summary: document.querySelector('.summary').textContent,
-    rows: [...document.querySelectorAll('mnx-inline li')].map((li) => li.textContent),
+    rows: [...document.querySelectorAll('zb-inline li')].map((li) => li.textContent),
   }));
   assert.deepEqual(await read(), { summary: '2 of 3; none', rows: ['#2 LINUS', '#3 GRACE'] });
-  assert.deepEqual(await page.evaluate(() => customElements.get('mnx-inline').mnx.events), ['pick']);
-  assert.equal(await page.evaluate(() => typeof document.querySelector('mnx-inline').stamp), 'number', 'a default computed in the browser');
+  assert.deepEqual(await page.evaluate(() => customElements.get('zb-inline').zubra.events), ['pick']);
+  assert.equal(await page.evaluate(() => typeof document.querySelector('zb-inline').stamp), 'number', 'a default computed in the browser');
 
-  await page.evaluate(() => document.querySelector('mnx-inline').addEventListener('pick', (event) => { window.picked = event.detail; }));
-  await page.click('mnx-inline li:last-child');
-  await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
+  await page.evaluate(() => document.querySelector('zb-inline').addEventListener('pick', (event) => { window.picked = event.detail; }));
+  await page.click('zb-inline li:last-child');
+  await page.evaluate(() => document.querySelector('zb-inline').updateComplete);
   assert.equal(await page.evaluate(() => window.picked), 3, 'the handler saw its own row');
   assert.equal((await read()).summary, '2 of 3; grace', 'a state() read with .get() in the template is reactive');
 
-  await page.click('mnx-inline .raise');
-  await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
+  await page.click('zb-inline .raise');
+  await page.evaluate(() => document.querySelector('zb-inline').updateComplete);
   assert.deepEqual(await read(), { summary: '1 of 3; grace', rows: ['#3 GRACE'] }, 'a handler assigned a prop');
-  assert.equal(await page.evaluate(() => document.querySelector('mnx-inline').min), 2);
+  assert.equal(await page.evaluate(() => document.querySelector('zb-inline').min), 2);
   assert.deepEqual(messages, []);
   await page.close();
 });
@@ -317,45 +317,45 @@ test('inline JavaScript in the template: calls, handlers that close over list it
 test('partially server-rendered markup: the element fills in what only the browser could compute', async () => {
   // --partial renders the JavaScript the server can compute (the filtered list, format(), the
   // upper-casing), and leaves the rest (a state signal's .get()) empty for the element.
-  const html = compiler(join(here, 'fixtures/inline.mnx'), '--partial');
+  const html = compiler(join(here, 'fixtures/inline.zb'), '--partial');
   assert.match(html, /<p class="summary"><\/p>/);
   assert.match(html, /<li>#2 LINUS<\/li>[^]*<li>#3 GRACE<\/li>/);
-  const { page, messages } = await open(html, { modules: ['inline'], beforeModules: "window.serverButton = document.querySelector('mnx-inline .raise'); window.serverRow = document.querySelector('mnx-inline li');" });
-  await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
+  const { page, messages } = await open(html, { modules: ['inline'], beforeModules: "window.serverButton = document.querySelector('zb-inline .raise'); window.serverRow = document.querySelector('zb-inline li');" });
+  await page.evaluate(() => document.querySelector('zb-inline').updateComplete);
   const read = () => page.evaluate(() => ({
     summary: document.querySelector('.summary').textContent,
-    rows: [...document.querySelectorAll('mnx-inline li')].map((li) => li.textContent),
+    rows: [...document.querySelectorAll('zb-inline li')].map((li) => li.textContent),
   }));
   assert.deepEqual(await read(), { summary: '2 of 3; none', rows: ['#2 LINUS', '#3 GRACE'] });
-  assert.equal(await page.evaluate(() => document.querySelector('mnx-inline .raise') === window.serverButton), true, 'the server markup was kept');
-  assert.equal(await page.evaluate(() => document.querySelector('mnx-inline li') === window.serverRow), true, 'the server-rendered rows too');
-  await page.click('mnx-inline li:last-child');
-  await page.evaluate(() => document.querySelector('mnx-inline').updateComplete);
+  assert.equal(await page.evaluate(() => document.querySelector('zb-inline .raise') === window.serverButton), true, 'the server markup was kept');
+  assert.equal(await page.evaluate(() => document.querySelector('zb-inline li') === window.serverRow), true, 'the server-rendered rows too');
+  await page.click('zb-inline li:last-child');
+  await page.evaluate(() => document.querySelector('zb-inline').updateComplete);
   assert.equal((await read()).summary, '2 of 3; grace', 'and it works as usual');
   assert.deepEqual(messages, [], 'no hydration warnings');
   await page.close();
 });
 
 test("2.0's script: a let is state, a derived const follows it, and props are names", async () => {
-  const html = compiler(join(here, 'fixtures/state.mnx'), '--partial');
+  const html = compiler(join(here, 'fixtures/state.zb'), '--partial');
   assert.match(html, /<button type="button" class="add">n: 0<\/button>\n  <i>1<\/i>/, 'server-rendered from the initial values');
   const { page, messages } = await open(html, { modules: ['state'] });
   const read = () => page.evaluate(async () => {
-    const el = document.querySelector('mnx-state');
+    const el = document.querySelector('zb-state');
     await el.updateComplete;
     return [el.querySelector('.add').textContent, el.querySelector('i').textContent, el.querySelector('b').textContent];
   });
   assert.deepEqual(await read(), ['n: 0', '1', '1']);
-  await page.evaluate(() => { window.counts = []; document.querySelector('mnx-state').addEventListener('countchange', (event) => window.counts.push(event.detail)); });
-  await page.click('mnx-state .add');
+  await page.evaluate(() => { window.counts = []; document.querySelector('zb-state').addEventListener('countchange', (event) => window.counts.push(event.detail)); });
+  await page.click('zb-state .add');
   assert.deepEqual(await read(), ['n: 1', '3', '1']);
-  await page.click('mnx-state b');
+  await page.click('zb-state b');
   assert.deepEqual(await read(), ['n: 2', '5', '2'], 'an inline handler updated the state');
-  await page.evaluate(() => { document.querySelector('mnx-state').step = 4; });
+  await page.evaluate(() => { document.querySelector('zb-state').step = 4; });
   assert.deepEqual(await read(), ['n: 2', '8', '2'], 'the derived value follows the prop');
-  await page.click('mnx-state .add');
+  await page.click('zb-state .add');
   assert.deepEqual(await read(), ['big: 6', '16', '6'], 'the script assigned a prop by its name');
-  assert.equal(await page.evaluate(() => document.querySelector('mnx-state').label), 'big');
+  assert.equal(await page.evaluate(() => document.querySelector('zb-state').label), 'big');
   assert.deepEqual(await page.evaluate(() => window.counts), [1, 6]);
   assert.deepEqual(messages, []);
   await page.close();
@@ -409,19 +409,19 @@ test('list rows and branches inside <svg> are SVG elements', async () => {
 });
 
 test('2.2 template sugar: class and style directives, event modifiers, ref, global listeners, else-if', async () => {
-  const { page, messages } = await open('<mnx-sugar></mnx-sugar>', { modules: ['mnx-sugar'] });
-  const settle = () => page.evaluate(async () => { await new Promise((resolve) => setTimeout(resolve)); await document.querySelector('mnx-sugar').updateComplete; });
-  const log = () => page.textContent('mnx-sugar output');
-  const state = () => page.$eval('mnx-sugar p', (p) => ({ className: p.className, size: p.style.fontSize, tone: p.style.getPropertyValue('--tone') }));
+  const { page, messages } = await open('<zb-sugar></zb-sugar>', { modules: ['zb-sugar'] });
+  const settle = () => page.evaluate(async () => { await new Promise((resolve) => setTimeout(resolve)); await document.querySelector('zb-sugar').updateComplete; });
+  const log = () => page.textContent('zb-sugar output');
+  const state = () => page.$eval('zb-sugar p', (p) => ({ className: p.className, size: p.style.fontSize, tone: p.style.getPropertyValue('--tone') }));
   assert.deepEqual(await state(), { className: 'base', size: '10px', tone: 'red' });
-  assert.equal(await page.$eval('mnx-sugar dialog', (dialog) => dialog.isConnected), true);
+  assert.equal(await page.$eval('zb-sugar dialog', (dialog) => dialog.isConnected), true);
 
   // Modifiers: .prevent keeps the form from navigating; .self ignores clicks from inside.
-  await page.click('mnx-sugar button:not(.change)');
-  await page.click('mnx-sugar .inner');
-  const outer = await page.locator('mnx-sugar .outer').boundingBox();
+  await page.click('zb-sugar button:not(.change)');
+  await page.click('zb-sugar .inner');
+  const outer = await page.locator('zb-sugar .outer').boundingBox();
   await page.mouse.click(outer.x + outer.width - 4, outer.y + outer.height / 2);
-  await page.focus('mnx-sugar input');
+  await page.focus('zb-sugar input');
   await page.keyboard.press('a');
   await page.keyboard.press('Shift+Enter');
   await page.keyboard.press('Enter');
@@ -436,42 +436,42 @@ test('2.2 template sugar: class and style directives, event modifiers, ref, glob
   assert.equal(page.url().endsWith('.html'), true, 'the submit was prevented');
 
   // The change button: class and style follow state; null removes a property; else-if moves on.
-  await page.click('mnx-sugar .change');
+  await page.click('zb-sugar .change');
   await settle();
   assert.deepEqual(await state(), { className: 'base on big', size: '30px', tone: '' });
-  assert.equal(await page.$eval('mnx-sugar', (el) => el.textContent.includes('B')), true);
-  await page.click('mnx-sugar .change');
+  assert.equal(await page.$eval('zb-sugar', (el) => el.textContent.includes('B')), true);
+  await page.click('zb-sugar .change');
   await settle();
-  assert.equal(await page.$eval('mnx-sugar', (el) => el.textContent.includes('C')), true);
+  assert.equal(await page.$eval('zb-sugar', (el) => el.textContent.includes('C')), true);
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test('a two-way prop fires <prop>change when the component assigns it, and is the form value', async () => {
-  const { page, messages } = await open('<form><mnx-model-input name="qty"></mnx-model-input><button type="reset">reset</button></form>', { modules: ['mnx-model-input'] });
+  const { page, messages } = await open('<form><zb-model-input name="qty"></zb-model-input><button type="reset">reset</button></form>', { modules: ['zb-model-input'] });
   await page.evaluate(() => {
     window.changes = [];
-    document.querySelector('mnx-model-input').addEventListener('valuechange', (event) => window.changes.push(event.detail));
+    document.querySelector('zb-model-input').addEventListener('valuechange', (event) => window.changes.push(event.detail));
   });
-  const settle = () => page.evaluate(() => document.querySelector('mnx-model-input').updateComplete);
+  const settle = () => page.evaluate(() => document.querySelector('zb-model-input').updateComplete);
   const data = () => page.evaluate(() => new FormData(document.querySelector('form')).get('qty'));
   assert.equal(await data(), '2');
-  await page.click('mnx-model-input .up');
-  await page.click('mnx-model-input .up');
-  await page.click('mnx-model-input .down');
+  await page.click('zb-model-input .up');
+  await page.click('zb-model-input .up');
+  await page.click('zb-model-input .down');
   await settle();
   assert.deepEqual(await page.evaluate(() => window.changes), [3, 4, 3]);
-  assert.equal(await page.textContent('mnx-model-input output'), '3');
+  assert.equal(await page.textContent('zb-model-input output'), '3');
   assert.equal(await data(), '3');
   // Set from outside: no event (the caller knows), but the form value follows.
-  await page.evaluate(() => { document.querySelector('mnx-model-input').value = 7; });
+  await page.evaluate(() => { document.querySelector('zb-model-input').value = 7; });
   await settle();
   assert.deepEqual(await page.evaluate(() => window.changes), [3, 4, 3]);
   assert.equal(await data(), '7');
   // A form reset restores the initial value, and says so.
   await page.click('button[type=reset]');
   await settle();
-  assert.equal(await page.textContent('mnx-model-input output'), '2');
+  assert.equal(await page.textContent('zb-model-input output'), '2');
   assert.deepEqual(await page.evaluate(() => window.changes), [3, 4, 3, 2]);
   assert.deepEqual(messages, []);
   await page.close();
@@ -500,25 +500,25 @@ test('hasSlot() follows whether a slot has content, in light and shadow DOM', as
 
 test('an empty URL leaves the attribute off, quietly; "[object Object]" from a framework is not given yet', async () => {
   // A prop's "" default before the app sets it (a link's href) isn't an unsafe URL to report.
-  const { page, messages } = await open('<mnx-link href=""></mnx-link><mnx-header data="[object Object]"></mnx-header>', { modules: ['link', 'header'] });
-  assert.equal(await page.$eval('mnx-link a', (a) => a.hasAttribute('href')), false);
-  await page.evaluate(() => { document.querySelector('mnx-link').href = 'javascript:alert(1)'; });
-  await page.evaluate(() => document.querySelector('mnx-link').updateComplete);
-  assert.equal(await page.$eval('mnx-link a', (a) => a.hasAttribute('href')), false, 'an unsafe one is still refused');
+  const { page, messages } = await open('<zb-link href=""></zb-link><zb-header data="[object Object]"></zb-header>', { modules: ['link', 'header'] });
+  assert.equal(await page.$eval('zb-link a', (a) => a.hasAttribute('href')), false);
+  await page.evaluate(() => { document.querySelector('zb-link').href = 'javascript:alert(1)'; });
+  await page.evaluate(() => document.querySelector('zb-link').updateComplete);
+  assert.equal(await page.$eval('zb-link a', (a) => a.hasAttribute('href')), false, 'an unsafe one is still refused');
   assert.equal(messages.filter((message) => message.includes('blocked an unsafe URL')).length, 1, 'and reported');
   // Svelte's server HTML writes an object prop as "[object Object]", then sets the object: the
   // element keeps its default meanwhile, without a warning.
-  assert.deepEqual(await page.$$eval('mnx-header li', (items) => items.map((item) => item.textContent)), ['sample data', 'additional data']);
+  assert.deepEqual(await page.$$eval('zb-header li', (items) => items.map((item) => item.textContent)), ['sample data', 'additional data']);
   assert.deepEqual(messages.filter((message) => !message.includes('blocked an unsafe URL')), []);
   await page.close();
 });
 
 test('from(): state that follows a prop until it is assigned, and starts over when the prop changes', async () => {
-  const html = compiler(join(here, 'fixtures/countdown.mnx'));
+  const html = compiler(join(here, 'fixtures/countdown.zb'));
   assert.match(html, /<output>10<\/output>/, 'the server renders the prop');
   const { page, messages } = await open(html, { modules: ['countdown'] });
   const step = (code) => page.evaluate(async (code) => {
-    const element = document.querySelector('mnx-countdown');
+    const element = document.querySelector('zb-countdown');
     new Function('element', code)(element);
     await element.updateComplete;
     return element.querySelector('output').textContent;
@@ -533,7 +533,7 @@ test('from(): state that follows a prop until it is assigned, and starts over wh
 });
 
 test('hydrated(): false in the server HTML (rendered, not left for the browser), true once the element starts', async () => {
-  const html = compiler(join(here, 'fixtures/live-filters.mnx'));
+  const html = compiler(join(here, 'fixtures/live-filters.zb'));
   assert.match(html, /<button class="apply">Apply<\/button>/);
   assert.match(html, /Press Apply/);
   assert.doesNotMatch(html, /\[\?/, 'nothing is left for the browser');
@@ -541,11 +541,11 @@ test('hydrated(): false in the server HTML (rendered, not left for the browser),
   await page.waitForFunction(() => document.querySelector('.hint').textContent === 'Filters apply as you type');
   assert.equal(await page.locator('.apply').count(), 0);
   assert.equal(await page.evaluate(() => document.querySelector('.hint').classList.contains('on')), true);
-  assert.equal(await page.evaluate(() => document.querySelector('mnx-filters').matches(':state(hydrated)')), true);
+  assert.equal(await page.evaluate(() => document.querySelector('zb-filters').matches(':state(hydrated)')), true);
   assert.deepEqual(messages, [], 'it hydrated the server markup, then changed');
   // Created in the browser, it's live from the start.
   assert.equal(await page.evaluate(async () => {
-    const element = document.createElement('mnx-filters');
+    const element = document.createElement('zb-filters');
     document.body.append(element);
     await element.updateComplete;
     return [element.matches(':state(hydrated)'), element.querySelector('.hint').textContent].join();
@@ -557,21 +557,21 @@ const strip = (html) => html.replace(/<!--[^]*?-->/g, '');
 // Every node of the server markup, kept by the page before the element starts.
 const keepNodes = (selector) => `window.kept = [...document.querySelectorAll(${JSON.stringify(selector)})].flatMap((host) => [...host.querySelectorAll('*')]);`;
 
-test('server markup whose comments were stripped hydrates in place: anchors, mnx-if, mnx-each and slots are put back by structure', async () => {
-  const html = strip(compiler(join(here, 'fixtures/stripped-card.mnx')));
+test('server markup whose comments were stripped hydrates in place: anchors, zb-if, zb-each and slots are put back by structure', async () => {
+  const html = strip(compiler(join(here, 'fixtures/stripped-card.zb')));
   assert.doesNotMatch(html, /<!--/);
-  const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('mnx-stripped') });
-  await page.evaluate(() => document.querySelector('mnx-stripped').updateComplete);
+  const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('zb-stripped') });
+  await page.evaluate(() => document.querySelector('zb-stripped').updateComplete);
   const kept = await page.evaluate(() => window.kept.length > 0 && window.kept.every((node) => node.isConnected));
   assert.equal(kept, true, 'every server node is still in the page: nothing was rendered fresh');
-  assert.equal(await page.textContent('mnx-stripped h2'), 'Today: Drinks, 2 picks!');
-  await page.click('mnx-stripped button');
-  await page.evaluate(() => document.querySelector('mnx-stripped').updateComplete);
-  assert.equal(await page.textContent('mnx-stripped h2'), 'Today: Drinks, 3 picks!', 'the anchored text updates');
-  assert.equal(await page.evaluate(() => window.kept.includes(document.querySelector('mnx-stripped h2 b'))), true);
+  assert.equal(await page.textContent('zb-stripped h2'), 'Today: Drinks, 2 picks!');
+  await page.click('zb-stripped button');
+  await page.evaluate(() => document.querySelector('zb-stripped').updateComplete);
+  assert.equal(await page.textContent('zb-stripped h2'), 'Today: Drinks, 3 picks!', 'the anchored text updates');
+  assert.equal(await page.evaluate(() => window.kept.includes(document.querySelector('zb-stripped h2 b'))), true);
   // The regions work as regions afterwards.
   const after = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-stripped');
+    const el = document.querySelector('zb-stripped');
     el.open = false;
     await el.updateComplete;
     return [el.querySelector('p').className, [...el.querySelectorAll('li')].map((li) => li.textContent.trim().replace(/\s+/g, ' ')).join('|'), el.querySelector('footer').textContent];
@@ -583,27 +583,27 @@ test('server markup whose comments were stripped hydrates in place: anchors, mnx
 
 test('stripped markup with content given to a slot keeps that content', async () => {
   writeFileSync(join(site, 'stripped-slots.json'), JSON.stringify({ default: '<span class="note">Bring cups</span>' }));
-  const html = strip(compiler(join(here, 'fixtures/stripped-card.mnx'), '--slots', join(site, 'stripped-slots.json'), '--slots-html'));
+  const html = strip(compiler(join(here, 'fixtures/stripped-card.zb'), '--slots', join(site, 'stripped-slots.json'), '--slots-html'));
   assert.match(html, /<footer><span class="note"[^>]*>Bring cups<\/span><\/footer>/);
-  const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('mnx-stripped') });
-  await page.evaluate(() => document.querySelector('mnx-stripped').updateComplete);
+  const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('zb-stripped') });
+  await page.evaluate(() => document.querySelector('zb-stripped').updateComplete);
   assert.equal(await page.evaluate(() => window.kept.every((node) => node.isConnected)), true);
-  assert.equal(await page.textContent('mnx-stripped footer'), 'Bring cups');
+  assert.equal(await page.textContent('zb-stripped footer'), 'Bring cups');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
-test('stripped markup that cannot be placed for sure (an mnx-await) renders fresh, with a warning that says why', async () => {
-  const html = strip(compiler(join(here, 'fixtures/stripped-await.mnx')));
+test('stripped markup that cannot be placed for sure (an zb-await) renders fresh, with a warning that says why', async () => {
+  const html = strip(compiler(join(here, 'fixtures/stripped-await.zb')));
   const { page, messages } = await open(html, { modules: ['stripped-await'] });
-  await page.waitForFunction(() => document.querySelector('mnx-stripped-await span')?.textContent === 'done');
+  await page.waitForFunction(() => document.querySelector('zb-stripped-await span')?.textContent === 'done');
   assert.equal(messages.length, 1, messages.join('\n'));
   assert.match(messages[0], /hydration markers .* are missing.*removed the comments/);
   await page.close();
 });
 
 test('stripped markup of a progressive-enhancement component hydrates in place too', async () => {
-  const html = strip(compiler(join(here, 'fixtures/live-filters.mnx')));
+  const html = strip(compiler(join(here, 'fixtures/live-filters.zb')));
   const { page, messages } = await open(html, { modules: ['filters'] });
   await page.waitForFunction(() => document.querySelector('.hint')?.textContent === 'Filters apply as you type');
   assert.deepEqual(messages, []);

@@ -2,8 +2,8 @@
 //
 //   node playground/serve.mjs [--port 5174]
 //
-// Without mnx.wasm in the site, the page asks this server instead: POST /__mnx/request runs
-// the native compiler (`mnx request`; $MNX_COMPILER, or target/debug/mnx).
+// Without zubra.wasm in the site, the page asks this server instead: POST /__zubra/request runs
+// the native compiler (`zubra request`; $ZUBRA_COMPILER, or target/debug/zubra).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -14,10 +14,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm' };
 
 /** Start serving `dir`; resolves to the server (its URL is `server.url`). */
-export async function serve(dir = join(here, 'dist'), { port = 0, compiler = process.env.MNX_COMPILER ?? join(here, '../target/debug/mnx') } = {}) {
+export async function serve(dir = join(here, 'dist'), { port = 0, compiler = process.env.ZUBRA_COMPILER ?? join(here, '../target/debug/zubra') } = {}) {
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://x');
-    if (url.pathname === '/__mnx/request' && request.method === 'POST') {
+    if (url.pathname === '/__zubra/request' && request.method === 'POST') {
       let body = '';
       request.on('data', (chunk) => { body += chunk; });
       request.on('end', () => {

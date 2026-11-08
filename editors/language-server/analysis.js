@@ -1,18 +1,18 @@
-// What the language server knows about a `.mnx` document, as plain functions (no LSP types
+// What the language server knows about a `.zb` document, as plain functions (no LSP types
 // beyond positions), so they can be tested directly.
 
 /** The directives, with their attributes. */
 export const DIRECTIVES = {
-  'mnx-if': { description: 'Render the content when `test` is truthy; an optional final `<mnx-else>` otherwise.', attributes: { test: 'The condition: `test={…}`.' } },
-  'mnx-else': { description: 'The content of an `<mnx-if>` when its test is falsy. Must be its last child.', attributes: {} },
-  'mnx-each': {
+  'zb-if': { description: 'Render the content when `test` is truthy; an optional final `<zb-else>` otherwise.', attributes: { test: 'The condition: `test={…}`.' } },
+  'zb-else': { description: 'The content of an `<zb-if>` when its test is falsy. Must be its last child.', attributes: {} },
+  'zb-each': {
     description: 'Render the content once per item of `items`.',
     attributes: { items: 'The array: `items={…}`.', as: 'The name of each item.', index: 'The name of the index (optional).', key: 'A unique string or number per item, so rows follow their items: `key={item.id}`.' },
   },
-  'mnx-slot': { description: 'Where content given to the element goes; the children are the fallback.', attributes: { name: 'The slot name (omit for the default slot).' } },
-  'mnx-await': { description: 'Show the content while `value` (a promise or a `resource()`) is pending, then `<mnx-then>` or `<mnx-catch>`.', attributes: { value: 'The promise or resource: `value={…}`.' } },
-  'mnx-then': { description: 'The content of an `<mnx-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value.' } },
-  'mnx-catch': { description: 'The content of an `<mnx-await>` if its value rejected.', attributes: { as: 'The name of the error.' } },
+  'zb-slot': { description: 'Where content given to the element goes; the children are the fallback.', attributes: { name: 'The slot name (omit for the default slot).' } },
+  'zb-await': { description: 'Show the content while `value` (a promise or a `resource()`) is pending, then `<zb-then>` or `<zb-catch>`.', attributes: { value: 'The promise or resource: `value={…}`.' } },
+  'zb-then': { description: 'The content of an `<zb-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value.' } },
+  'zb-catch': { description: 'The content of an `<zb-await>` if its value rejected.', attributes: { as: 'The name of the error.' } },
 };
 
 /** Line/character → offset. */

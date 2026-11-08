@@ -1,0 +1,86 @@
+<!--
+  An event's spending against its budget, by line and by category.
+-->
+<script>
+  import { usePlanner } from '../store.js'
+  import { money } from '../dates.js'
+
+  const { act } = usePlanner()
+  const KINDS = ["venue", "food", "drinks", "decor", "lodging", "travel", "other"]
+  let label = ""
+  let amount = ""
+  let kind = "food"
+
+  const spent = event.expenses.reduce((sum, item) => sum + item.amount, 0)
+  const paid = event.expenses.filter((item) => item.paid).reduce((sum, item) => sum + item.amount, 0)
+  const left = event.budget - spent
+  const byKind = KINDS.map((name) => ({ name, total: event.expenses.filter((item) => item.category === name).reduce((sum, item) => sum + item.amount, 0) }))
+    .filter((group) => group.total > 0)
+    .sort((a, b) => b.total - a.total)
+
+  function add() {
+    act('expenses.add', event.id, { label: label.trim(), category: kind, amount: Math.round(Number(amount) * 100) / 100, paid: false })
+    label = ""
+    amount = ""
+  }
+</script>
+<style>
+  .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+  .totals div { padding: 0.5rem 0.75rem; border-radius: 0.6rem; border: 1px solid var(--line); }
+  .totals b { display: block; font-size: 1.125rem; }
+  .totals span { font-size: 0.75rem; color: var(--muted); }
+  .over b { color: var(--danger); }
+  progress { width: 100%; height: 0.5rem; margin-bottom: 1rem; accent-color: var(--accent); }
+  progress.over { accent-color: var(--danger); }
+  .kinds { display: grid; grid-template-columns: 5rem 1fr 5rem; gap: 0.35rem 0.75rem; align-items: center; margin-bottom: 1rem; font-size: 0.8125rem; }
+  .kinds meter { width: 100%; }
+  .kinds span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  th { text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 0.35rem 0.5rem; }
+  td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--line); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  form { display: grid; grid-template-columns: 1fr 7rem 7rem auto; gap: 0.5rem; }
+  .empty { color: var(--muted); }
+</style>
+<budget-table event={{ id: "", budget: 0, expenses: [] }}>
+  <div class="totals" class:over={left < 0}>
+    <div><b class="budget">{money.format(event.budget)}</b><span>budget</span></div>
+    <div><b class="spent">{money.format(spent)}</b><span>{money.format(paid)} paid</span></div>
+    <div><b class="left">{money.format(left)}</b><span>{left < 0 ? "over budget" : "left"}</span></div>
+  </div>
+  <zb-if test={event.budget > 0}>
+    <progress class:over={left < 0} max={event.budget} value={Math.min(spent, event.budget)} aria-label="Budget used"></progress>
+  </zb-if>
+  <zb-if test={byKind.length > 0}>
+    <div class="kinds">
+      <zb-each items={byKind} as="group" key={group.name}>
+        <span>{group.name}</span><meter min="0" max={spent} value={group.total}></meter><span>{money.format(group.total)}</span>
+      </zb-each>
+    </div>
+  </zb-if>
+  <zb-if test={event.expenses.length > 0}>
+    <table>
+      <thead><tr><th>Item</th><th>Category</th><th class="num">Amount</th><th>Paid</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
+      <tbody>
+        <zb-each items={event.expenses} as="item" key={item.id}>
+          <tr>
+            <td>{item.label}</td>
+            <td>{item.category}</td>
+            <td class="num">{money.format(item.amount)}</td>
+            <td><input type="checkbox" aria-label={`${item.label} is paid`} checked={item.paid} onchange={(e) => act('expenses.update', event.id, item.id, { paid: e.target.checked })}></td>
+            <td><button type="button" class="icon" aria-label={`Remove ${item.label}`} onclick={() => act('expenses.remove', event.id, item.id)}>✕</button></td>
+          </tr>
+        </zb-each>
+      </tbody>
+    </table>
+    <zb-else><p class="empty">No expenses yet.</p></zb-else>
+  </zb-if>
+  <form onsubmit.prevent={add}>
+    <input required placeholder="Expense" aria-label="Expense" value={label} oninput={(e) => (label = e.target.value)}>
+    <select aria-label="Category" value={kind} onchange={(e) => (kind = e.target.value)}>
+      <zb-each items={KINDS} as="name" key={name}><option value={name}>{name}</option></zb-each>
+    </select>
+    <input type="number" required min="0.01" step="0.01" placeholder="Amount" aria-label="Amount" value={amount} oninput={(e) => (amount = e.target.value)}>
+    <button type="submit" class="primary">Add</button>
+  </form>
+</budget-table>

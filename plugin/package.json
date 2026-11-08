@@ -1,11 +1,11 @@
 {
-  "name": "@mnx/unplugin",
-  "version": "3.6.0",
-  "description": "Compile .mnx components in Vite, Rollup, webpack, esbuild and Rspack, with React and Vue wrappers picked automatically",
+  "name": "@zubra/unplugin",
+  "version": "4.0.0",
+  "description": "Compile .zb components in Vite, Rollup, webpack, esbuild and Rspack, with React and Vue wrappers picked automatically",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
     "directory": "plugin"
   },
   "type": "module",
@@ -34,12 +34,12 @@
     "unplugin": "3.7.0"
   },
   "peerDependencies": {
-    "@mnx/compiler": "^2.0.0",
-    "@mnx/runtime": "^2.0.0"
+    "@zubra/compiler": "^4.0.0",
+    "@zubra/runtime": "^4.0.0"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../compiler",
-    "@mnx/runtime": "file:../runtime",
+    "@zubra/compiler": "file:../compiler",
+    "@zubra/runtime": "file:../runtime",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tailwindcss/vite": "4.3.5",
@@ -69,7 +69,7 @@
     "client.d.ts"
   ],
   "peerDependenciesMeta": {
-    "@mnx/compiler": {
+    "@zubra/compiler": {
       "optional": true
     }
   }

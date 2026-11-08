@@ -43,7 +43,7 @@ test('the renderer is sandboxed: no Node.js, only the preload\'s API, under a st
   assert.deepEqual(await window.evaluate(() => Object.keys(window.focusTimer).sort()), ['finished', 'load', 'running']);
   assert.match(await window.getAttribute('meta[http-equiv=Content-Security-Policy]', 'content'), /style-src 'self'/);
   assert.equal(await time(), '25:00');
-  // The components' own CSS applies anyway: mnx adopts it as constructed stylesheets, which a
+  // The components' own CSS applies anyway: zubra adopts it as constructed stylesheets, which a
   // CSP's style-src doesn't block (it only blocks inline <style> and style="").
   assert.equal(await window.evaluate(() => getComputedStyle(document.querySelector('focus-timer button.primary')).color), 'rgb(255, 255, 255)');
   assert.equal(await window.evaluate(() => getComputedStyle(document.querySelector('focus-timer time')).fontWeight), '700');

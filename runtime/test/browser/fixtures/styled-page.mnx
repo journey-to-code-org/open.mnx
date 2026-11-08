@@ -1,9 +1,0 @@
-<script>
-  import './styled-card.mnx'
-</script>
-<style>
-  .mine { color: rgb(0, 0, 255) }
-</style>
-<mnx-styled-page show={false}>
-  <mnx-styled-card><p class="mine">parent's</p><mnx-if test={show}><p class="later">later</p></mnx-if></mnx-styled-card>
-</mnx-styled-page>

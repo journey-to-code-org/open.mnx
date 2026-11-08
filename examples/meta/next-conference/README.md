@@ -1,22 +1,22 @@
-# WebConf: Next.js with mnx components
+# WebConf: Next.js with Zubra components
 
 A conference schedule. Filter the talks by track, star the ones you want (kept in `localStorage`), and rate a talk afterwards through a form handled by a **Server Action**.
 
-Next.js 16 builds with Turbopack, which takes webpack-style loaders but not bundler plugins. `next.config.mjs` gives `.mnx` files mnx's loader (`@mnx/unplugin/loader`, since 2.8), and the app imports components directly, as React (client) components:
+Next.js 16 builds with Turbopack, which takes webpack-style loaders but not bundler plugins. `next.config.mjs` gives `.zb` files Zubra's loader (`@zubra/unplugin/loader`, since 2.8), and the app imports components directly, as React (client) components:
 
 ```jsx
 'use client';
-import SessionCard from '../components/session-card.mnx';
+import SessionCard from '../components/session-card.zb';
 ```
 
-(Before 2.8 the app used library mode, `mnx build --lib`, which still works for a component package.)
+(Before 2.8 the app used library mode, `zubra build --lib`, which still works for a component package.)
 
 | What | Where |
 |---|---|
-| A Server Component reading data, passing it to a client component that uses mnx elements | `app/page.jsx` → `app/Schedule.jsx` |
+| A Server Component reading data, passing it to a client component that uses Zubra elements | `app/page.jsx` → `app/Schedule.jsx` |
 | Two-way props as React state (`value` + `onValueChange`, `starred` + `onStarredChange`) | `app/Schedule.jsx` |
-| mnx **form controls** in a Server Action form: `star-rating` and `toggle-switch` are form-associated, so `rating` and `followup` arrive in `FormData`, and `required` stops the submission like a native input | `app/sessions/[id]/FeedbackForm.jsx`, `app/actions.js` |
-| Components from the registry (`mnx add segmented-control star-rating toggle-switch`) beside the app's own (`session-card`) | `components/` |
+| Zubra **form controls** in a Server Action form: `star-rating` and `toggle-switch` are form-associated, so `rating` and `followup` arrive in `FormData`, and `required` stops the submission like a native input | `app/sessions/[id]/FeedbackForm.jsx`, `app/actions.js` |
+| Components from the registry (`zubra add segmented-control star-rating toggle-switch`) beside the app's own (`session-card`) | `components/` |
 
 ```sh
 npm install
@@ -25,14 +25,14 @@ npm run build && npm start
 npm test           # builds, starts, and drives it in Chromium
 ```
 
-Inside this repository, the mnx compiler comes from `MNX_COMPILER` (the CLI from `cargo build`) or a built `compiler/mnx.wasm`. `.npmrc` installs the repository's packages as copies (`install-links`), as they'd come from npm. Next won't resolve a symlinked package outside the app.
+Inside this repository, the Zubra compiler comes from `ZUBRA_COMPILER` (the CLI from `cargo build`) or a built `compiler/zubra.wasm`. `.npmrc` installs the repository's packages as copies (`install-links`), as they'd come from npm. Next won't resolve a symlinked package outside the app.
 
 ## What this app found
 
 These are recorded in the project's server roadmap (`plan/roadmap-server.md`).
 
 - **The components are shadow DOM here.** Next server-renders each element's host tag, and the browser defines the elements before React hydrates. A light-DOM element then renders its template into the host, React finds children it didn't render, reports a hydration error (#418), and re-renders the page from scratch. Shadow-DOM elements render into their shadow root, which React doesn't look at, so they hydrate cleanly. Making light DOM work under framework hydration is on the roadmap.
-- **The element's own markup wasn't in the server HTML** (fixed in 2.11). React rendered the host tag (`<session-card>`, with its props as `mnx-props` since 2.8) on the server, and the card's template appeared once the element started. In React Router, Nuxt, SvelteKit and SolidStart, `@mnx/server` adds the shadow roots to the page (2.8). Next streams React Server Components and has no hook for its HTML. So in 2.11:
+- **The element's own markup wasn't in the server HTML** (fixed in 2.11). React rendered the host tag (`<session-card>`, with its props as `zb-props` since 2.8) on the server, and the card's template appeared once the element started. In React Router, Nuxt, SvelteKit and SolidStart, `@zubra/server` adds the shadow roots to the page (2.8). Next streams React Server Components and has no hook for its HTML. So in 2.11:
   - the loader's server build (`next.config.mjs`, `options: { server: true }`) registers how to render each component;
   - the React wrapper writes a childless shadow-DOM element's declarative shadow root as the host's inner HTML.
 

@@ -3,9 +3,9 @@
 import { Title } from '@solidjs/meta';
 import { createAsync, useSubmission } from '@solidjs/router';
 import { createSignal, For, Show } from 'solid-js';
-import '../../mnx/dish-board.mnx';
-import '../../mnx/choice-cards.mnx';
-import '../../mnx/quantity-stepper.mnx';
+import '../../zubra/dish-board.zb';
+import '../../zubra/choice-cards.zb';
+import '../../zubra/quantity-stepper.zb';
 import { COURSES, getPotluck, signUp } from '../lib/potluck.js';
 
 export const route = { preload: () => getPotluck() };

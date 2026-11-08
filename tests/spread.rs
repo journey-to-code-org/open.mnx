@@ -1,9 +1,9 @@
 //! `{...object}` in a start tag: parsing, the HTML output, the JavaScript output's part, JSX, and
 //! where a spread isn't allowed.
-use mnx_compiler::{compile, compile_js};
+use zubra::{compile, compile_js};
 
 fn js(source: &str) -> String {
-    compile_js(source, "@mnx/runtime", "x.mnx").unwrap()
+    compile_js(source, "@zubra/runtime", "x.zb").unwrap()
 }
 
 #[test]
@@ -25,17 +25,17 @@ fn a_spread_known_only_in_the_browser_is_left_for_the_element() {
   function attrs() { return { href: "/a" } }
 </script>
 <x-link><a class="a" {...attrs()}>go</a></x-link>"#;
-    let html = mnx_compiler::compile_html_with_options(
+    let html = zubra::compile_html_with_options(
         source,
-        "x.mnx",
+        "x.zb",
         "{}",
         "{}",
-        mnx_compiler::HtmlOptions {
-            slot_source: mnx_compiler::SlotSource::Template,
+        zubra::HtmlOptions {
+            slot_source: zubra::SlotSource::Template,
             partial: true,
             pending: Vec::new(),
         },
-        &mnx_compiler::filesystem,
+        &zubra::filesystem,
     )
     .unwrap();
     assert!(html.contains(r#"<a class="a">go</a>"#), "{html}");
@@ -72,9 +72,9 @@ fn what_an_attribute_couldn_t_do_a_known_spread_can_t() {
 }
 
 #[test]
-fn a_spread_isn_t_allowed_on_the_host_a_directive_or_an_mnx_component() {
-    let host = mnx_compiler::compile_js("<x-a {...attrs}><p>hi</p></x-a>", "@mnx/runtime", "x.mnx")
-        .unwrap_err();
+fn a_spread_isn_t_allowed_on_the_host_a_directive_or_an_zb_component() {
+    let host =
+        zubra::compile_js("<x-a {...attrs}><p>hi</p></x-a>", "@zubra/runtime", "x.zb").unwrap_err();
     assert!(
         host.message
             .contains("the host tag declares the component's props"),
@@ -82,9 +82,9 @@ fn a_spread_isn_t_allowed_on_the_host_a_directive_or_an_mnx_component() {
         host.message
     );
     let directive = compile_js(
-        "<script>const x = {}</script><x-a><mnx-if test={true} {...x}><p>hi</p></mnx-if></x-a>",
-        "@mnx/runtime",
-        "x.mnx",
+        "<script>const x = {}</script><x-a><zb-if test={true} {...x}><p>hi</p></zb-if></x-a>",
+        "@zubra/runtime",
+        "x.zb",
     )
     .unwrap_err();
     assert!(
@@ -94,8 +94,8 @@ fn a_spread_isn_t_allowed_on_the_host_a_directive_or_an_mnx_component() {
     );
     let bare = compile_js(
         "<script>const x = {}</script><x-a><p {x}>hi</p></x-a>",
-        "@mnx/runtime",
-        "x.mnx",
+        "@zubra/runtime",
+        "x.zb",
     )
     .unwrap_err();
     assert!(
@@ -107,22 +107,22 @@ fn a_spread_isn_t_allowed_on_the_host_a_directive_or_an_mnx_component() {
 
 #[test]
 fn every_name_in_a_spread_is_checked() {
-    let error = compile_js("<x-a><p {...atrs}>hi</p></x-a>", "@mnx/runtime", "x.mnx").unwrap_err();
+    let error = compile_js("<x-a><p {...atrs}>hi</p></x-a>", "@zubra/runtime", "x.zb").unwrap_err();
     assert!(error.message.contains("atrs"), "{}", error.message);
 }
 
 #[test]
 fn jsx_spreads_onto_elements_and_not_onto_components() {
     let source = "export default function XPill({ attrs = {} }) {\n  return <button type=\"button\" {...attrs} className=\"pill\">x</button>;\n}\n";
-    let output = compile_js(source, "@mnx/runtime", "x-pill.mnx.jsx").unwrap();
+    let output = compile_js(source, "@zubra/runtime", "x-pill.zb.jsx").unwrap();
     assert!(
         output.contains(r#"spread: () => $p.attrs, own: ["type", "class"], bind: $spread"#),
         "{output}"
     );
-    let component = "import Badge from './badge.mnx';\nexport default function XWrap({ attrs = {} }) {\n  return <Badge {...attrs} />;\n}\n";
-    let error = compile_js(component, "@mnx/runtime", "x-wrap.mnx.jsx").unwrap_err();
+    let component = "import Badge from './badge.zb';\nexport default function XWrap({ attrs = {} }) {\n  return <Badge {...attrs} />;\n}\n";
+    let error = compile_js(component, "@zubra/runtime", "x-wrap.zb.jsx").unwrap_err();
     assert!(
-        error.message.contains("spreading onto an mnx component"),
+        error.message.contains("spreading onto a zubra component"),
         "{}",
         error.message
     );

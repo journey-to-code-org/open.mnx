@@ -1,25 +1,25 @@
-// @mnx/compiler: the mnx compiler as WebAssembly, for Node (and bundler plugins) without a
-// Rust toolchain. Same compiler, same output, same errors as the `mnx` CLI.
+// @zubra/compiler: the zubra compiler as WebAssembly, for Node (and bundler plugins) without a
+// Rust toolchain. Same compiler, same output, same errors as the `zubra` CLI.
 //
-//   import { compileFile, renderToString } from '@mnx/compiler';
-//   const { ok, output, error, warnings } = compileFile('src/inbox.mnx', { emit: 'js' });
-//   const html = renderToString('src/inbox.mnx', { props: { heading: 'Mail' } });
+//   import { compileFile, renderToString } from '@zubra/compiler';
+//   const { ok, output, error, warnings } = compileFile('src/inbox.zb', { emit: 'js' });
+//   const html = renderToString('src/inbox.zb', { props: { heading: 'Mail' } });
 //
 // `request()` is the raw interface: one JSON-shaped request in, one response out (see the
-// compiler's `request` module). `compileFile()` reads the file and every `.mnx` file it
+// compiler's `request` module). `compileFile()` reads the file and every `.zb` file it
 // imports, and makes that request.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 /**
- * The text of mnx's hydration-marker comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`,
+ * The text of zubra's hydration-marker comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`,
  * `<!--[!-->`), for tools that remove comments: keep the ones matching this. For example
- * html-minifier-terser's `ignoreCustomComments: [MNX_MARKER_COMMENT]`.
+ * html-minifier-terser's `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]`.
  */
-export const MNX_MARKER_COMMENT = /^[[\]?!]*$/;
+export const ZUBRA_MARKER_COMMENT = /^[[\]?!]*$/;
 
-const wasmUrl = new URL('./mnx.wasm', import.meta.url);
+const wasmUrl = new URL('./zubra.wasm', import.meta.url);
 let exports = null;
 
 /** Whether the WebAssembly module is present (it's built by `npm run build`, or ships in the package). */
@@ -29,7 +29,7 @@ export function available() {
 
 function wasm() {
   if (!exports) {
-    if (!available()) throw new Error('@mnx/compiler: mnx.wasm is missing; run `npm run build` in its package (needs Rust with the wasm32-unknown-unknown target)');
+    if (!available()) throw new Error('@zubra/compiler: zubra.wasm is missing; run `npm run build` in its package (needs Rust with the wasm32-unknown-unknown target)');
     exports = new WebAssembly.Instance(new WebAssembly.Module(readFileSync(wasmUrl)), {}).exports;
   }
   return exports;
@@ -40,39 +40,39 @@ const decoder = new TextDecoder();
 
 /**
  * One request to the compiler; returns `{ ok, output, error, warnings, diagnostics }`. Without
- * mnx.wasm, a native `mnx` named by $MNX_COMPILER answers it instead (`mnx request`).
+ * zubra.wasm, a native `zubra` named by $ZUBRA_COMPILER answers it instead (`zubra request`).
  */
 export function request(body) {
-  if (!available() && process.env.MNX_COMPILER) return native(process.env.MNX_COMPILER, body);
-  const { memory, mnx_alloc, mnx_request, mnx_free } = wasm();
+  if (!available() && process.env.ZUBRA_COMPILER) return native(process.env.ZUBRA_COMPILER, body);
+  const { memory, zubra_alloc, zubra_request, zubra_free } = wasm();
   const bytes = encoder.encode(JSON.stringify(body));
-  const pointer = mnx_alloc(bytes.length);
+  const pointer = zubra_alloc(bytes.length);
   new Uint8Array(memory.buffer, pointer, bytes.length).set(bytes);
-  const packed = BigInt.asUintN(64, mnx_request(pointer, bytes.length));
+  const packed = BigInt.asUintN(64, zubra_request(pointer, bytes.length));
   const at = Number(packed >> 32n);
   const length = Number(packed & 0xffffffffn);
   // The memory may have grown during the request; read through the current buffer.
   const text = decoder.decode(new Uint8Array(memory.buffer, at, length).slice());
-  mnx_free(at, length);
+  zubra_free(at, length);
   return JSON.parse(text);
 }
 
 function native(compiler, body) {
   const result = spawnSync(compiler, ['request'], { input: JSON.stringify(body), encoding: 'utf8', maxBuffer: 1 << 30 });
-  if (result.error || result.status !== 0) throw new Error(`@mnx/compiler: ${compiler} request failed: ${result.error?.message ?? result.stderr}`);
+  if (result.error || result.status !== 0) throw new Error(`@zubra/compiler: ${compiler} request failed: ${result.error?.message ?? result.stderr}`);
   return JSON.parse(result.stdout);
 }
 
-/** The components (`.mnx`, `.mnx.jsx`, `.mnx.tsx`) `path` imports, recursively, with their sources (the path itself included). */
+/** The components (`.zb`, `.zb.jsx`, `.zb.tsx`) `path` imports, recursively, with their sources (the path itself included). */
 export function sources(path, files = {}) {
   const absolute = resolve(path);
   if (absolute in files) return files;
   let source;
   try { source = readFileSync(absolute, 'utf8'); } catch { return files; }
   files[absolute] = source;
-  // A JSX component's imports are the whole file's; an .mnx file's are its <script>'s.
+  // A JSX component's imports are the whole file's; an .zb file's are its <script>'s.
   const script = /\.[jt]sx$/.test(absolute) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
-  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx(?:\.[jt]sx)?)['"]/g)) {
+  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)['"]/g)) {
     if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files);
   }
   return files;
@@ -101,7 +101,7 @@ export class CompileError extends Error {
  * Server-render the component at `path`: its HTML (which the element hydrates in the browser)
  * and the scoped stylesheets of it and the components it uses. `props` are the host's values
  * (JSON), `slots` the supplied content by slot name (`default` for unnamed content): HTML,
- * kept as written (`slotSource: 'template'` reads it as mnx template syntax instead). `files`
+ * kept as written (`slotSource: 'template'` reads it as zubra template syntax instead). `files`
  * supplies the sources instead of reading them from disk (see `sources`). What only the browser
  * can compute (JavaScript expressions, runtime-only values) is left for the element to fill in
  * when it starts; `partial: false` makes that an error instead. Throws a `CompileError` on errors.

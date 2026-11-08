@@ -1,0 +1,35 @@
+<!--
+  Harvest by crop, as horizontal bars, with the total. Rendered completely on the server (by
+  the Rust compiler, scripts included), so the chart is in the page's HTML.
+  `rows` is `[{ crop, label, kg }]`.
+-->
+<script>
+  const top = Math.max(1, ...rows.map((row) => row.kg))
+  const total = Math.round(rows.reduce((sum, row) => sum + row.kg, 0) * 10) / 10
+</script>
+<style>
+  figure { margin: 0; }
+  figcaption { margin-bottom: 0.6rem; font-weight: 600; }
+  ol { display: grid; gap: 0.45rem; margin: 0; padding: 0; list-style: none; }
+  li { display: grid; grid-template-columns: 6rem 1fr 4rem; align-items: center; gap: 0.6rem; }
+  .bar { height: 1.1rem; border-radius: 0.3rem; background: linear-gradient(90deg, #5c9d55, #3b7d3f); }
+  .kg { text-align: right; font-variant-numeric: tabular-nums; color: #4a4f40; }
+  p { color: #6b705f; }
+</style>
+<harvest-chart rows={[]} heading="Harvest">
+  <figure>
+    <figcaption>{heading} <small>({total} kg)</small></figcaption>
+    <zb-if test={rows.length > 0}>
+      <ol>
+        <zb-each items={rows} as="row" key={row.crop}>
+          <li data-crop={row.crop}>
+            <span>{row.label}</span>
+            <span class="bar" style:width={Math.round((row.kg / top) * 100) + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
+            <span class="kg">{row.kg} kg</span>
+          </li>
+        </zb-each>
+      </ol>
+      <zb-else><p>Nothing harvested yet.</p></zb-else>
+    </zb-if>
+  </figure>
+</harvest-chart>

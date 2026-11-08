@@ -56,7 +56,7 @@ impl Diagnostic {
     ///
     /// ```text
     /// error: unknown reference `titel`
-    ///  --> header.mnx:11:11
+    ///  --> header.zb:11:11
     ///    |
     /// 11 |       <h1>{titel}</h1>
     ///    |           ^
@@ -125,8 +125,8 @@ mod tests {
         let diagnostic = Diagnostic::new(Span::new(2, 8), "unknown reference `titel`")
             .with_help("did you mean `title`?");
         assert_eq!(
-            diagnostic.render(source, "x.mnx"),
-            "error: unknown reference `titel`\n --> x.mnx:2:8\n  |\n2 |   <h1>{titel}</h1>\n  |        ^\n  = help: did you mean `title`?\n"
+            diagnostic.render(source, "x.zb"),
+            "error: unknown reference `titel`\n --> x.zb:2:8\n  |\n2 |   <h1>{titel}</h1>\n  |        ^\n  = help: did you mean `title`?\n"
         );
     }
 }

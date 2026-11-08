@@ -23,7 +23,7 @@ const isSignal = (value) => value instanceof Signal.State || value instanceof Si
 
 /** Unwrap a signal, so templates can read `{count}` for `const count = state(0)`. */
 /** Where a message's topic is documented. */
-const see = (section) => ` (see https://github.com/journey-to-code-org/open.mnx#${section})`;
+const see = (section) => ` (see https://github.com/journey-to-code-org/zubra#${section})`;
 
 export const $r = (value) => (isSignal(value) ? value.get() : value);
 
@@ -32,7 +32,7 @@ export function $t(value) {
   value = $r(value);
   if (value == null) return '';
   if (typeof value === 'object') {
-    console.error('mnx: cannot render an object as text; access a field or iterate it instead', value);
+    console.error('zubra: cannot render an object as text; access a field or iterate it instead', value);
     return '';
   }
   return String(value);
@@ -66,7 +66,7 @@ function parseAttribute(spec, raw) {
   try {
     return JSON.parse(raw);
   } catch {
-    console.warn(`mnx: attribute "${spec.attribute}" is not valid JSON:`, raw);
+    console.warn(`zubra: attribute "${spec.attribute}" is not valid JSON:`, raw);
     return clone(fallback);
   }
 }
@@ -76,7 +76,7 @@ function parseAttribute(spec, raw) {
 let current = null; // lifecycle hooks of the component whose setup is running
 
 function hooks(name) {
-  if (!current) throw new Error(`mnx: ${name}() must be called while a component is setting up${see('script-state-and-hooks')}`);
+  if (!current) throw new Error(`zubra: ${name}() must be called while a component is setting up${see('script-state-and-hooks')}`);
   return current;
 }
 
@@ -112,7 +112,7 @@ export const state = (value, options) => {
  *   let running = from(seconds, false) // false, and false again whenever `seconds` changes
  *
  * With a second argument, the state starts as that value instead, each time the first changes.
- * In a `.mnx` script the compiler passes both as functions (`from(() => seconds)`), so the state
+ * In a `.zb` script the compiler passes both as functions (`from(() => seconds)`), so the state
  * can follow them. Outside one, pass a function or a signal.
  */
 export function from(source, start) {
@@ -150,7 +150,7 @@ export const computed = (fn, options) => new Signal.Computed(fn, options);
  * template, for what only works with JavaScript:
  *
  *   const live = hydrated()
- *   <mnx-if test={!live}><button>Apply</button></mnx-if>
+ *   <zb-if test={!live}><button>Apply</button></zb-if>
  *
  * The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))`, or
  * `my-filters:state(hydrated)` from the page.
@@ -191,7 +191,7 @@ export function host() {
  * event it sees. Outside a compiled component, use the `emit` that `setup` receives.
  */
 export function emit(name) {
-  throw new Error(`mnx: emit("${name}") is bound to each element by the compiler; outside a compiled component, use the emit that setup() receives`);
+  throw new Error(`zubra: emit("${name}") is bound to each element by the compiler; outside a compiled component, use the emit that setup() receives`);
 }
 
 /**
@@ -214,7 +214,7 @@ export function id() {
 function formHooks(name) {
   const component = hooks(name);
   if (!component.internals) {
-    throw new Error(`mnx: ${name}() needs form-associated on the component's host tag${see('forms')}`);
+    throw new Error(`zubra: ${name}() needs form-associated on the component's host tag${see('forms')}`);
   }
   return component;
 }
@@ -243,7 +243,7 @@ export function validity(check) {
   // first focusable element the component rendered (the host itself isn't focusable).
   const anchor = () => {
     for (const node of (host.shadowRoot ?? host).querySelectorAll(FOCUSABLE)) {
-      if (!node.closest('[data-mnx-slotted]')) return node;
+      if (!node.closest('[data-zb-slotted]')) return node;
     }
     return host;
   };
@@ -281,7 +281,7 @@ export function onFormDisabled(fn) {
 // and with `subscribe: true` keeps calling back when the value changes, passing an
 // `unsubscribe` function. Providers announce themselves with a `context-provider` event, so a
 // consumer that asked before its provider existed can ask again. Because it is plain DOM events,
-// mnx components share context with any other implementation (Lit's @lit/context, …).
+// zubra components share context with any other implementation (Lit's @lit/context, …).
 
 export class ContextRequestEvent extends Event {
   constructor(context, contextTarget, callback, subscribe) {
@@ -466,7 +466,7 @@ function locate(range, parts, hydrating = false) {
   return nodes;
 }
 
-// ---- blocks: the contents of an mnx-if branch or an mnx-each row ----------------------------
+// ---- blocks: the contents of an zb-if branch or an zb-each row ----------------------------
 
 const blueprints = new WeakMap();
 const SVG = 'http://www.w3.org/2000/svg';
@@ -525,7 +525,7 @@ function mountBlock(block, args, open, close, hydrating, context) {
     parts.forEach((part, index) => bind(part, nodes[index], true, context));
     return;
   }
-  if (hydrating) console.warn(`mnx: server markup for a region does not match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
+  if (hydrating) console.warn(`zubra: server markup for a region does not match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
   clearBetween(open, close);
   // Find and bind the parts in the fragment, then insert it: child components inside see
   // their props from the start, and can't move slotted nodes before they're found.
@@ -575,7 +575,7 @@ const signature = (range) =>
 
 /**
  * `function X({ value = model(0) })` in a JSX component marks `value` as two-way (like
- * `value:model={0}` in `.mnx`). The compiler reads it; at runtime it's just the default.
+ * `value:model={0}` in `.zb`). The compiler reads it; at runtime it's just the default.
  */
 export const model = (value) => value;
 
@@ -672,7 +672,7 @@ function bind(part, node, hydrating, context) {
       if (target.data !== text) target.data = text;
     });
   } else if (part.global) {
-    // <mnx-window>/<mnx-document>: listening while this part of the template is rendered.
+    // <zb-window>/<zb-document>: listening while this part of the template is rendered.
     const target = part.global === 'window' ? window : document;
     effect(() => {
       const [listener, options] = listen(part, target);
@@ -684,7 +684,7 @@ function bind(part, node, hydrating, context) {
     const [listener, options] = listen(part, node);
     node.addEventListener(part.on, listener, options);
   } else if (part.bind) {
-    // A part whose code lives in its own entry (`{...spread}`: @mnx/runtime/spread), so
+    // A part whose code lives in its own entry (`{...spread}`: @zubra/runtime/spread), so
     // components that don't use it don't load it.
     part.bind(part, node);
   } else if (part.classes) {
@@ -744,15 +744,15 @@ function filledSignal(filled, name) {
  * follows the content: for wrapping a slot in markup only when it's used.
  *
  *   const hasFooter = hasSlot('footer')
- *   <mnx-if test={hasFooter}><footer><mnx-slot name="footer"></mnx-slot></footer></mnx-if>
+ *   <zb-if test={hasFooter}><footer><zb-slot name="footer"></zb-slot></footer></zb-if>
  */
 export function hasSlot(name = 'default') {
   return filledSignal(hooks('hasSlot').filled, name);
 }
 
 /**
- * mnx-slot in light DOM: the host's own children for this slot, moved in once at startup, or the
- * fallback block. The provided nodes are kept, so a slot inside an mnx-if branch gets them back
+ * zb-slot in light DOM: the host's own children for this slot, moved in once at startup, or the
+ * fallback block. The provided nodes are kept, so a slot inside an zb-if branch gets them back
  * when the branch comes back.
  */
 function bindSlot(part, open, hydrating, context) {
@@ -793,7 +793,7 @@ function bindSlot(part, open, hydrating, context) {
       }
     },
   };
-  // The region exists while this effect does (an mnx-if branch switching away disposes it):
+  // The region exists while this effect does (an zb-if branch switching away disposes it):
   // then the slotted nodes are parked, to come back when the branch does.
   effect(() => {
     slot.region = region;
@@ -814,7 +814,7 @@ function bindSlot(part, open, hydrating, context) {
 // calls host.insertBefore(node, sibling) and host.removeChild(node), Vue sets textContent — so
 // the host's child methods are routed to the slots, and a MutationObserver notices content
 // removed through its real parent. Each slot keeps its nodes in order; while its region isn't
-// rendered (inside an mnx-if branch that's off) they're parked in a fragment.
+// rendered (inside an zb-if branch that's off) they're parked in a fragment.
 
 function slotRecord(context, name) {
   let slot = context.slots.get(name);
@@ -906,7 +906,7 @@ function routeChildren(host, context, slots, tag) {
     const from = take(node);
     // A marker or whitespace goes in the slot of what it's inserted before.
     const name = isContent(node) ? slotName(node) : (before && holding(before)?.name) || 'default';
-    if (!slots.includes(name) && isContent(node)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
+    if (!slots.includes(name) && isContent(node)) console.warn(`zubra: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
     const slot = slotRecord(context, name);
     const at = before ? slot.nodes.indexOf(before) : -1;
     if (at >= 0) slot.nodes.splice(at, 0, node);
@@ -994,7 +994,7 @@ function routeChildren(host, context, slots, tag) {
       for (const node of actual) if (node.nodeType === 1 && slotName(node) !== slot.name) insert(node, null);
       show(slot);
     }
-    // Content a parent adds inside a slot itself (its mnx-if or mnx-each there) is slotted too.
+    // Content a parent adds inside a slot itself (its zb-if or zb-each there) is slotted too.
     if (context.slotted) {
       for (const slot of context.slots.values()) {
         if (!slot.region) continue;
@@ -1026,7 +1026,7 @@ function bindAttribute(part, node) {
     }
     if (part.boolean) {
       if (typeof value !== 'boolean') {
-        console.error(`mnx: "${name}" is a boolean attribute; got`, value);
+        console.error(`zubra: "${name}" is a boolean attribute; got`, value);
         return;
       }
       // A control's live state is its property (the attribute is only the default once the
@@ -1056,21 +1056,21 @@ function bindAttribute(part, node) {
     }
     if (value == null) return node.removeAttribute(name);
     if (typeof value === 'object' && !part.prop) {
-      console.error(`mnx: cannot write an object to the "${name}" attribute`, value);
+      console.error(`zubra: cannot write an object to the "${name}" attribute`, value);
       return node.removeAttribute(name);
     }
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
     // No URL yet (a prop's "" default, before the app sets it): no attribute, and nothing to report.
     if (part.url && text.trim() === '') return node.removeAttribute(name);
     if (part.url && !isSafeUrl(text)) {
-      console.error(`mnx: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
+      console.error(`zubra: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
       return node.removeAttribute(name);
     }
     if (node.getAttribute(name) !== text) node.setAttribute(name, text);
   });
 }
 
-/** mnx-if: re-render only when the chosen branch changes, not whenever the test re-runs. */
+/** zb-if: re-render only when the chosen branch changes, not whenever the test re-runs. */
 function bindWhen(part, open, hydrating, context) {
   hydrating = hydratable(open, hydrating);
   const close = matchingClose(open);
@@ -1089,9 +1089,9 @@ function bindWhen(part, open, hydrating, context) {
 }
 
 /**
- * mnx-await: the pending block while the value is a promise (anything with `then`), then the
- * `mnx-then` block with the resolved value, or the `mnx-catch` block with the error. A value
- * that isn't a promise shows `mnx-then` at once. Only the latest value's outcome is shown. A
+ * zb-await: the pending block while the value is a promise (anything with `then`), then the
+ * `zb-then` block with the resolved value, or the `zb-catch` block with the error. A value
+ * that isn't a promise shows `zb-then` at once. Only the latest value's outcome is shown. A
  * `resource()` is followed through its states, so reloading it shows the pending content again.
  */
 function bindAwait(part, open, hydrating, context) {
@@ -1130,7 +1130,7 @@ function bindAwait(part, open, hydrating, context) {
 }
 
 /**
- * mnx-each: one row per item. Each row holds its item and index as signals, so changing one
+ * zb-each: one row per item. Each row holds its item and index as signals, so changing one
  * item updates only that row's parts.
  *
  * - Without a key, rows are matched by position: a new array updates rows in place, and rows are
@@ -1181,7 +1181,7 @@ function bindEach(part, open, hydrating, context) {
     return list.map((value, index) => {
       let key = part.key(value, index);
       if (seen.has(key)) {
-        console.error('mnx: duplicate mnx-each key', key, `(row ${index + 1}); that row is not keyed${see('directives')}`);
+        console.error('zubra: duplicate zb-each key', key, `(row ${index + 1}); that row is not keyed${see('directives')}`);
         key = Symbol('duplicate');
       }
       seen.add(key);
@@ -1193,7 +1193,7 @@ function bindEach(part, open, hydrating, context) {
   effect(() => {
     let list = $r(part.each());
     if (!Array.isArray(list)) {
-      if (list != null) console.error('mnx: mnx-each items must be an array; got', list);
+      if (list != null) console.error('zubra: zb-each items must be an array; got', list);
       list = [];
     }
     // Reactive state (deep.js) tracks by property: reading the length and each index here means
@@ -1210,7 +1210,7 @@ function bindEach(part, open, hydrating, context) {
             createRow(list[index], index, keys?.[index], rowOpen, matchingClose(rowOpen), true));
           return;
         }
-        console.warn(`mnx: server markup for a list does not match its items; rendering it fresh${see('server-rendering-and-hydration')}`);
+        console.warn(`zubra: server markup for a list does not match its items; rendering it fresh${see('server-rendering-and-hydration')}`);
         clearBetween(open, close);
       }
 
@@ -1294,7 +1294,7 @@ const fired = new WeakMap(); // event → the component that dispatched it
 // A component's stylesheet is one constructed CSSStyleSheet shared by every instance: adopted
 // by each shadow root of a shadow component, and, for a light-DOM component, by the document (or
 // the shadow root it lives in). `adoptStyles()` adds app-wide sheets — Tailwind's output, a
-// design system — to every mnx shadow root, since page CSS doesn't reach inside them.
+// design system — to every zubra shadow root, since page CSS doesn't reach inside them.
 
 const globalSheets = [];
 const shadowRoots = new Set(); // WeakRef<ShadowRoot>
@@ -1316,7 +1316,7 @@ function adopt(root, sheets) {
 }
 
 /**
- * Add stylesheets (CSS text or `CSSStyleSheet`s) to every mnx shadow root, now and later — for
+ * Add stylesheets (CSS text or `CSSStyleSheet`s) to every zubra shadow root, now and later — for
  * app-wide CSS such as Tailwind's output, which page styles can't carry into shadow DOM.
  * Light-DOM components already get page CSS. Returns the sheets.
  */
@@ -1332,7 +1332,7 @@ export function adoptStyles(...styles) {
 }
 
 /** The attribute that marks content slotted into a styled light-DOM component (value: its tag). */
-const SLOTTED = 'data-mnx-slotted';
+const SLOTTED = 'data-zb-slotted';
 const unmark = (node, tag) => {
   if (tag && node.nodeType === 1 && node.getAttribute(SLOTTED) === tag) node.removeAttribute(SLOTTED);
 };
@@ -1357,9 +1357,9 @@ function describe(tag, { props, shadow, form, slots, events, styled }) {
 const serverElements = new Map();
 function serverElement(tag, options) {
   if (!serverElements.has(tag)) {
-    serverElements.set(tag, class MnxServerElement {
-      static mnx = describe(tag, options);
-      constructor() { throw new TypeError(`mnx: <${tag}> can't be created without a DOM`); }
+    serverElements.set(tag, class ZubraServerElement {
+      static zubra = describe(tag, options);
+      constructor() { throw new TypeError(`zubra: <${tag}> can't be created without a DOM`); }
     });
   }
   return serverElements.get(tag);
@@ -1378,13 +1378,13 @@ export const ABI = 2;
  * with a clear message instead of misbehaving.
  */
 export function define(tag) {
-  throw new Error(`mnx: <${tag}> was compiled for @mnx/runtime 1.x; recompile it with mnx 2 (the CLI, @mnx/compiler or @mnx/unplugin)`);
+  throw new Error(`zubra: <${tag}> was compiled for @zubra/runtime 1.x; recompile it with zubra 2 (the CLI, @zubra/compiler or @zubra/unplugin)`);
 }
 
 /** @internal Register a compiled component: what the compiler's JavaScript output calls. */
 export function $define(tag, definition) {
   if (definition?.abi !== ABI) {
-    throw new Error(`mnx: <${tag}> was compiled for a different @mnx/runtime (interface ${definition?.abi ?? 1}, this runtime is ${ABI}); recompile it with the matching mnx`);
+    throw new Error(`zubra: <${tag}> was compiled for a different @zubra/runtime (interface ${definition?.abi ?? 1}, this runtime is ${ABI}); recompile it with the matching zubra`);
   }
   return defineElement(tag, definition);
 }
@@ -1392,14 +1392,14 @@ export function $define(tag, definition) {
 // @hot (left out of the production build: scripts/build-production.js)
 /** What a hot reload can't change without a full page reload: the element's interface. */
 const shape = ({ props = {}, shadow = false, form = false, events = [], styled = false, inPage = false }) => JSON.stringify([props, shadow, form, events, styled, inPage]);
-const HOT = Symbol('mnx.hot');
+const HOT = Symbol('zubra.hot');
 // @hot-end
 
 function defineElement(tag, definition) {
   const { props = {}, shadow = false, form = false, events = [], styled = false, inPage = false } = definition;
   let { template = '', slots = [], styles = null, setup } = definition;
-  // On a server (no DOM), a stand-in with the same `mnx` description, so a module that imports a
-  // component loads there: adapters render the host tag, and `@mnx/runtime/server` renders it.
+  // On a server (no DOM), a stand-in with the same `zubra` description, so a module that imports a
+  // component loads there: adapters render the host tag, and `@zubra/runtime/server` renders it.
   if (typeof HTMLElement === 'undefined') return serverElement(tag, { props, shadow, form, slots, events, styled });
   let sheet; // created on first use, so define() needs no document
   const ownSheets = () => (styles == null ? [] : [(sheet ??= toSheet(styles))]);
@@ -1408,7 +1408,7 @@ function defineElement(tag, definition) {
     // @hot (left out of the production build: scripts/build-production.js)
     // The same tag again: in development (with hot module replacement), a new version of the
     // component, swapped into the live elements; otherwise the first definition stands.
-    if (globalThis.__MNX_HOT__ && existing[HOT]) existing.hotReloaded = existing[HOT](definition);
+    if (globalThis.__ZUBRA_HOT__ && existing[HOT]) existing.hotReloaded = existing[HOT](definition);
     // @hot-end
     return existing;
   }
@@ -1421,9 +1421,9 @@ function defineElement(tag, definition) {
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
 
   let internals; // (element) => its ElementInternals; set in the static block below
-  class MnxElement extends HTMLElement {
+  class ZubraElement extends HTMLElement {
     static observedAttributes = Object.keys(byAttribute);
-    static mnx = describe(tag, { props, shadow, form, slots, events, styled });
+    static zubra = describe(tag, { props, shadow, form, slots, events, styled });
     static formAssociated = form;
     static { internals = (element) => element.#internals; }
     // @hot
@@ -1590,16 +1590,16 @@ function defineElement(tag, definition) {
 
     #boot(kept = null, reloading = false) {
       const element = this;
-      // Props a framework's server rendering wrote as JSON (the adapters' `mnx-props`), for
+      // Props a framework's server rendering wrote as JSON (the adapters' `zb-props`), for
       // starting with them before the framework sets them as properties.
       let given;
-      if (!reloading) try { given = JSON.parse(this.getAttribute('mnx-props')); } catch {}
+      if (!reloading) try { given = JSON.parse(this.getAttribute('zb-props')); } catch {}
       for (const name in given) if (Object.hasOwn(props, name) && !this.#given.has(name)) this[name] = given[name];
       // The server's stand-in for this control's value, for submitting before JavaScript
-      // (@mnx/server's injectShadowRoots): the element's own form value takes over now.
-      if (form) for (const child of this.querySelectorAll(':scope>input[data-mnx-fallback]')) child.remove();
+      // (@zubra/server's injectShadowRoots): the element's own form value takes over now.
+      if (form) for (const child of this.querySelectorAll(':scope>input[data-zb-fallback]')) child.remove();
       // @hot (left out of the production build: scripts/build-production.js)
-      if (globalThis.__MNX_HOT__ && !reloading) live.add(new WeakRef(this));
+      if (globalThis.__ZUBRA_HOT__ && !reloading) live.add(new WeakRef(this));
       // @hot-end
       const root = shadow ? (this.shadowRoot ?? this.attachShadow({ mode: 'open' })) : this;
       if (shadow) {
@@ -1607,7 +1607,7 @@ function defineElement(tag, definition) {
         shadowRoots.add(new WeakRef(root));
         // The server's copy of the styles, for before this ran; the adopted sheet replaces it.
         const serverStyles = root.firstElementChild;
-        if (serverStyles?.localName === 'style' && serverStyles.hasAttribute('data-mnx')) {
+        if (serverStyles?.localName === 'style' && serverStyles.hasAttribute('data-zubra')) {
           serverStyles.remove();
         }
       }
@@ -1679,14 +1679,14 @@ function defineElement(tag, definition) {
             const children = [...root.childNodes];
             assignSlots(children).forEach((name, i) => slotRecord(context, name).nodes.push(children[i]));
             for (const [name, slot] of context.slots) {
-              if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`mnx: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
+              if (!slots.includes(name) && slot.nodes.some(isContent)) console.warn(`zubra: <${tag}> has no slot named "${name}"; that content is not shown${see('slots')}`);
             }
           } else if (server) {
             // No comments at all where the template has markers: something stripped them, and
             // they couldn't be put back for sure.
             console.warn(stripped && !restored
-              ? `mnx: <${tag}>'s hydration markers (<!--[-->, <!--]-->, …) are missing, so it's rendered fresh. An HTML minifier, a sanitizer or a fragment parser (htmx in some browsers) removed the comments; keep them (MNX_MARKER_COMMENT in @mnx/compiler)${see('hydration-markers')}`
-              : `mnx: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
+              ? `zubra: <${tag}>'s hydration markers (<!--[-->, <!--]-->, …) are missing, so it's rendered fresh. An HTML minifier, a sanitizer or a fragment parser (htmx in some browsers) removed the comments; keep them (ZUBRA_MARKER_COMMENT in @zubra/compiler)${see('hydration-markers')}`
+              : `zubra: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
           }
           // Find and bind the parts before inserting (see mountBlock).
           const fragment = document.importNode(componentTemplate.content, true);
@@ -1743,10 +1743,10 @@ function defineElement(tag, definition) {
       };
     }
     for (const [key, descriptor] of Object.entries(api)) {
-      Object.defineProperty(MnxElement.prototype, key, { ...descriptor, configurable: true });
+      Object.defineProperty(ZubraElement.prototype, key, { ...descriptor, configurable: true });
     }
   }
 
-  customElements.define(tag, MnxElement);
-  return MnxElement;
+  customElements.define(tag, ZubraElement);
+  return ZubraElement;
 }

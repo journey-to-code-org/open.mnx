@@ -3,16 +3,16 @@
     <p class="muted"><a href="/tickets">Tickets</a> / #<%= ticket.id %></p>
     <h1><%= ticket.subject %></h1>
     <p class="meta">
-      <%- mnx('status-badge', { status: ticket.status }) %>
+      <%- zubra('status-badge', { status: ticket.status }) %>
       <span class="priority" data-priority="<%= ticket.priority %>"><%= ticket.priority %></span>
       <span>from <%= ticket.requester %></span>
-      <span>· response <%- mnx('sla-timer', { due: ticket.due, now: ticket.now, solved: ticket.solved }) %></span>
+      <span>· response <%- zubra('sla-timer', { due: ticket.due, now: ticket.now, solved: ticket.solved }) %></span>
     </p>
     <% if (updated) { %><p class="notice" role="status">Ticket updated.</p><% } %>
-    <%- mnx('ticket-thread', { messages }) %>
+    <%- zubra('ticket-thread', { messages }) %>
     <form method="post" action="/tickets/<%= ticket.id %>/replies" class="reply" id="latest">
       <h2>Reply</h2>
-      <%- mnx('reply-composer', { agent, label: agent ? 'Reply to the customer' : 'Your reply' }) %>
+      <%- zubra('reply-composer', { agent, label: agent ? 'Reply to the customer' : 'Your reply' }) %>
     </form>
   </div>
   <% if (agent) { %>
@@ -26,7 +26,7 @@
           <% } %>
         </select>
       </label>
-      <%- mnx('priority-picker', { name: 'priority', value: ticket.priority }) %>
+      <%- zubra('priority-picker', { name: 'priority', value: ticket.priority }) %>
       <label class="field">Assignee
         <select name="assignee">
           <option value="">Unassigned</option>

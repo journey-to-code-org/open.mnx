@@ -1,5 +1,5 @@
-// The Astro renderer's server side: renders an mnx element with @mnx/runtime/server.
-import { canRender, renderToString } from '@mnx/runtime/server';
+// The Astro renderer's server side: renders a zubra element with @zubra/runtime/server.
+import { canRender, renderToString } from '@zubra/runtime/server';
 
 // Astro passes named slots camelCased (`slot="side-note"` → `sideNote`).
 const kebab = (name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
@@ -7,16 +7,16 @@ const kebab = (name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCas
 function slotName(meta, name) {
   if (name === 'default' || meta.slots.includes(name)) return name;
   if (meta.slots.includes(kebab(name))) return kebab(name);
-  throw new Error(`mnx: <${meta.tag}> has no slot \`${name}\``);
+  throw new Error(`zubra: <${meta.tag}> has no slot \`${name}\``);
 }
 
 export default {
-  name: '@mnx/astro',
+  name: '@zubra/astro',
   check(Component) {
     return canRender(Component);
   },
   async renderToStaticMarkup(Component, given, slotted) {
-    const meta = Component.mnx;
+    const meta = Component.zubra;
     const props = {};
     const attributes = {};
     for (const [name, value] of Object.entries(given ?? {})) {

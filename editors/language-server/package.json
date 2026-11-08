@@ -1,16 +1,16 @@
 {
-  "name": "@mnx/language-server",
-  "version": "3.6.0",
-  "description": "Language server for .mnx components: diagnostics, completion, hover and go to definition",
+  "name": "@zubra/language-server",
+  "version": "4.0.0",
+  "description": "Language server for .zb components: diagnostics, completion, hover and go to definition",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
     "directory": "editors/language-server"
   },
   "type": "module",
   "bin": {
-    "mnx-language-server": "./server.js"
+    "zubra-language-server": "./server.js"
   },
   "exports": {
     ".": "./server.js",

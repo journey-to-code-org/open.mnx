@@ -1,12 +1,12 @@
-//! Syntax tree for a `.mnx` single-file component.
+//! Syntax tree for a `.zb` single-file component.
 //!
 //! ```text
 //! <script>
 //!   const title = "Mikey Nichols"
 //! </script>
-//! <mnx-header title={title}>        ← host: declares the element and its props
+//! <zb-header title={title}>        ← host: declares the element and its props
 //!   <h1>{title}</h1>                ← template
-//! </mnx-header>
+//! </zb-header>
 //! ```
 
 use crate::diagnostic::Span;
@@ -32,7 +32,7 @@ pub struct ComponentAst {
     pub script: Script,
     /// The template: the host element's children.
     pub nodes: Vec<Node>,
-    /// Components imported from `.mnx` files, by tag, once loaded.
+    /// Components imported from `.zb` files, by tag, once loaded.
     pub children: Vec<ChildComponent>,
 }
 
@@ -87,13 +87,13 @@ pub struct Script {
     pub runtime_names: Vec<String>,
     /// `import` statements, for the top of the JavaScript module.
     pub imports: Vec<Import>,
-    /// Imports of other `.mnx` components (also present in `imports`).
+    /// Imports of other `.zb` components (also present in `imports`).
     pub components: Vec<ComponentImport>,
     /// Everything else, verbatim: it runs once per component instance, during setup.
     pub body: String,
-    /// The local names of `from` imported from `@mnx/runtime` (`let x = from(prop)`).
+    /// The local names of `from` imported from `@zubra/runtime` (`let x = from(prop)`).
     pub from: Vec<String>,
-    /// The local name of `emit` imported from `@mnx/runtime`, if the script imports it.
+    /// The local name of `emit` imported from `@zubra/runtime`, if the script imports it.
     pub emit: Option<String>,
     /// Every `emit("name", detail)` call, in source order.
     pub emits: Vec<Emit>,
@@ -118,7 +118,7 @@ pub struct Emit {
 }
 
 /// An `import` statement, kept verbatim, with where its module specifier is inside the text
-/// (so `./button.mnx` can be rewritten to `./button.js` in the output).
+/// (so `./button.zb` can be rewritten to `./button.js` in the output).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Import {
     pub text: String,
@@ -179,15 +179,15 @@ pub enum Node {
         fallback: Vec<Node>,
         span: Span,
     },
-    /// `<mnx-else>`, or `<mnx-else-if test={…}>` (with its test), before it's attached to its
-    /// `mnx-if`.
+    /// `<zb-else>`, or `<zb-else-if test={…}>` (with its test), before it's attached to its
+    /// `zb-if`.
     Else {
         test: Option<(Expression, Span)>,
         children: Vec<Node>,
         span: Span,
     },
-    /// `<mnx-await value={promise}>`: the pending content, then the `mnx-then` block with the
-    /// resolved value (named by its `as`), or the `mnx-catch` block with the error.
+    /// `<zb-await value={promise}>`: the pending content, then the `zb-then` block with the
+    /// resolved value (named by its `as`), or the `zb-catch` block with the error.
     Await {
         value: Expression,
         value_span: Span,
@@ -196,14 +196,14 @@ pub enum Node {
         catch: Option<Branch>,
         span: Span,
     },
-    /// `<mnx-then as="…">` / `<mnx-catch as="…">`, before they're attached to their `mnx-await`.
+    /// `<zb-then as="…">` / `<zb-catch as="…">`, before they're attached to their `zb-await`.
     Settled {
         caught: bool,
         branch: Branch,
     },
 }
 
-/// An `mnx-then` or `mnx-catch` block: the name it binds (if any) and its content.
+/// An `zb-then` or `zb-catch` block: the name it binds (if any) and its content.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Branch {
     pub name: Option<String>,

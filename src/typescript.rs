@@ -522,12 +522,12 @@ mod tests {
                 "                            \nconst m = 1",
             ),
             (
-                "import { type A, state } from '@mnx/runtime'",
-                "import {         state } from '@mnx/runtime'",
+                "import { type A, state } from '@zubra/runtime'",
+                "import {         state } from '@zubra/runtime'",
             ),
             (
-                "import { state, type A } from '@mnx/runtime'",
-                "import { state,        } from '@mnx/runtime'",
+                "import { state, type A } from '@zubra/runtime'",
+                "import { state,        } from '@zubra/runtime'",
             ),
             ("const n = state<number>(0)", "const n = state        (0)"),
             (

@@ -9,7 +9,7 @@
 //!    fill, and dynamic values are escaped and safety-checked.
 //!
 //! Inside the template, names resolve innermost-first: loop variables, then props, then script
-//! bindings. So in `<mnx-header title={title}><h1>{title}</h1>`, `{title}` is the *prop* (which
+//! bindings. So in `<zb-header title={title}><h1>{title}</h1>`, `{title}` is the *prop* (which
 //! defaults to the script's `title`), and a build-time override reaches the template.
 
 use std::collections::{HashMap, HashSet};
@@ -110,7 +110,7 @@ fn partial() -> bool {
 pub type Gap = (Span, Option<String>);
 
 thread_local! {
-    /// While `mnx check --server` runs: where partial rendering left something for the browser,
+    /// While `zubra check --server` runs: where partial rendering left something for the browser,
     /// and, for an attribute, which one.
     static GAPS: std::cell::RefCell<Option<Vec<Gap>>> = const { std::cell::RefCell::new(None) };
 }
@@ -262,7 +262,7 @@ fn lower_component(
         if let Some(lang) = &style.lang {
             return Err(Diagnostic::new(
                 style.span,
-                format!("`<style lang=\"{lang}\">` needs a bundler to compile it: use @mnx/unplugin (Vite)"),
+                format!("`<style lang=\"{lang}\">` needs a bundler to compile it: use @zubra/unplugin (Vite)"),
             ));
         }
         if component.shadow {
@@ -272,7 +272,7 @@ fn lower_component(
                 Node::Element(ir::Element {
                     name: "style".to_owned(),
                     attributes: vec![ir::Attribute {
-                        name: "data-mnx".to_owned(),
+                        name: "data-zubra".to_owned(),
                         value: None,
                     }],
                     children: vec![Node::Text(vec![Part::Literal(css)])],
@@ -459,8 +459,8 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
     .with_model_events())
 }
 
-/// Dynamic text that shares its parent with other nodes, or sits directly inside an `mnx-if`
-/// branch or `mnx-each` row (which has no element of its own), gets an empty-comment anchor
+/// Dynamic text that shares its parent with other nodes, or sits directly inside an `zb-if`
+/// branch or `zb-each` row (which has no element of its own), gets an empty-comment anchor
 /// before it in both backends, so the JavaScript side can find it in server-rendered markup.
 /// Text that is an element's only child is bound through the element and needs no anchor.
 pub(crate) fn needs_text_anchor(siblings: &[ast::Node], node: &ast::Node, block_top: bool) -> bool {
@@ -920,7 +920,7 @@ impl Context<'_> {
                     if !scopes.is_empty() {
                         return Err(Diagnostic::new(
                             *span,
-                            "mnx-slot can't be inside mnx-each: slotted content can only be in one place",
+                            "zb-slot can't be inside zb-each: slotted content can only be in one place",
                         ));
                     }
                     self.resolve_nodes(fallback, scopes)?;
@@ -928,7 +928,7 @@ impl Context<'_> {
                 ast::Node::Else { span, .. } => {
                     return Err(Diagnostic::new(
                         *span,
-                        "mnx-else is only valid as a direct child of mnx-if",
+                        "zb-else is only valid as a direct child of zb-if",
                     ));
                 }
                 ast::Node::Await {
@@ -952,7 +952,7 @@ impl Context<'_> {
                     return Err(Diagnostic::new(
                         branch.span,
                         format!(
-                            "mnx-{} is only valid as a direct child of mnx-await",
+                            "zb-{} is only valid as a direct child of zb-await",
                             if *caught { "catch" } else { "then" }
                         ),
                     ));
@@ -1146,7 +1146,7 @@ impl Context<'_> {
         self.lower_block(nodes, state, false)
     }
 
-    /// `block_top`: these nodes are the top level of an `mnx-if` branch or `mnx-each` row.
+    /// `block_top`: these nodes are the top level of an `zb-if` branch or `zb-each` row.
     fn lower_block(
         &self,
         nodes: &[ast::Node],
@@ -1239,7 +1239,7 @@ impl Context<'_> {
                     return Err(Diagnostic::new(
                         *items_span,
                         format!(
-                            "mnx-each items must be an array, found {}",
+                            "zb-each items must be an array, found {}",
                             expression::type_name(&value)
                         ),
                     ));
@@ -1265,7 +1265,7 @@ impl Context<'_> {
                                         Err(Diagnostic::new(
                                             *key_span,
                                             format!(
-                                                "duplicate mnx-each key {value} (row {})",
+                                                "duplicate zb-each key {value} (row {})",
                                                 position + 1
                                             ),
                                         ))
@@ -1274,7 +1274,7 @@ impl Context<'_> {
                                 Some(other) => Err(Diagnostic::new(
                                     *key_span,
                                     format!(
-                                        "mnx-each key must be a string or number, found {}",
+                                        "zb-each key must be a string or number, found {}",
                                         expression::type_name(&other)
                                     ),
                                 )),
@@ -1371,9 +1371,9 @@ impl Context<'_> {
             }
             ast::Node::Else { span, .. } => Err(Diagnostic::new(
                 *span,
-                "mnx-else is only valid as a direct child of mnx-if",
+                "zb-else is only valid as a direct child of zb-if",
             )),
-            // A value known at build time isn't a promise: the `mnx-then` content, with it.
+            // A value known at build time isn't a promise: the `zb-then` content, with it.
             // Otherwise the server can't wait for the value: it renders the pending content in
             // a region the element renders itself when the value settles.
             ast::Node::Await {
@@ -1413,7 +1413,7 @@ impl Context<'_> {
             ast::Node::Settled { caught, branch } => Err(Diagnostic::new(
                 branch.span,
                 format!(
-                    "mnx-{} is only valid as a direct child of mnx-await",
+                    "zb-{} is only valid as a direct child of zb-await",
                     if *caught { "catch" } else { "then" }
                 ),
             )),
@@ -2253,7 +2253,7 @@ pub fn is_safe_url(value: &str) -> bool {
 
 // ---- using a child component ---------------------------------------------------------------
 //
-// The checks both backends run on `<mnx-child …>`, from the child's interface alone.
+// The checks both backends run on `<zb-child …>`, from the child's interface alone.
 
 /// A listener for a near miss of one of the child's events is a typo: it would never run.
 /// Other names may be native events, or bubble up from further inside.
@@ -2326,7 +2326,7 @@ pub(crate) fn unknown_child_prop(
     if attribute.name == crate::parser::SPREAD {
         return Diagnostic::new(
             attribute.span,
-            format!("<{tag}> is an mnx component: pass each prop rather than spreading an object onto it"),
+            format!("<{tag}> is a zubra component: pass each prop rather than spreading an object onto it"),
         )
         .with_help("a spread works on HTML elements and other libraries' custom elements");
     }

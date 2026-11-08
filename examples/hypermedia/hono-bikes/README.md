@@ -16,17 +16,17 @@ Every route answers in two ways:
 - an htmx request (`HX-Request: true`) gets just the fragment to swap: a row, the edit form, the
   next page, or the search results, plus the low-stock count out of band.
 
-The mnx components in those fragments are rendered on the server. The browser hydrates them
+The Zubra components in those fragments are rendered on the server. The browser hydrates them
 wherever htmx puts them.
 
 | | |
 |---|---|
 | `src/app.js` | Routes and templates, with `hono/html`. |
-| `src/mnx.js` | Renders components (with `@mnx/compiler`), and serves their browser modules and `@mnx/runtime`. |
+| `src/zubra.js` | Renders components (with `@zubra/compiler`), and serves their browser modules and `@zubra/runtime`. |
 | `components/` | `price-tag` and `stock-gauge` (rendered completely on the server), `tag-list`, and `qty-input` (a native number input that gains − and + buttons). |
 | `test/app.test.js` | Chromium against the server on Node.js and on Bun, with and without JavaScript. |
 
-`@mnx/compiler` installed from npm carries its WebAssembly build. Inside this repository, the
+`@zubra/compiler` installed from npm carries its WebAssembly build. Inside this repository, the
 CLI from `cargo build` stands in for it, as in `examples/helpdesk/`.
 
 ## What it found
@@ -36,7 +36,7 @@ CLI from `cargo build` stands in for it, as in `examples/helpdesk/`.
   - In the Chromium build Playwright ships (153), that drops every comment. MDN says it
     shouldn't with no sanitizer, so this looks like a browser bug, but it's what this browser
     does.
-  - The swapped-in elements' markers are gone, so mnx can't hydrate them. It renders them fresh
+  - The swapped-in elements' markers are gone, so Zubra can't hydrate them. It renders them fresh
     instead, which gives the right result but logs a warning per element. In-place hydration
     (and with it focus and scroll position) is lost.
   - The layout works around it: when the browser drops comments, it removes
@@ -56,6 +56,6 @@ CLI from `cargo build` stands in for it, as in `examples/helpdesk/`.
 - **Formatting money takes arithmetic.** The server's renderer doesn't run
   `Intl.NumberFormat` (or `toFixed`), so `price-tag` builds `$1,299.00` from `%` and `/`.
   It works, but nobody should have to write it.
-- **htmx and mnx agree on form fields.** `qty-input` keeps its native `<input name>` in light
+- **htmx and Zubra agree on form fields.** `qty-input` keeps its native `<input name>` in light
   DOM, so htmx's `hx-post` sends it like any other field. Its `valuechange` and htmx's own
   events don't collide.

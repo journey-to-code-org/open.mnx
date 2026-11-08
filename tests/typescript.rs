@@ -1,10 +1,10 @@
 //! `<script lang="ts">` components, through every output.
 
-use mnx_compiler::{compile, compile_declarations, compile_js, compile_manifest};
+use zubra::{compile, compile_declarations, compile_js, compile_manifest};
 
 const PICKER: &str = r#"<!-- A typed picker. -->
 <script lang="ts">
-  import { emit, state, type Signal } from '@mnx/runtime'
+  import { emit, state, type Signal } from '@zubra/runtime'
 
   type Option = { id: number; label: string }
   interface Picked { option: Option; index: number }
@@ -18,10 +18,10 @@ const PICKER: &str = r#"<!-- A typed picker. -->
   }
   const toggle = (): void => open.set(!open.get())
 </script>
-<mnx-picker options={optionsDefault} heading={headingDefault}>
+<zb-picker options={optionsDefault} heading={headingDefault}>
   <h2>{heading}</h2>
-  <ul><mnx-each items={options} as="option"><li>{option.label}</li></mnx-each></ul>
-</mnx-picker>"#;
+  <ul><zb-each items={options} as="option"><li>{option.label}</li></zb-each></ul>
+</zb-picker>"#;
 
 #[test]
 fn build_time_values_still_render() {
@@ -35,7 +35,7 @@ fn build_time_values_still_render() {
 
 #[test]
 fn the_javascript_has_no_types_and_keeps_its_lines() {
-    let js = compile_js(PICKER, "@mnx/runtime", "picker.mnx").unwrap();
+    let js = compile_js(PICKER, "@zubra/runtime", "picker.zb").unwrap();
     for typed in [
         ": Option",
         "type Option",
@@ -60,7 +60,7 @@ fn the_javascript_has_no_types_and_keeps_its_lines() {
 
 #[test]
 fn declared_types_reach_the_typings_and_manifest() {
-    let dts = compile_declarations(PICKER, "picker.mnx").unwrap();
+    let dts = compile_declarations(PICKER, "picker.zb").unwrap();
     assert!(dts.contains("  options: Option[];"), "{dts}");
     assert!(dts.contains("  heading: string;"), "{dts}");
     assert!(dts.contains("  pick: CustomEvent<Picked>;"), "{dts}");
@@ -74,18 +74,18 @@ fn declared_types_reach_the_typings_and_manifest() {
 #[test]
 fn errors_point_into_the_typescript_source() {
     // A non-erasable construct, on line 4.
-    let source = "<script lang=\"ts\">\n  const a: number = 1\n\n  enum Color { Red }\n</script>\n<mnx-x><p>x</p></mnx-x>";
+    let source = "<script lang=\"ts\">\n  const a: number = 1\n\n  enum Color { Red }\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile(source, "{}").unwrap_err();
     assert!(error.message.contains("`enum`"), "{}", error.message);
     assert_eq!((error.span.line, error.span.column), (4, 3));
 
     // A compiler check after stripping (an event name), still at the right place.
-    let source = "<script lang=\"ts\">\n  import { emit } from '@mnx/runtime'\n  const n: number = 1\n  emit<number>('valueChange', n)\n</script>\n<mnx-x><p>x</p></mnx-x>";
-    let error = compile_js(source, "@mnx/runtime", "x.mnx").unwrap_err();
+    let source = "<script lang=\"ts\">\n  import { emit } from '@zubra/runtime'\n  const n: number = 1\n  emit<number>('valueChange', n)\n</script>\n<zb-x><p>x</p></zb-x>";
+    let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
     assert_eq!(error.help.as_deref(), Some("use `valuechange`"));
     assert_eq!((error.span.line, error.span.column), (4, 3));
 
-    let source = "<script lang=\"ts\">\n  const a: = 1\n</script>\n<mnx-x><p>x</p></mnx-x>";
+    let source = "<script lang=\"ts\">\n  const a: = 1\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile(source, "{}").unwrap_err();
     assert!(
         error.message.starts_with("invalid <script lang=\"ts\">"),
@@ -98,7 +98,7 @@ fn errors_point_into_the_typescript_source() {
 #[test]
 fn only_lang_ts_is_accepted() {
     let error = compile(
-        "<script lang=\"coffee\">\n</script>\n<mnx-x><p>x</p></mnx-x>",
+        "<script lang=\"coffee\">\n</script>\n<zb-x><p>x</p></zb-x>",
         "{}",
     )
     .unwrap_err();
@@ -109,7 +109,7 @@ fn only_lang_ts_is_accepted() {
     );
     // Without lang="ts", types are a syntax error, as in any JavaScript module.
     let error = compile(
-        "<script>\n  const a: number = 1\n</script>\n<mnx-x><p>x</p></mnx-x>",
+        "<script>\n  const a: number = 1\n</script>\n<zb-x><p>x</p></zb-x>",
         "{}",
     )
     .unwrap_err();

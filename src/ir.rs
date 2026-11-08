@@ -20,7 +20,7 @@ pub enum Node {
     Element(Element),
     /// `<!---->`: marks where a dynamic text node starts, for hydration.
     Anchor,
-    /// `<!--[-->` and `<!--]-->`: the start and end of an `mnx-if` or `mnx-each` region, or of
+    /// `<!--[-->` and `<!--]-->`: the start and end of an `zb-if` or `zb-each` region, or of
     /// one row of a list, for hydration.
     Open,
     /// `<!--[!-->`: the start of a slot region holding supplied (static) content.

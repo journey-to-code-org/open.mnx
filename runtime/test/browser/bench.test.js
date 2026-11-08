@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { useBrowser, open, here, compiler, engine } from './harness.js';
 
-useBrowser({ bench: join(here, 'fixtures/bench.mnx') });
+useBrowser({ bench: join(here, 'fixtures/bench.zb') });
 
 const ROWS = 1000;
 const rows = (count, from = 1) => Array.from({ length: count }, (_, i) => ({ id: from + i, label: `row ${from + i}`, selected: false }));
@@ -18,9 +18,9 @@ test('js-framework-benchmark operations on 1,000 keyed rows', async (t) => {
   // Best of three runs, each on a fresh page, per operation: one timing on a busy CI machine can
   // be twice another, and the ratios below are about the code, not the machine.
   const once = async () => {
-    const { page, messages } = await open('<mnx-bench></mnx-bench>', { modules: ['bench'] });
+    const { page, messages } = await open('<zb-bench></zb-bench>', { modules: ['bench'] });
     const times = await page.evaluate(async (count) => {
-      const el = document.querySelector('mnx-bench');
+      const el = document.querySelector('zb-bench');
       const make = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i, label: `row ${from + i}`, selected: false }));
       const time = async (fn) => {
         const start = performance.now();
@@ -60,10 +60,10 @@ test('js-framework-benchmark operations on 1,000 keyed rows', async (t) => {
 });
 
 test('hydrating server markup is cheaper than rendering it fresh, and keeps every node', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'mnx-bench-'));
+  const dir = mkdtempSync(join(tmpdir(), 'zb-bench-'));
   const props = join(dir, 'props.json');
   writeFileSync(props, JSON.stringify({ rows: rows(ROWS) }));
-  const html = compiler(join(here, 'fixtures/bench.mnx'), '--props', props);
+  const html = compiler(join(here, 'fixtures/bench.zb'), '--props', props);
 
   const measure = async (body, setup) => {
     const { page, messages } = await open(body, {
@@ -71,7 +71,7 @@ test('hydrating server markup is cheaper than rendering it fresh, and keeps ever
       modules: ['bench'],
     });
     const result = await page.evaluate(async () => {
-      const el = document.querySelector('mnx-bench');
+      const el = document.querySelector('zb-bench');
       await el.updateComplete;
       el.offsetHeight;
       return { ms: performance.now() - window.start, rows: el.querySelectorAll('tr').length, kept: !!window.firstRow && document.querySelector('tr') === window.firstRow };
@@ -81,12 +81,12 @@ test('hydrating server markup is cheaper than rendering it fresh, and keeps ever
     return result;
   };
   // Best of five, the two alternating, so a slow stretch of a busy CI machine hits both.
-  const fill = `document.querySelector('mnx-bench').rows = ${JSON.stringify(rows(ROWS))};`;
+  const fill = `document.querySelector('zb-bench').rows = ${JSON.stringify(rows(ROWS))};`;
   const hydrations = [];
   const renders = [];
   for (let i = 0; i < 5; i++) {
     hydrations.push(await measure(html, ''));
-    renders.push(await measure('<mnx-bench></mnx-bench>', fill));
+    renders.push(await measure('<zb-bench></zb-bench>', fill));
   }
   const best = (runs) => runs.reduce((a, b) => (a.ms <= b.ms ? a : b));
   const hydrated = best(hydrations);

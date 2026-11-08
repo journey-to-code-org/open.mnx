@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 // Imported into Vue, a component is a Vue component: v-model:count binds its two-way prop.
-import HelloCounter from './components/hello-counter.mnx';
+import HelloCounter from './components/hello-counter.zb';
 
 const count = ref(0);
 </script>

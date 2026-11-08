@@ -1,11 +1,11 @@
-// Vue 3: mnx elements imported as Vue components. v-model on mnx elements (form controls
+// Vue 3: zubra elements imported as Vue components. v-model on zubra elements (form controls
 // included, and in a v-for), slot content from a Vue template, events, and an SVG chart whose
 // segments come from Vue's computed state.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts, engineNoise } from './harness.js';
 
-test('vue-budget: a budget tracker built from mnx elements', async () => {
+test('vue-budget: a budget tracker built from zubra elements', async () => {
   const { page, messages } = await launch('vue-budget');
   await page.waitForSelector('donut-chart circle[data-label]');
   await settle(page);

@@ -1,4 +1,4 @@
-// The conference app in Chromium: `npm run build` (Next's, with mnx's Turbopack loader),
+// The conference app in Chromium: `npm run build` (Next's, with zubra's Turbopack loader),
 // `next start`, and the schedule, filter, stars and feedback form, with no hydration errors.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Inside this repository: the CLI from `cargo build`, unless mnx.wasm is built (see README).
-const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'mnx.exe' : 'mnx');
-if (!process.env.MNX_COMPILER && existsSync(cli)) process.env.MNX_COMPILER = cli;
+// Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
+const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'zubra.exe' : 'zubra');
+if (!process.env.ZUBRA_COMPILER && existsSync(cli)) process.env.ZUBRA_COMPILER = cli;
 const port = 4700 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
 let server, browser;
@@ -96,7 +96,7 @@ test('without JavaScript: the cards (light DOM) are in the server HTML, and hydr
   await live.close();
 });
 
-test('feedback through a Server Action: mnx form controls submit like native inputs, and validate', async () => {
+test('feedback through a Server Action: zubra form controls submit like native inputs, and validate', async () => {
   const { page, messages } = await open('/sessions/s6');
   await page.waitForSelector('star-rating button');
   assert.match(await page.textContent('[data-testid=ratings]'), /No ratings yet/);

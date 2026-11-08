@@ -1,4 +1,4 @@
-//! Parsing a `.mnx` single-file component into a [`ComponentAst`].
+//! Parsing a `.zb` single-file component into a [`ComponentAst`].
 //!
 //! ```text
 //! component  → whitespace ( script whitespace )? host whitespace
@@ -34,7 +34,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     parse_with(source, true)
 }
 
-/// Parse a 1.x file that may declare script names that are also props (for `mnx migrate`).
+/// Parse a 1.x file that may declare script names that are also props (for `zubra migrate`).
 pub(crate) fn parse_for_migration(source: &str) -> Result<ComponentAst, Diagnostic> {
     parse_with(source, false)
 }
@@ -159,7 +159,7 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
                 ),
             )
             .with_help(format!(
-                "rename the script's `{}` (e.g. `{}Default`, and `{}={{{}Default}}` on the host); `mnx migrate` does it",
+                "rename the script's `{}` (e.g. `{}Default`, and `{}={{{}Default}}` on the host); `zubra migrate` does it",
                 prop.name, prop.name, kebab_attribute(&prop.name), prop.name
             )));
         }
@@ -204,7 +204,7 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
 }
 
 /// Parse a template fragment (slot content supplied at build time).
-/// Slot content: an mnx template, or (`html`) markup a server already rendered, kept as written.
+/// Slot content: a zubra template, or (`html`) markup a server already rendered, kept as written.
 pub(crate) fn parse_slot(source: &str, html: bool) -> Result<Vec<Node>, Diagnostic> {
     let normalized = normalize(source);
     let mut parser = TemplateParser::new(Cursor::new(&normalized));
@@ -1134,7 +1134,7 @@ fn expand_directives(
 
 // ---- directives ----------------------------------------------------------------------------
 
-/// One branch of an `mnx-if` chain: its test (none for `mnx-else`), content and position.
+/// One branch of an `zb-if` chain: its test (none for `zb-else`), content and position.
 type Branch = (Option<(Expression, Span)>, Vec<Node>, Span);
 
 fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
@@ -1146,15 +1146,15 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
         ) {
             return Err(Diagnostic::new(
                 element.span,
-                format!("<{}> was renamed to <mnx-{rest}> in v0.3", element.name),
+                format!("<{}> was renamed to <zb-{rest}> in v0.3", element.name),
             ));
         }
     }
     match lower.as_str() {
-        "mnx-if" => {
+        "zb-if" => {
             allow_attributes(&element, &["test"])?;
             let (test, test_span) = required_expression(&element, "test")?;
-            // The branches in order: the mnx-if's own, then each mnx-else-if, then mnx-else.
+            // The branches in order: the zb-if's own, then each zb-else-if, then zb-else.
             let mut branches: Vec<Branch> =
                 vec![(Some((test, test_span)), Vec::new(), element.span)];
             let mut closed = false;
@@ -1165,9 +1165,9 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                             return Err(Diagnostic::new(
                                 span,
                                 if test.is_some() {
-                                    "mnx-else-if must come before mnx-else"
+                                    "zb-else-if must come before zb-else"
                                 } else {
-                                    "mnx-if may contain only one mnx-else"
+                                    "zb-if may contain only one zb-else"
                                 },
                             ));
                         }
@@ -1181,14 +1181,14 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                         if branches.len() > 1 {
                             return Err(Diagnostic::new(
                                 element.span,
-                                "mnx-else-if and mnx-else must be the final children of mnx-if",
+                                "zb-else-if and zb-else must be the final children of zb-if",
                             ));
                         }
                         branches[0].1.push(child);
                     }
                 }
             }
-            // Fold from the last branch: each else-if is an mnx-if in the previous one's else.
+            // Fold from the last branch: each else-if is an zb-if in the previous one's else.
             let mut alternate = Vec::new();
             if closed {
                 alternate = branches
@@ -1197,7 +1197,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                     .unwrap_or_default();
             }
             while let Some((test, consequent, span)) = branches.pop() {
-                let (test, test_span) = test.expect("only mnx-else has no test");
+                let (test, test_span) = test.expect("only zb-else has no test");
                 let node = Node::If {
                     test,
                     test_span,
@@ -1207,16 +1207,16 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 };
                 alternate = vec![node];
             }
-            Ok(alternate.pop().expect("mnx-if has a branch"))
+            Ok(alternate.pop().expect("zb-if has a branch"))
         }
-        "mnx-each" => {
+        "zb-each" => {
             allow_attributes(&element, &["items", "as", "index", "key"])?;
             let (items, items_span) = required_expression(&element, "items")?;
             let item = required_text(&element, "as")?;
             if !is_identifier(&item) {
                 return Err(Diagnostic::new(
                     element.span,
-                    "mnx-each as must be a valid identifier",
+                    "zb-each as must be a valid identifier",
                 ));
             }
             let index = optional_text(&element, "index")?;
@@ -1226,7 +1226,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
             {
                 return Err(Diagnostic::new(
                     element.span,
-                    "mnx-each index must be a valid identifier different from `as`",
+                    "zb-each index must be a valid identifier different from `as`",
                 ));
             }
             let key = find(&element, "key")
@@ -1242,7 +1242,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 span: element.span,
             })
         }
-        "mnx-slot" => {
+        "zb-slot" => {
             allow_attributes(&element, &["name"])?;
             let name = match optional_text(&element, "name")? {
                 None => "default".to_owned(),
@@ -1250,7 +1250,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 Some(_) => {
                     return Err(Diagnostic::new(
                         element.span,
-                        "mnx-slot name must be `default` or a valid identifier",
+                        "zb-slot name must be `default` or a valid identifier",
                     ));
                 }
             };
@@ -1260,7 +1260,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 span: element.span,
             })
         }
-        "mnx-await" => {
+        "zb-await" => {
             allow_attributes(&element, &["value"])?;
             let (value, value_span) = required_expression(&element, "value")?;
             let mut pending = Vec::new();
@@ -1273,7 +1273,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                         if slot.is_some() {
                             return Err(Diagnostic::new(
                                 branch.span,
-                                format!("mnx-await may contain only one mnx-{}", if caught { "catch" } else { "then" }),
+                                format!("zb-await may contain only one zb-{}", if caught { "catch" } else { "then" }),
                             ));
                         }
                         *slot = Some(branch);
@@ -1285,7 +1285,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                         if then.is_some() || catch.is_some() {
                             return Err(Diagnostic::new(
                                 element.span,
-                                "mnx-await's pending content comes first, then mnx-then and mnx-catch",
+                                "zb-await's pending content comes first, then zb-then and zb-catch",
                             ));
                         }
                         pending.push(child);
@@ -1301,7 +1301,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 span: element.span,
             })
         }
-        "mnx-then" | "mnx-catch" => {
+        "zb-then" | "zb-catch" => {
             allow_attributes(&element, &["as"])?;
             let name = optional_text(&element, "as")?;
             if name.as_deref().is_some_and(|name| !is_identifier(name)) {
@@ -1311,7 +1311,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 ));
             }
             Ok(Node::Settled {
-                caught: lower == "mnx-catch",
+                caught: lower == "zb-catch",
                 branch: crate::ast::Branch {
                     name,
                     children: element.children,
@@ -1319,11 +1319,11 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 },
             })
         }
-        "mnx-else" => {
+        "zb-else" => {
             if !element.attributes.is_empty() {
                 return Err(Diagnostic::new(
                     element.span,
-                    "mnx-else does not accept attributes",
+                    "zb-else does not accept attributes",
                 ));
             }
             Ok(Node::Else {
@@ -1332,7 +1332,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 span: element.span,
             })
         }
-        "mnx-window" | "mnx-document" => {
+        "zb-window" | "zb-document" => {
             for attribute in &element.attributes {
                 if !is_event_attribute(&attribute.name.to_ascii_lowercase()) {
                     return Err(Diagnostic::new(
@@ -1352,7 +1352,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 ..element
             }))
         }
-        "mnx-else-if" => {
+        "zb-else-if" => {
             allow_attributes(&element, &["test"])?;
             let test = required_expression(&element, "test")?;
             Ok(Node::Else {

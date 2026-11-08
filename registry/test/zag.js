@@ -11,8 +11,8 @@ const bundle = (await build({
   bundle: true,
   format: 'esm',
   write: false,
-  external: ['@mnx/runtime'],
-  plugins: [{ name: 'runtime', setup: (build) => build.onResolve({ filter: /^\.\/element\.js$/ }, () => ({ path: '@mnx/runtime', external: true })) }],
+  external: ['@zubra/runtime'],
+  plugins: [{ name: 'runtime', setup: (build) => build.onResolve({ filter: /^\.\/element\.js$/ }, () => ({ path: '@zubra/runtime', external: true })) }],
 })).outputFiles[0].text;
 
 /** For the harness's `useBrowser(components, files, imports)`. */
@@ -21,4 +21,4 @@ export const files = {
   'zag-combobox.js': "import { combobox } from './zag-bundle.js'; export const { machine, connect, collection } = combobox;",
   'zag-adapter.js': "export { useMachine, normalizeProps } from './zag-bundle.js';",
 };
-export const imports = { '@zag-js/combobox': '/zag-combobox.js', '@mnx/runtime/zag': '/zag-adapter.js' };
+export const imports = { '@zag-js/combobox': '/zag-combobox.js', '@zubra/runtime/zag': '/zag-adapter.js' };

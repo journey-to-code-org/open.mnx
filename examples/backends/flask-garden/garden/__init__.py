@@ -1,4 +1,4 @@
-"""Community garden plots: Flask, Jinja and SQLite, with mnx components rendered by the Rust
+"""Community garden plots: Flask, Jinja and SQLite, with zubra components rendered by the Rust
 compiler and hydrated in the browser. No Node.js on the server, and no bundler."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 from flask import Flask, Response, abort, g, redirect, render_template, request, send_from_directory, url_for
 from markupsafe import Markup
 
-from .mnx import REPO, Mnx
+from .zubra import REPO, Zubra
 from .store import CROP_NAMES, CROPS, MAX_CROPS, Store
 
 HERE = Path(__file__).resolve().parent.parent
@@ -19,35 +19,35 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
     app = Flask(__name__, template_folder=str(HERE / "templates"), static_folder=str(HERE / "static"))
     store = store or Store(os.environ.get("GARDEN_DB", ":memory:"))
-    mnx = Mnx(HERE / "components", cache=cache)
-    # @mnx/runtime's ES modules, served as they are. In a deploy you'd copy runtime/src (or the
+    zubra = Zubra(HERE / "components", cache=cache)
+    # @zubra/runtime's ES modules, served as they are. In a deploy you'd copy runtime/src (or the
     # npm package's files) next to your static files; there's nothing to build.
-    runtime = Path(os.environ.get("MNX_RUNTIME", REPO / "runtime" / "src"))
+    runtime = Path(os.environ.get("ZUBRA_RUNTIME", REPO / "runtime" / "src"))
 
     @app.before_request
     def start_page():
-        g.mnx = mnx.page()
+        g.zubra = zubra.page()
 
     @app.context_processor
     def components():
-        return {"mnx": lambda component, /, **props: Markup(g.mnx.render(component, **props))}
+        return {"zubra": lambda component, /, **props: Markup(g.zubra.render(component, **props))}
 
     def page(view: str, status: int = 200, **context):
         # The view first, so the layout knows which components it used: their CSS goes in the
         # head, and their modules load at the end of the body.
         body = render_template(view, **context)
         html = render_template(
-            "layout.html", body=Markup(body), styles=Markup(g.mnx.styles()), modules=g.mnx.modules, **context
+            "layout.html", body=Markup(body), styles=Markup(g.zubra.styles()), modules=g.zubra.modules, **context
         )
         return html, status
 
     @app.get("/components/<name>.js")
     def component_module(name: str):
-        if name not in mnx.names:
+        if name not in zubra.names:
             abort(404)
-        return Response(mnx.js(name), mimetype="text/javascript")
+        return Response(zubra.js(name), mimetype="text/javascript")
 
-    @app.get("/vendor/mnx/<path:path>")
+    @app.get("/vendor/zubra/<path:path>")
     def runtime_module(path: str):
         return send_from_directory(runtime, path, mimetype="text/javascript")
 

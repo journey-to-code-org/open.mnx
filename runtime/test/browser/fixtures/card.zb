@@ -1,0 +1,9 @@
+<zb-card heading="Card" open={true}>
+  <article>
+    <header><zb-slot name="title"><h2>{heading}</h2></zb-slot></header>
+    <zb-if test={open}>
+      <section><zb-slot><p>No content</p></zb-slot></section>
+    </zb-if>
+    <footer>{heading} footer</footer>
+  </article>
+</zb-card>

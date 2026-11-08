@@ -1,9 +1,9 @@
 //! A component's `<style>`, scoped to it.
 //!
-//! - **Light DOM**: the CSS goes inside `@scope (tag) to ([data-mnx-slotted="tag"])`, the
+//! - **Light DOM**: the CSS goes inside `@scope (tag) to ([data-zb-slotted="tag"])`, the
 //!   platform's own scoping. Selectors match the component's elements and stop at content
 //!   callers put in its slots (the runtime and the HTML output mark each slotted element with
-//!   `data-mnx-slotted="<the tag it's slotted into>"`, so a parent's content placed in a child's
+//!   `data-zb-slotted="<the tag it's slotted into>"`, so a parent's content placed in a child's
 //!   slot is still the parent's to style). `:host` means the host, as in shadow DOM, so one
 //!   stylesheet works either way.
 //! - **Shadow DOM**: the shadow root scopes it; the CSS is used as written.
@@ -18,7 +18,7 @@
 use crate::ast::{ComponentAst, Style};
 
 /// The attribute that marks content slotted into a component (its value is the component's tag).
-pub const SLOTTED: &str = "data-mnx-slotted";
+pub const SLOTTED: &str = "data-zb-slotted";
 
 /// The component's stylesheet, or `None` without a `<style>`.
 pub fn stylesheet(component: &ComponentAst) -> Option<String> {
@@ -243,8 +243,8 @@ mod tests {
     #[test]
     fn light_dom_styles_are_scoped_and_stop_at_slotted_content() {
         assert_eq!(
-            wrap(&style("\n  h2 { color: red }\n  :host { display: block }\n", Some("components")), "mnx-card", false),
-            "@layer theme, base, components, utilities;\n@layer components {\n@scope (mnx-card) to ([data-mnx-slotted=\"mnx-card\"]) {\n  h2 { color: red }\n  :scope { display: block }\n}\n}\n"
+            wrap(&style("\n  h2 { color: red }\n  :host { display: block }\n", Some("components")), "zb-card", false),
+            "@layer theme, base, components, utilities;\n@layer components {\n@scope (zb-card) to ([data-zb-slotted=\"zb-card\"]) {\n  h2 { color: red }\n  :scope { display: block }\n}\n}\n"
         );
     }
 
@@ -253,13 +253,13 @@ mod tests {
         assert_eq!(
             wrap(
                 &style(":host { display: block }", Some("ui")),
-                "mnx-card",
+                "zb-card",
                 true
             ),
             "@layer ui {\n:host { display: block }\n}\n"
         );
         assert_eq!(
-            wrap(&style("p { margin: 0 }", None), "mnx-card", true),
+            wrap(&style("p { margin: 0 }", None), "zb-card", true),
             "p { margin: 0 }\n"
         );
     }
@@ -267,8 +267,13 @@ mod tests {
     #[test]
     fn leading_imports_stay_at_the_top() {
         let css = "/* theme */\n@reference \"tailwindcss\";\n@import url(\"a;b.css\") layer(x);\n.box { @apply p-4; }";
-        let out = wrap(&style(css, None), "mnx-card", false);
-        assert!(out.starts_with("@reference \"tailwindcss\";\n@import url(\"a;b.css\") layer(x);\n@scope (mnx-card)"), "{out}");
+        let out = wrap(&style(css, None), "zb-card", false);
+        assert!(
+            out.starts_with(
+                "@reference \"tailwindcss\";\n@import url(\"a;b.css\") layer(x);\n@scope (zb-card)"
+            ),
+            "{out}"
+        );
         assert!(out.contains(".box { @apply p-4; }"), "{out}");
     }
 

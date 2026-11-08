@@ -1,6 +1,6 @@
 <header>
   <span class="brand">stay<b>finder</b></span>
-  <span class="powered">Angular reactive forms + mnx elements</span>
+  <span class="powered">Angular reactive forms + zubra elements</span>
 </header>
 
 @if (booked(); as reference) {
@@ -19,23 +19,23 @@
         @case (0) {
           <fieldset formGroupName="trip">
             <legend><h2>Where and when</h2></legend>
-            <choice-cards mnxModel formControlName="place" [items]="placeCards" [required]="true" label="Destination"></choice-cards>
+            <choice-cards zubraModel formControlName="place" [items]="placeCards" [required]="true" label="Destination"></choice-cards>
             @if (form.controls.trip.controls.place.touched && form.controls.trip.controls.place.invalid) {
               <p class="error" role="alert">Choose a destination.</p>
             }
-            <date-range mnxModel formControlName="dates" [min]="today"></date-range>
+            <date-range zubraModel formControlName="dates" [min]="today"></date-range>
             @if (form.controls.trip.controls.dates.invalid) {
               <p class="error" role="alert">Check-out must be at least a night after check-in.</p>
             }
             <div class="guests">
-              <div><span>Adults</span><quantity-stepper mnxModel formControlName="adults" [min]="1" [max]="8" label="adults"></quantity-stepper></div>
-              <div><span>Children</span><quantity-stepper mnxModel formControlName="children" [min]="0" [max]="6" label="children"></quantity-stepper></div>
+              <div><span>Adults</span><quantity-stepper zubraModel formControlName="adults" [min]="1" [max]="8" label="adults"></quantity-stepper></div>
+              <div><span>Children</span><quantity-stepper zubraModel formControlName="children" [min]="0" [max]="6" label="children"></quantity-stepper></div>
             </div>
           </fieldset>
         }
         @case (1) {
           <h2>Pick a room at {{ place()?.title }}</h2>
-          <choice-cards mnxModel formControlName="room" [items]="roomCards()" [required]="true" label="Room"></choice-cards>
+          <choice-cards zubraModel formControlName="room" [items]="roomCards()" [required]="true" label="Room"></choice-cards>
           @if (form.controls.room.touched && form.controls.room.invalid) {
             <p class="error" role="alert">Choose a room that sleeps {{ guests() }}.</p>
           }
@@ -45,7 +45,7 @@
             <legend><h2>Make it yours</h2></legend>
             <div class="extras">
               @for (extra of extras; track extra.id) {
-                <toggle-switch mnxModel="checked" [formControlName]="extra.id" [label]="extra.label" [description]="extra.description + ' · ' + extra.per" [extra]="extraPrice(extra.id)"></toggle-switch>
+                <toggle-switch zubraModel="checked" [formControlName]="extra.id" [label]="extra.label" [description]="extra.description + ' · ' + extra.per" [extra]="extraPrice(extra.id)"></toggle-switch>
               }
             </div>
           </fieldset>

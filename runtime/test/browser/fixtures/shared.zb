@@ -1,0 +1,12 @@
+<!-- Reads a signal that outlives it, through a list, a conditional, a slot and a resource. -->
+<script>
+  import { resource } from '@zubra/runtime'
+  import { shared } from './shared-state.js'
+  const data = resource(() => Promise.resolve(shared.get()))
+</script>
+<zb-shared items={[1, 2, 3]}>
+  <zb-each items={items} as="item" key={item}><i onclick={() => shared.set(item)}>{item * shared.get()}</i></zb-each>
+  <zb-if test={shared.get() > 0}><b>{shared.get()}</b></zb-if>
+  <zb-await value={data}><zb-then as="v">{v}</zb-then></zb-await>
+  <zb-slot></zb-slot>
+</zb-shared>

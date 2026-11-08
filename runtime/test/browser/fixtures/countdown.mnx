@@ -1,9 +1,0 @@
-<!-- A countdown that starts over when its length changes: state that follows a prop. -->
-<script>
-  import { from } from '@mnx/runtime'
-  let left = from(seconds)
-</script>
-<mnx-countdown seconds={10}>
-  <output>{left}</output>
-  <button onclick={() => left--}>-1</button>
-</mnx-countdown>

@@ -1,11 +1,11 @@
 {
-  "name": "@mnx/compiler",
-  "version": "3.6.0",
-  "description": "The mnx compiler as WebAssembly: compile .mnx components from Node without installing Rust",
+  "name": "@zubra/compiler",
+  "version": "4.0.0",
+  "description": "The Zubra compiler as WebAssembly: compile .zb components from Node without installing Rust",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
     "directory": "compiler"
   },
   "type": "module",
@@ -22,14 +22,14 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "mnx.wasm",
+    "zubra.wasm",
     "cli.js",
     "library.js",
     "library.d.ts",
     "registry"
   ],
   "scripts": {
-    "build": "cargo build -p mnx-wasm --target wasm32-unknown-unknown --release && cp ../target/wasm32-unknown-unknown/release/mnx_wasm.wasm mnx.wasm",
+    "build": "cargo build -p zubra-wasm --target wasm32-unknown-unknown --release && cp ../target/wasm32-unknown-unknown/release/zubra_wasm.wasm zubra.wasm",
     "test": "node --test \"test/*.test.js\"",
     "prepack": "node -e \"const fs=require('fs');fs.rmSync('registry',{recursive:true,force:true});fs.cpSync('../registry','registry',{recursive:true,filter:(p)=>!/[\\\\/](test|node_modules)([\\\\/]|$)/.test(p)})\""
   },
@@ -37,6 +37,6 @@
     "node": ">=20"
   },
   "bin": {
-    "mnx": "./cli.js"
+    "zubra": "./cli.js"
   }
 }

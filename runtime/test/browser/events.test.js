@@ -7,11 +7,11 @@ import { join } from 'node:path';
 import { useBrowser, open, here } from './harness.js';
 
 useBrowser({
-  rating: join(here, 'fixtures/rating.mnx'),
-  survey: join(here, 'fixtures/survey.mnx'),
-  ping: join(here, 'fixtures/ping.mnx'),
-  'swatch-pick': join(here, 'fixtures/swatch-pick.mnx'),
-  reply: join(here, 'fixtures/reply-box.mnx'),
+  rating: join(here, 'fixtures/rating.zb'),
+  survey: join(here, 'fixtures/survey.zb'),
+  ping: join(here, 'fixtures/ping.zb'),
+  'swatch-pick': join(here, 'fixtures/swatch-pick.zb'),
+  reply: join(here, 'fixtures/reply-box.zb'),
 });
 
 // Record what reaches the document: name, detail, and how the event was made.
@@ -27,68 +27,68 @@ for (const name of ['beforevaluechange', 'valuechange', 'change', 'ping']) {
 const seen = (page) => page.evaluate(() => window.seen);
 
 test('emit() dispatches a bubbling CustomEvent with its detail, from the host', async () => {
-  const { page, messages } = await open('<mnx-rating></mnx-rating>', { beforeModules: LISTEN, modules: ['rating'] });
-  await page.click('mnx-rating .two');
-  const base = { custom: true, bubbles: true, composed: false, target: 'mnx-rating' };
+  const { page, messages } = await open('<zb-rating></zb-rating>', { beforeModules: LISTEN, modules: ['rating'] });
+  await page.click('zb-rating .two');
+  const base = { custom: true, bubbles: true, composed: false, target: 'zb-rating' };
   assert.deepEqual(await seen(page), [
     { ...base, name: 'beforevaluechange', detail: 2, cancelable: true },
     { ...base, name: 'valuechange', detail: 2, cancelable: false },
     { ...base, name: 'change', detail: null, cancelable: false },
   ]);
-  assert.equal(await page.$eval('mnx-rating', (rating) => rating.value), 2, 'props() writes the prop');
-  assert.equal(await page.$eval('mnx-rating output', (output) => output.textContent), '2');
+  assert.equal(await page.$eval('zb-rating', (rating) => rating.value), 2, 'props() writes the prop');
+  assert.equal(await page.$eval('zb-rating output', (output) => output.textContent), '2');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test('preventDefault() on a before… event stops the change', async () => {
-  const { page } = await open('<mnx-rating value="1"></mnx-rating>', {
+  const { page } = await open('<zb-rating value="1"></zb-rating>', {
     beforeModules: `${LISTEN}\ndocument.addEventListener('beforevaluechange', (event) => event.preventDefault());`,
     modules: ['rating'],
   });
-  await page.click('mnx-rating .two');
+  await page.click('zb-rating .two');
   assert.deepEqual((await seen(page)).map((event) => event.name), ['beforevaluechange']);
-  assert.equal(await page.$eval('mnx-rating', (rating) => rating.value), 1);
+  assert.equal(await page.$eval('zb-rating', (rating) => rating.value), 1);
   await page.close();
 });
 
 test("an inner element's event with the component's event name stops at the host", async () => {
-  const { page } = await open('<mnx-rating></mnx-rating>', {
+  const { page } = await open('<zb-rating></zb-rating>', {
     beforeModules: `${LISTEN}\nwindow.inner = 0;`,
     modules: ['rating'],
   });
   // The component's own listener on the inner input still runs (target phase) — here, a test one.
   await page.evaluate(() => {
-    document.querySelector('mnx-rating .note').addEventListener('change', () => window.inner++);
+    document.querySelector('zb-rating .note').addEventListener('change', () => window.inner++);
     // Listeners on the host itself count as outside too.
-    document.querySelector('mnx-rating').addEventListener('change', () => window.inner += 100);
+    document.querySelector('zb-rating').addEventListener('change', () => window.inner += 100);
   });
-  await page.fill('mnx-rating .note', 'hello');
-  await page.click('mnx-rating output');   // blur: the native <input> fires change
+  await page.fill('zb-rating .note', 'hello');
+  await page.click('zb-rating output');   // blur: the native <input> fires change
   assert.equal(await page.evaluate(() => window.inner), 1, 'the native change happened');
   assert.deepEqual(await seen(page), [], "it didn't escape the component");
   await page.close();
 });
 
 test("a parent listens with on…={handler}; a child's event with the parent's event name stops at the parent", async () => {
-  const { page, messages } = await open('<mnx-survey></mnx-survey>', { beforeModules: LISTEN, modules: ['survey'] });
-  await page.click('mnx-rating .one');
-  await page.evaluate(() => document.querySelector('mnx-survey').updateComplete);
-  assert.equal(await page.$eval('mnx-survey p', (p) => p.textContent), '1');
+  const { page, messages } = await open('<zb-survey></zb-survey>', { beforeModules: LISTEN, modules: ['survey'] });
+  await page.click('zb-rating .one');
+  await page.evaluate(() => document.querySelector('zb-survey').updateComplete);
+  assert.equal(await page.$eval('zb-survey p', (p) => p.textContent), '1');
   assert.deepEqual((await seen(page)).map((event) => [event.name, event.target, event.detail]), [
-    ['beforevaluechange', 'mnx-rating', 1],
-    ['valuechange', 'mnx-survey', { rating: 1 }],   // the rating's own stopped at the survey
-    ['change', 'mnx-rating', null],
+    ['beforevaluechange', 'zb-rating', 1],
+    ['valuechange', 'zb-survey', { rating: 1 }],   // the rating's own stopped at the survey
+    ['change', 'zb-rating', null],
   ]);
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test("a shadow component's events are composed, so they leave its shadow root", async () => {
-  const { page } = await open('<mnx-ping></mnx-ping>', { beforeModules: LISTEN, modules: ['ping'] });
-  await page.evaluate(() => document.querySelector('mnx-ping').shadowRoot.querySelector('button').click());
+  const { page } = await open('<zb-ping></zb-ping>', { beforeModules: LISTEN, modules: ['ping'] });
+  await page.evaluate(() => document.querySelector('zb-ping').shadowRoot.querySelector('button').click());
   assert.deepEqual(await seen(page), [
-    { name: 'ping', detail: { at: 1 }, custom: true, bubbles: true, cancelable: false, composed: true, target: 'mnx-ping' },
+    { name: 'ping', detail: { at: 1 }, custom: true, bubbles: true, cancelable: false, composed: true, target: 'zb-ping' },
   ]);
   await page.close();
 });
@@ -96,7 +96,7 @@ test("a shadow component's events are composed, so they leave its shadow root", 
 test('emit, props and host explain themselves outside a component', async () => {
   const { page } = await open('', {});
   const errors = await page.evaluate(async () => {
-    const runtime = await import('@mnx/runtime');
+    const runtime = await import('@zubra/runtime');
     return ['emit', 'props', 'host'].map((name) => {
       try { runtime[name]('x'); return 'no error'; } catch (error) { return error.message; }
     });
@@ -108,7 +108,7 @@ test('emit, props and host explain themselves outside a component', async () => 
 });
 
 test('.submit submits the element\'s form with validation; .mod is Ctrl here (⌘ on Apple); submit() and keys("mod+…") for JSX; value:bind keeps a child in step', async () => {
-  const { page, messages } = await open('<mnx-reply></mnx-reply>', { modules: ['swatch-pick', 'reply'] });
+  const { page, messages } = await open('<zb-reply></zb-reply>', { modules: ['swatch-pick', 'reply'] });
   await page.evaluate(() => {
     window.sent = [];
     document.addEventListener('send', (event) => window.sent.push(event.detail));
@@ -132,14 +132,14 @@ test('.submit submits the element\'s form with validation; .mod is Ctrl here (�
   assert.equal(await output(), '1101 #000', 'submit(fn) ran fn');
   assert.equal(await page.evaluate(() => window.sent.length), 3, 'and submitted');
   // value:bind: the child's change comes back to the parent's `let`.
-  await page.click('mnx-swatch .red');
+  await page.click('zb-swatch .red');
   assert.equal(await output(), '1101 #f00');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test('.mod is ⌘ on Apple platforms (and Ctrl isn\'t)', async () => {
-  const { page, messages } = await open('<mnx-reply></mnx-reply>', {
+  const { page, messages } = await open('<zb-reply></zb-reply>', {
     modules: ['swatch-pick', 'reply'],
     beforeModules: "Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }); Object.defineProperty(navigator, 'userAgentData', { get: () => undefined });",
   });

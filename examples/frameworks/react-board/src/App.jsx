@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
-// The column comes from a library (built with `mnx build --lib`, see ../ui), as a React
+// The column comes from a library (built with `zubra build --lib`, see ../ui), as a React
 // component; the card and the editor are this app's own components.
-import { KanbanColumn } from '@mnx-examples/ui/react';
-import TaskCard from './components/task-card.mnx';
-// The editor was a React component; `mnx convert` made it an mnx one (see ../CONVERTED.md).
-import CardEditor from './components/card-editor.mnx.jsx';
+import { KanbanColumn } from '@zubra-examples/ui/react';
+import TaskCard from './components/task-card.zb';
+// The editor was a React component; `zubra convert` made it a zubra one (see ../CONVERTED.md).
+import CardEditor from './components/card-editor.zb.jsx';
 import { COLUMNS, PEOPLE, load, reducer, save } from './board.js';
 
 export function App() {

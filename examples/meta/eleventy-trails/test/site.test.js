@@ -1,5 +1,5 @@
 // The built site in Chromium: with JavaScript off (the build's HTML alone) and on, and built
-// again with an HTML minifier, configured to keep mnx's markers and not.
+// again with an HTML minifier, configured to keep zubra's markers and not.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -82,7 +82,10 @@ test('with JavaScript: the elements hydrate the build\'s markup; the filter and 
 
 test('minified, keeping the markers (ignoreCustomComments): the elements still hydrate', async () => {
   const html = readFileSync(join(root, builds.min, 'index.html'), 'utf8');
-  assert.ok(html.length < readFileSync(join(root, builds.plain, 'index.html'), 'utf8').length * 0.85, 'it is minified');
+  // Minified: whitespace between tags collapsed (a size ratio drifts as names change length).
+  const plain = readFileSync(join(root, builds.plain, 'index.html'), 'utf8');
+  assert.ok(html.length < plain.length, 'it is smaller');
+  assert.ok(plain.split('\n').length > 50 && html.split('\n').length < 5, 'its line breaks and indentation are gone');
   assert.match(html, /<!--\[-->/);
   const page = await open('min', '/');
   await page.getByRole('button', { name: 'miles' }).click();

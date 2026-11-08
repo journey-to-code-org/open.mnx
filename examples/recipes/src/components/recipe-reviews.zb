@@ -1,0 +1,60 @@
+<!--
+  A recipe's reviews: loaded from /data/reviews/<recipe>.json, with a form to add one. Added
+  reviews live in the page (a real site would post them).
+-->
+<script>
+  import { resource } from '@zubra/runtime'
+  import './star-rating.zb'
+
+  const loaded = resource(async ({ signal }) => {
+    const response = await fetch(`/data/reviews/${recipe}.json`, { signal })
+    if (!response.ok) throw new Error(`Couldn't load reviews (${response.status})`)
+    return response.json()
+  })
+  let added = []
+  const all = [...added, ...(loaded.value ?? []).map((review, index) => ({ ...review, id: `saved-${index}` }))]
+  const average = all.length ? all.reduce((sum, review) => sum + review.stars, 0) / all.length : 0
+
+  function post(event) {
+    const form = event.target
+    const data = new FormData(form)
+    const review = { id: `added-${added.length}`, name: data.get("name"), stars: Number(data.get("stars")), text: data.get("text") }
+    added.unshift(review)
+    form.reset()
+  }
+</script>
+<style>
+  :host { display: block; }
+  h2 { display: flex; align-items: baseline; gap: 0.75rem; }
+  .average { font-size: 1rem; font-weight: normal; opacity: 0.7; }
+  ul { list-style: none; margin: 0 0 1.5rem; padding: 0; display: grid; gap: 0.75rem; }
+  li { padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--card); }
+  li p { margin: 0.25rem 0 0; }
+  form { display: grid; gap: 0.5rem; max-width: 28rem; }
+  input, textarea { font: inherit; padding: 0.5rem 0.65rem; border: 1px solid #8886; border-radius: 0.5rem; background: var(--card); color: inherit; }
+  button[type="submit"] { justify-self: start; font: inherit; padding: 0.45rem 1rem; border: 0; border-radius: 999px; background: var(--accent); color: white; cursor: pointer; }
+  .error { color: #b3261e; }
+</style>
+<recipe-reviews recipe="">
+  <h2>Reviews <span class="average">{all.length ? `${average.toFixed(1)} ★ from ${all.length}` : "none yet"}</span></h2>
+  <zb-await value={loaded}>
+    <p class="loading">Loading reviews…</p>
+    <zb-then>
+      <zb-if test={all.length > 0}>
+        <ul>
+          <zb-each items={all} as="review" key={review.id}>
+            <li><strong>{review.name}</strong> <star-rating value={review.stars} readonly={true} label="Their rating"></star-rating><p>{review.text}</p></li>
+          </zb-each>
+        </ul>
+        <zb-else><p class="empty">Be the first to review this.</p></zb-else>
+      </zb-if>
+    </zb-then>
+    <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>
+  </zb-await>
+  <form onsubmit.prevent={post}>
+    <input name="name" required aria-label="Your name" placeholder="Your name">
+    <star-rating name="stars" required={true} label="Your rating"></star-rating>
+    <textarea name="text" required aria-label="Your review" placeholder="How did it go?"></textarea>
+    <button type="submit">Post review</button>
+  </form>
+</recipe-reviews>

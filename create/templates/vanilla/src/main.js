@@ -1,4 +1,4 @@
-import './components/hello-counter.mnx';
+import './components/hello-counter.zb';
 
 // The element is a standard custom element: listen for its events like any other.
 const counter = document.querySelector('hello-counter');

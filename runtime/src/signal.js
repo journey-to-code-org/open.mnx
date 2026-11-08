@@ -1,4 +1,4 @@
-// The one place compiled mnx code gets reactivity from.
+// The one place compiled zubra code gets reactivity from.
 //
 // If the platform provides the TC39 Signals API natively, use it. Otherwise fall back to our
 // implementation of the same API. Nothing else in the runtime may depend on which one it got,

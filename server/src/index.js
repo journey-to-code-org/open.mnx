@@ -1,17 +1,17 @@
-// @mnx/server: mnx components in a server's pages, with any template engine and no bundler.
+// @zubra/server: zubra components in a server's pages, with any template engine and no bundler.
 //
-//   import { createMnx } from '@mnx/server';
-//   const mnx = createMnx({ components: 'components' });
+//   import { createZubra } from '@zubra/server';
+//   const zubra = createZubra({ components: 'components' });
 //
-//   const page = mnx.page();                       // one per request
+//   const page = zubra.page();                       // one per request
 //   const body = `<h1>Tickets</h1>${page.render('ticket-table', { tickets })}`;
 //   res.end(page.finish(layout(body)));            // the components' CSS and modules go in
 //
-//   mnx.handle(req, res)    // Node: serves /_mnx/… (component modules, @mnx/runtime); false otherwise
-//   mnx.fetch(request)      // the same for fetch-style servers (Hono, Bun, Deno): a Response or null
+//   zubra.handle(req, res)    // Node: serves /_zubra/… (component modules, @zubra/runtime); false otherwise
+//   zubra.fetch(request)      // the same for fetch-style servers (Hono, Bun, Deno): a Response or null
 //
 // And for frameworks that render the host tags themselves (React Router, Nuxt, SvelteKit,
-// SolidStart, Next): `mnx.injectShadowRoots(html)` puts each shadow-DOM component's
+// SolidStart, Next): `zubra.injectShadowRoots(html)` puts each shadow-DOM component's
 // server-rendered template into the page as a declarative shadow root, and gives
 // form-associated ones a hidden input, so the page is complete before JavaScript.
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -24,24 +24,24 @@ import { findCompiler } from './compiler.js';
 
 export { findCompiler };
 
-findCompiler(); // (points @mnx/compiler at a native CLI when its WebAssembly build is missing)
-const compiler = await import('@mnx/compiler');
+findCompiler(); // (points @zubra/compiler at a native CLI when its WebAssembly build is missing)
+const compiler = await import('@zubra/compiler');
 
-const SOURCE = /\.mnx(?:\.[jt]sx)?$/;
+const SOURCE = /\.zb(?:\.[jt]sx)?$/;
 const posix = (path) => path.split(sep).join('/');
 const escapeAttribute = (text) => String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
 /**
- * `components`: the folder of `.mnx` (and `.mnx.jsx`/`.mnx.tsx`) files. `prefix`: the URL path
+ * `components`: the folder of `.zb` (and `.zb.jsx`/`.zb.tsx`) files. `prefix`: the URL path
  * the browser modules are served under. `cache`: keep compiled output (turn it off in
  * development to pick up edits). `production`: serve the runtime's production build, without hot
  * reloading (by default when `NODE_ENV` is `production`).
  */
-export function createMnx({ components = 'components', prefix = '/_mnx', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
+export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
   const root = resolve(components);
-  if (!existsSync(root)) throw new Error(`@mnx/server: no components folder at ${root}`);
-  const sourceDir = dirname(fileURLToPath(import.meta.resolve('@mnx/runtime')));
+  if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
+  const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
   const productionDir = join(sourceDir, '..', 'dist', 'production');
   const runtimeDir = production && existsSync(productionDir) ? productionDir : sourceDir;
   const base = prefix.replace(/\/$/, '');
@@ -67,7 +67,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
   const need = () => compiler;
   const pathOf = (name) => {
     const path = files.get(name) ?? files.get(byTag().get(name));
-    if (!path) throw new Error(`@mnx/server: no component "${name}" in ${root} (have: ${[...files.keys()].join(', ')})`);
+    if (!path) throw new Error(`@zubra/server: no component "${name}" in ${root} (have: ${[...files.keys()].join(', ')})`);
     return path;
   };
   const sourcesOf = (path) => once(`sources:${path}`, () => need().sources(path));
@@ -86,15 +86,15 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     call(pathOf(name), { emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
   const js = (name) => once(`js:${name}`, () => {
-    const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@mnx/runtime' });
+    const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@zubra/runtime' });
     if (!response.ok) throw new Error(response.error);
     return response.output;
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@mnx/runtime': `${base}/runtime/index.js`, '@mnx/runtime/spread': `${base}/runtime/spread.js`, '@mnx/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
   const head = (names) => {
     const styles = names.map(css).join('\n');
-    return `${styles ? `<style data-mnx-components>${styles}</style>\n` : ''}${importMap()}`;
+    return `${styles ? `<style data-zb-components>${styles}</style>\n` : ''}${importMap()}`;
   };
   const scripts = (names, async = false) => (names.length ? `<script type="module"${async ? ' async' : ''}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '');
 
@@ -138,7 +138,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     const use = (name) => {
       if (!used.includes(name)) used.push(name);
     };
-    // Streaming (3.3): a prop given as a promise renders as pending (its `mnx-await` shows its
+    // Streaming (3.3): a prop given as a promise renders as pending (its `zb-await` shows its
     // pending content, in an empty region), and `stream()` sends the resolved region after the
     // page, with the value, for the element to hydrate.
     const pendingRenders = [];
@@ -156,7 +156,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
         const shell = withStreamId(render(key, given, slots, names), id);
         pendingRenders.push({ key, id, given, slots, promises: new Map(promises), shell });
         // Until the values arrive, the element (should it start first) holds a promise for
-        // each, set before it upgrades, so its `mnx-await` shows the pending content.
+        // each, set before it upgrades, so its `zb-await` shows the pending content.
         return `${shell}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
@@ -224,7 +224,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
 
   /**
    * Shadow roots for a framework's HTML: each shadow-DOM component's host gets its
-   * server-rendered template as a declarative shadow root (read from the host's `mnx-props`
+   * server-rendered template as a declarative shadow root (read from the host's `zb-props`
    * JSON, or its attributes), so it shows before JavaScript; the browser attaches it while
    * parsing, before any framework hydrates. Form-associated components with a `name` also get a
    * hidden input with their value, so the form submits without JavaScript (the element removes
@@ -252,7 +252,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     for (const match of html.matchAll(pattern)) {
       const end = match.index + match[0].length;
       const { name, info } = shadowTags.get(match[1]);
-      // Already has one (rendered by mnx, or a second pass); a light-DOM host must be empty.
+      // Already has one (rendered by zubra, or a second pass); a light-DOM host must be empty.
       if (info.shadow ? /^\s*<template\s[^>]*shadowroot/i.test(html.slice(end, end + 200)) : !new RegExp(`^\\s*</${match[1]}>`).test(html.slice(end, end + 200))) continue;
       const props = propsFrom(match[2] ?? '', info);
       let rendered;
@@ -270,8 +270,8 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
   }
 
   /**
-   * For static sites: write every component's browser module and @mnx/runtime under `dir`, at
-   * the paths the pages import (`<dir>/_mnx/components/…`, `<dir>/_mnx/runtime/…`).
+   * For static sites: write every component's browser module and @zubra/runtime under `dir`, at
+   * the paths the pages import (`<dir>/_zubra/components/…`, `<dir>/_zubra/runtime/…`).
    */
   function writeAssets(dir) {
     const out = join(resolve(dir), ...base.split('/').filter(Boolean));
@@ -360,13 +360,13 @@ export function parseAttributes(text) {
   return attributes;
 }
 
-/** The props a host tag carries: `mnx-props` JSON first, then each prop's attribute by its type. */
+/** The props a host tag carries: `zb-props` JSON first, then each prop's attribute by its type. */
 export function propsFrom(attributeText, info) {
   const attributes = parseAttributes(attributeText);
   let props = {};
-  if (attributes['mnx-props']) {
+  if (attributes['zb-props']) {
     try {
-      props = JSON.parse(attributes['mnx-props']);
+      props = JSON.parse(attributes['zb-props']);
     } catch {}
   }
   for (const prop of info.props) {
@@ -405,9 +405,9 @@ function shadowTemplate(rendered) {
   return null;
 }
 
-/** The host's start tag with `data-mnx-stream="<id>"`, so the stream's scripts can find it. */
+/** The host's start tag with `data-zb-stream="<id>"`, so the stream's scripts can find it. */
 function withStreamId(html, id) {
-  return html.replace(/^(\s*<[a-z][\w.-]*)/, `$1 data-mnx-stream="${id}"`);
+  return html.replace(/^(\s*<[a-z][\w.-]*)/, `$1 data-zb-stream="${id}"`);
 }
 
 /**
@@ -454,7 +454,7 @@ function regionSwaps(shell, resolved) {
 
 /** The chunk for one settled promise: the regions as a template, and the script that swaps them in. */
 function swapScript(id, regions, values) {
-  const template = regions?.length ? `<template data-mnx-swap="${id}">${regions.map((region) => `<div data-mnx-region="${region.index}">${region.html}</div>`).join('')}</template>` : '';
+  const template = regions?.length ? `<template data-zb-swap="${id}">${regions.map((region) => `<div data-zb-region="${region.index}">${region.html}</div>`).join('')}</template>` : '';
   const script = `<script>(${swapInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
   return `${template}${script}\n`;
 }
@@ -462,8 +462,8 @@ function swapScript(id, regions, values) {
 // Runs in the browser, inlined, right after a streamed host: a promise per pending prop, as a
 // property the element captures when it upgrades, resolved by the swap script later.
 function holdInBrowser(id, names) {
-  var host = document.querySelector('[data-mnx-stream="' + id + '"]');
-  var held = (window.__mnxStream = window.__mnxStream || {});
+  var host = document.querySelector('[data-zb-stream="' + id + '"]');
+  var held = (window.__zubraStream = window.__zubraStream || {});
   for (var i = 0; i < names.length; i++) {
     (function (name) {
       host[name] = new Promise(function (resolve, reject) { held[id + ':' + name] = { resolve: resolve, reject: reject }; });
@@ -475,7 +475,7 @@ function holdInBrowser(id, names) {
 // rendered ones and set the values as properties (captured when the element upgrades); once it
 // has started, setting the property is enough (the element renders the region itself).
 function swapInBrowser(id, values) {
-  var host = document.querySelector('[data-mnx-stream="' + id + '"]');
+  var host = document.querySelector('[data-zb-stream="' + id + '"]');
   var script = document.currentScript;
   var template = script && script.previousElementSibling;
   if (template && template.tagName !== 'TEMPLATE') template = null;
@@ -493,9 +493,9 @@ function swapInBrowser(id, values) {
       if (text === '[' || text === '[?' || text === '[!') depth++;
       else if (text === ']') { depth--; if (depth === 0 && current) { current.close = node; regions.push(current); current = null; } }
     }
-    var pieces = template.content.querySelectorAll('[data-mnx-region]');
+    var pieces = template.content.querySelectorAll('[data-zb-region]');
     for (var i = 0; i < pieces.length; i++) {
-      var region = regions[Number(pieces[i].getAttribute('data-mnx-region'))];
+      var region = regions[Number(pieces[i].getAttribute('data-zb-region'))];
       if (!region) continue;
       var range = document.createRange();
       range.setStartBefore(region.open);
@@ -506,7 +506,7 @@ function swapInBrowser(id, values) {
       range.insertNode(fragment);
     }
   }
-  var held = window.__mnxStream || {};
+  var held = window.__zubraStream || {};
   for (var name in values) {
     var hold = held[id + ':' + name];
     if (values[name].error !== undefined) {
@@ -539,5 +539,5 @@ function fallbackInput(attributeText, info, props) {
   const value = models[0].name in props ? props[models[0].name] : models[0].default;
   if (value == null || value === false || value === '') return '';
   const text = value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-mnx-fallback>`;
+  return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-zb-fallback>`;
 }

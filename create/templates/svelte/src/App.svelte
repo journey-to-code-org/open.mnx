@@ -1,6 +1,6 @@
 <script>
   // Svelte uses the element directly: props are set as properties, on<name> listens.
-  import './components/hello-counter.mnx';
+  import './components/hello-counter.zb';
 
   let count = $state(0);
 </script>

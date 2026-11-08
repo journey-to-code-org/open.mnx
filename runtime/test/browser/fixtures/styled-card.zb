@@ -1,0 +1,10 @@
+<!-- A card with scoped styles. -->
+<style>
+  :host { display: block; outline: 1px solid rgb(1, 2, 3) }
+  h2 { color: rgb(255, 0, 0) }
+  p { color: rgb(0, 128, 0); padding: 1px }
+</style>
+<zb-styled-card heading="Card">
+  <zb-slot name="title"><h2>{heading}</h2></zb-slot>
+  <section><zb-slot><p>Empty</p></zb-slot></section>
+</zb-styled-card>

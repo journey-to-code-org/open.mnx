@@ -1,4 +1,0 @@
-<!-- A small labelled badge. -->
-<mnx-badge label="new" count={0} info={{ color: "gray" }}>
-  <span class="badge" data-color={info.color}><mnx-slot name="icon"></mnx-slot> <b>{label}</b> <i>{count}</i> <mnx-slot></mnx-slot></span>
-</mnx-badge>

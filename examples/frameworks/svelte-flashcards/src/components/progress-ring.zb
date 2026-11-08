@@ -1,0 +1,26 @@
+<!--
+  A ring that fills to `value` of `max`, with what's in the middle from the default slot (the
+  percentage if empty).
+  @slot - The middle.
+-->
+<script>
+  const R = 15.915494309189533
+  const percent = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0
+</script>
+<style>
+  :host { display: inline-grid; place-items: center; width: var(--size, 7rem); aspect-ratio: 1; position: relative; }
+  svg { position: absolute; inset: 0; width: 100%; transform: rotate(-90deg); }
+  circle { fill: none; stroke-width: 3.2; }
+  .track { stroke: var(--line, #ddd); }
+  .fill { stroke: var(--accent, #36c); stroke-linecap: round; transition: stroke-dasharray 0.4s; }
+  .middle { position: relative; text-align: center; line-height: 1.15; }
+</style>
+<progress-ring value={0} max={100} label="Progress">
+  <svg viewBox="0 0 42 42" role="img" aria-label={`${label}: ${percent}%`}>
+    <circle class="track" cx="21" cy="21" r={R}></circle>
+    <zb-if test={percent > 0}>
+      <circle class="fill" cx="21" cy="21" r={R} stroke-dasharray={`${percent} ${100 - percent}`}></circle>
+    </zb-if>
+  </svg>
+  <div class="middle"><zb-slot><strong>{percent}%</strong></zb-slot></div>
+</progress-ring>

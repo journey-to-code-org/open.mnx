@@ -21,7 +21,7 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::diagnostic::Diagnostic;
 
-/// What `@mnx/runtime` exports for scripts (runtime/src/index.js): called without an import,
+/// What `@zubra/runtime` exports for scripts (runtime/src/index.js): called without an import,
 /// each would throw in the browser.
 pub const RUNTIME_EXPORTS: &[&str] = &[
     "state",
@@ -75,15 +75,15 @@ pub fn imported_names(text: &str) -> Vec<String> {
     names
 }
 
-pub const STATE: &str = "__mnxState";
-pub const COMPUTED: &str = "__mnxComputed";
-pub const EMIT: &str = "__mnxEmit";
-pub const ASSIGN: &str = "__mnxAssign";
-pub const UPDATE: &str = "__mnxUpdate";
+pub const STATE: &str = "__zubraState";
+pub const COMPUTED: &str = "__zubraComputed";
+pub const EMIT: &str = "__zubraEmit";
+pub const ASSIGN: &str = "__zubraAssign";
+pub const UPDATE: &str = "__zubraUpdate";
 
-/// Assignments to state as expressions: `x = v` is `__mnxAssign(x, v)` (calls, so no line of
+/// Assignments to state as expressions: `x = v` is `__zubraAssign(x, v)` (calls, so no line of
 /// the output starts with a parenthesis that could join the previous statement).
-pub const HELPERS: &str = "function __mnxAssign(signal, value) { signal.set(value); return value }\nfunction __mnxUpdate(signal, delta, prefix) { const old = signal.get(); signal.set(old + delta); return prefix ? old + delta : old }\n";
+pub const HELPERS: &str = "function __zubraAssign(signal, value) { signal.set(value); return value }\nfunction __zubraUpdate(signal, delta, prefix) { const old = signal.get(); signal.set(old + delta); return prefix ? old + delta : old }\n";
 
 /// What a component-level name is.
 #[derive(Clone, Debug, PartialEq)]
@@ -493,7 +493,7 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
     }
 }
 
-// ---- `.mnx` scripts (2.0) ------------------------------------------------------------------
+// ---- `.zb` scripts (2.0) ------------------------------------------------------------------
 
 /// A component script with 2.0's semantics applied.
 #[derive(Debug, Default)]
@@ -597,10 +597,10 @@ pub fn rewrite_script(
     if let Some((offset, name)) = unimported.into_iter().min() {
         return Err(Diagnostic::new(
             crate::scanner::span_after(start, body, offset as usize),
-            format!("`{name}` is a hook from @mnx/runtime, but the script doesn't import it"),
+            format!("`{name}` is a hook from @zubra/runtime, but the script doesn't import it"),
         )
         .with_help(format!(
-            "import it: `import {{ {name} }} from '@mnx/runtime'`"
+            "import it: `import {{ {name} }} from '@zubra/runtime'`"
         )));
     }
     let mut code = ScriptCode::default();

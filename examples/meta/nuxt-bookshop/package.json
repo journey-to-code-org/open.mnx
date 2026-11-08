@@ -1,8 +1,8 @@
 {
-  "name": "mnx-example-nuxt-bookshop",
+  "name": "zubra-example-nuxt-bookshop",
   "private": true,
   "type": "module",
-  "description": "A bookshop's inventory in Nuxt 4, with mnx components through the Vite plugin.",
+  "description": "A bookshop's inventory in Nuxt 4, with Zubra components through the Vite plugin.",
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
@@ -10,14 +10,14 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime",
-    "@mnx/server": "file:../../../server",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/server": "file:../../../server",
     "nuxt": "4.6.4",
     "vue": "3.5.45"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "playwright": "1.63.0"
   }
 }

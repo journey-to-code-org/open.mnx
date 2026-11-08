@@ -1,5 +1,5 @@
 // The scoreboard from plan/roadmap-adoption.md: how much the example components say.
-// `node examples/stats.mjs` prints the line count of every .mnx component in the examples and
+// `node examples/stats.mjs` prints the line count of every .zb component in the examples and
 // how often each workaround the 2.x sugar replaces still appears.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -12,7 +12,7 @@ const all = [];
     if (['node_modules', 'dist', 'build', 'ui', '_site'].includes(name) || name.startsWith('.')) continue;
     const path = join(dir, name);
     if (statSync(path).isDirectory()) walk(path);
-    else if (name.endsWith('.mnx')) all.push(path);
+    else if (name.endsWith('.zb')) all.push(path);
   }
 })(root);
 // The browser apps' components (under src/), and the server and client apps' (2.6.2 on:

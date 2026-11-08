@@ -2,6 +2,26 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 4.0.0 — 2026-11-07
+
+**mnx is now Zubra.** The only change in this release is the name (`docs/migrating-to-4.0.md`). The npm scope `@mnx` belongs to someone else, so the packages could never have been published under it. Nothing had been published yet, so this was the cheapest time to choose a name the project can own everywhere. The format, the runtime's behaviour, the compiled code's ABI and every API are those of 3.6.0.
+
+### Changed (breaking)
+
+- **Files:** `.mnx`, `.mnx.jsx` and `.mnx.tsx` are now `.zb`, `.zb.jsx` and `.zb.tsx`.
+- **Directives and attributes:** `<mnx-if>`, `<mnx-each>`, `<mnx-slot>`, `<mnx-await>` and the rest are `<zb-…>`; `mnx-props` is `zb-props`, and `data-mnx-*` is `data-zb-*`. Class names derived from tags follow the tag (`ZbPicker`).
+- **Packages:** `@zubra/runtime`, `@zubra/compiler`, `@zubra/unplugin`, `@zubra/server`, `@zubra/language-server` and `create-zubra`; the crate is `zubra`.
+- **Commands and variables:** the command is `zubra`, the environment variables are `ZUBRA_*`, and the served assets are at `/_zubra/`.
+- **Names in APIs:** `ZubraModel` (Angular), `createZubra()`, `res.locals.zubra` and `request.zubra`.
+- **Skills:** the coding-agent skills are `zubra-component`, `zubra-consume`, `zubra-cli` and `zubra-server`.
+- **The repository** is https://github.com/journey-to-code-org/zubra.
+- No aliases for the old spellings: nobody outside the project used them.
+
+### Fixed
+
+- **The crate ships only the compiler:** 51 files, about 210 KB, down from 797 files and 1.1 MB. It used to include the examples and the npm packages.
+- **`@zubra/unplugin`'s peer dependencies** named the 2.x compiler and runtime (`^2.0.0`), so npm would have refused to install it next to 3.x. They are now `^4.0.0`, and `scripts/bump-version.sh` keeps them in step.
+
 ## 3.6.0 — 2026-11-07
 
 Accessible primitives (`plan/roadmap-3.5.md`, 3.6). The Zag.js spike showed that the platform does most of what a headless library is for, that two keyboard behaviours are missing, and that Zag covers the hard widgets once spread exists. This release ships each of those.

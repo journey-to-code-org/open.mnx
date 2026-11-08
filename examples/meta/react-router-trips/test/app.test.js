@@ -58,7 +58,7 @@ test('the page hydrates without errors, and the elements get their props from Re
   await page.done();
 });
 
-test('adding an expense with <Form>: the mnx controls submit with it, the balances follow', async () => {
+test('adding an expense with <Form>: the zubra controls submit with it, the balances follow', async () => {
   const page = await open();
   await page.fill('input[name=what]', 'Kayak rental');
   await page.locator('money-input input').fill('90');
@@ -89,7 +89,7 @@ test('the server\'s validation comes back through the action', async () => {
 
 test('without JavaScript: the balances are in the server HTML; the category submits, a typed amount can\'t yet', async () => {
   const page = await open({ javascript: false });
-  // The shadow roots came with the page (app/entry.server.jsx streams it through @mnx/server).
+  // The shadow roots came with the page (app/entry.server.jsx streams it through @zubra/server).
   assert.equal(await page.locator('balance-list li').count(), 4);
   assert.equal(await page.locator('balance-list').getByRole('img', { name: /^Ana:/ }).getAttribute('aria-label'), 'Ana: $294.87');
   await page.fill('input[name=what]', 'Firewood');

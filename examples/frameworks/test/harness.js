@@ -9,8 +9,8 @@ import { extname, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as playwright from 'playwright';
 
-// MNX_BROWSER picks the engine: chromium (the default), firefox or webkit.
-const launcher = playwright[process.env.MNX_BROWSER || 'chromium'];
+// ZUBRA_BROWSER picks the engine: chromium (the default), firefox or webkit.
+const launcher = playwright[process.env.ZUBRA_BROWSER || 'chromium'];
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const examples = join(here, '..');
@@ -21,7 +21,7 @@ export const examples = join(here, '..');
  * other engines do, but also logs that the element is "not focusable".
  * `docs/browser-support.md` lists it.
  */
-export const engineNoise = (message) => (process.env.MNX_BROWSER === 'firefox' && /[Ii]nvalid form control.* is not focusable/.test(message));
+export const engineNoise = (message) => (process.env.ZUBRA_BROWSER === 'firefox' && /[Ii]nvalid form control.* is not focusable/.test(message));
 const repo = join(examples, '../..');
 const out = join(examples, '.tmp');
 let browser;
@@ -30,7 +30,7 @@ const servers = [];
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   // The CLI, unless the WebAssembly build is there.
-  process.env.MNX_COMPILER ??= join(repo, 'target/debug/mnx');
+  process.env.ZUBRA_COMPILER ??= join(repo, 'target/debug/zubra');
   // The component library the React and Vue apps import (ui/), which `npm test` builds first
   // (test/build-ui.mjs); built here only when a test file runs on its own without it.
   if (!existsSync(join(examples, 'ui/dist/package.json'))) await import('./build-ui.mjs');

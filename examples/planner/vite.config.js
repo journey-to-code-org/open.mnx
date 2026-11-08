@@ -1,3 +1,3 @@
-import mnx from '@mnx/unplugin/vite';
+import zubra from '@zubra/unplugin/vite';
 
-export default { plugins: [mnx()] };
+export default { plugins: [zubra()] };

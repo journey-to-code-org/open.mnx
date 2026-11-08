@@ -1,8 +1,8 @@
 {
-  "name": "mnx-example-helpdesk",
+  "name": "zubra-example-helpdesk",
   "private": true,
   "type": "module",
-  "description": "A help-desk ticket tracker: Express, EJS and MongoDB, with mnx components rendered on the server and hydrated in the browser.",
+  "description": "A help-desk ticket tracker: Express, EJS and MongoDB, with Zubra components rendered on the server and hydrated in the browser.",
   "scripts": {
     "prestart": "node scripts/ensure-compiler.js",
     "start": "node server.js",
@@ -10,9 +10,9 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@mnx/compiler": "file:../../compiler",
-    "@mnx/runtime": "file:../../runtime",
-    "@mnx/server": "file:../../server",
+    "@zubra/compiler": "file:../../compiler",
+    "@zubra/runtime": "file:../../runtime",
+    "@zubra/server": "file:../../server",
     "ejs": "7.0.2",
     "express": "5.3.0",
     "mongodb": "7.8.0"

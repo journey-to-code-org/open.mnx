@@ -25,19 +25,19 @@ const SOURCE = `<!--
   const titleDefault = "Mikey Nichols"
   const dataDefault = { sample: "sample data", sampleTwo: "additional data" }
 </script>
-<mnx-header title={titleDefault} data={dataDefault} tags={["a"]} max-items={3} open={false} label>
-  <header><h1>{title}</h1><mnx-slot name="actions"></mnx-slot><mnx-slot></mnx-slot></header>
-</mnx-header>
+<zb-header title={titleDefault} data={dataDefault} tags={["a"]} max-items={3} open={false} label>
+  <header><h1>{title}</h1><zb-slot name="actions"></zb-slot><zb-slot></zb-slot></header>
+</zb-header>
 `;
 
 function compile(...args) {
-  return execFileSync(join(repo, 'target/debug/mnx'), ['compile', join(dir, 'header.mnx'), ...args], { encoding: 'utf8' });
+  return execFileSync(join(repo, 'target/debug/zubra'), ['compile', join(dir, 'header.zb'), ...args], { encoding: 'utf8' });
 }
 
 before(() => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
-  dir = mkdtempSync(join(tmpdir(), 'mnx-tools-'));
-  writeFileSync(join(dir, 'header.mnx'), SOURCE);
+  dir = mkdtempSync(join(tmpdir(), 'zb-tools-'));
+  writeFileSync(join(dir, 'header.zb'), SOURCE);
   writeFileSync(join(dir, 'header.d.ts'), compile('--emit', 'dts'));
   writeFileSync(join(dir, 'header.js'), compile('--emit', 'js'));
 });
@@ -53,7 +53,7 @@ test('the manifest is valid against the Custom Elements Manifest schema', () => 
   const [module] = manifest.modules;
   const [element] = module.declarations;
   assert.equal(module.path, 'header.js');
-  assert.equal(element.tagName, 'mnx-header');
+  assert.equal(element.tagName, 'zb-header');
   assert.equal(element.customElement, true, 'without it, tools treat the class as a plain class');
   assert.equal(element.description, 'A site header.\nPass `data` as JSON in plain HTML.');
   assert.deepEqual(element.attributes.map((a) => [a.name, a.fieldName, a.type.text]), [
@@ -65,7 +65,7 @@ test('the manifest is valid against the Custom Elements Manifest schema', () => 
     ['label', 'label', 'unknown'],
   ]);
   assert.deepEqual(element.slots, [{ name: '' }, { name: 'actions' }], 'the default slot is ""');
-  assert.ok(module.exports.some((e) => e.kind === 'custom-element-definition' && e.name === 'mnx-header'));
+  assert.ok(module.exports.some((e) => e.kind === 'custom-element-definition' && e.name === 'zb-header'));
 });
 
 test('--module-path sets where the manifest says the module lives', () => {
@@ -83,8 +83,8 @@ function typecheck(name, code) {
 
 test('the declarations type-check correct usage', () => {
   const output = typecheck('good', `
-    import MnxHeader, { tag, type MnxHeaderProps } from './header.js';
-    const el = document.querySelector('mnx-header')!;
+    import ZbHeader, { tag, type ZbHeaderProps } from './header.js';
+    const el = document.querySelector('zb-header')!;
     el.title = 'Journey to Code';
     el.data = { sample: 'one', sampleTwo: 'two' };
     el.tags = ['x', 'y'];
@@ -92,9 +92,9 @@ test('the declarations type-check correct usage', () => {
     el.open = true;
     el.label = { anything: true };
     const items: number = el.maxItems;
-    const created: MnxHeader = document.createElement('mnx-header');
-    const props: MnxHeaderProps = { label: 'required', maxItems: 2 };
-    const name: 'mnx-header' = tag;
+    const created: ZbHeader = document.createElement('zb-header');
+    const props: ZbHeaderProps = { label: 'required', maxItems: 2 };
+    const name: 'zb-header' = tag;
     export async function ready() { await el.updateComplete; }
     export { items, created, props, name };
   `);
@@ -103,13 +103,13 @@ test('the declarations type-check correct usage', () => {
 
 test('the declarations reject wrong prop types and missing required props', () => {
   const output = typecheck('bad', `
-    import { type MnxHeaderProps } from './header.js';
-    const el = document.querySelector('mnx-header')!;
+    import { type ZbHeaderProps } from './header.js';
+    const el = document.querySelector('zb-header')!;
     el.maxItems = '3';
     el.data = { sample: 1, sampleTwo: 'two' };
     el.tags = [1];
     el.open = 'yes';
-    const props: MnxHeaderProps = { maxItems: 2 };
+    const props: ZbHeaderProps = { maxItems: 2 };
     export { props };
   `);
   const errors = output.split('\n').filter((line) => /error TS\d+/.test(line));
@@ -120,12 +120,12 @@ test('the declarations reject wrong prop types and missing required props', () =
 });
 
 test('form-associated components declare the native control API', () => {
-  writeFileSync(join(dir, 'stepper.mnx'), readFileSync(join(here, '../browser/fixtures/stepper.mnx'), 'utf8'));
+  writeFileSync(join(dir, 'stepper.zb'), readFileSync(join(here, '../browser/fixtures/stepper.zb'), 'utf8'));
   writeFileSync(join(dir, 'stepper.d.ts'),
-    execFileSync(join(repo, 'target/debug/mnx'), ['compile', join(dir, 'stepper.mnx'), '--emit', 'dts'], { encoding: 'utf8' }));
+    execFileSync(join(repo, 'target/debug/zubra'), ['compile', join(dir, 'stepper.zb'), '--emit', 'dts'], { encoding: 'utf8' }));
   const good = typecheck('form-good', `
     import './stepper.js';
-    const el = document.querySelector('mnx-stepper')!;
+    const el = document.querySelector('zb-stepper')!;
     const form: HTMLFormElement | null = el.form;
     el.name = 'qty';
     const ok: boolean = el.checkValidity() && el.reportValidity() && el.willValidate;
@@ -135,7 +135,7 @@ test('form-associated components declare the native control API', () => {
   assert.equal(good, '');
   const bad = typecheck('form-bad', `
     import './stepper.js';
-    const el = document.querySelector('mnx-stepper')!;
+    const el = document.querySelector('zb-stepper')!;
     el.validity = null;
     export {};
   `);
@@ -143,8 +143,8 @@ test('form-associated components declare the native control API', () => {
 });
 
 test('events are in the manifest and type their listeners', () => {
-  const compileFixture = (emit) => execFileSync(join(repo, 'target/debug/mnx'),
-    ['compile', join(here, '../browser/fixtures/rating.mnx'), '--emit', emit], { encoding: 'utf8' });
+  const compileFixture = (emit) => execFileSync(join(repo, 'target/debug/zubra'),
+    ['compile', join(here, '../browser/fixtures/rating.zb'), '--emit', emit], { encoding: 'utf8' });
   const manifest = JSON.parse(compileFixture('manifest'));
   const schema = JSON.parse(readFileSync(require.resolve('custom-elements-manifest/schema.json'), 'utf8'));
   const ajv = new Ajv({ allErrors: true, strict: false });
@@ -160,7 +160,7 @@ test('events are in the manifest and type their listeners', () => {
   writeFileSync(join(dir, 'rating.d.ts'), compileFixture('dts'));
   const good = typecheck('events-good', `
     import './rating.js';
-    const el = document.querySelector('mnx-rating')!;
+    const el = document.querySelector('zb-rating')!;
     el.addEventListener('change', (event) => { const detail: null = event.detail; void detail; });
     el.addEventListener('valuechange', (event) => { const detail: unknown = event.detail; void detail; });
     el.addEventListener('beforevaluechange', (event) => event.preventDefault());
@@ -172,7 +172,7 @@ test('events are in the manifest and type their listeners', () => {
   assert.equal(good, '');
   const bad = typecheck('events-bad', `
     import './rating.js';
-    const el = document.querySelector('mnx-rating')!;
+    const el = document.querySelector('zb-rating')!;
     el.addEventListener('change', (event) => { const detail: string = event.detail; void detail; });
     export {};
   `);
@@ -182,8 +182,8 @@ test('events are in the manifest and type their listeners', () => {
 test("the runtime's own declarations type scripts, hooks and adapters", async () => {
   const { mkdirSync, symlinkSync } = await import('node:fs');
   const project = join(dir, 'runtime-types');
-  mkdirSync(join(project, 'node_modules/@mnx'), { recursive: true });
-  symlinkSync(join(here, '../..'), join(project, 'node_modules/@mnx/runtime'));
+  mkdirSync(join(project, 'node_modules/@zubra'), { recursive: true });
+  symlinkSync(join(here, '../..'), join(project, 'node_modules/@zubra/runtime'));
   for (const name of ['react', 'vue', '@vue', '@types', '@angular', 'rxjs']) {
     symlinkSync(join(here, '../../node_modules', name), join(project, 'node_modules', name));
   }
@@ -196,20 +196,20 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
   };
   assert.equal(check('good', `
     import { state, computed, effect, scope, watch, onMount, props, host, emit, id, createContext, provide, inject,
-      formValue, validity, $define, ABI, Signal, tick, adoptStyles, resource, type MnxElementClass } from '@mnx/runtime';
+      formValue, validity, $define, ABI, Signal, tick, adoptStyles, resource, type ZubraElementClass } from '@zubra/runtime';
     const user = resource(async ({ signal }) => { void signal; return { name: 'Ada' }; });
     const userName: string | undefined = user.value?.name;
     void userName;
     const sheets: CSSStyleSheet[] = adoptStyles('p { color: red }', new CSSStyleSheet());
     void sheets;
-    import { wrap } from '@mnx/runtime/react';
-    import { wrap as wrapVue, models } from '@mnx/runtime/vue';
-    import { MnxModel } from '@mnx/runtime/angular';
-    import { canRender, registerRenderer, renderToString } from '@mnx/runtime/server';
-    registerRenderer('mnx-x', (props, slots) => JSON.stringify([props, slots]));
+    import { wrap } from '@zubra/runtime/react';
+    import { wrap as wrapVue, models } from '@zubra/runtime/vue';
+    import { ZubraModel } from '@zubra/runtime/angular';
+    import { canRender, registerRenderer, renderToString } from '@zubra/runtime/server';
+    registerRenderer('zb-x', (props, slots) => JSON.stringify([props, slots]));
     const candidate: unknown = null;
     if (canRender(candidate)) { const html: string = renderToString(candidate, { props: { a: 1 }, attributes: { hidden: true }, slots: { default: '' } }); void html; }
-    const accessor: import('@angular/forms').ControlValueAccessor = new MnxModel();
+    const accessor: import('@angular/forms').ControlValueAccessor = new ZubraModel();
     void accessor;
     const count = state(0);
     const doubled = computed(() => count.get() * 2);
@@ -228,18 +228,18 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
     validity(() => (count.get() < 0 ? 'no' : ''));
     const watcher = new Signal.subtle.Watcher(() => {});
     watcher.watch(count);
-    const Element: MnxElementClass = $define('mnx-x', { abi: ABI, props: { value: { attribute: 'value', default: 0 } }, styled: true, styles: ':host { display: block }', setup: () => [] });
-    const styled: boolean = Element.mnx.styled;
+    const Element: ZubraElementClass = $define('zb-x', { abi: ABI, props: { value: { attribute: 'value', default: 0 } }, styled: true, styles: ':host { display: block }', setup: () => [] });
+    const styled: boolean = Element.zubra.styled;
     void styled;
-    const tag: string = Element.mnx.tag;
+    const tag: string = Element.zubra.tag;
     const Component = wrap(Element);
     const VueComponent = wrapVue(Element);
-    const pairs = models(Element.mnx);
+    const pairs = models(Element.zubra);
     export async function later() { await tick(); }
     export { n, stop, el, kept, current, tag, Component, VueComponent, pairs, id };
   `), '');
   const bad = check('bad', `
-    import { state, computed, emit, inject, createContext } from '@mnx/runtime';
+    import { state, computed, emit, inject, createContext } from '@zubra/runtime';
     const count = state(0);
     count.set('one');
     const label: string = computed(() => 1).get();
@@ -251,15 +251,15 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
 });
 
 test('a TypeScript component\'s typings carry its own types', async () => {
-  // As in a project: @mnx/runtime resolves from node_modules.
+  // As in a project: @zubra/runtime resolves from node_modules.
   const { mkdirSync, symlinkSync, existsSync } = await import('node:fs');
-  mkdirSync(join(dir, 'node_modules/@mnx'), { recursive: true });
-  if (!existsSync(join(dir, 'node_modules/@mnx/runtime'))) symlinkSync(join(here, '../..'), join(dir, 'node_modules/@mnx/runtime'));
-  const dts = execFileSync(join(repo, 'target/debug/mnx'), ['compile', join(here, '../browser/fixtures/typed.mnx'), '--emit', 'dts'], { encoding: 'utf8' });
+  mkdirSync(join(dir, 'node_modules/@zubra'), { recursive: true });
+  if (!existsSync(join(dir, 'node_modules/@zubra/runtime'))) symlinkSync(join(here, '../..'), join(dir, 'node_modules/@zubra/runtime'));
+  const dts = execFileSync(join(repo, 'target/debug/zubra'), ['compile', join(here, '../browser/fixtures/typed.zb'), '--emit', 'dts'], { encoding: 'utf8' });
   writeFileSync(join(dir, 'typed.d.ts'), dts);
   const good = typecheck('typed-good', `
     import { type Picked, type Option } from './typed.js';
-    const el = document.querySelector('mnx-typed')!;
+    const el = document.querySelector('zb-typed')!;
     const first: Option = el.options[0];
     el.addEventListener('pick', (event) => {
       const picked: Picked = event.detail;
@@ -271,7 +271,7 @@ test('a TypeScript component\'s typings carry its own types', async () => {
   assert.equal(good, '');
   const bad = typecheck('typed-bad', `
     import './typed.js';
-    const el = document.querySelector('mnx-typed')!;
+    const el = document.querySelector('zb-typed')!;
     el.options = [{ id: 'one', label: 'One' }];
     el.addEventListener('pick', (event) => { const n: number = event.detail.option.label; void n; });
     export {};
@@ -282,22 +282,22 @@ test('a TypeScript component\'s typings carry its own types', async () => {
 test('HTML custom data drives completions in the HTML language service (what VS Code uses)', async () => {
   const { getLanguageService, newHTMLDataProvider } = await import('vscode-html-languageservice');
   const { TextDocument } = await import('vscode-languageserver-textdocument');
-  const data = JSON.parse(execFileSync(join(repo, 'target/debug/mnx'),
-    ['compile', join(here, '../browser/fixtures/rating.mnx'), '--emit', 'html-data'], { encoding: 'utf8' }));
-  const service = getLanguageService({ customDataProviders: [newHTMLDataProvider('mnx', data)] });
+  const data = JSON.parse(execFileSync(join(repo, 'target/debug/zubra'),
+    ['compile', join(here, '../browser/fixtures/rating.zb'), '--emit', 'html-data'], { encoding: 'utf8' }));
+  const service = getLanguageService({ customDataProviders: [newHTMLDataProvider('zubra', data)] });
   const complete = (text) => {
     const offset = text.indexOf('|');
     const document = TextDocument.create('file:///page.html', 'html', 1, text.replace('|', ''));
     return service.doComplete(document, document.positionAt(offset), service.parseHTMLDocument(document));
   };
-  const tags = complete('<body><mnx-|').items.map((item) => item.label);
-  assert.ok(tags.includes('mnx-rating'), tags.join(', '));
-  const attributes = complete('<body><mnx-rating |></mnx-rating>').items;
+  const tags = complete('<body><zb-|').items.map((item) => item.label);
+  assert.ok(tags.includes('zb-rating'), tags.join(', '));
+  const attributes = complete('<body><zb-rating |></zb-rating>').items;
   const value = attributes.find((item) => item.label === 'value');
   assert.ok(value, attributes.map((item) => item.label).join(', '));
   assert.match(value.documentation?.value ?? value.documentation, /Type: `number`\. Default: `0`\./);
   assert.ok(attributes.some((item) => item.label === 'onvaluechange'));
-  const hover = service.doHover(TextDocument.create('file:///p.html', 'html', 1, '<mnx-rating></mnx-rating>'), { line: 0, character: 3 },
-    service.parseHTMLDocument(TextDocument.create('file:///p.html', 'html', 1, '<mnx-rating></mnx-rating>')));
+  const hover = service.doHover(TextDocument.create('file:///p.html', 'html', 1, '<zb-rating></zb-rating>'), { line: 0, character: 3 },
+    service.parseHTMLDocument(TextDocument.create('file:///p.html', 'html', 1, '<zb-rating></zb-rating>')));
   assert.match(JSON.stringify(hover), /A two-star rating/);
 });

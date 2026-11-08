@@ -13,7 +13,7 @@
     "@angular/compiler": "^22.2.5",
     "@angular/core": "^22.2.5",
     "@angular/platform-browser": "^22.2.5",
-    "@mnx/runtime": "^{{version}}",
+    "@zubra/runtime": "^{{version}}",
     "rxjs": "^7.8.2",
     "tslib": "^2.8.1"
   },
@@ -21,8 +21,8 @@
     "@analogjs/vite-plugin-angular": "^2.9.6",
     "@angular/build": "^22.2.6",
     "@angular/compiler-cli": "^22.2.5",
-    "@mnx/compiler": "^{{version}}",
-    "@mnx/unplugin": "^{{version}}",
+    "@zubra/compiler": "^{{version}}",
+    "@zubra/unplugin": "^{{version}}",
     "playwright": "^1.63.0",
     "typescript": "~6.0.3",
     "vite": "^8.3.6"

@@ -1,0 +1,7 @@
+<script>
+  import { emit as fire } from '@zubra/runtime'
+  function ping() { fire('ping', { at: 1 }) }
+</script>
+<zb-ping shadow>
+  <button type="button" onclick={ping}>ping</button>
+</zb-ping>

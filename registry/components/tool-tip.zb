@@ -1,0 +1,68 @@
+<!--
+  A short description shown when its trigger is hovered or focused: the trigger is the slotted
+  element, and the tip describes it (aria-describedby), so a screen reader reads it with the
+  trigger's name. It shows after `delay` milliseconds, stays while the pointer is over it, and
+  Escape hides it without moving focus (WCAG 1.4.13). It sits in the top layer (`popover`), placed
+  above the trigger by CSS anchor positioning, or by script where that isn't supported.
+  @slot - The trigger: one focusable element.
+  @slot content - The tip (defaults to `text`).
+-->
+<script>
+  import { id, onMount } from '@zubra/runtime'
+
+  const tipId = id()
+  const anchored = typeof CSS !== "undefined" && CSS.supports("position-area: top")
+  let wrap = null
+  let tip = null
+  let timer = null
+
+  function show() {
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      if (!tip || tip.matches(":popover-open")) return
+      tip.showPopover()
+      if (!anchored) place()
+    }, delay)
+  }
+  function hide() {
+    clearTimeout(timer)
+    if (tip?.matches(":popover-open")) tip.hidePopover()
+  }
+  // Without anchor positioning: centred above the trigger, or below it if there's no room.
+  function place() {
+    const trigger = wrap.firstElementChild.getBoundingClientRect()
+    const own = tip.getBoundingClientRect()
+    const top = trigger.top - own.height - 6 >= 0 ? trigger.top - own.height - 6 : trigger.bottom + 6
+    const left = Math.min(Math.max(4, trigger.left + (trigger.width - own.width) / 2), innerWidth - own.width - 4)
+    tip.style.top = `${top}px`
+    tip.style.left = `${left}px`
+  }
+
+  onMount(() => {
+    const trigger = wrap.firstElementChild
+    if (!trigger) return
+    const described = (trigger.getAttribute("aria-describedby") ?? "").split(" ").filter(Boolean)
+    if (!described.includes(tipId)) trigger.setAttribute("aria-describedby", [...described, tipId].join(" "))
+    trigger.style.setProperty("anchor-name", `--${tipId}`)
+    const escape = (event) => { if (event.key === "Escape") hide() }
+    document.addEventListener("keydown", escape)
+    return () => {
+      hide()
+      document.removeEventListener("keydown", escape)
+    }
+  })
+</script>
+<style>
+  :host { display: inline-block; }
+  .trigger { display: contents; }
+  [popover] { position: fixed; inset: auto; margin: 0; padding: 0.3rem 0.55rem; border: 0; border-radius: 0.4rem; background: var(--ink, #1d2130); color: var(--surface, #fff); font-size: 0.85rem; line-height: 1.3; max-width: 18rem; pointer-events: auto; }
+  @supports (position-area: top) {
+    [popover] { position-area: top; position-try-fallbacks: flip-block; margin-bottom: 6px; }
+  }
+</style>
+<tool-tip text="" delay={300}>
+  <span class="trigger" ref={wrap} onpointerenter={show} onpointerleave={hide} onfocusin={show} onfocusout={hide}>
+    <zb-slot></zb-slot>
+    <span popover="manual" role="tooltip" id={tipId} ref={tip} style:position-anchor={`--${tipId}`}><zb-slot name="content">{text}</zb-slot></span>
+  </span>
+</tool-tip>

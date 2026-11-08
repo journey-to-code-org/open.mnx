@@ -1,6 +1,6 @@
 // The workout log in Chromium: `vite build` with adapter-node, the server, then the stats and
-// list (mnx elements Svelte uses directly) and the form action, enhanced with use:enhance, whose
-// inputs are mnx form controls.
+// list (zubra elements Svelte uses directly) and the form action, enhanced with use:enhance, whose
+// inputs are zubra form controls.
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -10,9 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Inside this repository: the CLI from `cargo build`, unless mnx.wasm is built (see README).
-const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'mnx.exe' : 'mnx');
-if (!process.env.MNX_COMPILER && existsSync(cli)) process.env.MNX_COMPILER = cli;
+// Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
+const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'zubra.exe' : 'zubra');
+if (!process.env.ZUBRA_COMPILER && existsSync(cli)) process.env.ZUBRA_COMPILER = cli;
 const port = 5100 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
 let server, browser;
@@ -42,30 +42,30 @@ async function open(path, { javascript = true } = {}) {
   return { page, messages };
 }
 
-test('the stats and the list: mnx elements with Svelte props, including an object prop', async () => {
+test('the stats and the list: zubra elements with Svelte props, including an object prop', async () => {
   const { page, messages } = await open('/');
   await page.waitForSelector('workout-row .row');
   assert.equal(await page.locator('workout-row').count(), 8);
   assert.equal(await page.getByRole('img', { name: 'Effort 4 of 5' }).count() >= 1, true);
-  // The streak grid's `log` is an object: Svelte's server HTML says "[object Object]", so the mnx
-  // plugin adds mnx-props to the host in the server build, which the element starts with. No
+  // The streak grid's `log` is an object: Svelte's server HTML says "[object Object]", so the zubra
+  // plugin adds zb-props to the host in the server build, which the element starts with. No
   // warning, and the grid shows the logged days.
   const html = await (await fetch(`${base}/`)).text();
-  assert.match(html, /<streak-grid mnx-props="\{&quot;log&quot;:\{&quot;20\d\d-[^"]*" log="\[object Object\]"/);
+  assert.match(html, /<streak-grid zb-props="\{&quot;log&quot;:\{&quot;20\d\d-[^"]*" log="\[object Object\]"/);
   assert.ok(await page.locator('streak-grid button[aria-pressed=true]').count() >= 6);
   assert.match(await page.getByRole('img', { name: /^Days trained this week: \d+%$/ }).getAttribute('aria-label'), /%$/);
   assert.deepEqual(messages, []);
   await page.close();
 });
 
-test('logging a workout: a form action, enhanced, with mnx form controls submitting like inputs', async () => {
+test('logging a workout: a form action, enhanced, with zubra form controls submitting like inputs', async () => {
   const { page, messages } = await open('/');
   await page.waitForSelector('quantity-stepper[name=sets] button.more');
   await page.selectOption('select[name=exercise]', 'row');
   await page.click('quantity-stepper[name=sets] button.more');
   await page.click('quantity-stepper[name=reps] button.less');
   // The hidden inputs the server added for these controls are gone: their own values submit.
-  assert.equal(await page.locator('[data-mnx-fallback]').count(), 0);
+  assert.equal(await page.locator('[data-zb-fallback]').count(), 0);
   assert.equal(await page.evaluate(() => new FormData(document.querySelector('form.log')).get('effort')), '3');
   await page.click('star-rating button[aria-label="5 of 5"]');
   assert.deepEqual(await page.evaluate(() => Object.fromEntries(new FormData(document.querySelector('form.log')))), { exercise: 'row', sets: '4', reps: '7', effort: '5' });
@@ -89,7 +89,7 @@ test('the action validates on the server', async () => {
 test('without JavaScript: the stats, the list and the form are in the server HTML, and logging a workout works', async () => {
   await fetch(`${base}/reset`, { method: 'POST', headers: { origin: base } });
   const { page, messages } = await open('/', { javascript: false });
-  // The shadow roots came with the HTML (@mnx/server in hooks.server.js).
+  // The shadow roots came with the HTML (@zubra/server in hooks.server.js).
   assert.equal(await page.locator('workout-row').count(), 8);
   assert.equal(await page.locator('workout-row .row').count(), 8, 'each row shows, from its declarative shadow root');
   assert.match(await page.getByRole('img', { name: /^Days trained this week: \d+%$/ }).getAttribute('aria-label'), /%$/, 'the stats');

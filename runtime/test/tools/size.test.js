@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const BUDGETS = {
   // Everything, the Signals implementation included. (12 KB until 2.7, whose progressive
   // enhancement — hydrated(), the .submit and .mod modifiers, the missing-markers warning — took
-  // it to 12.5 KB, and 2.8's server bridge — reading `mnx-props`, dropping form fallbacks — to
+  // it to 12.5 KB, and 2.8's server bridge — reading `zb-props`, dropping form fallbacks — to
   // 13 KB, and 3.2's deep reactivity — a state's arrays and objects update the DOM when
   // mutated, `deep.js`, about 370 B — to 13.5 KB.)
   'src/index.js': { gzip: 13.5 * 1024 },

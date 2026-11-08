@@ -1,19 +1,19 @@
 # Mountain trails: Eleventy
 
-A static trail guide built with [Eleventy](https://www.11ty.dev). Its mnx components are
+A static trail guide built with [Eleventy](https://www.11ty.dev). Its Zubra components are
 rendered to HTML **at build time** by a shortcode:
 
 ```njk
-{% mnx "trail-card", { name: trail.name, href: trail.url, km: trail.km, mi: trail.mi } %}
+{% zubra "trail-card", { name: trail.name, href: trail.url, km: trail.km, mi: trail.mi } %}
 ```
 
 They're hydrated in the browser with no bundler. The browser gets:
 - the HTML;
 - each component compiled to an ES module;
-- `@mnx/runtime`, through an import map.
+- `@zubra/runtime`, through an import map.
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @mnx/compiler is on npm)
+cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
 cd examples/meta/eleventy-trails
 npm install
 npm start                   # http://localhost:8080
@@ -24,7 +24,7 @@ npm start                   # http://localhost:8080
 - **a transform**, which puts those components' CSS in the page's `<head>` and imports their
   modules at the end of its body;
 - **an `eleventy.after` step**, which writes `_site/components/*.js` and copies the runtime to
-  `_site/vendor/mnx/`.
+  `_site/vendor/zubra/`.
 
 Without JavaScript, the list, every trail's facts and its elevation profile are all in the HTML.
 With JavaScript, a filter appears (difficulty and length), and the units switch between km and
@@ -32,7 +32,7 @@ miles on every card. The choice is remembered.
 
 ## What it found
 
-- **HTML minifiers remove the hydration markers.** mnx's markers are comments. A minifier with
+- **HTML minifiers remove the hydration markers.** Zubra's markers are comments. A minifier with
   `removeComments: true` removes them, and the elements then render afresh instead of hydrating:
   - the result is correct;
   - each element logs a warning;

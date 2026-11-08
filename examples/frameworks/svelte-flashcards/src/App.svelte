@@ -1,8 +1,8 @@
 <script>
   import { untrack } from 'svelte';
-  import './components/flip-card.mnx';
-  import './components/grade-buttons.mnx';
-  import './components/progress-ring.mnx';
+  import './components/flip-card.zb';
+  import './components/grade-buttons.zb';
+  import './components/progress-ring.zb';
   import { load, save, graded, today, seed } from './decks.js';
 
   const initial = load();

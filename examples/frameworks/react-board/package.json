@@ -1,5 +1,5 @@
 {
-  "name": "mnx-example-react-board",
+  "name": "zubra-example-react-board",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,13 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime",
+    "@zubra/runtime": "file:../../../runtime",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "@vitejs/plugin-react": "6.2.1",
     "vite": "8.3.6"
   }

@@ -1,5 +1,5 @@
 // The shop in Chromium, served by Node.js and by Bun (when it's installed): htmx swaps in
-// server-rendered fragments, and the mnx elements in them hydrate where they land.
+// server-rendered fragments, and the zubra elements in them hydrate where they land.
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';

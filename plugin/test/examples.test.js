@@ -1,5 +1,5 @@
 // The example projects in examples/, built the way their READMEs say and used in Chromium, so
-// they keep working as mnx changes. Each is copied inside plugin/ to resolve its packages from
+// they keep working as zubra changes. Each is copied inside plugin/ to resolve its packages from
 // here (their own package.json points at the repository's packages). `npm test` in plugin/.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,13 +18,13 @@ test('todo: add, complete, edit, filter, clear, and keep the list across reloads
   await settle(page);
   const items = () => page.$$eval('todo-app todo-item', (els) => els.map((el) => `${el.done ? 'x' : ' '} ${el.text}`));
   const count = () => page.textContent('todo-app .count');
-  assert.deepEqual(await items(), ['x Try mnx 2.0', '  Write a component']);
+  assert.deepEqual(await items(), ['x Try zubra 2.0', '  Write a component']);
   assert.equal(await count(), '1 left');
 
   await page.fill('todo-app form input', 'Ship it');
   await page.press('todo-app form input', 'Enter');
   await settle(page);
-  assert.deepEqual(await items(), ['x Try mnx 2.0', '  Write a component', '  Ship it']);
+  assert.deepEqual(await items(), ['x Try zubra 2.0', '  Write a component', '  Ship it']);
   assert.equal(await page.inputValue('todo-app form input'), '', 'the field cleared');
   assert.equal(await count(), '2 left');
 
@@ -38,7 +38,7 @@ test('todo: add, complete, edit, filter, clear, and keep the list across reloads
   await edit.fill('Ship 2.0');
   await edit.press('Enter');
   await settle(page);
-  assert.deepEqual(await items(), ['x Try mnx 2.0', 'x Write a component', '  Ship 2.0']);
+  assert.deepEqual(await items(), ['x Try zubra 2.0', 'x Write a component', '  Ship 2.0']);
 
   await page.click('todo-app footer button:has-text("Open")');
   await settle(page);
@@ -95,7 +95,7 @@ test('recipes (Astro): static pages, a JSX island, a form-associated control, lo
   assert.deepEqual(await amounts(), ['2', '200 g', '0.5']);
   assert.equal(await tab.$eval('recipe-servings .fewer', (el) => el.disabled), true, 'one serving at least');
 
-  // Reviews: hydrated when visible, then loaded with resource() into <mnx-await>.
+  // Reviews: hydrated when visible, then loaded with resource() into <zb-await>.
   await tab.locator('recipe-reviews').scrollIntoViewIfNeeded();
   await tab.waitForSelector('recipe-reviews li');
   await settle(tab);

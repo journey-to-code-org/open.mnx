@@ -1,3 +1,3 @@
-import mnx from '@mnx/unplugin/astro';
+import zubra from '@zubra/unplugin/astro';
 
-export default { integrations: [mnx()] };
+export default { integrations: [zubra()] };

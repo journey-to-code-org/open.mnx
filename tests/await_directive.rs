@@ -1,20 +1,20 @@
-//! `<mnx-await>`: pending content, then `mnx-then` / `mnx-catch`.
+//! `<zb-await>`: pending content, then `zb-then` / `zb-catch`.
 
-use mnx_compiler::{compile, compile_js};
+use zubra::{compile, compile_js};
 
 #[test]
 fn renders_the_pending_content_and_emits_three_blocks() {
-    let source = "<script>const data = fetch('/x')</script>\n<mnx-x label=\"x\"><mnx-await value={data}><p>{label}…</p><mnx-then as=\"user\"><b>{user.name}</b></mnx-then><mnx-catch as=\"e\"><i>{e.message}</i></mnx-catch></mnx-await></mnx-x>";
+    let source = "<script>const data = fetch('/x')</script>\n<zb-x label=\"x\"><zb-await value={data}><p>{label}…</p><zb-then as=\"user\"><b>{user.name}</b></zb-then><zb-catch as=\"e\"><i>{e.message}</i></zb-catch></zb-await></zb-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<mnx-x><!--[?--><p>x…</p><!--]--></mnx-x>"
+        "<zb-x><!--[?--><p>x…</p><!--]--></zb-x>"
     );
-    let js = compile_js(source, "@mnx/runtime", "x.mnx").unwrap();
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
     assert!(js.contains(r#"await: () => $r(data), blocks: [{ template: "<p></p>", parts: () => [{ path: [0], text: () => $t($p.label) + "…" }] }, { template: "<b></b>", parts: (user) => [{ path: [0], text: () => $t($r(user).name) }] }, { template: "<i></i>", parts: (e) => [{ path: [0], text: () => $t($r(e).message) }] }]"#), "{js}");
     let without = compile_js(
-        "<mnx-x v={1}><mnx-await value={v}><mnx-then><b>ok</b></mnx-then></mnx-await></mnx-x>",
-        "@mnx/runtime",
-        "x.mnx",
+        "<zb-x v={1}><zb-await value={v}><zb-then><b>ok</b></zb-then></zb-await></zb-x>",
+        "@zubra/runtime",
+        "x.zb",
     )
     .unwrap();
     assert!(without.contains(r#"blocks: [{ template: "", parts: () => [] }, { template: "<b>ok</b>", parts: ($value) => [] }, null]"#), "{without}");
@@ -23,36 +23,39 @@ fn renders_the_pending_content_and_emits_three_blocks() {
 #[test]
 fn names_are_scoped_to_their_branch_and_the_shape_is_checked() {
     let error = |source: &str| {
-        compile_js(source, "@mnx/runtime", "x.mnx")
+        compile_js(source, "@zubra/runtime", "x.zb")
             .unwrap_err()
             .message
     };
     assert_eq!(
-        error("<mnx-x v={1}><mnx-await value={v}><p>{user}</p><mnx-then as=\"user\"></mnx-then></mnx-await></mnx-x>"),
+        error("<zb-x v={1}><zb-await value={v}><p>{user}</p><zb-then as=\"user\"></zb-then></zb-await></zb-x>"),
         "unknown reference `user`"
     );
-    assert!(error("<mnx-x v={1}><mnx-await value={v}><mnx-then></mnx-then><mnx-then></mnx-then></mnx-await></mnx-x>").contains("only one mnx-then"));
     assert!(error(
-        "<mnx-x v={1}><mnx-await value={v}><mnx-then></mnx-then><p>late</p></mnx-await></mnx-x>"
+        "<zb-x v={1}><zb-await value={v}><zb-then></zb-then><zb-then></zb-then></zb-await></zb-x>"
+    )
+    .contains("only one zb-then"));
+    assert!(error(
+        "<zb-x v={1}><zb-await value={v}><zb-then></zb-then><p>late</p></zb-await></zb-x>"
     )
     .contains("pending content comes first"));
-    assert!(error("<mnx-x><mnx-then></mnx-then></mnx-x>")
-        .contains("mnx-then is only valid as a direct child of mnx-await"));
+    assert!(error("<zb-x><zb-then></zb-then></zb-x>")
+        .contains("zb-then is only valid as a direct child of zb-await"));
     assert!(error(
-        "<mnx-x v={1}><mnx-await value={v}><mnx-catch as=\"1x\"></mnx-catch></mnx-await></mnx-x>"
+        "<zb-x v={1}><zb-await value={v}><zb-catch as=\"1x\"></zb-catch></zb-await></zb-x>"
     )
     .contains("valid identifier"));
-    assert!(error("<mnx-x><mnx-await><p></p></mnx-await></mnx-x>").contains("value"));
+    assert!(error("<zb-x><zb-await><p></p></zb-await></zb-x>").contains("value"));
 }
 
 #[test]
-fn a_value_known_at_build_time_renders_mnx_then() {
+fn a_value_known_at_build_time_renders_zb_then() {
     assert_eq!(
-        compile("<mnx-x user={{ name: \"Ada\" }}><mnx-await value={user}><p>…</p><mnx-then as=\"u\"><b>{u.name}</b></mnx-then></mnx-await></mnx-x>", "{}").unwrap(),
-        "<mnx-x><!--[--><b>Ada</b><!--]--></mnx-x>"
+        compile("<zb-x user={{ name: \"Ada\" }}><zb-await value={user}><p>…</p><zb-then as=\"u\"><b>{u.name}</b></zb-then></zb-await></zb-x>", "{}").unwrap(),
+        "<zb-x><!--[--><b>Ada</b><!--]--></zb-x>"
     );
     assert_eq!(
-        compile("<mnx-x user={{ name: \"Ada\" }}><mnx-await value={user}><p>…</p><mnx-then as=\"u\"><b>{u.name}</b></mnx-then></mnx-await></mnx-x>", r#"{"user":{"name":"Grace"}}"#).unwrap(),
-        "<mnx-x user=\"{&quot;name&quot;:&quot;Grace&quot;}\"><!--[--><b>Grace</b><!--]--></mnx-x>"
+        compile("<zb-x user={{ name: \"Ada\" }}><zb-await value={user}><p>…</p><zb-then as=\"u\"><b>{u.name}</b></zb-then></zb-await></zb-x>", r#"{"user":{"name":"Grace"}}"#).unwrap(),
+        "<zb-x user=\"{&quot;name&quot;:&quot;Grace&quot;}\"><!--[--><b>Grace</b><!--]--></zb-x>"
     );
 }

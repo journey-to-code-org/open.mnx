@@ -1,6 +1,6 @@
 // The bike shop: Hono routes and htmx. Every route answers a plain request with a whole page
 // (so it works without JavaScript) and an htmx request (`HX-Request`) with just the fragment to
-// swap. Either way the mnx components in it are rendered on the server, and the browser
+// swap. Either way the zubra components in it are rendered on the server, and the browser
 // hydrates them where they land, swapped in or not.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { html, raw } from 'hono/html';
-import { mnx as mnxMiddleware } from '@mnx/server/hono';
+import { zubra as zubraMiddleware } from '@zubra/server/hono';
 import { CATEGORIES } from './store.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,11 +21,11 @@ const HTMX_CONFIG = JSON.stringify({ responseHandling: [{ code: '204', swap: fal
 
 export function createApp({ store, cache = true }) {
   const app = new Hono();
-  // @mnx/server: renders components, and serves their modules and @mnx/runtime under /_mnx.
-  const middleware = mnxMiddleware({ components: join(here, '../components'), cache });
-  const mnx = middleware.mnx;
+  // @zubra/server: renders components, and serves their modules and @zubra/runtime under /_zubra.
+  const middleware = zubraMiddleware({ components: join(here, '../components'), cache });
+  const zubra = middleware.zubra;
   app.use(middleware);
-  const c = (name, props) => raw(mnx.render(name, props));
+  const c = (name, props) => raw(zubra.render(name, props));
   app.get('/vendor/htmx.js', (ctx) => ctx.body(HTMX, 200, { 'content-type': 'text/javascript' }));
   app.get('/app.css', (ctx) => ctx.body(CSS, 200, { 'content-type': 'text/css' }));
 
@@ -81,7 +81,7 @@ export function createApp({ store, cache = true }) {
   };
 
   // htmx 2 parses fragments with Document.parseHTMLUnsafe() where it exists. In the Chromium
-  // that Playwright ships (153), that drops HTML comments, and mnx's hydration markers are
+  // that Playwright ships (153), that drops HTML comments, and zubra's hydration markers are
   // comments: swapped-in elements then can't hydrate and are rendered fresh (correct, but with a
   // warning, and without keeping focus). DOMParser keeps them, and htmx uses it when
   // parseHTMLUnsafe is missing. `?parser=native` leaves it alone (for the tests). See the README.
@@ -97,14 +97,14 @@ export function createApp({ store, cache = true }) {
   <meta name="htmx-config" content="${HTMX_CONFIG}">
   <title>${title} · Spoke & Chain</title>
   <link rel="stylesheet" href="/app.css">
-  ${raw(mnx.head()) /* every component's CSS and the import map: htmx fragments can bring any of them */}
+  ${raw(zubra.head()) /* every component's CSS and the import map: htmx fragments can bring any of them */}
   ${parserFix(ctx)}
   <script src="/vendor/htmx.js" defer></script>
 </head>
 <body>
   <header class="top"><a class="brand" href="/">Spoke & Chain</a> ${lowCount()}</header>
   <main>${body}</main>
-  ${raw(mnx.scripts())}
+  ${raw(zubra.scripts())}
 </body>
 </html>`;
 

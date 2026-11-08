@@ -10,9 +10,9 @@ import { useBrowser, open } from '../../runtime/test/browser/harness.js';
 import * as zag from './zag.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const names = readdirSync(join(here, '../components')).filter((file) => file.endsWith('.mnx')).map((file) => file.slice(0, -4));
+const names = readdirSync(join(here, '../components')).filter((file) => file.endsWith('.zb')).map((file) => file.slice(0, -3));
 
-useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.mnx`)])), zag.files, zag.imports);
+useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.zb`)])), zag.files, zag.imports);
 
 /** Open `body` with `name`'s module, recording the events listed on window.events. */
 async function page(name, body, events = []) {

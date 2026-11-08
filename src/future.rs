@@ -11,9 +11,9 @@
 //! watch(signal(count), log)    // the signal, in 2.x and 3.0 alike
 //! ```
 //!
-//! 2.6–2.11 warned about those uses, and `mnx migrate --to 3` wraps them in `signal(…)`
+//! 2.6–2.11 warned about those uses, and `zubra migrate --to 3` wraps them in `signal(…)`
 //! (`prepare`), which is the identity in 2.x. Run it once, on 2.x code: in 3.0 code, a bare name
-//! is its value on purpose. `mnx migrate --to 3 --check` lists the places (`uses`).
+//! is its value on purpose. `zubra migrate --to 3 --check` lists the places (`uses`).
 
 use oxc_allocator::Allocator;
 use oxc_ast::{
@@ -45,7 +45,7 @@ struct Analysis {
     /// Where the script body starts in the file.
     offset: usize,
     uses: Vec<Use>,
-    /// The `@mnx/runtime` import, to add `signal` to: its specifiers' end, and whether
+    /// The `@zubra/runtime` import, to add `signal` to: its specifiers' end, and whether
     /// `signal` is already imported.
     runtime_import: Option<(u32, bool)>,
 }
@@ -76,7 +76,7 @@ fn analyse(source: &str) -> Option<Analysis> {
         let Statement::ImportDeclaration(import) = statement else {
             continue;
         };
-        if import.source.value != "@mnx/runtime" {
+        if import.source.value != "@zubra/runtime" {
             continue;
         }
         let mut has_signal = false;
@@ -152,7 +152,7 @@ fn analyse(source: &str) -> Option<Analysis> {
     })
 }
 
-/// The places in 2.x code whose meaning 3.0 changes, for `mnx migrate --to 3 --check`.
+/// The places in 2.x code whose meaning 3.0 changes, for `zubra migrate --to 3 --check`.
 pub fn uses(source: &str) -> Vec<Diagnostic> {
     let Some(analysis) = analyse(source) else {
         return Vec::new();
@@ -168,14 +168,14 @@ pub fn uses(source: &str) -> Vec<Diagnostic> {
                 format!("in 2.x, `{0}` here is the signal; since 3.0 it's its value (as in the template)", found.name),
             )
             .with_help(format!(
-                "`mnx migrate --to 3` writes `signal({0})`, which keeps passing the signal itself (it means the same in 2.x)",
+                "`zubra migrate --to 3` writes `signal({0})`, which keeps passing the signal itself (it means the same in 2.x)",
                 found.name
             ))
         })
         .collect()
 }
 
-/// `mnx migrate --to 3`: wrap those uses in `signal(…)`, importing it. Returns the new source and
+/// `zubra migrate --to 3`: wrap those uses in `signal(…)`, importing it. Returns the new source and
 /// how many it wrapped.
 pub fn prepare(source: &str) -> (String, usize) {
     let Some(analysis) = analyse(source) else {

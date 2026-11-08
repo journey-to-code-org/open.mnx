@@ -1,4 +1,4 @@
-// @mnx/runtime — everything compiled components and their scripts import.
+// @zubra/runtime — everything compiled components and their scripts import.
 export { Signal, isNative } from './signal.js';
 export { effect, scope, flush, tick } from './effect.js';
 export { resource } from './resource.js';

@@ -1,4 +1,4 @@
-// @mnx/runtime/primitives: the two keyboard behaviours the platform doesn't have.
+// @zubra/runtime/primitives: the two keyboard behaviours the platform doesn't have.
 //
 // The platform now does most of what headless libraries used to: <dialog> traps focus and closes
 // on Escape, `popover` gives a top layer and light dismissal, anchor positioning places it, and

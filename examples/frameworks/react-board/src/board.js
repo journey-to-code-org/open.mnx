@@ -90,7 +90,7 @@ export function reducer(state, action) {
 
 export function load() {
   try {
-    const saved = JSON.parse(localStorage.getItem('mnx-board'));
+    const saved = JSON.parse(localStorage.getItem('zb-board'));
     if (saved?.cards && saved?.columns) return { ...saved, history: [] };
   } catch {}
   return initialBoard();
@@ -98,6 +98,6 @@ export function load() {
 
 export function save(state) {
   try {
-    localStorage.setItem('mnx-board', JSON.stringify({ cards: state.cards, columns: state.columns }));
+    localStorage.setItem('zb-board', JSON.stringify({ cards: state.cards, columns: state.columns }));
   } catch {}
 }

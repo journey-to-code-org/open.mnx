@@ -1,11 +1,11 @@
 {
-  "name": "@mnx/runtime",
-  "version": "3.6.0",
-  "description": "Browser runtime for mnx compiled components, built on the TC39 Signals API",
+  "name": "@zubra/runtime",
+  "version": "4.0.0",
+  "description": "Browser runtime for Zubra compiled components, built on the TC39 Signals API",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
     "directory": "runtime"
   },
   "type": "module",
@@ -52,7 +52,7 @@
     },
     "./angular": {
       "types": "./types/angular.d.ts",
-      "default": "./fesm2022/mnx-runtime-angular.mjs"
+      "default": "./fesm2022/zubra-runtime-angular.mjs"
     },
     "./server": {
       "types": "./types/server.d.ts",

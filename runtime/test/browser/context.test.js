@@ -7,30 +7,30 @@ import { useBrowser, open, here } from './harness.js';
 
 useBrowser(
   {
-    'theme-provider': join(here, 'fixtures/theme-provider.mnx'),
-    'theme-label': join(here, 'fixtures/theme-label.mnx'),
+    'theme-provider': join(here, 'fixtures/theme-provider.zb'),
+    'theme-label': join(here, 'fixtures/theme-label.zb'),
   },
   {
     // The context key both components import.
-    'theme.js': `import { createContext } from '@mnx/runtime';\nexport const theme = createContext('light');\n`,
+    'theme.js': `import { createContext } from '@zubra/runtime';\nexport const theme = createContext('light');\n`,
   },
 );
 
 const PAGE = `
-  <mnx-theme-provider><mnx-theme-label id="inside"></mnx-theme-label></mnx-theme-provider>
-  <mnx-theme-label id="outside"></mnx-theme-label>`;
+  <zb-theme-provider><zb-theme-label id="inside"></zb-theme-label></zb-theme-provider>
+  <zb-theme-label id="outside"></zb-theme-label>`;
 
 const labels = (page) =>
-  page.$$eval('mnx-theme-label', (els) => els.map((el) => `${el.id}=${el.querySelector('span').textContent}`));
+  page.$$eval('zb-theme-label', (els) => els.map((el) => `${el.id}=${el.querySelector('span').textContent}`));
 
 test('a consumer reads the nearest provider and follows its changes', async () => {
   const { page, messages } = await open(PAGE, { modules: ['theme-provider', 'theme-label'] });
   assert.deepEqual(await labels(page), ['inside=dark', 'outside=light'], 'no provider: the context default');
-  await page.click('mnx-theme-provider button');
-  await page.evaluate(() => document.querySelector('mnx-theme-label').updateComplete);
+  await page.click('zb-theme-provider button');
+  await page.evaluate(() => document.querySelector('zb-theme-label').updateComplete);
   assert.deepEqual(await labels(page), ['inside=light', 'outside=light']);
-  await page.click('mnx-theme-provider button');
-  await page.evaluate(() => document.querySelector('mnx-theme-label').updateComplete);
+  await page.click('zb-theme-provider button');
+  await page.evaluate(() => document.querySelector('zb-theme-label').updateComplete);
   assert.deepEqual(await labels(page), ['inside=dark', 'outside=light']);
   assert.deepEqual(messages, []);
   await page.close();
@@ -38,10 +38,10 @@ test('a consumer reads the nearest provider and follows its changes', async () =
 
 test('a consumer defined before its provider picks it up when the provider arrives', async () => {
   const { page } = await open(PAGE, { modules: ['theme-label', 'theme-provider'] });
-  await page.evaluate(() => document.querySelector('mnx-theme-label').updateComplete);
+  await page.evaluate(() => document.querySelector('zb-theme-label').updateComplete);
   assert.deepEqual(await labels(page), ['inside=dark', 'outside=light']);
-  await page.click('mnx-theme-provider button');
-  await page.evaluate(() => document.querySelector('mnx-theme-label').updateComplete);
+  await page.click('zb-theme-provider button');
+  await page.evaluate(() => document.querySelector('zb-theme-label').updateComplete);
   assert.deepEqual(await labels(page), ['inside=light', 'outside=light']);
   await page.close();
 });
@@ -50,7 +50,7 @@ test('moving a consumer out of its provider stops updates; moving it back resume
   const { page } = await open(PAGE, { modules: ['theme-provider', 'theme-label'] });
   const result = await page.evaluate(async () => {
     const inside = document.getElementById('inside');
-    const provider = document.querySelector('mnx-theme-provider');
+    const provider = document.querySelector('zb-theme-provider');
     const toggle = () => provider.querySelector('button').click();
     const read = () => inside.querySelector('span').textContent;
     document.body.append(inside);          // now outside any provider
@@ -72,8 +72,8 @@ test('moving a consumer out of its provider stops updates; moving it back resume
 
 test('interoperates with any Context Protocol provider and consumer', async () => {
   const { page, messages } = await open(`
-    <section id="foreign"><mnx-theme-label id="foreign-consumer"></mnx-theme-label></section>
-    <mnx-theme-provider id="ours"><div id="raw-consumer"></div></mnx-theme-provider>`, {
+    <section id="foreign"><zb-theme-label id="foreign-consumer"></zb-theme-label></section>
+    <zb-theme-provider id="ours"><div id="raw-consumer"></div></zb-theme-provider>`, {
     beforeModules: `
       // A provider written against the bare protocol, as another library would.
       const { theme } = await import('/theme.js');
@@ -90,7 +90,7 @@ test('interoperates with any Context Protocol provider and consumer', async () =
   });
   const result = await page.evaluate(async () => {
     const { theme } = await import('/theme.js');
-    const { ContextRequestEvent } = await import('@mnx/runtime');
+    const { ContextRequestEvent } = await import('@zubra/runtime');
     const consumer = document.getElementById('foreign-consumer');
     const before = consumer.querySelector('span').textContent;
     window.foreignSet('updated by it');
@@ -110,7 +110,7 @@ test('interoperates with any Context Protocol provider and consumer', async () =
     await consumer.updateComplete;
     return { before, after, values };
   });
-  assert.equal(result.before, 'from another library', 'an mnx consumer reads a foreign provider');
+  assert.equal(result.before, 'from another library', 'a zubra consumer reads a foreign provider');
   assert.equal(result.after, 'updated by it');
   assert.deepEqual(result.values, ['dark', 'light'], 'a foreign consumer reads our provider until it unsubscribes');
   assert.deepEqual(messages, []);
@@ -118,32 +118,32 @@ test('interoperates with any Context Protocol provider and consumer', async () =
 });
 
 test('id() gives each element and call its own stable id', async () => {
-  const { page } = await open('<mnx-theme-label id="a"></mnx-theme-label><mnx-theme-label></mnx-theme-label><mnx-theme-label></mnx-theme-label>', {
+  const { page } = await open('<zb-theme-label id="a"></zb-theme-label><zb-theme-label></zb-theme-label><zb-theme-label></zb-theme-label>', {
     modules: ['theme-label'],
   });
-  const ids = await page.$$eval('mnx-theme-label span', (spans) => spans.map((span) => [span.id, span.dataset.other]));
+  const ids = await page.$$eval('zb-theme-label span', (spans) => spans.map((span) => [span.id, span.dataset.other]));
   assert.deepEqual(ids[0], ['a-1', 'a-2'], "based on the host's own id when it has one");
   assert.equal(new Set(ids.flat()).size, 6, 'all different');
-  assert.match(ids[1][0], /^mnx-theme-label-\d+-1$/);
+  assert.match(ids[1][0], /^zb-theme-label-\d+-1$/);
   await page.close();
 });
 
 test('hooks called outside setup explain themselves', async () => {
   const { page } = await open('', { modules: [] });
   const message = await page.evaluate(async () => {
-    const { inject, createContext } = await import('@mnx/runtime');
+    const { inject, createContext } = await import('@zubra/runtime');
     try { inject(createContext(1)); } catch (error) { return error.message; }
   });
-  assert.equal(message, 'mnx: inject() must be called while a component is setting up (see https://github.com/journey-to-code-org/open.mnx#script-state-and-hooks)');
+  assert.equal(message, 'zubra: inject() must be called while a component is setting up (see https://github.com/journey-to-code-org/zubra#script-state-and-hooks)');
   await page.close();
 });
 
 test('the nearest provider answers, and outer providers never see the request', async () => {
   const { page } = await open(`
-    <mnx-theme-provider id="outer">
-      <mnx-theme-provider id="inner"><mnx-theme-label id="deep"></mnx-theme-label></mnx-theme-provider>
-      <mnx-theme-label id="mid"></mnx-theme-label>
-    </mnx-theme-provider>`, { modules: ['theme-provider', 'theme-label'] });
+    <zb-theme-provider id="outer">
+      <zb-theme-provider id="inner"><zb-theme-label id="deep"></zb-theme-label></zb-theme-provider>
+      <zb-theme-label id="mid"></zb-theme-label>
+    </zb-theme-provider>`, { modules: ['theme-provider', 'theme-label'] });
   const read = () => page.evaluate(() => ({
     deep: document.getElementById('deep').querySelector('span').textContent,
     mid: document.getElementById('mid').querySelector('span').textContent,
@@ -161,12 +161,12 @@ test('the nearest provider answers, and outer providers never see the request', 
 });
 
 test('a consumer that was not answered asks again when a provider announces itself', async () => {
-  const { page } = await open('<section id="late"><mnx-theme-label id="waiting"></mnx-theme-label></section>', {
+  const { page } = await open('<section id="late"><zb-theme-label id="waiting"></zb-theme-label></section>', {
     modules: ['theme-label'],
   });
   const result = await page.evaluate(async () => {
     const { theme } = await import('/theme.js');
-    const { ContextProviderEvent } = await import('@mnx/runtime');
+    const { ContextProviderEvent } = await import('@zubra/runtime');
     const label = document.getElementById('waiting');
     const before = label.querySelector('span').textContent;
     const section = document.getElementById('late');
@@ -184,7 +184,7 @@ test('a consumer that was not answered asks again when a provider announces itse
 });
 
 test('a disconnected consumer unsubscribes from its provider', async () => {
-  const { page } = await open('<section id="counting"><mnx-theme-label id="subscriber"></mnx-theme-label></section>', {
+  const { page } = await open('<section id="counting"><zb-theme-label id="subscriber"></zb-theme-label></section>', {
     beforeModules: `
       const { theme } = await import('/theme.js');
       window.subscribers = new Set();

@@ -1,0 +1,16 @@
+<script>
+  const featuresDefault = ["Static HTML", "Scoped slots", "Escaped output"]
+</script>
+<zb-feature-list ready={true} mode="active" features={featuresDefault}>
+  <main>
+    <zb-if test={ready && mode == "active"}>
+      <ul>
+        <zb-each items={features} as="feature" index="i">
+          <li data-position={i + 1}>{feature}</li>
+        </zb-each>
+      </ul>
+      <zb-else><p>Features are not available.</p></zb-else>
+    </zb-if>
+    <zb-slot name="actions"><a href="/">Continue</a></zb-slot>
+  </main>
+</zb-feature-list>

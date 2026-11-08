@@ -1,4 +1,4 @@
-import type { MnxElementClass } from './index.js';
+import type { ZubraElementClass } from './index.js';
 
 export interface RenderOptions {
   /** The element's prop values (JSON). */
@@ -11,10 +11,10 @@ export interface RenderOptions {
 
 /** Register how to server-render `tag`. Called by the build plugin's server output. */
 export declare function registerRenderer(tag: string, render: (props: Record<string, unknown>, slots: Record<string, string>) => string): void;
-/** Whether `Element` is an mnx element that can be rendered here. */
-export declare function canRender(Element: unknown): Element is MnxElementClass;
+/** Whether `Element` is a zubra element that can be rendered here. */
+export declare function canRender(Element: unknown): Element is ZubraElementClass;
 /** The element's server-rendered HTML, which it hydrates in the browser. */
-export declare function renderToString(Element: MnxElementClass, options?: RenderOptions): string;
+export declare function renderToString(Element: ZubraElementClass, options?: RenderOptions): string;
 /**
  * An element's server-rendered content for a host a framework renders bare: a shadow-DOM
  * element's declarative shadow root, or a light-DOM element's rendered children, plus a form
@@ -22,6 +22,6 @@ export declare function renderToString(Element: MnxElementClass, options?: Rende
  * The React and Vue wrappers use it; a framework must leave the host's content alone while
  * hydrating (`dangerouslySetInnerHTML`, `innerHTML`).
  */
-export declare function serverContent(Element: MnxElementClass, options?: { props?: Record<string, unknown>; name?: string }): string;
+export declare function serverContent(Element: ZubraElementClass, options?: { props?: Record<string, unknown>; name?: string }): string;
 /** `serverContent` for a shadow-DOM element only (the 2.11 name). */
-export declare function shadowContent(Element: MnxElementClass, options?: { props?: Record<string, unknown>; name?: string }): string;
+export declare function shadowContent(Element: ZubraElementClass, options?: { props?: Record<string, unknown>; name?: string }): string;

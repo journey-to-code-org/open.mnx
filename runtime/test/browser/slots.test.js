@@ -1,4 +1,4 @@
-// mnx-slot in compiled components: light-DOM projection (the default) and native <slot> in
+// zb-slot in compiled components: light-DOM projection (the default) and native <slot> in
 // shadow components, fresh and hydrated. `npm run test:browser`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,13 +7,13 @@ import { join } from 'node:path';
 import { useBrowser, open, compiler, here, site } from './harness.js';
 
 useBrowser({
-  card: join(here, 'fixtures/card.mnx'),
-  panel: join(here, 'fixtures/panel.mnx'),
+  card: join(here, 'fixtures/card.zb'),
+  panel: join(here, 'fixtures/panel.zb'),
 });
 
 const readCard = (page) =>
   page.evaluate(() => {
-    const el = document.querySelector('mnx-card');
+    const el = document.querySelector('zb-card');
     return {
       header: el.querySelector('header').innerHTML.replace(/<!--.*?-->/g, ''),
       section: el.querySelector('section')?.innerHTML.replace(/<!--.*?-->/g, '') ?? null,
@@ -22,8 +22,8 @@ const readCard = (page) =>
   });
 
 test("the element's own children are moved into its slots", async () => {
-  const { page, messages } = await open('<mnx-card><h2 slot="title">Mine</h2>\n  <p>Body <b>text</b></p></mnx-card>', {
-    beforeModules: `window.mine = document.querySelector('mnx-card h2'); window.body = document.querySelector('mnx-card p');`,
+  const { page, messages } = await open('<zb-card><h2 slot="title">Mine</h2>\n  <p>Body <b>text</b></p></zb-card>', {
+    beforeModules: `window.mine = document.querySelector('zb-card h2'); window.body = document.querySelector('zb-card p');`,
     modules: ['card'],
   });
   assert.deepEqual(await readCard(page), {
@@ -32,17 +32,17 @@ test("the element's own children are moved into its slots", async () => {
     footer: 'Card footer',
   });
   const same = await page.evaluate(() =>
-    document.querySelector('mnx-card header h2') === window.mine && document.querySelector('mnx-card section p') === window.body);
+    document.querySelector('zb-card header h2') === window.mine && document.querySelector('zb-card section p') === window.body);
   assert.equal(same, true, 'the same nodes, moved — not copies');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test('an empty slot shows its fallback, which stays live', async () => {
-  const { page } = await open('<mnx-card></mnx-card>', { modules: ['card'] });
+  const { page } = await open('<zb-card></zb-card>', { modules: ['card'] });
   assert.deepEqual(await readCard(page), { header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer' });
   await page.evaluate(async () => {
-    const el = document.querySelector('mnx-card');
+    const el = document.querySelector('zb-card');
     el.heading = 'Renamed';
     await el.updateComplete;
   });
@@ -50,13 +50,13 @@ test('an empty slot shows its fallback, which stays live', async () => {
   await page.close();
 });
 
-test('slotted content inside an mnx-if comes back when the branch does', async () => {
-  const { page } = await open('<mnx-card><p>Kept</p></mnx-card>', {
-    beforeModules: `window.kept = document.querySelector('mnx-card p');`,
+test('slotted content inside an zb-if comes back when the branch does', async () => {
+  const { page } = await open('<zb-card><p>Kept</p></zb-card>', {
+    beforeModules: `window.kept = document.querySelector('zb-card p');`,
     modules: ['card'],
   });
   const toggle = (value) => page.evaluate(async (value) => {
-    const el = document.querySelector('mnx-card');
+    const el = document.querySelector('zb-card');
     el.open = value;
     await el.updateComplete;
   }, value);
@@ -64,12 +64,12 @@ test('slotted content inside an mnx-if comes back when the branch does', async (
   assert.equal((await readCard(page)).section, null);
   await toggle(true);
   assert.equal((await readCard(page)).section, '<p>Kept</p>');
-  assert.equal(await page.evaluate(() => document.querySelector('mnx-card section p') === window.kept), true);
+  assert.equal(await page.evaluate(() => document.querySelector('zb-card section p') === window.kept), true);
   await page.close();
 });
 
 test('content for a slot that does not exist is reported', async () => {
-  const { page, messages } = await open('<mnx-card><p slot="nope">?</p></mnx-card>', { modules: ['card'] });
+  const { page, messages } = await open('<zb-card><p slot="nope">?</p></zb-card>', { modules: ['card'] });
   assert.ok(messages.some((message) => message.startsWith('warning:') && message.includes('no slot named "nope"')));
   assert.equal((await readCard(page)).section, '<p>No content</p>');
   await page.close();
@@ -78,15 +78,15 @@ test('content for a slot that does not exist is reported', async () => {
 test('hydrates supplied slot content as-is and binds the fallback of empty slots', async () => {
   const slots = join(site, 'card.slots.json');
   writeFileSync(slots, JSON.stringify({ title: '<h2>Server title</h2>' }));
-  const html = compiler(join(here, 'fixtures/card.mnx'), '--slots', slots);
+  const html = compiler(join(here, 'fixtures/card.zb'), '--slots', slots);
   assert.match(html, /<!--\[!--><h2>Server title<\/h2><!--\]-->/);
   assert.match(html, /<!--\[--><p>No content<\/p><!--\]-->/);
   const { page, messages } = await open(html, {
-    beforeModules: `window.before = [...document.querySelectorAll('mnx-card *')];`,
+    beforeModules: `window.before = [...document.querySelectorAll('zb-card *')];`,
     modules: ['card'],
   });
   const result = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-card');
+    const el = document.querySelector('zb-card');
     const same = [...el.querySelectorAll('*')].every((node, i) => node === window.before[i]);
     el.heading = 'Updated';
     el.open = false;
@@ -103,9 +103,9 @@ test('hydrates supplied slot content as-is and binds the fallback of empty slots
 });
 
 test('shadow components use native slots', async () => {
-  const { page, messages } = await open('<mnx-panel><h3 slot="title">Mine</h3>Body</mnx-panel><mnx-panel id="empty"></mnx-panel>', { modules: ['panel'] });
+  const { page, messages } = await open('<zb-panel><h3 slot="title">Mine</h3>Body</zb-panel><zb-panel id="empty"></zb-panel>', { modules: ['panel'] });
   const result = await page.evaluate(async () => {
-    const [full, empty] = document.querySelectorAll('mnx-panel');
+    const [full, empty] = document.querySelectorAll('zb-panel');
     const assigned = (el, selector) => el.shadowRoot.querySelector(selector).assignedNodes().map((node) => node.textContent);
     const before = { title: assigned(full, 'slot[name=title]'), body: assigned(full, 'slot:not([name])') };
     const fallback = empty.shadowRoot.querySelector('slot[name=title]').textContent;
@@ -123,14 +123,14 @@ test('shadow components use native slots', async () => {
 test('a server-rendered shadow component hydrates its declarative shadow root', async () => {
   const slots = join(site, 'panel.slots.json');
   writeFileSync(slots, JSON.stringify({ title: '<h3>Server</h3>' }));
-  const html = compiler(join(here, 'fixtures/panel.mnx'), '--slots', slots);
+  const html = compiler(join(here, 'fixtures/panel.zb'), '--slots', slots);
   assert.match(html, /<template shadowrootmode="open">.*<slot name="title"><h3>Panel<\/h3><\/slot>.*<\/template><h3 slot="title">Server<\/h3>/s);
   const { page, messages } = await open(html, {
-    beforeModules: `window.slotEl = document.querySelector('mnx-panel').shadowRoot.querySelector('slot[name=title]');`,
+    beforeModules: `window.slotEl = document.querySelector('zb-panel').shadowRoot.querySelector('slot[name=title]');`,
     modules: ['panel'],
   });
   const result = await page.evaluate(async () => {
-    const el = document.querySelector('mnx-panel');
+    const el = document.querySelector('zb-panel');
     const slot = el.shadowRoot.querySelector('slot[name=title]');
     el.heading = 'Changed';
     await el.updateComplete;
@@ -147,13 +147,13 @@ test('a server-rendered shadow component hydrates its declarative shadow root', 
 
 /** Run `fn(card)` in the page, wait for DOM observers and updates, then read the card. */
 async function change(page, fn) {
-  await page.evaluate(`(async () => { const card = document.querySelector('mnx-card'); (${fn})(card);
+  await page.evaluate(`(async () => { const card = document.querySelector('zb-card'); (${fn})(card);
     await new Promise((resolve) => setTimeout(resolve)); await card.updateComplete; })()`);
   return readCard(page);
 }
 
 test("the host's child methods put content into its slots after startup", async () => {
-  const { page, messages } = await open('<mnx-card></mnx-card>', { modules: ['card'] });
+  const { page, messages } = await open('<zb-card></zb-card>', { modules: ['card'] });
   assert.deepEqual(await readCard(page), { header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer' });
 
   // React: appendChild / insertBefore(node, sibling) / removeChild on the host.
@@ -191,14 +191,14 @@ test("the host's child methods put content into its slots after startup", async 
   assert.equal(card.section, 'only');
 
   assert.equal(await page.evaluate(() => {
-    try { document.querySelector('mnx-card').removeChild(document.createElement('p')); return 'no error'; } catch (error) { return error.name; }
+    try { document.querySelector('zb-card').removeChild(document.createElement('p')); return 'no error'; } catch (error) { return error.name; }
   }), 'NotFoundError', 'removing something that was never there still throws');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
 test('content removed through its real parent leaves its slot (Vue removes via parentNode)', async () => {
-  const { page } = await open('<mnx-card><p id="mine">mine</p></mnx-card>', { modules: ['card'] });
+  const { page } = await open('<zb-card><p id="mine">mine</p></zb-card>', { modules: ['card'] });
   const card = await change(page, () => { const p = document.getElementById('mine'); p.parentNode.removeChild(p); });
   assert.equal(card.section, '<p>No content</p>');
   // Moved elsewhere by the page: no longer the card's, so it isn't pulled back later.
@@ -211,7 +211,7 @@ test('content removed through its real parent leaves its slot (Vue removes via p
 });
 
 test('content for a slot that is not rendered waits, and can still be removed', async () => {
-  const { page, messages } = await open('<mnx-card open="false"></mnx-card>', { modules: ['card'] });
+  const { page, messages } = await open('<zb-card open="false"></zb-card>', { modules: ['card'] });
   let card = await change(page, (el) => {
     window.kept = Object.assign(document.createElement('p'), { textContent: 'kept' });
     window.gone = Object.assign(document.createElement('p'), { textContent: 'gone' });
@@ -229,7 +229,7 @@ test('content for a slot that is not rendered waits, and can still be removed', 
 });
 
 test('content for a slot that does not exist is reported, not shown', async () => {
-  const { page, messages } = await open('<mnx-card></mnx-card>', { modules: ['card'] });
+  const { page, messages } = await open('<zb-card></zb-card>', { modules: ['card'] });
   const card = await change(page, (el) => {
     const stray = document.createElement('p');
     stray.slot = 'nope';
@@ -241,7 +241,7 @@ test('content for a slot that does not exist is reported, not shown', async () =
 });
 
 test("changing a slotted element's slot attribute moves it to that slot", async () => {
-  const { page } = await open('<mnx-card><h2 slot="title" id="t">T</h2></mnx-card>', { modules: ['card'] });
+  const { page } = await open('<zb-card><h2 slot="title" id="t">T</h2></zb-card>', { modules: ['card'] });
   let card = await change(page, () => { document.getElementById('t').slot = ''; });
   assert.deepEqual(card, { header: '<h2>Card</h2>', section: '<h2 slot="" id="t">T</h2>', footer: 'Card footer' },
     'the slot it left shows its fallback again');
@@ -251,15 +251,15 @@ test("changing a slotted element's slot attribute moves it to that slot", async 
 });
 
 test('a showing fallback is kept, not re-rendered, when its slot stays empty', async () => {
-  const { page } = await open('<mnx-card></mnx-card>', { modules: ['card'] });
-  await page.evaluate(() => { window.fallback = document.querySelector('mnx-card section p'); });
+  const { page } = await open('<zb-card></zb-card>', { modules: ['card'] });
+  await page.evaluate(() => { window.fallback = document.querySelector('zb-card section p'); });
   await change(page, (el) => { el.textContent = ''; });
-  assert.equal(await page.evaluate(() => window.fallback === document.querySelector('mnx-card section p')), true);
+  assert.equal(await page.evaluate(() => window.fallback === document.querySelector('zb-card section p')), true);
   await page.close();
 });
 
 test('content present at startup for a slot that is not rendered can be removed while it waits', async () => {
-  const { page, messages } = await open('<mnx-card open="false"><p id="early">early</p><p>stays</p></mnx-card>', {
+  const { page, messages } = await open('<zb-card open="false"><p id="early">early</p><p>stays</p></zb-card>', {
     beforeModules: "window.early = document.getElementById('early');",
     modules: ['card'],
   });
@@ -272,7 +272,7 @@ test('content present at startup for a slot that is not rendered can be removed 
 
 test('content removed through its real parent stays out when the host gets new content at once', async () => {
   // Vue's update order: remove the old child via parentNode, then insert the new one via the host.
-  const { page } = await open('<mnx-card><p id="old">old</p></mnx-card>', { modules: ['card'] });
+  const { page } = await open('<zb-card><p id="old">old</p></zb-card>', { modules: ['card'] });
   const card = await change(page, (el) => {
     const old = document.getElementById('old');
     old.parentNode.removeChild(old);
@@ -285,8 +285,8 @@ test('content removed through its real parent stays out when the host gets new c
 test("framework markers stay with their content, so a framework can update a slot by its markers (Lit's parts)", async () => {
   // Lit renders `${cond ? html`<h2 slot="title">…` : nothing}` as: start comment, content, then
   // the whitespace after it as the end. It clears and refills between those, through their parent.
-  const { page, messages } = await open('<mnx-card><!--start--><h2 slot="title">T</h2>\n<!--items--><p>1</p></mnx-card>', {
-    beforeModules: "window.start = document.querySelector('mnx-card').firstChild; window.end = document.querySelector('mnx-card h2').nextSibling;",
+  const { page, messages } = await open('<zb-card><!--start--><h2 slot="title">T</h2>\n<!--items--><p>1</p></zb-card>', {
+    beforeModules: "window.start = document.querySelector('zb-card').firstChild; window.end = document.querySelector('zb-card h2').nextSibling;",
     modules: ['card'],
   });
   let card = await readCard(page);
@@ -304,8 +304,8 @@ test("framework markers stay with their content, so a framework can update a slo
 });
 
 test("content inserted next to another slot's marker moves to its own slot (Svelte's anchors)", async () => {
-  const { page } = await open('<mnx-card><p>1</p><!--anchor--></mnx-card>', {
-    beforeModules: "window.anchor = document.querySelector('mnx-card').lastChild;",
+  const { page } = await open('<zb-card><p>1</p><!--anchor--></zb-card>', {
+    beforeModules: "window.anchor = document.querySelector('zb-card').lastChild;",
     modules: ['card'],
   });
   const card = await change(page, () => {
@@ -318,7 +318,7 @@ test("content inserted next to another slot's marker moves to its own slot (Svel
 });
 
 test('markers and whitespace alone leave a slot empty', async () => {
-  const { page } = await open('<mnx-card>\n  <!--marker-->\n</mnx-card>', { modules: ['card'] });
+  const { page } = await open('<zb-card>\n  <!--marker-->\n</zb-card>', { modules: ['card'] });
   assert.deepEqual(await readCard(page), { header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer' });
   await page.close();
 });

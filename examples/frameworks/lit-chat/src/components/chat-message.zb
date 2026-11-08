@@ -1,0 +1,71 @@
+<!--
+  One message: avatar, author, time, text (with @mentions and links picked out), the message it
+  replies to, and reactions. Who "you" are comes from context (the app provides it).
+  @fires reacttoggle - A reaction was toggled; `detail` is the emoji.
+  @fires reply - Reply was chosen.
+-->
+<script>
+  import { emit, inject } from '@zubra/runtime'
+  import { userContext } from '../user.js'
+
+  // `inject` gives a signal that follows the provider, so `me` (and everything derived from it)
+  // updates when the user changes.
+  const user = inject(userContext)
+  const me = user.get()?.name ?? ""
+  const QUICK = ["👍", "🎉", "❤️", "😂"]
+  const mine = message.author === me
+  const initials = message.author.split(/\s+/).map((part) => part[0]).join("").slice(0, 2)
+  const hue = [...message.author].reduce((sum, char) => sum + char.charCodeAt(0) * 47, 0) % 360
+  const time = new Date(message.time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  const reactions = Object.entries(message.reactions ?? {}).filter(([, people]) => people.length > 0)
+  // Text as pieces, so mentions and links are elements, not HTML strings.
+  const pieces = message.text.split(/(@[A-Za-z]+|https?:\/\/\S+)/g).filter(Boolean).map((text, index) => ({
+    index,
+    text,
+    kind: text.startsWith("@") ? "mention" : /^https?:/.test(text) ? "link" : "text",
+    me: text.startsWith("@") && me.toLowerCase().startsWith(text.slice(1).toLowerCase()),
+  }))
+</script>
+<style>
+  :host { display: block; }
+  article { position: relative; display: grid; grid-template-columns: 2.25rem 1fr; gap: 0 0.7rem; padding: 0.45rem 1.25rem; }
+  article:hover { background: var(--hover); }
+  article.mentioned { background: var(--mention-wash); box-shadow: inset 3px 0 var(--mention); }
+  .avatar { grid-row: span 3; display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 0.6rem; color: white; font-weight: 800; font-size: 0.8rem; }
+  header { display: flex; align-items: baseline; gap: 0.5rem; }
+  .author { font-weight: 700; }
+  .you { font-size: 0.7rem; font-weight: 700; color: var(--muted); }
+  time { font-size: 0.75rem; color: var(--muted); }
+  .quote { margin: 0.15rem 0 0.25rem; padding-left: 0.6rem; border-left: 3px solid var(--line); color: var(--muted); font-size: 0.875rem; }
+  p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .mention { padding: 0 0.15rem; border-radius: 0.3rem; background: var(--mention-wash); color: var(--mention); font-weight: 600; }
+  .mention.me { background: var(--mention); color: white; }
+  a { color: var(--link); }
+  .reactions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+  .reactions button { display: inline-flex; gap: 0.3rem; align-items: center; padding: 0.05rem 0.5rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: inherit; font: inherit; font-size: 0.8125rem; cursor: pointer; }
+  .reactions button[aria-pressed=true] { border-color: var(--link); background: var(--mention-wash); }
+  .tools { position: absolute; top: -0.9rem; right: 1rem; display: flex; opacity: 0; gap: 0.1rem; padding: 0.15rem; border: 1px solid var(--line); border-radius: 0.55rem; background: var(--surface); box-shadow: 0 2px 8px #0002; }
+  /* Transparent rather than hidden, so the keyboard can reach it; it shows on hover or focus. */
+  article:hover .tools, .tools:focus-within { opacity: 1; }
+  .tools button { border: 0; background: none; padding: 0.15rem 0.35rem; border-radius: 0.35rem; cursor: pointer; font: inherit; color: inherit; }
+  .tools button:hover { background: var(--hover); }
+</style>
+<chat-message message={{ id: "", author: "", text: "", time: 0, reactions: {}, replyTo: null }}>
+  <article class:mentioned={pieces.some((piece) => piece.me)} data-mine={mine ? "true" : "false"}>
+    <span class="avatar" style:background={`hsl(${hue} 55% 40%)`} aria-hidden="true">{initials}</span>
+    <header><span class="author">{message.author}</span><zb-if test={mine}><span class="you">YOU</span></zb-if><time>{time}</time></header>
+    <zb-if test={message.replyTo}><div class="quote">{message.replyTo?.author}: {message.replyTo?.text}</div></zb-if>
+    <p><zb-each items={pieces} as="piece" key={piece.index}><zb-if test={piece.kind === "mention"}><span class="mention" class:me={piece.me}>{piece.text}</span><zb-else-if test={piece.kind === "link"}><a href={piece.text} target="_blank" rel="noopener">{piece.text}</a></zb-else-if><zb-else>{piece.text}</zb-else></zb-if></zb-each></p>
+    <zb-if test={reactions.length > 0}>
+      <div class="reactions">
+        <zb-each items={reactions} as="reaction" key={reaction[0]}>
+          <button type="button" aria-pressed={reaction[1].includes(me) ? "true" : "false"} title={reaction[1].join(", ")} onclick={() => emit('reacttoggle', reaction[0])}>{reaction[0]} <b>{reaction[1].length}</b></button>
+        </zb-each>
+      </div>
+    </zb-if>
+    <div class="tools" role="toolbar" aria-label="Message actions">
+      <zb-each items={QUICK} as="emoji" key={emoji}><button type="button" aria-label={`React ${emoji}`} onclick={() => emit('reacttoggle', emoji)}>{emoji}</button></zb-each>
+      <button type="button" class="reply" onclick={() => emit('reply')}>Reply</button>
+    </div>
+  </article>
+</chat-message>

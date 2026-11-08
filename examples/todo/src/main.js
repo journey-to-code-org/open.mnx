@@ -1,8 +1,8 @@
 // Importing a component defines its element; the page's <todo-app> starts by itself.
-import './components/todo-app.mnx';
+import './components/todo-app.zb';
 
 const app = document.querySelector('todo-app');
-const KEY = 'mnx-todo';
+const KEY = 'zb-todo';
 
 // Props are properties: give it the saved list, and save what it reports.
 try {

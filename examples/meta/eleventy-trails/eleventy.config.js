@@ -1,32 +1,32 @@
-// Eleventy with mnx (through @mnx/server), and no bundler:
+// Eleventy with zubra (through @zubra/server), and no bundler:
 //
-// - `{% mnx "trail-card", { … } %}` renders a component to HTML at build time.
+// - `{% zubra "trail-card", { … } %}` renders a component to HTML at build time.
 // - A transform finishes each page: the CSS of the components it used in its head, and their
 //   modules at the end of its body.
-// - After the build, `writeAssets()` writes the components' browser modules and @mnx/runtime to
-//   _site/_mnx/.
+// - After the build, `writeAssets()` writes the components' browser modules and @zubra/runtime to
+//   _site/_zubra/.
 //
-// MINIFY=1 minifies the HTML, keeping mnx's hydration markers (they're comments: see below).
+// MINIFY=1 minifies the HTML, keeping zubra's hydration markers (they're comments: see below).
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createMnx } from '@mnx/server';
-import { MNX_MARKER_COMMENT } from '@mnx/compiler';
+import { createZubra } from '@zubra/server';
+import { ZUBRA_MARKER_COMMENT } from '@zubra/compiler';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const mnx = createMnx({ components: join(here, 'components') });
+const zubra = createZubra({ components: join(here, 'components') });
 
 export default function (eleventyConfig) {
-  const pages = new Map(); // page URL → its mnx page (what it rendered)
+  const pages = new Map(); // page URL → its zubra page (what it rendered)
   const pageFor = (url) => {
-    if (!pages.has(url)) pages.set(url, mnx.page());
+    if (!pages.has(url)) pages.set(url, zubra.page());
     return pages.get(url);
   };
 
-  eleventyConfig.addShortcode('mnx', function (name, props = {}) {
+  eleventyConfig.addShortcode('zubra', function (name, props = {}) {
     return pageFor(this.page?.url).render(name, props);
   });
 
-  eleventyConfig.addTransform('mnx', function (html) {
+  eleventyConfig.addTransform('zubra', function (html) {
     if (!this.page.outputPath?.endsWith('.html') || !pages.has(this.page.url)) return html;
     return pages.get(this.page.url).finish(html);
   });
@@ -38,15 +38,15 @@ export default function (eleventyConfig) {
       return minify(html, {
         collapseWhitespace: true,
         removeComments: true,
-        // mnx's hydration markers are comments: keep them, or the elements render afresh
+        // zubra's hydration markers are comments: keep them, or the elements render afresh
         // instead of hydrating. (MINIFY=naive leaves this out, to show that; the tests do.)
-        ignoreCustomComments: process.env.MINIFY === 'naive' ? [] : [MNX_MARKER_COMMENT],
+        ignoreCustomComments: process.env.MINIFY === 'naive' ? [] : [ZUBRA_MARKER_COMMENT],
         minifyCSS: true,
       });
     });
   }
 
-  eleventyConfig.on('eleventy.after', ({ dir }) => mnx.writeAssets(join(here, dir.output)));
+  eleventyConfig.on('eleventy.after', ({ dir }) => zubra.writeAssets(join(here, dir.output)));
 
   eleventyConfig.addPassthroughCopy({ public: '/' });
   return { dir: { input: '.', includes: '_includes', data: '_data', output: process.env.OUT ?? '_site' }, templateFormats: ['njk'] };

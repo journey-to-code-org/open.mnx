@@ -1,11 +1,11 @@
-// The help desk: Express routes, EJS views, mnx components rendered on the server and hydrated
+// The help desk: Express routes, EJS views, zubra components rendered on the server and hydrated
 // in the browser, and a store (MongoDB or memory).
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ejs from 'ejs';
 import express from 'express';
 import { sessions } from './auth.js';
-import { mnx } from '@mnx/server/express';
+import { zubra } from '@zubra/server/express';
 import { SLA_HOURS } from './store/seed.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -30,8 +30,8 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
   app.disable('x-powered-by');
   app.use(express.urlencoded({ extended: false }));
   app.use(express.static(join(here, '../public')));
-  // Components rendered into the views, and their modules and @mnx/runtime served under /_mnx.
-  app.use(mnx({ components: join(here, '../components'), cache }));
+  // Components rendered into the views, and their modules and @zubra/runtime served under /_zubra.
+  app.use(zubra({ components: join(here, '../components'), cache }));
   app.use(auth.middleware(store));
 
   /**
@@ -39,8 +39,8 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
    * used to its head and their modules to the end of its body.
    */
   async function page(res, view, locals = {}, status = 200) {
-    const components = res.locals.mnx;
-    const data = { ...res.locals, ...locals, mnx: components.render, user: res.locals.user };
+    const components = res.locals.zubra;
+    const data = { ...res.locals, ...locals, zubra: components.render, user: res.locals.user };
     const body = await ejs.renderFile(join(VIEWS, `${view}.ejs`), data, { async: false });
     const html = await ejs.renderFile(join(VIEWS, 'layout.ejs'), { ...data, body });
     res.status(status).type('html');

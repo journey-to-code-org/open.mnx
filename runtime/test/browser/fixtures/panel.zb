@@ -1,0 +1,3 @@
+<zb-panel shadow heading="Panel">
+  <div class="panel"><zb-slot name="title"><h3>{heading}</h3></zb-slot><zb-slot>Nothing here</zb-slot></div>
+</zb-panel>

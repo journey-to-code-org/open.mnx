@@ -1,0 +1,4 @@
+<!-- A small labelled badge. -->
+<zb-badge label="new" count={0} info={{ color: "gray" }}>
+  <span class="badge" data-color={info.color}><zb-slot name="icon"></zb-slot> <b>{label}</b> <i>{count}</i> <zb-slot></zb-slot></span>
+</zb-badge>

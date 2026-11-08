@@ -1,9 +1,9 @@
-//! The JSX front end: a function component in a `.mnx.jsx` / `.mnx.tsx` file, lowered to the
-//! `.mnx` format so it shares the parser's checks, the IR and every output.
+//! The JSX front end: a function component in a `.zb.jsx` / `.zb.tsx` file, lowered to the
+//! `.zb` format so it shares the parser's checks, the IR and every output.
 //!
 //! ```jsx
 //! /** A two-star rating. */
-//! export default function MnxRating({ value = 0, onValueChange }) {
+//! export default function ZbRating({ value = 0, onValueChange }) {
 //!   let hovered = null                                  // state
 //!   const shown = hovered ?? value                      // derived: stays in sync
 //!   function rate(stars) { value = stars; onValueChange(stars) }
@@ -16,16 +16,16 @@
 //! }
 //! ```
 //!
-//! - The function's name is the tag (`MnxRating` → `<mnx-rating>`). Returning the host itself
-//!   (`<mnx-rating shadow>…</mnx-rating>`) sets its flags.
+//! - The function's name is the tag (`ZbRating` → `<zb-rating>`). Returning the host itself
+//!   (`<zb-rating shadow>…</zb-rating>`) sets its flags.
 //! - Destructured parameters are props, with their defaults; one without a default is required.
 //!   `on<Name>` parameters are events: calling `onValueChange(x)` fires `valuechange` with
 //!   `detail: x` (`plan/decisions/event-declaration.md`). `children` is the default slot.
 //! - The body runs once per element. A top-level `let` is state: reading it is reactive and
 //!   assigning it updates the DOM. A top-level `const` whose value reads props or state is
 //!   derived (a computed), so it stays in sync. Props are names, readable and writable.
-//! - In the returned JSX, `cond && <X/>` and `cond ? <A/> : <B/>` are `mnx-if`, and
-//!   `list.map((item, i) => <li key={…}>…</li>)` is a keyed `mnx-each`. Imported components are
+//! - In the returned JSX, `cond && <X/>` and `cond ? <A/> : <B/>` are `zb-if`, and
+//!   `list.map((item, i) => <li key={…}>…</li>)` is a keyed `zb-each`. Imported components are
 //!   used by their import name (`<Badge />`).
 //!
 //! The lowering keeps a map from the generated text back to the JSX source, so diagnostics point
@@ -85,7 +85,7 @@ pub fn remap(mut diagnostic: Diagnostic, top: Option<(&str, &Lowered)>) -> Diagn
     diagnostic
 }
 
-/// Whether a source without a path is a JSX component: an `.mnx` file starts with markup.
+/// Whether a source without a path is a JSX component: an `.zb` file starts with markup.
 pub fn looks_like_jsx(source: &str) -> bool {
     let start = source.trim_start();
     [
@@ -106,9 +106,9 @@ pub fn looks_like_jsx(source: &str) -> bool {
     })
 }
 
-/// Whether `path` is a JSX component (`.mnx.jsx` / `.mnx.tsx`).
+/// Whether `path` is a JSX component (`.zb.jsx` / `.zb.tsx`).
 pub fn is_jsx(path: &str) -> bool {
-    path.ends_with(".mnx.jsx") || path.ends_with(".mnx.tsx")
+    path.ends_with(".zb.jsx") || path.ends_with(".zb.tsx")
 }
 
 const VOID_ELEMENTS: &[&str] = &[
@@ -116,7 +116,7 @@ const VOID_ELEMENTS: &[&str] = &[
     "track", "wbr",
 ];
 
-/// The `.mnx` text a JSX component lowers to, and the way back.
+/// The `.zb` text a JSX component lowers to, and the way back.
 #[derive(Clone, Debug)]
 pub struct Lowered {
     pub text: String,
@@ -205,7 +205,7 @@ fn error_at(source: &str, offset: u32, message: impl Into<String>) -> Diagnostic
     )
 }
 
-/// `MnxRating` → `mnx-rating`.
+/// `ZbRating` → `zb-rating`.
 fn tag_of(name: &str) -> String {
     let mut tag = String::new();
     for (i, character) in name.chars().enumerate() {
@@ -266,7 +266,7 @@ pub fn tag_in(source: &str, path: &str) -> Result<String, Diagnostic> {
     }
     Err(Diagnostic::new(
         Span::new(1, 1),
-        "a JSX component file default-exports a named function, e.g. `export default function MnxCard() {…}`",
+        "a JSX component file default-exports a named function, e.g. `export default function ZbCard() {…}`",
     ))
 }
 
@@ -278,7 +278,7 @@ pub fn lower(source: &str, path: &str, loader: Option<Loader<'_>>) -> Result<Low
     Ok(lowered)
 }
 
-/// The JSX component as a readable `.mnx` file, for `mnx convert --as mnx`: the script as
+/// The JSX component as a readable `.zb` file, for `zubra convert --as zubra`: the script as
 /// written (`let` state, props by name, `on…` calls as `emit()`), the template with its
 /// indentation, and nothing the compiler adds for itself.
 pub fn lower_readable(source: &str, path: &str) -> Result<String, Diagnostic> {
@@ -416,7 +416,7 @@ fn lower_uncached(
                     return Err(error_at(
                         source,
                         export.span.start,
-                        "the default export must be the component, as a named function: `export default function MnxCard(…) {…}`",
+                        "the default export must be the component, as a named function: `export default function ZbCard(…) {…}`",
                     ));
                 };
                 export_start = export.span.start;
@@ -459,14 +459,14 @@ fn lower_uncached(
     let Some(function) = function else {
         return Err(Diagnostic::new(
             Span::new(1, 1),
-            "a JSX component file default-exports its component: `export default function MnxCard(…) {…}`",
+            "a JSX component file default-exports its component: `export default function ZbCard(…) {…}`",
         ));
     };
     let Some(id) = &function.id else {
         return Err(error_at(
             source,
             function.span.start,
-            "name the component function: its name is the tag (`MnxCard` → <mnx-card>)",
+            "name the component function: its name is the tag (`ZbCard` → <zb-card>)",
         ));
     };
     let name = id.name.as_str();
@@ -477,7 +477,7 @@ fn lower_uncached(
             id.span.start,
             format!("`{name}` would be <{tag}>, but a custom element's name needs a hyphen"),
         )
-        .with_help(format!("name it with two words, e.g. `Mnx{name}`")));
+        .with_help(format!("name it with two words, e.g. `Zb{name}`")));
     }
     if function.r#async || function.generator {
         return Err(error_at(
@@ -580,11 +580,11 @@ fn lower_uncached(
             .values()
             .any(|kind| matches!(kind, Kind::Callback(_)));
         if emits {
-            out.synthetic("import { emit } from '@mnx/runtime';\n", 0);
+            out.synthetic("import { emit } from '@zubra/runtime';\n", 0);
         }
     } else {
         out.synthetic(
-            &format!("import {{ state as {STATE}, computed as {COMPUTED}, emit as {EMIT} }} from \"@mnx/runtime\";\n"),
+            &format!("import {{ state as {STATE}, computed as {COMPUTED}, emit as {EMIT} }} from \"@zubra/runtime\";\n"),
             0,
         );
         out.synthetic(HELPERS, 0);
@@ -828,7 +828,7 @@ impl Lowering<'_, '_> {
                     pattern.span().start,
                     "destructure the props in the parameter list",
                 )
-                .with_help("e.g. `function MnxCard({ heading = \"Hi\", open = false }) {…}`"));
+                .with_help("e.g. `function ZbCard({ heading = \"Hi\", open = false }) {…}`"));
         };
         if let Some(rest) = &object.rest {
             return Err(self.error(
@@ -870,7 +870,7 @@ impl Lowering<'_, '_> {
             let symbol = binding.symbol_id();
             if name == "children" {
                 if default.is_some() {
-                    return Err(self.error(property.span.start, "`children` is the default slot; put fallback content in <mnx-slot> instead of a default"));
+                    return Err(self.error(property.span.start, "`children` is the default slot; put fallback content in <zb-slot> instead of a default"));
                 }
                 self.symbols.insert(symbol, Kind::Children);
                 continue;
@@ -1017,7 +1017,7 @@ impl Lowering<'_, '_> {
             Expression::Identifier(identifier)
                 if self.kind_of(identifier) == Some(&Kind::Children) =>
             {
-                out.synthetic("<mnx-slot></mnx-slot>", identifier.span.start as usize);
+                out.synthetic("<zb-slot></zb-slot>", identifier.span.start as usize);
                 Ok(())
             }
             Expression::LogicalExpression(logical)
@@ -1073,7 +1073,7 @@ impl Lowering<'_, '_> {
                 });
             }
         }
-        // Errors about the expression point at its `{`, as in an .mnx file.
+        // Errors about the expression point at its `{`, as in an .zb file.
         let before = self.source[..span.start as usize].trim_end();
         let brace = if before.ends_with('{') {
             before.len() - 1
@@ -1113,16 +1113,16 @@ impl Lowering<'_, '_> {
         alternate: Option<&Expression<'_>>,
         at: u32,
     ) -> Result<(), Diagnostic> {
-        out.synthetic("<mnx-if test=", at as usize);
+        out.synthetic("<zb-if test=", at as usize);
         self.expression(out, test, "{", "}")?;
         out.synthetic(">", at as usize);
         self.branch(out, consequent)?;
         if let Some(alternate) = alternate {
-            out.synthetic("<mnx-else>", alternate.span().start as usize);
+            out.synthetic("<zb-else>", alternate.span().start as usize);
             self.branch(out, alternate)?;
-            out.synthetic("</mnx-else>", alternate.span().end as usize);
+            out.synthetic("</zb-else>", alternate.span().end as usize);
         }
-        out.synthetic("</mnx-if>", at as usize);
+        out.synthetic("</zb-if>", at as usize);
         Ok(())
     }
 
@@ -1173,7 +1173,7 @@ impl Lowering<'_, '_> {
             ));
         }
         let body = strip_parentheses(arrow_result(arrow).expect("checked by list()"));
-        out.synthetic("<mnx-each items=", call.span.start as usize);
+        out.synthetic("<zb-each items=", call.span.start as usize);
         self.expression(out, items, "{", "}")?;
         out.synthetic(&format!(" as=\"{}\"", names[0]), arrow.span.start as usize);
         if let Some(index) = names.get(1) {
@@ -1208,7 +1208,7 @@ impl Lowering<'_, '_> {
         }
         out.synthetic(">", call.span.start as usize);
         self.node(out, body)?;
-        out.synthetic("</mnx-each>", call.span.end as usize);
+        out.synthetic("</zb-each>", call.span.end as usize);
         Ok(())
     }
 
@@ -1264,7 +1264,7 @@ impl Lowering<'_, '_> {
             let attribute = match attribute {
                 JSXAttributeItem::Attribute(attribute) => attribute,
                 JSXAttributeItem::SpreadAttribute(spread) if !name_is_component(&opening.name) => {
-                    // `{...attributes}` on an element: the same spread as in an .mnx template.
+                    // `{...attributes}` on an element: the same spread as in an .zb template.
                     if let Some(at) = contains_jsx(&spread.argument) {
                         return Err(self.error(at, "JSX inside a spread isn't supported"));
                     }
@@ -1275,7 +1275,7 @@ impl Lowering<'_, '_> {
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     return Err(self.error(
                         spread.span.start,
-                        "spreading onto an mnx component isn't supported; pass each prop",
+                        "spreading onto a zubra component isn't supported; pass each prop",
                     ));
                 }
             };
@@ -1294,7 +1294,7 @@ impl Lowering<'_, '_> {
                     let raw = &self.source
                         [literal.span.start as usize + 1..literal.span.end as usize - 1];
                     if raw.contains(['{', '}', '"']) {
-                        // Braces would be interpolation in an mnx attribute: pass the string as a value.
+                        // Braces would be interpolation in a zubra attribute: pass the string as a value.
                         let value = literal.value.as_str().unwrap_or_default();
                         out.synthetic(
                             &format!(
@@ -1374,7 +1374,7 @@ impl Lowering<'_, '_> {
             return Err(self
                 .error(at, format!("<{name}> isn't an imported component"))
                 .with_help(format!(
-                    "import it: `import {name} from './{}.mnx'`",
+                    "import it: `import {name} from './{}.zb'`",
                     kebab(name).trim_start_matches('-')
                 )));
         };
@@ -1383,7 +1383,7 @@ impl Lowering<'_, '_> {
             // compiling its markup still needs the import (see `components::load`).
             let _ = import_at;
             return Ok(format!(
-                "mnx-unresolved-{}",
+                "zb-unresolved-{}",
                 kebab(name).trim_start_matches('-')
             ));
         };

@@ -1,0 +1,49 @@
+<!--
+  A card on the board. Drag it to another column, or use the keyboard: Enter opens it,
+  Shift+←/→ moves it to the previous or next column, Shift+↑/↓ moves it up or down.
+  @fires cardopen - The card was opened (click or Enter).
+  @fires cardmove - Shift+←/→: `detail` is -1 or 1 (columns).
+  @fires cardreorder - Shift+↑/↓: `detail` is -1 or 1 (positions).
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+
+  let dragging = false
+  const initials = card.assignee ? card.assignee.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() : "?"
+  const hue = [...(card.assignee || "?")].reduce((sum, char) => sum + char.charCodeAt(0) * 47, 0) % 360
+
+  function dragstart(event) {
+    event.dataTransfer.setData('application/x-card', card.id)
+    event.dataTransfer.effectAllowed = 'move'
+    dragging = true
+  }
+</script>
+<style>
+  :host { display: block; }
+  article { display: grid; gap: 0.5rem; padding: 0.7rem 0.8rem; border-radius: 0.7rem; background: var(--surface); box-shadow: 0 1px 2px #0d122014, 0 2px 6px #0d12200a; border-left: 3px solid transparent; cursor: grab; user-select: none; }
+  article:hover { box-shadow: 0 1px 2px #0d122014, 0 6px 16px #0d122014; }
+  article:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  article.dragging { opacity: 0.4; }
+  article[data-priority=high] { border-left-color: var(--danger); }
+  article[data-priority=low] { border-left-color: var(--line); }
+  h3 { margin: 0; font-size: 0.9rem; font-weight: 600; line-height: 1.35; }
+  ul { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+  li { padding: 0.05rem 0.45rem; border-radius: 0.35rem; background: var(--chip); color: var(--chip-ink); font-size: 0.7rem; font-weight: 600; }
+  footer { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: var(--muted); }
+  .points { padding: 0 0.4rem; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; }
+  .avatar { margin-left: auto; display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; color: white; font-size: 0.65rem; font-weight: 800; }
+  .avatar.unassigned { background: #8a90a0; }
+</style>
+<task-card card={{ id: "", title: "", points: 0, assignee: "", tags: [], priority: "normal" }}>
+  <article draggable="true" tabindex="0" class:dragging data-priority={card.priority} aria-label={`${card.title}, ${card.points} points${card.assignee ? `, ${card.assignee}` : ""}`} onclick={() => emit('cardopen')} onkeydown.enter={() => emit('cardopen')} onkeydown.shift.left.prevent={() => emit('cardmove', -1)} onkeydown.shift.right.prevent={() => emit('cardmove', 1)} onkeydown.shift.up.prevent={() => emit('cardreorder', -1)} onkeydown.shift.down.prevent={() => emit('cardreorder', 1)} ondragstart={dragstart} ondragend={() => (dragging = false)}>
+    <h3>{card.title}</h3>
+    <zb-if test={card.tags.length > 0}>
+      <ul><zb-each items={card.tags} as="tag" key={tag}><li>{tag}</li></zb-each></ul>
+    </zb-if>
+    <footer>
+      <span class="points" title="Story points">{card.points}</span>
+      <span>{card.priority === "normal" ? "" : `${card.priority} priority`}</span>
+      <span class="avatar" class:unassigned={!card.assignee} style:background={card.assignee ? `hsl(${hue} 55% 40%)` : null} title={card.assignee || "Unassigned"} aria-hidden="true">{initials}</span>
+    </footer>
+  </article>
+</task-card>

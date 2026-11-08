@@ -1,4 +1,4 @@
-//! Golden tests: each `examples/<name>.mnx` compiles to the committed `examples/<name>.html`.
+//! Golden tests: each `examples/<name>.zb` compiles to the committed `examples/<name>.html`.
 //! Regenerate an expectation deliberately (after reviewing the diff), never by copying output blindly.
 use std::fs;
 
@@ -20,7 +20,7 @@ fn assert_golden(actual: &str, expected_file: &str) {
 /// declare props (defaults bound to script locals), and `{expr}` bindings with member access.
 #[test]
 fn header_sample_renders_with_script_defaults() {
-    let html = mnx_compiler::compile(&read("header.mnx"), "{}").unwrap();
+    let html = zubra::compile(&read("header.zb"), "{}").unwrap();
     assert_golden(&html, "header.html");
 }
 
@@ -28,7 +28,7 @@ fn header_sample_renders_with_script_defaults() {
 /// host as attributes, so a runtime can hydrate from the markup alone.
 #[test]
 fn header_sample_accepts_prop_overrides() {
-    let html = mnx_compiler::compile(&read("header.mnx"), &read("header.props.json")).unwrap();
+    let html = zubra::compile(&read("header.zb"), &read("header.props.json")).unwrap();
     assert_golden(&html, "header.override.html");
 }
 
@@ -36,21 +36,20 @@ fn header_sample_accepts_prop_overrides() {
 /// (paths into the template) that hydration binds to.
 #[test]
 fn header_sample_compiles_to_a_custom_element_module() {
-    let module =
-        mnx_compiler::compile_js(&read("header.mnx"), "@mnx/runtime", "header.mnx").unwrap();
+    let module = zubra::compile_js(&read("header.zb"), "@zubra/runtime", "header.zb").unwrap();
     assert_golden(&module, "header.js");
 }
 
 /// TypeScript declarations and the Custom Elements Manifest for the same component.
 #[test]
 fn header_sample_describes_itself_to_tools() {
-    let source = read("header.mnx");
+    let source = read("header.zb");
     assert_golden(
-        &mnx_compiler::compile_declarations(&source, "header.mnx").unwrap(),
+        &zubra::compile_declarations(&source, "header.zb").unwrap(),
         "header.d.ts",
     );
     assert_golden(
-        &mnx_compiler::compile_manifest(&source, "header.js").unwrap(),
+        &zubra::compile_manifest(&source, "header.js").unwrap(),
         "header.manifest.json",
     );
 }

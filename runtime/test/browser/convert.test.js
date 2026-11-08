@@ -1,4 +1,4 @@
-// `mnx convert`: a React component (tests/fixtures/convert/TodoItem.jsx), converted and run as a
+// `zubra convert`: a React component (tests/fixtures/convert/TodoItem.jsx), converted and run as a
 // custom element. What React did with hooks, it does with state, effects and refs.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,12 +8,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { useBrowser, open, repo } from './harness.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'mnx-convert-'));
-const converted = join(dir, 'todo-item.mnx.jsx');
+const dir = mkdtempSync(join(tmpdir(), 'zb-convert-'));
+const converted = join(dir, 'todo-item.zb.jsx');
 // (Registered before the harness's hooks, so the file exists when they compile it.)
 before(() => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
-  execFileSync(join(repo, 'target/debug/mnx'), ['convert', join(repo, 'tests/fixtures/convert/TodoItem.jsx'), '--out', converted], { stdio: 'pipe' });
+  execFileSync(join(repo, 'target/debug/zubra'), ['convert', join(repo, 'tests/fixtures/convert/TodoItem.jsx'), '--out', converted], { stdio: 'pipe' });
 });
 useBrowser({ 'todo-item': converted });
 

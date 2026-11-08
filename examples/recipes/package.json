@@ -1,5 +1,5 @@
 {
-  "name": "mnx-example-recipes",
+  "name": "zubra-example-recipes",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,11 +8,11 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../runtime"
+    "@zubra/runtime": "file:../../runtime"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../compiler",
-    "@mnx/unplugin": "file:../../plugin",
+    "@zubra/compiler": "file:../../compiler",
+    "@zubra/unplugin": "file:../../plugin",
     "astro": "7.4.7"
   }
 }

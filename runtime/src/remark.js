@@ -6,11 +6,11 @@
 // Rather than render such an element afresh, `remark` walks the template against the markup by
 // structure and puts the comments back, where that's unambiguous:
 // - a text anchor's text runs up to the next element, so its place is always known;
-// - an mnx-if region holds the branch the current values choose, and an mnx-each region one row
+// - an zb-if region holds the branch the current values choose, and an zb-each region one row
 //   per item, each with the shape of its block (checked element by element);
 // - a light-DOM slot region is the rest of its range, when nothing follows it there; its
 //   content is the fallback if it has the fallback's shape, and supplied content otherwise.
-// Anything else (an mnx-await, content projected into a child component, a region the server
+// Anything else (an zb-await, content projected into a child component, a region the server
 // left to the browser, other than one left empty) can't be placed for sure, and the element
 // renders afresh as before.
 
@@ -147,7 +147,7 @@ export function remark(root, template, parts, { blueprint, isOpen, isClose, read
         }
         cursor = null;
       } else {
-        throw fail; // mnx-await
+        throw fail; // zb-await
       }
       // Past the template's matching close.
       let depth = 0;

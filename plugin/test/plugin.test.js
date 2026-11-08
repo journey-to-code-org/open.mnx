@@ -16,12 +16,12 @@ import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import solid from 'vite-plugin-solid';
-import mnx from '../src/vite.js';
+import zubra from '../src/vite.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
 const fixtures = join(repo, 'runtime/test/browser/fixtures');
-const compiler = join(repo, 'target/debug/mnx');
+const compiler = join(repo, 'target/debug/zubra');
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const tsc = join(dirname(require.resolve('typescript/package.json')), 'bin', 'tsc');
@@ -37,7 +37,7 @@ function app(name) {
   cpSync(join(here, 'apps', name), root, { recursive: true });
   mkdirSync(join(root, 'components'), { recursive: true });
   for (const component of ['rating', 'card', 'inbox', 'badge']) {
-    cpSync(join(fixtures, `${component}.mnx`), join(root, 'components', `${component}.mnx`));
+    cpSync(join(fixtures, `${component}.zb`), join(root, 'components', `${component}.zb`));
   }
   return root;
 }
@@ -47,7 +47,7 @@ const plugins = { jsx: () => [react()], react: () => [react()], vue: () => [vue(
 async function bundle(name, root = app(name)) {
   await build({
     root, configFile: false, logLevel: 'silent',
-    plugins: [mnx({ compiler }), ...plugins[name]()],
+    plugins: [zubra({ compiler }), ...plugins[name]()],
     build: { outDir: join(root, 'dist'), minify: false },
   });
   return root;
@@ -81,7 +81,7 @@ async function visit(root) {
 
 const settle = (page) => page.evaluate(async () => {
   await new Promise((resolve) => setTimeout(resolve));
-  await Promise.all([...document.querySelectorAll('*')].filter((el) => el.localName.startsWith('mnx-')).map((el) => el.updateComplete));
+  await Promise.all([...document.querySelectorAll('*')].filter((el) => el.localName.startsWith('zb-')).map((el) => el.updateComplete));
 });
 
 const strip = (html) => html.replace(/<!--.*?-->/g, '').replace(/\s+/g, ' ').trim();
@@ -98,38 +98,38 @@ after(async () => {
   rmSync(work, { recursive: true, force: true });
 });
 
-test('React: .mnx imports are React components, with props, events, children and nested components', async () => {
+test('React: .zb imports are React components, with props, events, children and nested components', async () => {
   const root = await bundle('react');
   const { page, messages } = await visit(root);
   await settle(page);
-  assert.deepEqual(await page.evaluate(() => window.kinds), { plain: 'react', element: 'mnx-card' });
+  assert.deepEqual(await page.evaluate(() => window.kinds), { plain: 'react', element: 'zb-card' });
 
-  await page.click('mnx-rating .two');
+  await page.click('zb-rating .two');
   await settle(page);
   assert.equal(await page.textContent('#stars'), '2', 'onValueChange');
 
-  const card = () => page.$eval('mnx-card:not(#from-html)', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML]);
+  const card = () => page.$eval('zb-card:not(#from-html)', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML]);
   assert.deepEqual((await card()).map(strip), ['<h2 slot="title">Custom</h2>', '<p>a</p><p>b</p>']);
   await page.evaluate(() => window.setItems(['b', 'c', 'a']));
   await settle(page);
   assert.equal(strip((await card())[1]), '<p>b</p><p>c</p><p>a</p>');
 
-  assert.deepEqual(await page.$$eval('mnx-inbox mnx-badge b', (bs) => bs.map((b) => b.textContent)), ['Ada', 'Linus'],
+  assert.deepEqual(await page.$$eval('zb-inbox zb-badge b', (bs) => bs.map((b) => b.textContent)), ['Ada', 'Linus'],
     'a component using a component, both compiled by the plugin');
   assert.equal(await page.$eval('#from-html h2', (h2) => h2.textContent), 'HTML', 'the element works in plain HTML too');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
-test('Vue: .mnx imports are Vue components, with v-model, events and named slots', async () => {
+test('Vue: .zb imports are Vue components, with v-model, events and named slots', async () => {
   const root = await bundle('vue');
   const { page, messages } = await visit(root);
   await settle(page);
-  await page.click('mnx-rating .two');
+  await page.click('zb-rating .two');
   await settle(page);
   assert.equal(await page.textContent('#stars'), '2', 'v-model');
   assert.equal(await page.textContent('#log'), 'change', '@change');
-  const card = () => page.$eval('mnx-card', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML]);
+  const card = () => page.$eval('zb-card', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML]);
   assert.deepEqual((await card()).map(strip), ['<h2 slot="title">Custom</h2>', '<p>a</p><p>b</p>']);
   await page.evaluate(() => window.setItems(['c', 'a']));
   await settle(page);
@@ -141,9 +141,9 @@ test('Vue: .mnx imports are Vue components, with v-model, events and named slots
 test('no framework: the import is the element class', async () => {
   const root = await bundle('plain');
   const { page, messages } = await visit(root);
-  assert.equal(await page.evaluate(() => window.kind), 'function mnx-card mnx-card');
-  assert.equal(await page.$eval('mnx-card h2', (h2) => h2.textContent), 'Plain');
-  assert.equal(strip(await page.$eval('mnx-card section', (s) => s.innerHTML)), '<p>from html</p>');
+  assert.equal(await page.evaluate(() => window.kind), 'function zb-card zb-card');
+  assert.equal(await page.$eval('zb-card h2', (h2) => h2.textContent), 'Plain');
+  assert.equal(strip(await page.$eval('zb-card section', (s) => s.innerHTML)), '<p>from html</p>');
   assert.deepEqual(messages, []);
   await page.close();
 });
@@ -162,9 +162,9 @@ function typecheck(root, files) {
 
 test('the typings it writes type the React components', async () => {
   const root = join(work, 'react');
-  assert.ok(existsSync(join(root, 'components/rating.d.mnx.ts')), 'written next to the component');
+  assert.ok(existsSync(join(root, 'components/rating.d.zb.ts')), 'written next to the component');
   writeFileSync(join(root, 'src/bad.tsx'), `
-    import Rating from '../components/rating.mnx';
+    import Rating from '../components/rating.zb';
     export const a = <Rating value="2" />;
     export const b = <Rating onValueChange={(event: number) => event} />;
     export const c = <Rating nope />;
@@ -182,8 +182,8 @@ test('the typings it writes type the Vue components', async () => {
   const root = join(work, 'vue');
   writeFileSync(join(root, 'src/check.ts'), `
     import { h } from 'vue';
-    import Rating from '../components/rating.mnx';
-    import Card from '../components/card.mnx';
+    import Rating from '../components/rating.zb';
+    import Card from '../components/card.zb';
     export const ok = [
       h(Rating, { modelValue: 2, 'onUpdate:modelValue': (value: number) => value, onValuechange: (event: CustomEvent<unknown>) => event }),
       h(Card, { heading: 'x', open: true }),
@@ -196,7 +196,7 @@ test('the typings it writes type the Vue components', async () => {
 
 test('compile errors fail the build with the source line', async () => {
   const root = app('plain');
-  writeFileSync(join(root, 'components/card.mnx'), '<mnx-card heading="x">\n  <h2>{headng}</h2>\n</mnx-card>\n');
+  writeFileSync(join(root, 'components/card.zb'), '<zb-card heading="x">\n  <h2>{headng}</h2>\n</zb-card>\n');
   await assert.rejects(bundle('plain', root), (error) => {
     assert.match(error.message, /unknown reference `headng`/);
     assert.match(error.message, /2 \|   <h2>\{headng\}<\/h2>/);
@@ -208,7 +208,7 @@ test('compile errors fail the build with the source line', async () => {
 test('a missing compiler is explained', async () => {
   const root = app('plain');
   await assert.rejects(build({
-    root, configFile: false, logLevel: 'silent', plugins: [mnx({ compiler: join(work, 'no-such-mnix') })],
+    root, configFile: false, logLevel: 'silent', plugins: [zubra({ compiler: join(work, 'no-such-mnix') })],
     build: { outDir: join(root, 'dist') },
   }), /couldn't run the compiler/);
 });
@@ -221,7 +221,7 @@ test('dev server: components compile on demand; editing one updates it in place,
   process.env.NODE_ENV = 'development';
   const root = app('react');
   const server = await createViteServer({
-    root, configFile: false, logLevel: 'silent', plugins: [mnx({ compiler }), react()],
+    root, configFile: false, logLevel: 'silent', plugins: [zubra({ compiler }), react()],
     server: { port: 0, host: '127.0.0.1' },
   });
   await server.listen();
@@ -230,25 +230,25 @@ test('dev server: components compile on demand; editing one updates it in place,
     const page = await browser.newPage();
     await page.goto(url);
     await page.waitForFunction(() => window.ready === true);
-    assert.equal(await page.$eval('mnx-card:not(#from-html) footer', (footer) => footer.textContent), 'React footer');
+    assert.equal(await page.$eval('zb-card:not(#from-html) footer', (footer) => footer.textContent), 'React footer');
 
-    const inbox = async () => (await fetch(`${url}components/inbox.mnx?mnx=element&import`)).text();
+    const inbox = async () => (await fetch(`${url}components/inbox.zb?zubra=element&import`)).text();
     const before = (await inbox()).match(/hydrate: \[[\d, ]+\]/)?.[0];
     assert.ok(before, 'the parent has a hydrate path into the child');
 
     // Edit the card: the live elements get the new template, without a page reload.
     await page.evaluate(() => { window.stale = true; });
-    const card = join(root, 'components/card.mnx');
+    const card = join(root, 'components/card.zb');
     writeFileSync(card, readFileSync(card, 'utf8').replace('{heading} footer', '{heading} footer, edited'));
-    await page.waitForFunction(() => document.querySelector('mnx-card:not(#from-html) footer')?.textContent === 'React footer, edited', null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('zb-card:not(#from-html) footer')?.textContent === 'React footer, edited', null, { timeout: 15000 });
     assert.equal(await page.evaluate(() => window.stale), true, 'no page reload');
 
     // A change to its interface (a new prop) can't be swapped in: the page reloads. (After a
     // pause: the file watcher folds writes that close together into one.)
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    writeFileSync(card, readFileSync(card, 'utf8').replace(/<mnx-card /, '<mnx-card extra="x" '));
+    writeFileSync(card, readFileSync(card, 'utf8').replace(/<zb-card /, '<zb-card extra="x" '));
     await page.waitForFunction(() => window.stale !== true && window.ready === true, null, { timeout: 15000 });
-    assert.equal(await page.$eval('mnx-card:not(#from-html) footer', (footer) => footer.textContent), 'React footer, edited');
+    assert.equal(await page.$eval('zb-card:not(#from-html) footer', (footer) => footer.textContent), 'React footer, edited');
 
     // A compile error shows in Vite's overlay, with the source line and where it is.
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -257,13 +257,13 @@ test('dev server: components compile on demand; editing one updates it in place,
     const overlay = await page.waitForFunction(() => document.querySelector('vite-error-overlay')?.shadowRoot?.textContent, null, { timeout: 15000 });
     const text = await overlay.jsonValue();
     assert.match(text, /unterminated \{ expression/);
-    assert.match(text, /card\.mnx:\d+:\d+/);
+    assert.match(text, /card\.zb:\d+:\d+/);
     assert.match(text, /onclick=\{oops\(\}/, 'the code frame');
     await new Promise((resolve) => setTimeout(resolve, 1000));
     writeFileSync(card, good);
 
     // Edit the badge (a child of the inbox) so its slot moves: the inbox is recompiled too.
-    const badge = join(root, 'components/badge.mnx');
+    const badge = join(root, 'components/badge.zb');
     writeFileSync(badge, readFileSync(badge, 'utf8').replace('<span class="badge"', '<div class="wrap"></div><span class="badge"'));
     await new Promise((resolve) => setTimeout(resolve, 500));
     const after = (await inbox()).match(/hydrate: \[[\d, ]+\]/)?.[0];
@@ -277,10 +277,10 @@ test('dev server: components compile on demand; editing one updates it in place,
 
 test('build --watch: editing a child component rebuilds the components that use it', async () => {
   const root = app('plain');
-  writeFileSync(join(root, 'src/main.js'), "import '../components/inbox.mnx';\nwindow.ready = true;\n");
+  writeFileSync(join(root, 'src/main.js'), "import '../components/inbox.zb';\nwindow.ready = true;\n");
   const outDir = join(root, 'dist');
   const watcher = await build({
-    root, configFile: false, logLevel: 'silent', plugins: [mnx({ compiler })],
+    root, configFile: false, logLevel: 'silent', plugins: [zubra({ compiler })],
     build: { outDir, minify: false, watch: {} },
   });
   const built = () => new Promise((resolve, reject) => {
@@ -303,7 +303,7 @@ test('build --watch: editing a child component rebuilds the components that use 
     await built();
     const before = hydratePath();
     assert.ok(before);
-    const badge = join(root, 'components/badge.mnx');
+    const badge = join(root, 'components/badge.zb');
     const next = built();
     writeFileSync(badge, readFileSync(badge, 'utf8').replace('<span class="badge"', '<div class="wrap"></div><span class="badge"'));
     await next;
@@ -315,10 +315,10 @@ test('build --watch: editing a child component rebuilds the components that use 
 
 test('compiler warnings reach the bundler', async () => {
   const root = app('plain');
-  writeFileSync(join(root, 'components/card.mnx'), '<mnx-card hidden={false}>\n  <p>x</p>\n</mnx-card>\n');
+  writeFileSync(join(root, 'components/card.zb'), '<zb-card hidden={false}>\n  <p>x</p>\n</zb-card>\n');
   const warnings = [];
   await build({
-    root, configFile: false, logLevel: 'silent', plugins: [mnx({ compiler })],
+    root, configFile: false, logLevel: 'silent', plugins: [zubra({ compiler })],
     build: { outDir: join(root, 'dist'), rollupOptions: { onwarn: (warning) => warnings.push(warning.message) } },
   });
   assert.ok(warnings.some((message) => message.includes('prop `hidden` is also every element')), warnings.join('\n'));
@@ -335,34 +335,34 @@ test('styles go through the bundler: Tailwind (@apply, utilities, layer order) a
   assert.equal(await style('#heading', 'marginTop'), '7px', "the component's styles beat Tailwind's base (preflight), wherever they load");
   assert.equal(await style('h2.caller', 'color'), 'rgb(0, 0, 0)', "the caller's slotted heading isn't styled by the component");
   assert.equal(await style('h2.caller', 'paddingTop'), '0px');
-  assert.equal(await style('mnx-sass-note p', 'color'), 'rgb(0, 128, 0)', '<style lang="scss">');
-  assert.notEqual(await style('mnx-sass-note strong', 'color'), 'rgb(0, 128, 0)', 'nested Sass rules');
+  assert.equal(await style('zb-sass-note p', 'color'), 'rgb(0, 128, 0)', '<style lang="scss">');
+  assert.notEqual(await style('zb-sass-note strong', 'color'), 'rgb(0, 128, 0)', 'nested Sass rules');
   const sheets = await page.evaluate(() => document.adoptedStyleSheets.length);
   assert.equal(sheets, 0, 'the CSS is in the page bundle, not inlined in the modules');
   assert.deepEqual(messages, []);
   await page.close();
 });
 
-test('without a CLI, the WebAssembly compiler (@mnx/compiler) builds the app', async (t) => {
-  const { available } = await import('@mnx/compiler').catch(() => ({ available: () => false }));
+test('without a CLI, the WebAssembly compiler (@zubra/compiler) builds the app', async (t) => {
+  const { available } = await import('@zubra/compiler').catch(() => ({ available: () => false }));
   if (!available()) {
-    if (process.env.MNX_REQUIRE_WASM) throw new Error('MNX_REQUIRE_WASM is set but @mnx/compiler has no mnx.wasm');
-    return t.skip('@mnx/compiler has no mnx.wasm (npm run build in compiler/)');
+    if (process.env.ZUBRA_REQUIRE_WASM) throw new Error('ZUBRA_REQUIRE_WASM is set but @zubra/compiler has no zubra.wasm');
+    return t.skip('@zubra/compiler has no zubra.wasm (npm run build in compiler/)');
   }
-  const saved = process.env.MNX_COMPILER;
-  delete process.env.MNX_COMPILER;
+  const saved = process.env.ZUBRA_COMPILER;
+  delete process.env.ZUBRA_COMPILER;
   try {
     const root = app('react');
-    await build({ root, configFile: false, logLevel: 'silent', plugins: [mnx(), react()], build: { outDir: join(root, 'dist'), minify: false } });
+    await build({ root, configFile: false, logLevel: 'silent', plugins: [zubra(), react()], build: { outDir: join(root, 'dist'), minify: false } });
     const { page, messages } = await visit(root);
     await settle(page);
-    await page.click('mnx-rating .two');
+    await page.click('zb-rating .two');
     await settle(page);
     assert.equal(await page.textContent('#stars'), '2');
     assert.deepEqual(messages, []);
     await page.close();
   } finally {
-    if (saved !== undefined) process.env.MNX_COMPILER = saved;
+    if (saved !== undefined) process.env.ZUBRA_COMPILER = saved;
   }
 });
 
@@ -372,14 +372,14 @@ for (const name of ['svelte', 'solid', 'lit']) {
     const root = await bundle(name);
     const { page, messages } = await visit(root);
     await settle(page);
-    const card = () => page.$eval('mnx-card', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML].map((html) => html.replace(/<!--.*?-->/g, '').replace(/\s+/g, ' ').trim()));
+    const card = () => page.$eval('zb-card', (el) => [el.querySelector('header').innerHTML, el.querySelector('section').innerHTML].map((html) => html.replace(/<!--.*?-->/g, '').replace(/\s+/g, ' ').trim()));
     assert.deepEqual(await card(), ['<h2 slot="title">Custom</h2>', '<p>a</p><p>b</p>']);
-    assert.equal(await page.$eval('mnx-badge .badge', (el) => el.dataset.color), 'red', 'objects arrive as properties');
+    assert.equal(await page.$eval('zb-badge .badge', (el) => el.dataset.color), 'red', 'objects arrive as properties');
 
-    await page.click('mnx-rating .two');
+    await page.click('zb-rating .two');
     await settle(page);
     assert.equal(await page.textContent('#stars'), '2', 'the event updated the app, which set the prop back');
-    assert.equal(await page.$eval('mnx-rating', (el) => el.value), 2);
+    assert.equal(await page.$eval('zb-rating', (el) => el.value), 2);
     assert.equal(await page.textContent('#log'), 'change');
 
     await page.evaluate(() => window.app.setItems(['c', 'a', 'b']));
@@ -389,7 +389,7 @@ for (const name of ['svelte', 'solid', 'lit']) {
     await settle(page);
     const heading = { svelte: 'Svelte', solid: 'Solid', lit: 'Lit' }[name];
     assert.deepEqual(await card(), [`<h2>${heading}</h2>`, '<p>b</p>'], 'removals, and the fallback comes back');
-    assert.equal(await page.$eval('mnx-badge .badge', (el) => el.dataset.color), 'blue');
+    assert.equal(await page.$eval('zb-badge .badge', (el) => el.dataset.color), 'blue');
     await page.evaluate(() => { window.app.setItems([]); window.app.setTitle(true); });
     await settle(page);
     assert.deepEqual(await card(), ['<h2 slot="title">Custom</h2>', '<p>No content</p>']);
@@ -399,15 +399,15 @@ for (const name of ['svelte', 'solid', 'lit']) {
 }
 
 // The other bundlers unplugin supports: the same app, built by each, run in the browser.
-const BUNDLER_ENTRY = `import '../components/inbox.mnx';\nimport '../components/styled-card.mnx';\nwindow.ready = true;\n`;
-const BUNDLER_PAGE = '<!doctype html><meta charset="utf-8"><mnx-inbox></mnx-inbox><mnx-styled-card><p class="mine">mine</p></mnx-styled-card><script type="module" src="/bundle.js"></script>';
+const BUNDLER_ENTRY = `import '../components/inbox.zb';\nimport '../components/styled-card.zb';\nwindow.ready = true;\n`;
+const BUNDLER_PAGE = '<!doctype html><meta charset="utf-8"><zb-inbox></zb-inbox><zb-styled-card><p class="mine">mine</p></zb-styled-card><script type="module" src="/bundle.js"></script>';
 
 async function checkBundle(root) {
   writeFileSync(join(root, 'dist/index.html'), BUNDLER_PAGE);
   const { page, messages } = await visit(root);
   await settle(page);
-  assert.deepEqual(await page.$$eval('mnx-inbox mnx-badge b', (bs) => bs.map((b) => b.textContent)), ['Ada', 'Linus'], 'nested components');
-  assert.equal(await page.$eval('mnx-styled-card h2', (h2) => getComputedStyle(h2).color), 'rgb(255, 0, 0)', 'inlined styles, scoped');
+  assert.deepEqual(await page.$$eval('zb-inbox zb-badge b', (bs) => bs.map((b) => b.textContent)), ['Ada', 'Linus'], 'nested components');
+  assert.equal(await page.$eval('zb-styled-card h2', (h2) => getComputedStyle(h2).color), 'rgb(255, 0, 0)', 'inlined styles, scoped');
   assert.equal(await page.$eval('.mine', (p) => getComputedStyle(p).color), 'rgb(0, 0, 0)', 'slotted content is not the card\'s to style');
   assert.deepEqual(messages, []);
   await page.close();
@@ -415,7 +415,7 @@ async function checkBundle(root) {
 
 function bundlerApp(name) {
   const root = app('plain');
-  cpSync(join(fixtures, 'styled-card.mnx'), join(root, 'components/styled-card.mnx'));
+  cpSync(join(fixtures, 'styled-card.zb'), join(root, 'components/styled-card.zb'));
   mkdirSync(join(root, 'dist'), { recursive: true });
   writeFileSync(join(root, 'src/entry.js'), BUNDLER_ENTRY);
   return root;
@@ -424,23 +424,23 @@ function bundlerApp(name) {
 test('rollup builds the app', async () => {
   const { rollup } = await import('rollup');
   const { nodeResolve } = await import('@rollup/plugin-node-resolve');
-  const { default: mnxRollup } = await import('../src/rollup.js');
+  const { default: zubraRollup } = await import('../src/rollup.js');
   const root = bundlerApp('rollup');
-  const bundle = await rollup({ input: join(root, 'src/entry.js'), plugins: [mnxRollup({ compiler }), nodeResolve()], onwarn: () => {} });
+  const bundle = await rollup({ input: join(root, 'src/entry.js'), plugins: [zubraRollup({ compiler }), nodeResolve()], onwarn: () => {} });
   await bundle.write({ file: join(root, 'dist/bundle.js'), format: 'es' });
   await checkBundle(root);
 });
 
 test('webpack builds the app', async () => {
   const { default: webpack } = await import('webpack');
-  const { default: mnxWebpack } = await import('../src/webpack.js');
+  const { default: zubraWebpack } = await import('../src/webpack.js');
   const root = bundlerApp('webpack');
   const stats = await new Promise((resolve, reject) => webpack({
     mode: 'development', devtool: false, context: root, entry: join(root, 'src/entry.js'),
     output: { path: join(root, 'dist'), filename: 'bundle.js', module: true },
     experiments: { outputModule: true },
     resolve: { modules: [join(here, '../node_modules'), 'node_modules'] },
-    plugins: [mnxWebpack({ compiler })],
+    plugins: [zubraWebpack({ compiler })],
   }, (error, result) => (error ? reject(error) : resolve(result))));
   assert.equal(stats.hasErrors(), false, stats.toString('errors-only'));
   await checkBundle(root);
@@ -448,9 +448,9 @@ test('webpack builds the app', async () => {
 
 test('esbuild builds the app', async () => {
   const { build: esbuild } = await import('esbuild');
-  const { default: mnxEsbuild } = await import('../src/esbuild.js');
+  const { default: zubraEsbuild } = await import('../src/esbuild.js');
   const root = bundlerApp('esbuild');
-  await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', outfile: join(root, 'dist/bundle.js'), plugins: [mnxEsbuild({ compiler })], logLevel: 'silent' });
+  await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', outfile: join(root, 'dist/bundle.js'), plugins: [zubraEsbuild({ compiler })], logLevel: 'silent' });
   await checkBundle(root);
 });
 
@@ -458,71 +458,71 @@ test('esbuild reports a compile error as the compiler wrote it', async () => {
   // (esbuild's plugin context records errors rather than throwing them, so the plugin has to
   // stop by itself, or the build fails with an unrelated TypeError instead.)
   const { build: esbuild } = await import('esbuild');
-  const { default: mnxEsbuild } = await import('../src/esbuild.js');
+  const { default: zubraEsbuild } = await import('../src/esbuild.js');
   const root = bundlerApp('esbuild-error');
-  writeFileSync(join(root, 'components/child-thing.mnx'), '<child-thing value={0}>\n  <p>{value}</p>\n</child-thing>\n');
-  writeFileSync(join(root, 'components/broken.mnx'), [
-    '<script>', "  import './child-thing.mnx'", '</script>',
+  writeFileSync(join(root, 'components/child-thing.zb'), '<child-thing value={0}>\n  <p>{value}</p>\n</child-thing>\n');
+  writeFileSync(join(root, 'components/broken.zb'), [
+    '<script>', "  import './child-thing.zb'", '</script>',
     '<broken-thing count={0}>', '  <child-thing value:model={count}></child-thing>', '</broken-thing>', '',
   ].join('\n'));
-  writeFileSync(join(root, 'src/entry.js'), "import '../components/broken.mnx';\n");
-  const error = await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', write: false, plugins: [mnxEsbuild({ compiler })], logLevel: 'silent' }).then(() => null, (failure) => failure);
+  writeFileSync(join(root, 'src/entry.js'), "import '../components/broken.zb';\n");
+  const error = await esbuild({ entryPoints: [join(root, 'src/entry.js')], bundle: true, format: 'esm', write: false, plugins: [zubraEsbuild({ compiler })], logLevel: 'silent' }).then(() => null, (failure) => failure);
   assert.ok(error, 'the build fails');
   assert.equal(error.errors.length, 1, error.message);
   assert.match(error.errors[0].text, /<child-thing> has no prop `value:model`/);
   assert.doesNotMatch(error.message, /Cannot read properties/);
 });
 
-// Astro: components server-rendered at build time through the renderer (with @mnx/compiler,
+// Astro: components server-rendered at build time through the renderer (with @zubra/compiler,
 // or the native CLI standing in for its WebAssembly), hydrated on the client with client:load.
 test('astro: server-rendered pages, hydrated with a client directive', async () => {
-  const { available } = await import('@mnx/compiler');
-  const saved = process.env.MNX_COMPILER;
-  if (!available()) process.env.MNX_COMPILER = compiler;
+  const { available } = await import('@zubra/compiler');
+  const saved = process.env.ZUBRA_COMPILER;
+  if (!available()) process.env.ZUBRA_COMPILER = compiler;
   try {
     const { build: astroBuild } = await import('astro');
-    const { default: mnxAstro } = await import('../src/astro.js');
+    const { default: zubraAstro } = await import('../src/astro.js');
     const root = app('astro');
-    cpSync(join(here, 'apps/jsx/src/counter.mnx.tsx'), join(root, 'components/counter.mnx.tsx'));
-    await astroBuild({ root, configFile: false, logLevel: 'error', integrations: [mnxAstro({ compiler })], outDir: join(root, 'dist') });
+    cpSync(join(here, 'apps/jsx/src/counter.zb.tsx'), join(root, 'components/counter.zb.tsx'));
+    await astroBuild({ root, configFile: false, logLevel: 'error', integrations: [zubraAstro({ compiler })], outDir: join(root, 'dist') });
     const html = readFileSync(join(root, 'dist/index.html'), 'utf8');
     // Static components are HTML only, with props, host attributes and slot content.
-    assert.match(html, /<mnx-card data-kind="static" heading="Astro">/);
+    assert.match(html, /<zb-card data-kind="static" heading="Astro">/);
     // (Astro takes the `slot` attribute off what it passes.)
     assert.match(html, /<header><!--\[!--><h2>Custom \{braces\}<\/h2><!--\]--><\/header>[^]*<section><!--\[!--><p>Body<\/p><!--\]--><\/section>/);
-    assert.match(html, /<mnx-badge class="row" data-who="Ada" label="Ada" count="3"/, 'nested components render too');
-    assert.match(html, /<astro-island[^>]*><mnx-rating id="r" class="big" value="1">[^]*<output>1<\/output>/);
+    assert.match(html, /<zb-badge class="row" data-who="Ada" label="Ada" count="3"/, 'nested components render too');
+    assert.match(html, /<astro-island[^>]*><zb-rating id="r" class="big" value="1">[^]*<output>1<\/output>/);
 
     // A JSX component with a derived value: partly server-rendered (the derived text is left
     // for the element), then hydrated.
-    assert.match(html, /<mnx-counter id="counter" count="4">[^]*<i>4<\/i>[^]*<span class="doubled"><\/span>/);
+    assert.match(html, /<zb-counter id="counter" count="4">[^]*<i>4<\/i>[^]*<span class="doubled"><\/span>/);
 
     const { page, messages } = await visit(root);
     await settle(page);
-    assert.equal(await page.$eval('mnx-card', (card) => card.matches(':defined')), false, 'no JavaScript for static components');
+    assert.equal(await page.$eval('zb-card', (card) => card.matches(':defined')), false, 'no JavaScript for static components');
     assert.equal(await page.textContent('#counter .doubled'), '8', 'the element filled in the derived value');
     await page.click('#counter button');
     await settle(page);
     assert.equal(await page.textContent('#counter .doubled'), '10');
-    await page.click('mnx-rating .two');
+    await page.click('zb-rating .two');
     await settle(page);
-    assert.equal(await page.textContent('mnx-rating output'), '2', 'the island hydrated');
+    assert.equal(await page.textContent('zb-rating output'), '2', 'the island hydrated');
     assert.deepEqual(messages, []);
     await page.close();
   } finally {
-    if (saved === undefined) delete process.env.MNX_COMPILER;
-    else process.env.MNX_COMPILER = saved;
+    if (saved === undefined) delete process.env.ZUBRA_COMPILER;
+    else process.env.ZUBRA_COMPILER = saved;
   }
 });
 
-// JSX components (`.mnx.tsx`) in a React app: the React wrapper from a React file, the element
-// with `?element`, an .mnx child inside, and the same element in the page's HTML.
+// JSX components (`.zb.tsx`) in a React app: the React wrapper from a React file, the element
+// with `?element`, an .zb child inside, and the same element in the page's HTML.
 test('JSX components: imported from React as React components, and as elements', async () => {
   const root = await bundle('jsx');
   const { page, messages } = await visit(root);
   await settle(page);
-  assert.equal(await page.evaluate(() => window.kind), 'mnx-counter');
-  const read = (id) => page.$eval(`#${id}`, (el) => [el.querySelector('mnx-badge i').textContent, el.querySelector('.doubled').textContent]);
+  assert.equal(await page.evaluate(() => window.kind), 'zb-counter');
+  const read = (id) => page.$eval(`#${id}`, (el) => [el.querySelector('zb-badge i').textContent, el.querySelector('.doubled').textContent]);
   assert.deepEqual(await read('react'), ['1', '2']);
   assert.deepEqual(await read('plain'), ['5', '10'], 'the element in plain HTML');
   await page.click('#react button');

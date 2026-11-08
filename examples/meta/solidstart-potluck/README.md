@@ -14,7 +14,7 @@ Solid uses custom elements directly: `prop:` sets a property and `on:` listens f
 ```
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @mnx/compiler is on npm)
+cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
 cd examples/meta/solidstart-potluck
 npm install
 npm run dev                 # or: npm run build && npm start
@@ -28,6 +28,6 @@ npm run dev                 # or: npm run build && npm start
   shadow DOM anyway, for consistency with the other apps.
 - **The same server gap** (fixed in 2.8). Solid renders the hosts with no inner markup, and
   `prop:` values are properties, so they weren't in the server HTML either. Now the hosts carry
-  `mnx-props` (written by the mnx plugin since 2.10; by hand in 2.8), and `src/middleware.js` runs `mnx.injectShadowRoots` on each page. Without
+  `zb-props` (written by the Zubra plugin since 2.10; by hand in 2.8), and `src/middleware.js` runs `zubra.injectShadowRoots` on each page. Without
   JavaScript the action gets the course and head count, and the sign-up goes through.
 - **The template wants Node.js 24** (`engines`). It builds and runs on 22, which CI uses.

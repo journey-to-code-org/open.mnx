@@ -1,11 +1,11 @@
-// Preact: mnx elements used directly in Preact's JSX: objects as props (a habit's log), on<name>
+// Preact: zubra elements used directly in Preact's JSX: objects as props (a habit's log), on<name>
 // events, a CSS custom property from Preact's style prop reaching into the elements, lists that
-// add and remove elements, and an mnx form control in a Preact form.
+// add and remove elements, and a zubra form control in a Preact form.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts } from './harness.js';
 
-test('preact-habits: a habit tracker built from mnx elements', async () => {
+test('preact-habits: a habit tracker built from zubra elements', async () => {
   const { page, messages } = await launch('preact-habits');
   await page.waitForSelector('streak-grid button');
   await settle(page);
@@ -55,7 +55,7 @@ test('preact-habits: a habit tracker built from mnx elements', async () => {
   await page.keyboard.press('Enter');
   await settle(page);
 
-  // A new habit, with an mnx colour picker (arrow keys) in a Preact form.
+  // A new habit, with a zubra colour picker (arrow keys) in a Preact form.
   await go('button.new');
   await page.fill('.add input[required]', 'Stretch');
   await page.fill('.add input[type=number]', '2');

@@ -1,0 +1,3 @@
+<zb-greeting name="Ada" mood="glad">
+  <p>Hello <b>there</b>, {name}! <i>{mood}</i> to see you.</p>
+</zb-greeting>

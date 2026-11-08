@@ -1,0 +1,14 @@
+<zb-list items={["a", "b"]} show={true} heading="Things">
+  <section>
+    <h2>{heading}</h2>
+    <zb-if test={show && items.length > 0}>
+      <ul>
+        <zb-each items={items} as="item" index="i">
+          <li data-i={i}>{item}</li>
+        </zb-each>
+      </ul>
+      <zb-else><p>Nothing to show</p></zb-else>
+    </zb-if>
+    <footer>{items.length} items</footer>
+  </section>
+</zb-list>

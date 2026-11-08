@@ -1,0 +1,11 @@
+<script>
+  import { hasSlot } from '@zubra/runtime'
+
+  const hasFooter = hasSlot('footer')
+</script>
+<slot-card-shadow shadow>
+  <article>
+    <zb-slot></zb-slot>
+    <zb-if test={hasFooter}><footer><zb-slot name="footer"></zb-slot></footer></zb-if>
+  </article>
+</slot-card-shadow>
