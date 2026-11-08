@@ -20,14 +20,14 @@
   <figure>
     <figcaption>{heading} <small>({total} kg)</small></figcaption>
     <ol zb-if={rows.length > 0}>
-        <zb-each items={rows} as="row" key={row.crop}>
-          <li data-crop={row.crop}>
-            <span>{row.label}</span>
-            <span class="bar" style:width={Math.round((row.kg / top) * 100) + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
-            <span class="kg">{row.kg} kg</span>
-          </li>
-        </zb-each>
-      </ol>
+      <zb-each items={rows} as="row" key={row.crop}>
+        <li data-crop={row.crop}>
+          <span>{row.label}</span>
+          <span class="bar" style:width={Math.round((row.kg / top) * 100) + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
+          <span class="kg">{row.kg} kg</span>
+        </li>
+      </zb-each>
+    </ol>
     <p zb-else>Nothing harvested yet.</p>
   </figure>
 </harvest-chart>

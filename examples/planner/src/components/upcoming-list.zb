@@ -50,15 +50,15 @@
     <button type="button" class="pill" class:on={past} aria-pressed={past ? "true" : "false"} onclick={() => (past = true)}>Past</button>
   </div>
   <ul zb-if={shown.length > 0}>
-      <zb-each items={shown} as="event" key={event.id}>
-        <li>
-          <a href={`#/events/${event.id}`}>
-            <strong>{event.title}</strong>
-            <span class="when">{formatShortDay(event.day)} · {event.start} · {relative(event.day)}</span>
-            <span class="facts"><span>{going(event)} going</span><span>{open(event)} to do</span><span>{event.category}</span></span>
-          </a>
-        </li>
-      </zb-each>
-    </ul>
+    <zb-each items={shown} as="event" key={event.id}>
+      <li>
+        <a href={`#/events/${event.id}`}>
+          <strong>{event.title}</strong>
+          <span class="when">{formatShortDay(event.day)} · {event.start} · {relative(event.day)}</span>
+          <span class="facts"><span>{going(event)} going</span><span>{open(event)} to do</span><span>{event.category}</span></span>
+        </a>
+      </li>
+    </zb-each>
+  </ul>
   <p zb-else class="empty">{query || category !== "all" ? "No events match." : past ? "Nothing in the past." : "Nothing planned. Pick a day on the calendar."}</p>
 </upcoming-list>

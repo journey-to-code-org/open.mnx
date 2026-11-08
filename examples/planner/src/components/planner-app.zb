@@ -50,8 +50,8 @@
   </header>
   <event-page zb-if={eventId} event-id={eventId} onedit={edit} onremove={remove}></event-page>
   <div zb-else class="home">
-        <month-calendar ondaypick={(event) => create(event.detail)}></month-calendar>
-        <upcoming-list></upcoming-list>
-      </div>
+    <month-calendar ondaypick={(event) => create(event.detail)}></month-calendar>
+    <upcoming-list></upcoming-list>
+  </div>
   <event-dialog event={editing} onsave={save} onclose={() => (editing = null)}></event-dialog>
 </planner-app>

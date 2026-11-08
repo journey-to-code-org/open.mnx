@@ -24,9 +24,9 @@
     <zb-each items={sessions} as="session" key={session.id}><span class="dot" class:break={session.mode !== 'focus'}></span></zb-each>
   </div>
   <ol zb-if={focus.length > 0}>
-      <zb-each items={focus} as="session" key={session.id}>
-        <li><time datetime={new Date(session.at).toISOString()}>{time.format(session.at)}</time><span>{session.task || "Focus"}</span></li>
-      </zb-each>
-    </ol>
+    <zb-each items={focus} as="session" key={session.id}>
+      <li><time datetime={new Date(session.at).toISOString()}>{time.format(session.at)}</time><span>{session.task || "Focus"}</span></li>
+    </zb-each>
+  </ol>
   <p zb-else>Nothing yet. Start a session.</p>
 </session-log>

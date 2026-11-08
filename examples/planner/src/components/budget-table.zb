@@ -50,24 +50,24 @@
   </div>
   <progress zb-if={event.budget > 0} class:over={left < 0} max={event.budget} value={Math.min(spent, event.budget)} aria-label="Budget used"></progress>
   <div zb-if={byKind.length > 0} class="kinds">
-      <zb-each items={byKind} as="group" key={group.name}>
-        <span>{group.name}</span><meter min="0" max={spent} value={group.total}></meter><span>{money.format(group.total)}</span>
-      </zb-each>
-    </div>
+    <zb-each items={byKind} as="group" key={group.name}>
+      <span>{group.name}</span><meter min="0" max={spent} value={group.total}></meter><span>{money.format(group.total)}</span>
+    </zb-each>
+  </div>
   <table zb-if={event.expenses.length > 0}>
-      <thead><tr><th>Item</th><th>Category</th><th class="num">Amount</th><th>Paid</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
-      <tbody>
-        <zb-each items={event.expenses} as="item" key={item.id}>
-          <tr>
-            <td>{item.label}</td>
-            <td>{item.category}</td>
-            <td class="num">{money.format(item.amount)}</td>
-            <td><input type="checkbox" aria-label={`${item.label} is paid`} checked={item.paid} onchange={(e) => act('expenses.update', event.id, item.id, { paid: e.target.checked })}></td>
-            <td><button type="button" class="icon" aria-label={`Remove ${item.label}`} onclick={() => act('expenses.remove', event.id, item.id)}>✕</button></td>
-          </tr>
-        </zb-each>
-      </tbody>
-    </table>
+    <thead><tr><th>Item</th><th>Category</th><th class="num">Amount</th><th>Paid</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
+    <tbody>
+      <zb-each items={event.expenses} as="item" key={item.id}>
+        <tr>
+          <td>{item.label}</td>
+          <td>{item.category}</td>
+          <td class="num">{money.format(item.amount)}</td>
+          <td><input type="checkbox" aria-label={`${item.label} is paid`} checked={item.paid} onchange={(e) => act('expenses.update', event.id, item.id, { paid: e.target.checked })}></td>
+          <td><button type="button" class="icon" aria-label={`Remove ${item.label}`} onclick={() => act('expenses.remove', event.id, item.id)}>✕</button></td>
+        </tr>
+      </zb-each>
+    </tbody>
+  </table>
   <p zb-else class="empty">No expenses yet.</p>
   <form onsubmit.prevent={add}>
     <input required placeholder="Expense" aria-label="Expense" value={label} oninput={(e) => (label = e.target.value)}>

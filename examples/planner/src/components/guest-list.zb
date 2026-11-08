@@ -49,22 +49,22 @@
     <span class="headcount">Headcount: {headcount}</span>
   </div>
   <table zb-if={shown.length > 0}>
-      <thead><tr><th>Guest</th><th>RSVP</th><th>+1</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
-      <tbody>
-        <zb-each items={shown} as="guest" key={guest.id}>
-          <tr data-rsvp={guest.rsvp}>
-            <td>{guest.name}<small>{guest.email}</small></td>
-            <td>
-              <select aria-label={`RSVP for ${guest.name}`} value={guest.rsvp} onchange={(e) => act('guests.update', event.id, guest.id, { rsvp: e.target.value })}>
-                <zb-each items={RSVPS} as="rsvp" key={rsvp}><option value={rsvp}>{rsvp}</option></zb-each>
-              </select>
-            </td>
-            <td><input type="checkbox" aria-label={`${guest.name} brings a plus-one`} checked={guest.plusOne} onchange={(e) => act('guests.update', event.id, guest.id, { plusOne: e.target.checked })}></td>
-            <td><button type="button" class="icon" aria-label={`Remove ${guest.name}`} onclick={() => act('guests.remove', event.id, guest.id)}>✕</button></td>
-          </tr>
-        </zb-each>
-      </tbody>
-    </table>
+    <thead><tr><th>Guest</th><th>RSVP</th><th>+1</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
+    <tbody>
+      <zb-each items={shown} as="guest" key={guest.id}>
+        <tr data-rsvp={guest.rsvp}>
+          <td>{guest.name}<small>{guest.email}</small></td>
+          <td>
+            <select aria-label={`RSVP for ${guest.name}`} value={guest.rsvp} onchange={(e) => act('guests.update', event.id, guest.id, { rsvp: e.target.value })}>
+              <zb-each items={RSVPS} as="rsvp" key={rsvp}><option value={rsvp}>{rsvp}</option></zb-each>
+            </select>
+          </td>
+          <td><input type="checkbox" aria-label={`${guest.name} brings a plus-one`} checked={guest.plusOne} onchange={(e) => act('guests.update', event.id, guest.id, { plusOne: e.target.checked })}></td>
+          <td><button type="button" class="icon" aria-label={`Remove ${guest.name}`} onclick={() => act('guests.remove', event.id, guest.id)}>✕</button></td>
+        </tr>
+      </zb-each>
+    </tbody>
+  </table>
   <p zb-else class="empty">{event.guests.length ? "No one with that RSVP." : "No guests yet."}</p>
   <form onsubmit.prevent={invite}>
     <input required placeholder="Name" aria-label="Guest name" value={name} oninput={(e) => (name = e.target.value)}>

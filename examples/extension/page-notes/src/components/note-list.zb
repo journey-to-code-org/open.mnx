@@ -20,13 +20,13 @@
 </style>
 <note-list notes={[]}>
   <ol zb-if={notes.length > 0}>
-      <zb-each items={notes} as="note" key={note.id}>
-        <li data-id={note.id}>
-          <span class="stripe" style:background={note.color}></span>
-          <div><p>{note.text}</p><time datetime={new Date(note.at).toISOString()}>{when.format(note.at)}</time></div>
-          <button type="button" aria-label={"Delete note: " + note.text} onclick={() => emit('remove', note.id)}>✕</button>
-        </li>
-      </zb-each>
-    </ol>
+    <zb-each items={notes} as="note" key={note.id}>
+      <li data-id={note.id}>
+        <span class="stripe" style:background={note.color}></span>
+        <div><p>{note.text}</p><time datetime={new Date(note.at).toISOString()}>{when.format(note.at)}</time></div>
+        <button type="button" aria-label={"Delete note: " + note.text} onclick={() => emit('remove', note.id)}>✕</button>
+      </li>
+    </zb-each>
+  </ol>
   <p zb-else class="empty">No notes for this site yet.</p>
 </note-list>

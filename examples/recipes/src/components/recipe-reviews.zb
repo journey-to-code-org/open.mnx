@@ -41,10 +41,10 @@
     <p class="loading">Loading reviews…</p>
     <zb-then>
       <ul zb-if={all.length > 0}>
-          <zb-each items={all} as="review" key={review.id}>
-            <li><strong>{review.name}</strong> <star-rating value={review.stars} readonly={true} label="Their rating"></star-rating><p>{review.text}</p></li>
-          </zb-each>
-        </ul>
+        <zb-each items={all} as="review" key={review.id}>
+          <li><strong>{review.name}</strong> <star-rating value={review.stars} readonly={true} label="Their rating"></star-rating><p>{review.text}</p></li>
+        </zb-each>
+      </ul>
       <p zb-else class="empty">Be the first to review this.</p>
     </zb-then>
     <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>

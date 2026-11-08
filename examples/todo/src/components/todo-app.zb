@@ -47,12 +47,12 @@
     <button type="submit">Add</button>
   </form>
   <ul zb-if={shown.length > 0}>
-      <zb-each items={shown} as="item" key={item.id}>
-        <li>
-          <todo-item text={item.text} done={item.done} ontoggle={() => toggle(item.id)} onrename={(event) => rename(item.id, event.detail)} onremove={() => remove(item.id)}></todo-item>
-        </li>
-      </zb-each>
-    </ul>
+    <zb-each items={shown} as="item" key={item.id}>
+      <li>
+        <todo-item text={item.text} done={item.done} ontoggle={() => toggle(item.id)} onrename={(event) => rename(item.id, event.detail)} onremove={() => remove(item.id)}></todo-item>
+      </li>
+    </zb-each>
+  </ul>
   <p zb-else class="empty">Nothing here.</p>
   <footer>
     <span class="count">{remaining} left</span>
