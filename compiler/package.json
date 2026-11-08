@@ -1,6 +1,6 @@
 {
   "name": "@zubra/compiler",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "The Zubra compiler as WebAssembly: compile .zb components from Node without installing Rust",
   "license": "ISC",
   "repository": {
