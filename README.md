@@ -6,7 +6,7 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 
 **Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/) runs Zubra in your browser, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. This README is the reference.
 
-**Status: 4.x.** The `.zb` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 5.0. Zubra was called mnx until 4.0; `docs/migrating-to-4.0.md` renames a project in one command. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
+**Status: 5.x.** The `.zb` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 6.0. 5.0 changed only the server markup's hydration markers (`docs/migrating-to-5.0.md`: update the packages together, no component changes). Zubra was called mnx until 4.0; `docs/migrating-to-4.0.md` renames a project in one command. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
 ```html
 <!-- copy-button.zb -->
@@ -166,7 +166,7 @@ export default function ZbRating({ value = 0, onValueChange }) {
 - `<zb-slot name="…">` with fallback content; without `name`, the default slot.
 - `<zb-await value={…}>` with pending content, `<zb-then as="…">` and `<zb-catch as="…">` (see Async data).
 
-In the HTML output, directives are expanded at build time and wrapped in `<!--[-->` … `<!--]-->` markers (each list row in its own pair), so the element can find them when it hydrates. In the browser:
+In the HTML output, directives are expanded at build time and wrapped in `<?zb [?>` … `<?zb ]?>` markers (each list row in its own pair), so the element can find them when it hydrates. In the browser:
 
 - `zb-if` re-renders only when the chosen branch changes.
 - `zb-each` without a key updates rows in place by position. Each row holds its item and index as signals, so changing one item updates only that row. Rows are added and removed at the end.
@@ -407,14 +407,17 @@ The HTML output is the server rendering: static, deterministic, escaped markup. 
 
 ### Hydration markers
 
-The markers are HTML comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`, `<!--[!-->`). Some tools remove comments: HTML minifiers, some sanitizers, and htmx in some browsers. Since 2.10, an element whose markup lost every comment puts them back by structure and hydrates in place anyway. It walks its template against the markup:
+The markers are processing instructions: `<?zb [?>` and `<?zb ]?>` around a region, `<?zb [??>` for a region left to the browser, `<?zb [!?>` for supplied slot content, and `<?zb ?>` before dynamic text (5.0; they were comments before). HTML minifiers, `Document.parseHTMLUnsafe()` (which htmx uses) and the HTML parser keep them:
+- Chrome and Edge 150+ parse each as a `ProcessingInstruction` node;
+- other browsers parse it as a comment (`<!--?zb [?-->`), which the runtime reads the same way;
+- the runtime also reads the comment markers of a 4.x server (`<!--[-->`), so servers and runtimes can be updated in either order.
+
+A tool that removes them anyway (a sanitizer that drops processing instructions, or a minifier's `removeComments` on a 4.x server's markup) costs nothing either. Since 2.10, an element whose markup lost every marker puts them back by structure and hydrates in place anyway. It walks its template against the markup:
 - a text anchor's text runs up to the next element;
 - an `zb-if` holds the branch the current values choose, and an `zb-each` one row per item, checked element by element;
 - a light-DOM slot that ends its range holds the rest (its fallback, if it has the fallback's shape).
 
-The code that does this (`remark.js`) is loaded only when an element meets such markup. Where the shape can't be placed for sure (an `zb-await`, content projected into a child component), the element renders fresh as before, with a warning that the markers are missing. Every registry component hydrates in place this way (`registry/test/stripped.test.js`). Keeping the markers is still the fast path:
-- **html-minifier-terser:** `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]`, imported from `@zubra/compiler` (it's `/^[[\]?!]*$/`).
-- **htmx 2:** it parses fragments with `Document.parseHTMLUnsafe()` where it exists, and in some Chromium versions that drops comments. When it does, `delete Document.parseHTMLUnsafe` before htmx loads, so htmx uses `DOMParser`. `examples/hypermedia/hono-bikes/` checks for it first.
+The code that does this (`remark.js`) is loaded only when an element meets such markup. Where the shape can't be placed for sure (an `zb-await`, content projected into a child component), the element renders fresh as before, with a warning that the markers are missing. Every registry component hydrates in place this way (`registry/test/stripped.test.js`). For a 4.x server's comment markers, html-minifier-terser keeps them with `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]`, imported from `@zubra/compiler`.
 
 ### In frameworks that hydrate
 
@@ -446,7 +449,7 @@ The HTML output evaluates the component's JavaScript where the answer is the sam
 
 That's the same in the Rust CLI, the WebAssembly build and every server. `compiler/test/server-evaluation.test.js` checks it against V8. What isn't deterministic (`Date`, `Intl`, `Math.random()`, `toLocaleString()`), what reaches the browser (`window`, `document`), and anything else outside the subset is left for the browser. `zubra check --server` lists those places, rendering with the defaults. It's an error for `checked`, `selected`, `value` and `disabled`, because without JavaScript the form would be wrong.
 
-**Partial rendering.** A component may use what only the browser can compute: JavaScript expressions, runtime-only script values, or defaults computed in the browser. `--partial` (or `partial: true` in a request) renders everything else and leaves those parts for the element. Their text renders empty, their attributes are left out, and their conditionals and lists become empty `<!--[?-->` regions that the element renders when it starts, without a hydration warning. Without it, the HTML output reports the first such part as an error. `@zubra/compiler`'s `render()` and the plugin's server builds render partially, so every component (JSX ones with state included) can be server-rendered.
+**Partial rendering.** A component may use what only the browser can compute: JavaScript expressions, runtime-only script values, or defaults computed in the browser. `--partial` (or `partial: true` in a request) renders everything else and leaves those parts for the element. Their text renders empty, their attributes are left out, and their conditionals and lists become empty `<?zb [??>` regions that the element renders when it starts, without a hydration warning. Without it, the HTML output reports the first such part as an error. `@zubra/compiler`'s `render()` and the plugin's server builds render partially, so every component (JSX ones with state included) can be server-rendered.
 
 In an app's server, **`@zubra/server`** does the whole job with any template engine. It renders components into a page, adds their CSS and module scripts, and serves the browser modules and `@zubra/runtime`, with no bundler:
 
@@ -461,7 +464,7 @@ app.get('/', (req, res) => {
 
 `page.finish(html)` puts the used components' CSS and the import map before `</head>`, and their modules before `</body>`. `page.head()` and `page.scripts()` give you the same pieces to place yourself. `zubra.handle(req, res)` (Node) and `zubra.fetch(request)` (fetch-style servers) serve `/_zubra/…`. For a static site, `zubra.writeAssets(dir)` writes those files. `examples/helpdesk/` (Express and EJS), `examples/hypermedia/` (Hono) and `examples/meta/eleventy-trails/` use it.
 
-**Streaming** (3.3). A prop given as a promise renders as pending: the component's `<zb-await>` shows its pending content, in an empty region. `page.stream(html)` (a Node stream; `page.streamResponse(html)` a web `Response`) sends the page at once and, as each promise settles, a `<template>` with the resolved region and an inline script that swaps it in before the element starts, or hands the element the value if it has. The element hydrates the region as it would any server-rendered `zb-then`; a rejection reaches its `zb-catch`. `page.pending` says whether anything is streaming. Without JavaScript the pending content stays, so await the data before rendering when the page must be complete without it. The help desk's dashboard streams its recent activity.
+**Streaming** (3.3). A prop given as a promise renders as pending: the component's `<zb-await>` shows its pending content, in an empty region. `page.stream(html)` (a Node stream; `page.streamResponse(html)` a web `Response`) sends the page at once and, as each promise settles, the resolved region in a `<template for>` and an inline script that hands the element the value. The pending region is a named range (`<?start name="zb-0-0"?>`…`<?end?>`), so a browser with out-of-order streaming (Chrome and Edge 150+) puts the resolved region in place itself, without JavaScript (since 5.0); elsewhere, and in a shadow root, which a `<template for>` can't reach, the script does it before the element starts. An element that has started renders the region itself. It hydrates the region as it would any server-rendered `zb-then`; a rejection reaches its `zb-catch`. `page.pending` says whether anything is streaming. Without JavaScript and out-of-order streaming the pending content stays, so await the data before rendering when the page must be complete without it. The help desk's dashboard streams its recent activity.
 
 `@zubra/compiler` underneath renders a single component, from Node and without Rust:
 
@@ -472,7 +475,7 @@ const { html, css } = render('src/inbox.zb', { props: { heading: 'Mail' }, slots
 
 Slot content here is HTML your server already rendered and is kept as written (comments, scripts and braces included; `slotSource: 'template'` reads it as Zubra syntax instead). A compiled module also loads on a server, where `define()` returns a stand-in carrying the element's description, so framework server rendering can import it. In a server build, `@zubra/unplugin` registers each component's renderer, and `renderToString(Element, { props, attributes, slots })` from `@zubra/runtime/server` renders the element class. With Astro, `@zubra/unplugin/astro` does all of this: components render on the server, and `client:load` (or any client directive) hydrates them. In Nuxt, SvelteKit, React Router and SolidStart, the framework renders the host and its children, and `@zubra/server` adds the shadow roots (see "The SSR bridge").
 
-The JavaScript output is a module that calls `define()` on `@zubra/runtime` with the component's props, template, parts and script. Parts are found by paths that count elements and comments only, because browsers merge and drop text nodes. Dynamic text beside other nodes follows an empty `<!---->` anchor, which both outputs emit.
+The JavaScript output is a module that calls `define()` on `@zubra/runtime` with the component's props, template, parts and script. Parts are found by paths that count elements and markers only, because browsers merge and drop text nodes. Dynamic text beside other nodes follows an empty anchor, which both outputs emit (`<?zb ?>` in the HTML, `<!---->` in the module's template).
 
 ## Using components in an app
 

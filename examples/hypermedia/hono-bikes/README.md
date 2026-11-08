@@ -31,22 +31,16 @@ CLI from `cargo build` stands in for it, as in `examples/helpdesk/`.
 
 ## What it found
 
-- **Hydration markers are HTML comments, and comments don't always survive.**
+- **Hydration markers were HTML comments (up to 4.x), and comments don't always survive.**
   - htmx 2 parses fragments with `Document.parseHTMLUnsafe()` where the browser has it.
   - In the Chromium build Playwright ships (153), that drops every comment. MDN says it
     shouldn't with no sanitizer, so this looks like a browser bug, but it's what this browser
     does.
-  - The swapped-in elements' markers are gone, so Zubra can't hydrate them. It renders them fresh
-    instead, which gives the right result but logs a warning per element. In-place hydration
-    (and with it focus and scroll position) is lost.
-  - The layout works around it: when the browser drops comments, it removes
-    `parseHTMLUnsafe`, so htmx falls back to `DOMParser`, which keeps them. A test checks both
-    paths.
-  - Anything that strips comments (HTML minifiers, some sanitizers, CDNs' "optimizers") has the
-    same effect.
-  - Since 2.10 the workaround is optional: an element whose markers were stripped puts them back
-    by structure and hydrates in place. The test without the parser fix now expects no
-    warnings.
+  - The swapped-in elements' markers were gone. Until 2.10 Zubra rendered them fresh (with a
+    warning, and without keeping focus); since 2.10 they put their markers back by structure. The
+    layout also removed `parseHTMLUnsafe`, so htmx fell back to `DOMParser`, which keeps comments.
+  - Since 5.0 the markers are processing instructions (`<?zb [?>`), which `parseHTMLUnsafe`
+    keeps. The workaround is gone, and a test checks that swapped elements keep their markers.
 - **Custom elements can't be table rows.** `<inventory-row>` in a `<tbody>` is moved out of the
   table by the HTML parser. So the rows are plain `<tr>`s in Hono's templates, with components
   in their cells, and each row costs three renders.

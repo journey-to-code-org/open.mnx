@@ -179,7 +179,7 @@ fn ref_global_listeners_and_else_if() {
 </zb-x>"#;
     let out = html(source);
     assert!(
-        out.contains("<!---->\n  <div></div>\n  <!--[--><!--[-->B<!--]--><!--]-->"),
+        out.contains("<?zb ?>\n  <div></div>\n  <?zb [?><?zb [?>B<?zb ]?><?zb ]?>"),
         "{out}"
     );
     let code = js(source);
@@ -214,7 +214,7 @@ fn conditions_as_attributes_compile_to_what_the_wrapper_does() {
 </zb-x>"#;
     assert_eq!(
         html(nested),
-        "<zb-x>\n  <!--[--><p>A<!--[--><!--]--></p><!--]-->\n  <!--[--><!--[--><!--[--><i>1</i><!--]--><!--]--><!--[--><!--[--><b>2</b><!--]--><!--]--><!--]-->\n</zb-x>"
+        "<zb-x>\n  <?zb [?><p>A<?zb [?><?zb ]?></p><?zb ]?>\n  <?zb [?><?zb [?><?zb [?><i>1</i><?zb ]?><?zb ]?><?zb [?><?zb [?><b>2</b><?zb ]?><?zb ]?><?zb ]?>\n</zb-x>"
     );
 }
 
@@ -305,7 +305,7 @@ fn markup_in_braces_compiles_to_the_directives() {
 </zb-x>"#;
     assert_eq!(
         html(mixed),
-        "<zb-x>\n  <!--[--><p>Don't 2 items</p><!--]-->\n  <!--[--><!--[--><i><!---->0x<!--[--><b>!</b><!--]--></i><!--]--><!--]--><!---->\n  &lt;not markup&gt;\n</zb-x>"
+        "<zb-x>\n  <?zb [?><p>Don't 2 items</p><?zb ]?>\n  <?zb [?><?zb [?><i><?zb ?>0x<?zb [?><b>!</b><?zb ]?></i><?zb ]?><?zb ]?><?zb ?>\n  &lt;not markup&gt;\n</zb-x>"
     );
 }
 
@@ -350,7 +350,7 @@ fn let_names_and_switch_render_and_bind() {
 </zb-x>"#;
     assert_eq!(
         html(source),
-        "<zb-x>\n  <ul><!--[--><!--[--><li class=\"big\">1: 6</li><!--]--><!--[--><li>2: 5</li><!--]--><!--]--></ul>\n  <!--[--><!--[--><p>On its way</p><!--]--><!--]-->\n</zb-x>"
+        "<zb-x>\n  <ul><?zb [?><?zb [?><li class=\"big\">1: 6</li><?zb ]?><?zb [?><li>2: 5</li><?zb ]?><?zb ]?></ul>\n  <?zb [?><?zb [?><p>On its way</p><?zb ]?><?zb ]?>\n</zb-x>"
     );
     let code = js(source);
     assert!(

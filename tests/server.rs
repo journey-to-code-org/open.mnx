@@ -64,7 +64,7 @@ fn a_pending_prop_renders_as_an_empty_region_for_a_stream_to_fill() {
         &zubra::filesystem,
     )
     .unwrap();
-    assert!(shell.contains("<!--[?--><p>…</p><!--]-->"), "{shell}");
+    assert!(shell.contains("<?zb [??><p>…</p><?zb ]?>"), "{shell}");
     assert!(
         !shell.contains("reviews=\""),
         "no attribute for a value not known yet: {shell}"
@@ -79,7 +79,7 @@ fn a_pending_prop_renders_as_an_empty_region_for_a_stream_to_fill() {
     )
     .unwrap();
     assert!(
-        resolved.contains("<!--[--><ul><!--[--><!--[--><li>a</li><!--]--><!--]--></ul><!--]-->"),
+        resolved.contains("<?zb [?><ul><?zb [?><?zb [?><li>a</li><?zb ]?><?zb ]?></ul><?zb ]?>"),
         "{resolved}"
     );
     // A pending prop with a value given keeps it unknown (the stream renders again once it has it).

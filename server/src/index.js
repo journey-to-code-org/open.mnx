@@ -154,10 +154,14 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
         const names = promises.map(([name]) => name);
         const id = String(streamed++);
         const shell = withStreamId(render(key, given, slots, names), id);
-        pendingRenders.push({ key, id, given, slots, promises: new Map(promises), shell });
+        const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0 };
+        // Each pending region is a named range (`<?start name>`…`<?end>`) that a streamed
+        // `<template for>` replaces (out-of-order streaming).
+        entry.names = pendingRegions(shell).map(() => `zb-${id}-${entry.count++}`);
+        pendingRenders.push(entry);
         // Until the values arrive, the element (should it start first) holds a promise for
         // each, set before it upgrades, so its `zb-await` shows the pending content.
-        return `${shell}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
+        return `${named(shell, entry.names)}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
       get pending() {
@@ -165,8 +169,9 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
       },
       /**
        * The page as a stream: `finish(html)` first, then, as each promise prop settles, the
-       * resolved regions and the value, in a `<template>` and a short inline script that swaps
-       * them in before the element starts (or just hands the element the value, if it has).
+       * resolved regions, each in a `<template for>` (which the browser puts in place itself
+       * where it streams out of order), and a short inline script that hands the element the
+       * value, and puts the regions in place where the browser didn't.
        * `stream(html)` is a Node Readable; `streamResponse(html)` a web `Response` body.
        */
       stream(html) {
@@ -215,8 +220,18 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
         entry.given[name] = value;
         entry.promises.delete(name);
         const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()]), entry.id);
-        const regions = regionSwaps(entry.shell, resolved);
+        const swaps = new Map(regionSwaps(entry.shell, resolved).map((swap) => [swap.index, swap.html]));
         entry.shell = resolved;
+        // The regions still pending keep their names; one that resolved is replaced, along with
+        // its name, by the pending regions inside it.
+        const regions = [];
+        entry.names = entry.names.flatMap((region, index) => {
+          if (!swaps.has(index)) return [region];
+          const html = swaps.get(index);
+          const inner = pendingRegions(html).map(() => `zb-${entry.id}-${entry.count++}`);
+          regions.push({ name: region, html: named(html, inner) });
+          return inner;
+        });
         yield swapScript(entry.id, regions, { [name]: { value } });
       }
     }
@@ -412,7 +427,7 @@ function withStreamId(html, id) {
 
 /**
  * The pending regions of `shell` that `resolved` has rendered: `[{ index, html }]`, where
- * `index` counts the shell's top-level `<!--[?-->` regions in order and `html` is the resolved
+ * `index` counts the shell's top-level `<?zb [??>` regions in order and `html` is the resolved
  * region (markers included). The two renders differ only inside those regions (and the host's
  * start tag, which is compared past).
  */
@@ -422,14 +437,12 @@ function regionSwaps(shell, resolved) {
   let b = skipTag(resolved);
   const swaps = [];
   let index = 0;
-  const PENDING = '<!--[?-->';
+  const PENDING = '<?zb [??>';
   const regionEnd = (html, start) => {
-    // From the region's opening marker to its matching `<!--]-->`.
-    const markers = /<!--\[[?!]?-->|<!--\]-->/g;
-    markers.lastIndex = start;
+    // From the region's opening marker to its matching `<?zb ]?>`.
     let depth = 0;
-    for (const match of html.slice(start).matchAll(markers)) {
-      depth += match[0] === '<!--]-->' ? -1 : 1;
+    for (const match of html.slice(start).matchAll(/<\?zb \[[?!]?\?>|<\?zb \]\?>/g)) {
+      depth += match[0] === '<?zb ]?>' ? -1 : 1;
       if (depth === 0) return start + match.index + match[0].length;
     }
     return html.length;
@@ -452,11 +465,48 @@ function regionSwaps(shell, resolved) {
   return swaps;
 }
 
-/** The chunk for one settled promise: the regions as a template, and the script that swaps them in. */
+/**
+ * The top-level pending regions of `html` (`<?zb [??>` to its `<?zb ]?>`, not inside another
+ * pending region), as `[start, end]` offsets: the ones `regionSwaps` counts.
+ */
+function pendingRegions(html) {
+  const found = [];
+  let depth = 0;
+  let start = -1;
+  let outer = 0;
+  for (const match of html.matchAll(/<\?zb (\[[?!]?|\])\?>/g)) {
+    if (match[1] === ']') {
+      depth--;
+      if (start >= 0 && depth === outer) {
+        found.push([start, match.index + match[0].length]);
+        start = -1;
+      }
+      continue;
+    }
+    if (match[1] === '[?' && start < 0) {
+      start = match.index;
+      outer = depth;
+    }
+    depth++;
+  }
+  return found;
+}
+
+/** `html` with its top-level pending regions in named ranges, for `<template for>`. */
+function named(html, names) {
+  let out = html;
+  pendingRegions(html).reverse().forEach(([start, end], i, all) => {
+    const name = names[all.length - 1 - i];
+    out = `${out.slice(0, start)}<?start name="${name}"?>${out.slice(start, end)}<?end?>${out.slice(end)}`;
+  });
+  return out;
+}
+
+/** The chunk for one settled promise: each resolved region in a `<template for>`, and the script. */
 function swapScript(id, regions, values) {
-  const template = regions?.length ? `<template data-zb-swap="${id}">${regions.map((region) => `<div data-zb-region="${region.index}">${region.html}</div>`).join('')}</template>` : '';
+  const templates = (regions ?? []).map((region) => `<template for="${region.name}">${region.html}</template>`).join('');
   const script = `<script>(${swapInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
-  return `${template}${script}\n`;
+  return `${templates}${script}\n`;
 }
 
 // Runs in the browser, inlined, right after a streamed host: a promise per pending prop, as a
@@ -471,40 +521,45 @@ function holdInBrowser(id, names) {
   }
 }
 
-// Runs in the browser, inlined: before the element starts, replace its pending regions with the
-// rendered ones and set the values as properties (captured when the element upgrades); once it
-// has started, setting the property is enough (the element renders the region itself).
+// Runs in the browser, inlined: hand the element the values (as properties, captured when it
+// upgrades), and, before it starts, put the resolved regions in place where the browser didn't:
+// browsers without out-of-order streaming leave each `<template for>` as an element, and those
+// with it don't reach into a shadow root. Once the element has started it renders the regions
+// itself (it removed their names, so the browser has nothing to replace).
 function swapInBrowser(id, values) {
   var host = document.querySelector('[data-zb-stream="' + id + '"]');
   var script = document.currentScript;
-  var template = script && script.previousElementSibling;
-  if (template && template.tagName !== 'TEMPLATE') template = null;
-  if (template) template.remove();
-  if (!host) return;
-  var started = host.matches(':state(hydrated), [data-hydrated]');
-  if (template && !started) {
-    var regions = [];
-    var walker = document.createTreeWalker(host, NodeFilter.SHOW_COMMENT);
-    var depth = 0;
-    var current = null;
-    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
-      var text = node.data;
-      if (text === '[?' && depth === 0) { current = { open: node }; }
-      if (text === '[' || text === '[?' || text === '[!') depth++;
-      else if (text === ']') { depth--; if (depth === 0 && current) { current.close = node; regions.push(current); current = null; } }
+  var templates = [];
+  for (var node = script && script.previousElementSibling; node && node.tagName === 'TEMPLATE' && node.hasAttribute('for'); node = node.previousElementSibling) templates.push(node);
+  // A `<?start name>` or `<?end>`: a processing instruction, or the comment it parses as.
+  var kind = function (node) {
+    return node.nodeType === 7 ? node.target : node.nodeType === 8 ? (/^\?(start|end)\b/.exec(node.data) || [])[1] : null;
+  };
+  var started = host && host.matches(':state(hydrated), [data-hydrated]');
+  for (var i = 0; i < templates.length; i++) {
+    var template = templates[i];
+    template.remove();
+    if (!host || started) continue;
+    var name = 'name="' + template.getAttribute('for') + '"';
+    var start = null;
+    var roots = host.shadowRoot ? [host.shadowRoot, host] : [host];
+    for (var r = 0; r < roots.length && !start; r++) {
+      var walker = document.createTreeWalker(roots[r], NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_PROCESSING_INSTRUCTION);
+      for (var at = walker.nextNode(); at; at = walker.nextNode()) {
+        if (kind(at) === 'start' && at.data.replace(/^\?start |\?$/g, '') === name) { start = at; break; }
+      }
     }
-    var pieces = template.content.querySelectorAll('[data-zb-region]');
-    for (var i = 0; i < pieces.length; i++) {
-      var region = regions[Number(pieces[i].getAttribute('data-zb-region'))];
-      if (!region) continue;
-      var range = document.createRange();
-      range.setStartBefore(region.open);
-      range.setEndAfter(region.close);
-      range.deleteContents();
-      var fragment = document.createDocumentFragment();
-      while (pieces[i].firstChild) fragment.appendChild(pieces[i].firstChild);
-      range.insertNode(fragment);
+    var end = start && start.nextSibling;
+    for (var depth = 0; end; end = end.nextSibling) {
+      if (kind(end) === 'start') depth++;
+      else if (kind(end) === 'end' && depth-- === 0) break;
     }
+    if (!end) continue;
+    var range = document.createRange();
+    range.setStartBefore(start);
+    range.setEndAfter(end);
+    range.deleteContents();
+    range.insertNode(template.content);
   }
   var held = window.__zubraStream || {};
   for (var name in values) {

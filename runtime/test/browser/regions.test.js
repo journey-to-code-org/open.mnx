@@ -106,7 +106,7 @@ test('hydrates server-rendered regions without replacing their nodes', async () 
   const props = join(site, 'list.props.json');
   writeFileSync(props, JSON.stringify({ items: ['s1', 's2', 's3'], heading: 'Server' }));
   const html = compiler(join(here, 'fixtures/list.zb'), '--props', props);
-  assert.match(html, /<!--\[--><!--\[-->/, 'the server marks regions and rows');
+  assert.match(html, /<\?zb \[\?><\?zb \[\?>/, 'the server marks regions and rows');
   const { page, messages } = await open(html, {
     beforeModules: `window.before = [...document.querySelectorAll('zb-list *')];`,
     modules: ['list'],

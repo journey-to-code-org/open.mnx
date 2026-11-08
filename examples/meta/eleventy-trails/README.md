@@ -32,16 +32,12 @@ miles on every card. The choice is remembered.
 
 ## What it found
 
-- **HTML minifiers remove the hydration markers.** Zubra's markers are comments. A minifier with
-  `removeComments: true` removes them, and the elements then render afresh instead of hydrating:
-  - the result is correct;
-  - each element logs a warning;
-  - in-place hydration is lost.
-
-  html-minifier-terser's `ignoreCustomComments: [/^[[\]?!]*$/]` keeps them, and nothing else.
-  `MINIFY=1 npm run build` does that, and the tests build it both ways. This is the second
-  example to lose markers, after htmx (`examples/hypermedia/`). Since 2.10 the naive build
-  hydrates in place too: the elements put their markers back by structure, with no warning.
+- **HTML minifiers removed the hydration markers** (up to 4.x). Zubra's markers were comments. A
+  minifier with `removeComments: true` removed them, and the elements rendered afresh instead of
+  hydrating (since 2.10 they put their markers back by structure, where they could). Keeping them
+  took html-minifier-terser's `ignoreCustomComments: [/^[[\]?!]*$/]`. Since 5.0 the markers are
+  processing instructions (`<?zb [?>`), which minifiers keep: `MINIFY=1 npm run build` uses plain
+  `removeComments: true`, and the elements hydrate in place.
 - **Precomputed data, again.** The elevation profile's SVG points, both units, and the climb in
   feet are worked out in `_data/trails.js` or with `%` arithmetic. The build-time renderer
   evaluates arithmetic, not `.map()`, `Math.round()` or `toFixed()`. Eleventy runs in Node.js,

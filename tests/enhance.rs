@@ -106,7 +106,7 @@ fn hydrated_is_false_on_the_server_and_a_signal_in_the_template() {
     assert!(
         page.contains("<button>Apply</button>")
             && page.contains("<p>static</p>")
-            && !page.contains("[?"),
+            && !page.contains("<?zb [??>"),
         "{page}"
     );
     let output = js(source);

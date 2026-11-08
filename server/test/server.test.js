@@ -25,9 +25,10 @@ async function listen(handler) {
   servers.push(server);
   return `http://127.0.0.1:${server.address().port}`;
 }
-async function open(url, { javascript = true } = {}) {
+async function open(url, { javascript = true, before } = {}) {
   const context = await browser.newContext({ javaScriptEnabled: javascript });
   const page = await context.newPage();
+  if (before) await page.addInitScript(before);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => ['error', 'warning'].includes(message.type()) && errors.push(message.text()));
@@ -40,7 +41,7 @@ const layout = (body) => `<!doctype html><html><head><meta charset="utf-8"><titl
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
-  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list']);
+  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list', 'review-panel']);
   assert.equal(zubra.describe('count-stepper').form, true);
   const url = await listen((req, res) => {
     if (zubra.handle(req, res)) return;
@@ -207,13 +208,22 @@ test('stream(): the shell first, then the resolved region, hydrated in place; a 
 
   // The whole response: the shell with the pending region, then the swap.
   const text = await (await fetch(url)).text();
-  assert.match(text, /<review-list data-zb-stream="0" heading="What people said">\s*<h2>What people said<\/h2>\s*<!--\[\?-->\s*<p class="loading">Loading…<\/p>\s*<!--\]-->/);
-  assert.match(text, /<template data-zb-swap="0"><div data-zb-region="0"><!--\[-->[^]*<li>Ada: 5<\/li>[^]*<\/div><\/template><script>/);
+  assert.match(text, /<review-list data-zb-stream="0" heading="What people said">\s*<h2>What people said<\/h2>\s*<\?start name="zb-0-0"\?><\?zb \[\?\?>\s*<p class="loading">Loading…<\/p>\s*<\?zb \]\?><\?end\?>/);
+  // The resolved region alone (its markers included), for the browser's out-of-order streaming.
+  assert.match(text, /<template for="zb-0-0"><\?zb \[\?>\s*<ul>[^<]*<\?zb \[\?><\?zb \[\?><li>Ada: 5<\/li><\?zb \]\?><\?zb \]\?><\/ul>\s*<\?zb \]\?><\/template><script>/);
   assert.match(text, /"reviews":\{"value":\[\{"id":1,"name":"Ada","stars":5\}\]\}/);
 
-  // Without JavaScript the swap can't run: the pending content stays (the page is still complete).
+  // Without JavaScript: a browser with out-of-order streaming (Chromium 150+) puts the resolved
+  // region in place itself; elsewhere the pending content stays (the page is still complete).
   let page = await open(url, { javascript: false });
-  assert.equal(await page.locator('review-list .loading').count(), 1);
+  const native = await page.evaluate(() => !document.querySelector('template[for]'));
+  if (native) {
+    assert.deepEqual(await page.$$eval('review-list li', (els) => els.map((el) => el.textContent)), ['Ada: 5']);
+    assert.equal(await page.locator('review-list .loading').count(), 0);
+  } else {
+    assert.equal(await page.locator('review-list .loading').count(), 1);
+  }
+  assert.equal(native, true, 'Chromium streams out of order');
   await page.done();
 
   // With JavaScript, the fast case: the swap lands before the module runs, so the element
@@ -236,6 +246,8 @@ test('stream(): the shell first, then the resolved region, hydrated in place; a 
   release();
   await navigation;
   await slowPage.waitForFunction(() => document.querySelectorAll('review-list li').length === 2);
+  assert.equal(await slowPage.locator('review-list .loading').count(), 0);
+  assert.equal(await slowPage.locator('template[for]').count(), 0, 'the script removes a template the browser had nowhere to put');
   assert.deepEqual(errors, []);
   await context.close();
 
@@ -244,4 +256,43 @@ test('stream(): the shell first, then the resolved region, hydrated in place; a 
   await page.waitForFunction(() => document.querySelector('review-list .error'));
   assert.equal(await page.textContent('review-list .error'), 'no reviews today');
   await page.done();
+});
+
+test('stream(): the script puts regions in place where the browser doesn\'t (a shadow root, or no out-of-order streaming)', async () => {
+  const zubra = createZubra({ components });
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    // Settled at once: the regions arrive before the module has loaded, so the script swaps them in.
+    const reviews = () => Promise.resolve([{ id: 1, name: 'Ada', stars: 5 }]);
+    const body = page.render('review-list', { heading: 'Light', reviews: reviews() }) + page.render('review-panel', { reviews: reviews() });
+    res.writeHead(200, { 'content-type': 'text/html' });
+    // `?comments`: the markup as Firefox and Safari parse it today, where each `<?…>` is a comment.
+    const comments = req.url.includes('comments');
+    page.stream(layout(body)).on('data', (chunk) => {
+      const text = String(chunk);
+      res.write(comments ? text.replace(/<\?((?:zb|start|end)\b[^>]*?)>/g, '<!--?$1-->') : text);
+    }).on('end', () => res.end());
+  });
+  for (const query of ['', '?comments']) {
+    const page = await open(`${url}/${query}`, { before: `new MutationObserver(() => {
+      const hosts = [...document.querySelectorAll('review-list, review-panel')];
+      if (hosts.length === 2 && !window.swapped && hosts.every((host) => host.querySelector('li') || host.shadowRoot?.querySelector('li'))) {
+        window.swapped = hosts.every((host) => !host.matches(':state(hydrated)'));
+      }
+    }).observe(document, { childList: true, subtree: true });` });
+    await page.waitForFunction(() => document.querySelector('review-list')?.matches(':state(hydrated)')
+      && document.querySelector('review-panel')?.matches(':state(hydrated)'));
+    const read = () => page.evaluate(() => ({
+      light: [...document.querySelectorAll('review-list li')].map((el) => el.textContent),
+      shadow: [...document.querySelector('review-panel').shadowRoot.querySelectorAll('li')].map((el) => el.textContent),
+      loading: document.querySelectorAll('review-list .loading').length + document.querySelector('review-panel').shadowRoot.querySelectorAll('.loading').length,
+      templates: document.querySelectorAll('template[for]').length,
+    }));
+    await page.waitForFunction(() => document.querySelector('review-panel').shadowRoot.querySelector('li') && document.querySelector('review-list li'));
+    assert.deepEqual(await read(), { light: ['Ada: 5'], shadow: ['Ada: 5'], loading: 0, templates: 0 }, query || 'processing instructions');
+    assert.equal(await page.evaluate(() => window.swapped), true, 'in place before the elements started');
+    assert.deepEqual(page.errors, []);
+    await page.done();
+  }
 });

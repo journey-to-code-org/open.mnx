@@ -6,11 +6,11 @@
 // - After the build, `writeAssets()` writes the components' browser modules and @zubra/runtime to
 //   _site/_zubra/.
 //
-// MINIFY=1 minifies the HTML, keeping zubra's hydration markers (they're comments: see below).
+// MINIFY=1 minifies the HTML. zubra's hydration markers are processing instructions (`<?zb [?>`),
+// which minifiers keep: nothing to configure.
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createZubra } from '@zubra/server';
-import { ZUBRA_MARKER_COMMENT } from '@zubra/compiler';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const zubra = createZubra({ components: join(here, 'components') });
@@ -38,9 +38,6 @@ export default function (eleventyConfig) {
       return minify(html, {
         collapseWhitespace: true,
         removeComments: true,
-        // zubra's hydration markers are comments: keep them, or the elements render afresh
-        // instead of hydrating. (MINIFY=naive leaves this out, to show that; the tests do.)
-        ignoreCustomComments: process.env.MINIFY === 'naive' ? [] : [ZUBRA_MARKER_COMMENT],
         minifyCSS: true,
       });
     });

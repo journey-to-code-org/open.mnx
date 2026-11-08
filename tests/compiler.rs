@@ -441,7 +441,7 @@ fn dynamic_text_beside_other_nodes_gets_a_hydration_anchor() {
     let source = "<zb-x name=\"Ada\"><p>Hi <b>there</b> {name}!</p></zb-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<zb-x><p>Hi <b>there</b><!----> Ada!</p></zb-x>"
+        "<zb-x><p>Hi <b>there</b><?zb ?> Ada!</p></zb-x>"
     );
     // An element's only child needs no anchor.
     assert_eq!(
@@ -479,7 +479,7 @@ fn the_host_is_the_root_so_templates_may_have_any_number_of_top_level_nodes() {
             "{}"
         )
         .unwrap(),
-        "<zb-x><!---->Hi Ada <p>One</p><p>Two</p></zb-x>"
+        "<zb-x><?zb ?>Hi Ada <p>One</p><p>Two</p></zb-x>"
     );
     let js = compile_js(
         "<zb-x name=\"Ada\">Hi {name} <p>One</p></zb-x>",
@@ -537,11 +537,11 @@ const everyone = [{ name: "Ada", role: "<admin>" }, { name: "Linus", role: "dev"
 </zb-team>"#;
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<zb-team>\n<ul><!--[--><!--[--><li data-n=\"1\">Ada (&lt;admin&gt;)</li><!--]--><!--[--><li data-n=\"2\">Linus (dev)</li><!--]--><!--]--></ul>\n</zb-team>"
+        "<zb-team>\n<ul><?zb [?><?zb [?><li data-n=\"1\">Ada (&lt;admin&gt;)</li><?zb ]?><?zb [?><li data-n=\"2\">Linus (dev)</li><?zb ]?><?zb ]?></ul>\n</zb-team>"
     );
     assert!(compile(source, r#"{"people":[]}"#)
         .unwrap()
-        .contains("<ul><!--[--><!--]--></ul>"));
+        .contains("<ul><?zb [?><?zb ]?></ul>"));
     assert_error(source, r#"{"people":{"a":1}}"#, "must be an array");
 }
 
@@ -550,7 +550,7 @@ fn loop_variables_shadow_props_and_stay_scoped() {
     let source = "<zb-x name=\"outer\" items={[\"inner\"]}><p><zb-each items={items} as=\"name\">{name}</zb-each>/{name}</p></zb-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<zb-x><p><!--[--><!--[--><!---->inner<!--]--><!--]--><!---->/outer</p></zb-x>"
+        "<zb-x><p><?zb [?><?zb [?><?zb ?>inner<?zb ]?><?zb ]?><?zb ?>/outer</p></zb-x>"
     );
     assert_error(
         "<zb-x items={[1]}><p><zb-each items={items} as=\"item\" index=\"item\">x</zb-each></p></zb-x>",
@@ -584,11 +584,11 @@ fn fills_named_and_default_slots_from_parsed_template_fragments() {
         r#"{"heading":"<h2>{title}</h2>","default":"<p>Supplied default</p>"}"#,
     )
     .unwrap();
-    assert_eq!(html, "<zb-panel title=\"Panel title\"><main><!--[!--><h2>Panel title</h2><!--]--><!--[!--><p>Supplied default</p><!--]--></main></zb-panel>");
+    assert_eq!(html, "<zb-panel title=\"Panel title\"><main><?zb [!?><h2>Panel title</h2><?zb ]?><?zb [!?><p>Supplied default</p><?zb ]?></main></zb-panel>");
     assert!(!html.contains("zb-slot"));
     assert_eq!(
         compile(source, r#"{"title":"Fallback title"}"#).unwrap(),
-        "<zb-panel title=\"Fallback title\"><main><!--[--><h1>Fallback title</h1><!--]--><!--[--><p>Default fallback</p><!--]--></main></zb-panel>"
+        "<zb-panel title=\"Fallback title\"><main><?zb [?><h1>Fallback title</h1><?zb ]?><?zb [?><p>Default fallback</p><?zb ]?></main></zb-panel>"
     );
 }
 
@@ -711,7 +711,7 @@ fn both_backends_agree_on_anchors() {
     let source = "<zb-x name=\"Ada\"><p>Hi <b>there</b> {name}!</p></zb-x>";
     assert!(compile(source, "{}")
         .unwrap()
-        .contains("<b>there</b><!----> Ada!"));
+        .contains("<b>there</b><?zb ?> Ada!"));
     assert!(js(source).contains("<b>there</b><!---->"));
 }
 
@@ -919,7 +919,7 @@ fn server_rendered_slot_html_is_kept_as_written() {
         compile_html_from(source, "panel.zb", "{}", &slots, SlotSource::Html, &loader).unwrap();
     assert_eq!(
         html,
-        "<zb-panel><main><!--[!--><p data-x=\"{a}\">{\"json\"}</p><!--astro:end--><script type=\"application/json\">{\"a\":1}</script><input value=\"raw\" onclick=\"go()\"><zb-slot></zb-slot><!--]--></main></zb-panel>"
+        "<zb-panel><main><?zb [!?><p data-x=\"{a}\">{\"json\"}</p><!--astro:end--><script type=\"application/json\">{\"a\":1}</script><input value=\"raw\" onclick=\"go()\"><zb-slot></zb-slot><?zb ]?></main></zb-panel>"
     );
     // The same content is an error as a template (and stays one).
     assert!(compile_html_from(

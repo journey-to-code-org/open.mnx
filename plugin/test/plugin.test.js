@@ -489,7 +489,7 @@ test('astro: server-rendered pages, hydrated with a client directive', async () 
     // Static components are HTML only, with props, host attributes and slot content.
     assert.match(html, /<zb-card data-kind="static" heading="Astro">/);
     // (Astro takes the `slot` attribute off what it passes.)
-    assert.match(html, /<header><!--\[!--><h2>Custom \{braces\}<\/h2><!--\]--><\/header>[^]*<section><!--\[!--><p>Body<\/p><!--\]--><\/section>/);
+    assert.match(html, /<header><\?zb \[!\?><h2>Custom \{braces\}<\/h2><\?zb \]\?><\/header>[^]*<section><\?zb \[!\?><p>Body<\/p><\?zb \]\?><\/section>/);
     assert.match(html, /<zb-badge class="row" data-who="Ada" label="Ada" count="3"/, 'nested components render too');
     assert.match(html, /<astro-island[^>]*><zb-rating id="r" class="big" value="1">[^]*<output>1<\/output>/);
 

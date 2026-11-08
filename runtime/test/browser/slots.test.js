@@ -15,8 +15,8 @@ const readCard = (page) =>
   page.evaluate(() => {
     const el = document.querySelector('zb-card');
     return {
-      header: el.querySelector('header').innerHTML.replace(/<!--.*?-->/g, ''),
-      section: el.querySelector('section')?.innerHTML.replace(/<!--.*?-->/g, '') ?? null,
+      header: el.querySelector('header').innerHTML.replace(/<!--.*?-->|<\?zb.*?>/g, ''),
+      section: el.querySelector('section')?.innerHTML.replace(/<!--.*?-->|<\?zb.*?>/g, '') ?? null,
       footer: el.querySelector('footer').textContent,
     };
   });
@@ -79,8 +79,8 @@ test('hydrates supplied slot content as-is and binds the fallback of empty slots
   const slots = join(site, 'card.slots.json');
   writeFileSync(slots, JSON.stringify({ title: '<h2>Server title</h2>' }));
   const html = compiler(join(here, 'fixtures/card.zb'), '--slots', slots);
-  assert.match(html, /<!--\[!--><h2>Server title<\/h2><!--\]-->/);
-  assert.match(html, /<!--\[--><p>No content<\/p><!--\]-->/);
+  assert.match(html, /<\?zb \[!\?><h2>Server title<\/h2><\?zb \]\?>/);
+  assert.match(html, /<\?zb \[\?><p>No content<\/p><\?zb \]\?>/);
   const { page, messages } = await open(html, {
     beforeModules: `window.before = [...document.querySelectorAll('zb-card *')];`,
     modules: ['card'],

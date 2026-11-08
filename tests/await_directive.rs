@@ -7,7 +7,7 @@ fn renders_the_pending_content_and_emits_three_blocks() {
     let source = "<script>const data = fetch('/x')</script>\n<zb-x label=\"x\"><zb-await value={data}><p>{label}…</p><zb-then as=\"user\"><b>{user.name}</b></zb-then><zb-catch as=\"e\"><i>{e.message}</i></zb-catch></zb-await></zb-x>";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<zb-x><!--[?--><p>x…</p><!--]--></zb-x>"
+        "<zb-x><?zb [??><p>x…</p><?zb ]?></zb-x>"
     );
     let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
     assert!(js.contains(r#"await: () => $r(data), blocks: [{ template: "<p></p>", parts: () => [{ path: [0], text: () => $t($p.label) + "…" }] }, { template: "<b></b>", parts: (user) => [{ path: [0], text: () => $t($r(user).name) }] }, { template: "<i></i>", parts: (e, retry) => [{ path: [0], text: () => $t($r(e).message) }] }]"#), "{js}");
@@ -52,11 +52,11 @@ fn names_are_scoped_to_their_branch_and_the_shape_is_checked() {
 fn a_value_known_at_build_time_renders_zb_then() {
     assert_eq!(
         compile("<zb-x user={{ name: \"Ada\" }}><zb-await value={user}><p>…</p><zb-then as=\"u\"><b>{u.name}</b></zb-then></zb-await></zb-x>", "{}").unwrap(),
-        "<zb-x><!--[--><b>Ada</b><!--]--></zb-x>"
+        "<zb-x><?zb [?><b>Ada</b><?zb ]?></zb-x>"
     );
     assert_eq!(
         compile("<zb-x user={{ name: \"Ada\" }}><zb-await value={user}><p>…</p><zb-then as=\"u\"><b>{u.name}</b></zb-then></zb-await></zb-x>", r#"{"user":{"name":"Grace"}}"#).unwrap(),
-        "<zb-x user=\"{&quot;name&quot;:&quot;Grace&quot;}\"><!--[--><b>Grace</b><!--]--></zb-x>"
+        "<zb-x user=\"{&quot;name&quot;:&quot;Grace&quot;}\"><?zb [?><b>Grace</b><?zb ]?></zb-x>"
     );
 }
 
@@ -78,7 +78,7 @@ fn named_pending_shorthand_patterns_delay_and_keep() {
     assert!(named.contains("delay: () => 150, keep: true"), "{named}");
     // A value known at build time renders zb-then, destructured.
     let html = compile("<zb-x>\n  <zb-await value={{ name: \"Ada\", tags: [\"x\"] }}><zb-pending>…</zb-pending><zb-then as=\"{ name, tags: [first] }\">{name}/{first}</zb-then></zb-await>\n</zb-x>", "{}").unwrap();
-    assert!(html.contains("<!--[--><!---->Ada/x<!--]-->"), "{html}");
+    assert!(html.contains("<?zb [?><?zb ?>Ada/x<?zb ]?>"), "{html}");
     let rows = compile("<zb-x>\n  <zb-each items={[{ id: 1, at: { city: \"Oslo\" } }]} as=\"{ id, at: { city } }\" index=\"i\" key={id}><i>{i}{id}{city}</i></zb-each>\n</zb-x>", "{}").unwrap();
     assert!(rows.contains("<i>01Oslo</i>"), "{rows}");
 }

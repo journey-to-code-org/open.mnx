@@ -13,9 +13,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 /**
- * The text of zubra's hydration-marker comments (`<!--[-->`, `<!--]-->`, `<!---->`, `<!--[?-->`,
- * `<!--[!-->`), for tools that remove comments: keep the ones matching this. For example
- * html-minifier-terser's `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]`.
+ * The text of the hydration-marker comments a 4.x server writes (`<!--[-->`, `<!--]-->`, `<!---->`,
+ * `<!--[?-->`, `<!--[!-->`), for tools that remove comments: keep the ones matching this. For example
+ * html-minifier-terser's `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]`. Since 5.0 the markers are
+ * processing instructions (`<?zb [?>`), which minifiers keep without it.
  */
 export const ZUBRA_MARKER_COMMENT = /^[[\]?!]*$/;
 

@@ -127,16 +127,25 @@ for (const runtime of ['node', 'bun']) {
       await close();
     });
 
-    test('htmx without the parser fix: if the browser drops comments, swapped elements still hydrate in place', async () => {
-      const { page, errors, close } = await open('/?parser=native');
-      const drops = await page.evaluate(() => 'parseHTMLUnsafe' in Document && !Document.parseHTMLUnsafe('<p><!--x--></p>').body.firstChild.firstChild);
+    test('htmx with the browser\'s own fragment parser: the markers survive it, and swapped elements hydrate in place', async () => {
+      const { page, errors, close } = await open('/');
+      // htmx parses fragments with Document.parseHTMLUnsafe(), which in this Chromium drops
+      // comments (4.x's markers) and keeps processing instructions (5.0's).
+      const parsed = await page.evaluate(() => 'parseHTMLUnsafe' in Document
+        && [...Document.parseHTMLUnsafe('<p><!--x--><?zb [?></p>').body.firstChild.childNodes].map((node) => node.nodeType).join());
       await page.click('#item-1 button:text("Sell one")');
       await page.waitForFunction(() => document.querySelector('#item-1 stock-gauge span').textContent.trim() === '3');
       assert.equal(await page.text('#item-1 price-tag'), '$1,299.00');
       assert.deepEqual(await page.locator('#item-1 tag-list li').allTextContents(), ['mtb', '29"']);
-      // Where the browser dropped the markers, the elements put them back and hydrate in place
-      // (since 2.10), so there's no warning either way.
-      assert.equal(typeof drops, 'boolean');
+      if (parsed) assert.equal(parsed, '7', 'the comment is dropped, the processing instruction kept');
+      // The swapped-in elements kept their markers (not put back by structure, which uses comments).
+      const markers = await page.evaluate(() => {
+        const walker = document.createTreeWalker(document.querySelector('#item-1'), NodeFilter.SHOW_PROCESSING_INSTRUCTION | NodeFilter.SHOW_COMMENT);
+        const kinds = new Set();
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) kinds.add(node.nodeType);
+        return [...kinds];
+      });
+      if (parsed) assert.deepEqual(markers, [7]);
       assert.deepEqual(errors, []);
       await close();
     });

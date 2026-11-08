@@ -33,7 +33,7 @@ Give a prop as a promise: `page.render('reviews', { items: fetchReviews() })`. T
 
 ## Hydration markers
 
-The server HTML carries comment markers (`<!--[-->`). A minifier with `removeComments`, or htmx in some Chromium versions, strips them; the element then restores them by structure (slower, one warning for `zb-await` and projected content). Keep them with `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]` (from `@zubra/compiler`) in html-minifier-terser.
+The server HTML carries processing-instruction markers (`<?zb [?>`, `<?zb ]?>`, `<?zb ?>`; 5.0). Minifiers (with `removeComments`), htmx and the HTML parser keep them, so there's nothing to configure. A sanitizer that drops them makes the element restore them by structure (slower, one warning for `zb-await` and projected content). Markup from a 4.x server has comment markers (`<!--[-->`) instead: keep those with `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]` (from `@zubra/compiler`) in html-minifier-terser.
 
 ## Reference
 

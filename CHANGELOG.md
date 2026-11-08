@@ -2,6 +2,42 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.0.0 — 2026-11-08
+
+The platform's markers (`plan/roadmap-5.0.md`). The server markup's hydration markers are processing instructions instead of comments. Components and APIs don't change; update the packages together (`docs/migrating-to-5.0.md`).
+
+### Changed
+
+- **Hydration markers are processing instructions:** `<?zb [?>` … `<?zb ]?>` for a region, `<?zb [??>` for a region left to the browser, `<?zb [!?>` for supplied slot content, and `<?zb ?>` before dynamic text. They were `<!--[-->`, `<!--]-->`, `<!--[?-->`, `<!--[!-->` and `<!---->`.
+  - The Rust HTML output, `@zubra/compiler`'s `render()`, `@zubra/server` and the framework wrappers' server rendering all write them.
+  - Chrome and Edge 150+ parse them as `ProcessingInstruction` nodes; other browsers parse them as comments (`<!--?zb [?-->`). The runtime reads both.
+  - The runtime still reads 4.x's comment markers, for all of 5.x, so servers and runtimes can be updated in either order.
+  - Client templates (the compiled module's `template`) keep the comment form: the runtime parses them itself.
+- **Streaming uses `<template for>`.** A pending region is a named range (`<?start name="zb-0-0"?>`…`<?end?>`), and each resolved region arrives in a `<template for="zb-0-0">`.
+  - Chrome and Edge 150+ put it in place themselves, without JavaScript.
+  - The inline script hands the element the value, and puts the region in place where the browser didn't: other browsers, and shadow roots, which a `<template for>` can't reach.
+  - An element that starts before its region arrives removes the range's name, so the browser has nothing to replace, and renders the region itself.
+  - It replaces 3.3's `<template data-zb-swap>`.
+- **The compiled code's interface is `abi: 3`.** A 4.x runtime refuses 5.0 modules, with an error that says to update it, because it can't read 5.0's markers. The 5.0 runtime still runs modules compiled by 3.x and 4.x (`abi: 2`).
+- **Range positions count elements and markers only.** A comment or processing instruction that isn't a marker, such as a stream's `<?start>`, doesn't shift the paths after it.
+
+### Fixed
+
+- **Streamed regions with content after them.** The server took the region's HTML from its opening marker to the end of the host, not to its closing marker. With more than one pending region the swap could put the wrong content in place.
+
+### Removed
+
+- **Workarounds the markers no longer need:**
+  - the Eleventy example minifies with plain `removeComments: true`;
+  - the htmx example no longer deletes `Document.parseHTMLUnsafe`, which drops comments in Chromium and keeps processing instructions.
+  - `ZUBRA_MARKER_COMMENT` stays, for a 4.x server's markup.
+
+### Tests
+
+- `runtime/test/browser/markers.test.js`: hydration in place from the three marker forms (processing instructions, the comments other browsers make of them, and 4.x comments), and from minified markup.
+- `@zubra/server`: no-JavaScript streaming in Chromium, and the script's fallback for a shadow root and for markup parsed as comments.
+- The help desk's streamed activity appears without JavaScript in Chromium.
+
 ## 4.3.0 — 2026-11-08
 
 The rest of the template sugar (`plan/roadmap-4.x.md`, 4.3). Additive.

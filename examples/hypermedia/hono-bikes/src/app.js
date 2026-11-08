@@ -80,16 +80,7 @@ export function createApp({ store, cache = true }) {
     return parts;
   };
 
-  // htmx 2 parses fragments with Document.parseHTMLUnsafe() where it exists. In the Chromium
-  // that Playwright ships (153), that drops HTML comments, and zubra's hydration markers are
-  // comments: swapped-in elements then can't hydrate and are rendered fresh (correct, but with a
-  // warning, and without keeping focus). DOMParser keeps them, and htmx uses it when
-  // parseHTMLUnsafe is missing. `?parser=native` leaves it alone (for the tests). See the README.
-  const parserFix = (ctx) => (ctx?.req.query('parser') === 'native' ? '' : html`<script>
-    if (Document.parseHTMLUnsafe && !Document.parseHTMLUnsafe('<p><!--x--></p>').body.firstChild.firstChild) delete Document.parseHTMLUnsafe;
-  </script>`);
-
-  const layout = (title, body, ctx) => html`<!doctype html>
+  const layout = (title, body) => html`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -98,7 +89,6 @@ export function createApp({ store, cache = true }) {
   <title>${title} · Spoke & Chain</title>
   <link rel="stylesheet" href="/app.css">
   ${raw(zubra.head()) /* every component's CSS and the import map: htmx fragments can bring any of them */}
-  ${parserFix(ctx)}
   <script src="/vendor/htmx.js" defer></script>
 </head>
 <body>
@@ -128,7 +118,7 @@ export function createApp({ store, cache = true }) {
 
   app.get('/', (ctx) => {
     const { q, category, page } = params(ctx);
-    return ctx.html(layout('Inventory', html`<h1>Inventory</h1>${filters(q, category)}${table(rows({ q, category, page, through: page }))}`, ctx));
+    return ctx.html(layout('Inventory', html`<h1>Inventory</h1>${filters(q, category)}${table(rows({ q, category, page, through: page }))}`));
   });
 
   app.get('/items', (ctx) => {
@@ -149,7 +139,7 @@ export function createApp({ store, cache = true }) {
     const found = item(ctx);
     if (!found) return ctx.notFound();
     if (htmx(ctx)) return ctx.html(editor(found));
-    return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found))}`, ctx));
+    return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found))}`));
   });
 
   app.post('/items/:id', async (ctx) => {
@@ -169,7 +159,7 @@ export function createApp({ store, cache = true }) {
     if (Object.keys(errors).length) {
       const safe = { ...values, cents: Number.isFinite(values.cents) ? values.cents : found.cents, count: Number.isInteger(values.count) ? values.count : found.count };
       if (htmx(ctx)) return ctx.html(editor(found, safe, errors), 422);
-      return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found, safe, errors))}`, ctx), 422);
+      return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found, safe, errors))}`), 422);
     }
     const updated = store.update(found.id, values);
     return htmx(ctx) ? ctx.html(html`${row(updated)}${lowCount(true)}`) : ctx.redirect(`/#item-${found.id}`, 303);

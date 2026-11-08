@@ -70,7 +70,7 @@ test('recipes (Astro): static pages, a JSX island, a form-associated control, lo
   // The islands are server-rendered: markup that only depends on props is there before any
   // JavaScript runs; what state computes (the amounts, the reviews) is filled in when it hydrates.
   const page = readFileSync(join(dist, 'recipes/shakshuka/index.html'), 'utf8');
-  assert.match(page, /<recipe-servings[^>]*>[^]*<li><b><\/b><!----> chopped tomatoes<\/li>/);
+  assert.match(page, /<recipe-servings[^>]*>[^]*<li><b><\/b><\?zb \?> chopped tomatoes<\/li>/);
   assert.match(page, /<recipe-reviews[^>]*>[^]*<p class="loading">Loading reviews…<\/p>/);
 
   const url = await serve(dist);

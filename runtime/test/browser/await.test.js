@@ -56,7 +56,7 @@ test('the server renders the pending content, and the element takes over from it
   // The HTML output renders each zb-await's pending content; the element binds to it, then
   // shows the settled block.
   const html = compiler(join(here, 'fixtures/await-static.zb'));
-  assert.match(html, /<!--\[\?--><span>…<\/span><!--\]-->/);
+  assert.match(html, /<\?zb \[\?\?><span>…<\/span><\?zb \]\?>/);
   const { page, messages } = await open(html, { modules: ['await-static'] });
   await page.waitForFunction(() => document.querySelector('zb-await-static i'));
   assert.equal(await page.$eval('zb-await-static', (el) => el.querySelector('i').textContent), '42');
@@ -66,7 +66,7 @@ test('the server renders the pending content, and the element takes over from it
 
 test('a value the server knew renders zb-then there, and the element keeps that markup', async () => {
   const html = compiler(join(here, 'fixtures/await-known.zb'));
-  assert.match(html, /<!--\[--><b>Ada<\/b><!--\]-->/);
+  assert.match(html, /<\?zb \[\?><b>Ada<\/b><\?zb \]\?>/);
   const { page, messages } = await open(html, { modules: ['await-known'], beforeModules: "window.serverB = document.querySelector('b');" });
   await page.evaluate(() => document.querySelector('zb-await-known').updateComplete);
   assert.equal(await page.evaluate(() => document.querySelector('b') === window.serverB), true);

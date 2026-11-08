@@ -389,16 +389,41 @@ export function watch(source, callback) {
 // ---- finding parts -------------------------------------------------------------------------
 //
 // A range is a run of sibling nodes: an element's children, or the nodes between a region's
-// `<!--[-->` and its matching `<!--]-->`. Within a range, positions count elements and comments
+// `<?zb [?>` and its matching `<?zb ]?>`. Within a range, positions count elements and comments
 // only, and a whole region counts as one position (its start marker), so a list's length never
 // shifts the paths of what comes after it.
 
-// `<!--[!-->` opens a slot region holding supplied content (static, left alone on hydration).
-// `<!--[?-->` opens a region the server left for the element to render (partial rendering).
-const isOpen = (node) => node.nodeType === COMMENT && (node.data === '[' || node.data === '[!' || node.data === '[?');
-/** Whether to bind a region's server markup: not when the server left it to the element. */
-const hydratable = (open, hydrating) => hydrating && open.data !== '[?';
-const isClose = (node) => node.nodeType === COMMENT && node.data === ']';
+// `[!` opens a slot region holding supplied content (static, left alone on hydration).
+// `[?` opens a region the server left for the element to render (partial rendering).
+//
+// The server writes markers as processing instructions (`<?zb [?>`, `<?zb ]?>`, `<?zb ?>`), which
+// HTML minifiers and sanitizers keep. A browser that doesn't parse them yet makes each a comment
+// (`?zb [?`), and client templates and 4.x servers use plain comments (`[`): `marker` reads all three.
+const PI = 7;
+/** A marker's text (`[`, `[!`, `[?`, `]`, or '' for a text anchor), or null for any other node. */
+function marker(node) {
+  if (node.nodeType === PI) return node.target === 'zb' ? node.data : null;
+  if (node.nodeType !== COMMENT) return null;
+  const data = node.data;
+  return data.startsWith('?zb ') ? data.slice(4, data.endsWith('?') ? -1 : undefined) : data;
+}
+const isOpen = (node) => { const m = marker(node); return m === '[' || m === '[!' || m === '[?'; };
+/**
+ * Whether to bind a region's server markup: not when the server left it to the element. A region
+ * the server is still streaming sits in a named range (`<?start name>`…`<?end>`): the element
+ * renders it from now on, so it removes the name, and the browser's `<template for>` finds nothing.
+ */
+function hydratable(open, hydrating) {
+  if (!hydrating || marker(open) !== '[?') return hydrating;
+  const named = (node, kind) => node && (node.nodeType === PI ? node.target === kind : marker(node)?.startsWith(`?${kind}`));
+  const start = open.previousSibling;
+  const end = matchingClose(open)?.nextSibling;
+  if (named(start, 'start') && named(end, 'end')) { start.remove(); end.remove(); }
+  return false;
+}
+const isClose = (node) => marker(node) === ']';
+/** Change a region's opening marker: a PI keeps its target, a comment takes the plain form. */
+const setMarker = (node, text) => { if (marker(node) !== text) node.data = text; };
 
 function matchingClose(open) {
   let depth = 0;
@@ -412,9 +437,11 @@ function matchingClose(open) {
   return null;
 }
 
+const MARKERS = ['[', '[!', '[?', ']', ''];
+/** The nodes that hold a position: elements and markers (not text, nor a stream's `<?start>`). */
 function* positions(first, stop) {
   for (let node = first; node && node !== stop; node = node.nextSibling) {
-    if (node.nodeType === TEXT) continue;
+    if (node.nodeType !== 1 && !MARKERS.includes(marker(node))) continue;
     yield node;
     if (isOpen(node)) {
       node = matchingClose(node);
@@ -458,7 +485,7 @@ function locate(range, parts, hydrating = false) {
     const node = walk(range, hydrating && part.hydrate ? part.hydrate : part.path);
     const fits = !node ? false
       : part.when || part.each || part.slot || part.await ? isOpen(node) && matchingClose(node) !== null
-      : part.anchor || part.global ? node.nodeType === COMMENT && node.data === ''
+      : part.anchor || part.global ? marker(node) === ''
       : node.nodeType === 1;
     if (!fits) return null;
     nodes.push(node);
@@ -563,7 +590,8 @@ function lostComments(root, template) {
 }
 
 /** A range's shape: its top-level positions as tag names and region markers. */
-const hasComment = (root) => !!document.createTreeWalker(root, NodeFilter.SHOW_COMMENT).nextNode();
+const hasComment = (root) =>
+  !!document.createTreeWalker(root, NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_PROCESSING_INSTRUCTION).nextNode();
 const signature = (range) =>
   [...positions(range.first, range.stop)]
     .map((node) => (node.nodeType === 1 ? node.localName : isOpen(node) ? '[' : '#'))
@@ -758,7 +786,7 @@ export function hasSlot(name = 'default') {
 function bindSlot(part, open, hydrating, context) {
   const close = matchingClose(open);
   const slot = slotRecord(context, part.slot);
-  if (hydrating && open.data === '[!' && !slot.nodes.length) {
+  if (hydrating && marker(open) === '[!' && !slot.nodes.length) {
     // The server already put supplied content here.
     for (let node = open.nextSibling; node !== close; node = node.nextSibling) slot.nodes.push(node);
   }
@@ -775,7 +803,7 @@ function bindSlot(part, open, hydrating, context) {
       region.provided = slot.nodes.some(isContent);
       if (region.provided) {
         if (fallback) { fallback.dispose(); fallback = null; clearBetween(open, close); }
-        open.data = '[!';
+        setMarker(open, '[!');
         place(slot.nodes, open, context.slotted);
         return;
       }
@@ -784,12 +812,12 @@ function bindSlot(part, open, hydrating, context) {
       if (slot.nodes.length) slot.park.append(...slot.nodes);
       if (part.fallback) {
         if (fallback) return;
-        if (!hydrate || open.data !== '[') clearBetween(open, close);
-        open.data = '[';
+        if (!hydrate || marker(open) !== '[') clearBetween(open, close);
+        setMarker(open, '[');
         fallback = holder.run(() => scope(() => mountBlock(part.fallback, [], open, close, hydrate, context)));
       } else {
         clearBetween(open, close);
-        open.data = '[';
+        setMarker(open, '[');
       }
     },
   };
@@ -1422,8 +1450,13 @@ function serverElement(tag, options) {
  * `template` is the element's inner HTML with dynamic parts left empty; `setup($p)` runs the
  * component's script once per element and returns its parts.
  */
-/** The version of the compiled-code interface: what `$define()`'s arguments and parts mean. */
-export const ABI = 2;
+/**
+ * The version of the compiled-code interface: what `$define()`'s arguments and parts mean, and the
+ * server markup they hydrate. 3 (5.0) is 2 with processing-instruction markers; this runtime reads
+ * 2's comment markers too, so modules compiled by 3.x and 4.x still run.
+ */
+export const ABI = 3;
+const READS = [2, 3];
 
 /**
  * What modules compiled for runtime 1.x call. Their compiled shape differs, so they're refused
@@ -1435,7 +1468,7 @@ export function define(tag) {
 
 /** @internal Register a compiled component: what the compiler's JavaScript output calls. */
 export function $define(tag, definition) {
-  if (definition?.abi !== ABI) {
+  if (!READS.includes(definition?.abi)) {
     throw new Error(`zubra: <${tag}> was compiled for a different @zubra/runtime (interface ${definition?.abi ?? 1}, this runtime is ${ABI}); recompile it with the matching zubra`);
   }
   return defineElement(tag, definition);
@@ -1737,7 +1770,7 @@ function defineElement(tag, definition) {
             // No comments at all where the template has markers: something stripped them, and
             // they couldn't be put back for sure.
             console.warn(stripped && !restored
-              ? `zubra: <${tag}>'s hydration markers (<!--[-->, <!--]-->, …) are missing, so it's rendered fresh. An HTML minifier, a sanitizer or a fragment parser (htmx in some browsers) removed the comments; keep them (ZUBRA_MARKER_COMMENT in @zubra/compiler)${see('hydration-markers')}`
+              ? `zubra: <${tag}>'s hydration markers (<?zb [?>, <?zb ]?>, …) are missing, so it's rendered fresh. A sanitizer or a fragment parser removed them; keep processing instructions (and comments, for markup from a 4.x server)${see('hydration-markers')}`
               : `zubra: <${tag}>'s markup doesn't match its template; rendering it fresh${see('server-rendering-and-hydration')}`);
           }
           // Find and bind the parts before inserting (see mountBlock).

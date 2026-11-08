@@ -75,7 +75,7 @@ fn html_marks_content_slotted_into_styled_components_only() {
     };
     let styled = page(CARD);
     assert!(
-        styled.contains("<!--[!--><p data-zb-slotted=\"zb-card\">mine</p>text<!--]-->"),
+        styled.contains("<?zb [!?><p data-zb-slotted=\"zb-card\">mine</p>text<?zb ]?>"),
         "{styled}"
     );
     let plain = page("<zb-card><zb-slot></zb-slot></zb-card>");

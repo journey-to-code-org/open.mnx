@@ -47,7 +47,7 @@ test('renderToString() uses the registered renderer, with host attributes', asyn
     props: { heading: 'Mail' }, attributes: { class: 'big "one"', hidden: true, id: null }, slots: { title: '<h2>{T}</h2>' },
   });
   assert.match(html, /^<zb-card class="big &quot;one&quot;" hidden heading="Mail">/);
-  assert.match(html, /<header><!--\[!--><h2>\{T\}<\/h2><!--\]--><\/header>/);
+  assert.match(html, /<header><\?zb \[!\?><h2>\{T\}<\/h2><\?zb \]\?><\/header>/);
   assert.throws(() => renderToString(Card, { slots: { nope: '' } }), /<zb-card> has no slot `nope`/);
   assert.throws(() => renderToString({}), /needs a compiled zubra element/);
 });

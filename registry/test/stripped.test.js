@@ -1,6 +1,7 @@
-// Server markup with its comments stripped (an HTML minifier's removeComments, a sanitizer, htmx
-// in some browsers): which registry components hydrate in place, with their markers put back by
-// structure, and which render fresh (each with its reason). `node --test registry/test/`.
+// Server markup with its markers stripped (a sanitizer that removes processing instructions, or
+// an HTML minifier's removeComments on a 4.x server's comment markers): which registry components
+// hydrate in place, with their markers put back by structure, and which render fresh (each with
+// its reason). `node --test registry/test/`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
@@ -20,7 +21,7 @@ const FRESH = {};
 test('stripped server markup: every registry component hydrates in place, or is listed with its reason', async (t) => {
   const results = {};
   for (const name of names) {
-    const html = compiler(join(here, '../components', `${name}.zb`), '--partial').replace(/<!--[^]*?-->/g, '');
+    const html = compiler(join(here, '../components', `${name}.zb`), '--partial').replace(/<\?zb [^]*?\?>/g, '');
     const { page, messages } = await open(html, {
       beforeModules: `window.kept = [...document.body.querySelectorAll('*')].filter((node) => node.localName !== 'script');`,
       modules: [name],

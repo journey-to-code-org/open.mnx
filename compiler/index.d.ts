@@ -43,7 +43,7 @@ export interface Request extends Options {
   files: Record<string, string>;
 }
 
-/** The text of zubra's hydration-marker comments, for tools that remove comments: keep these. */
+/** The text of a 4.x server's hydration-marker comments, for tools that remove comments: keep these. (5.0 writes processing instructions, which they keep.) */
 export declare const ZUBRA_MARKER_COMMENT: RegExp;
 export declare function available(): boolean;
 export declare function request(request: Request): Response;

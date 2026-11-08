@@ -8,7 +8,7 @@ export default $define(tag, {
     "title": { attribute: "title", default: "Mikey Nichols", required: false },
     "data": { attribute: "data", default: {"sample":"sample data","sampleTwo":"additional data"}, required: false },
   },
-  abi: 2,
+  abi: 3,
   shadow: false,
   form: false,
   slots: [],

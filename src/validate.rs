@@ -170,7 +170,7 @@ fn pending(name: &str) -> bool {
 /// Like [`validate`], but what only the browser can compute (runtime-only values, JavaScript
 /// expressions, defaults computed in the browser) is left for the element instead of being an
 /// error: text renders empty, attributes are left out, and conditionals and lists render as
-/// empty regions marked `<!--[?-->`, which the element fills when it starts.
+/// empty regions marked `<?zb [??>`, which the element fills when it starts.
 pub fn validate_partial(
     component: ast::ComponentAst,
     values: &Value,
@@ -1407,7 +1407,7 @@ impl Context<'_> {
                         children: fallback,
                     })])
                 } else {
-                    // A region; `<!--[!-->` marks supplied content, which stays static, as
+                    // A region; `<?zb [!?>` marks supplied content, which stays static, as
                     // opposed to fallback content, which the JavaScript side binds.
                     let mut output = Vec::new();
                     match supplied {

@@ -174,7 +174,7 @@ test('a component whose CSS a bundler put in the page adopts it only into shadow
       // What @zubra/unplugin emits for a light-DOM component: the CSS is in the page, and the text
       // comes along for shadow roots (inPage).
       document.head.insertAdjacentHTML('beforeend', '<style>@scope (bundled-card) { p { color: rgb(255, 0, 0) } }</style>');
-      $define('bundled-card', { abi: 2, props: {}, styled: true, inPage: true, styles: '@scope (bundled-card) { p { color: rgb(255, 0, 0) } }', template: '<p>hi</p>', setup: () => [] });
+      $define('bundled-card', { abi: 3, props: {}, styled: true, inPage: true, styles: '@scope (bundled-card) { p { color: rgb(255, 0, 0) } }', template: '<p>hi</p>', setup: () => [] });
     `,
   });
   const result = await page.evaluate(async () => {

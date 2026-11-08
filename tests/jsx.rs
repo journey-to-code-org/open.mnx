@@ -18,11 +18,11 @@ fn a_props_only_component_renders_static_html_too() {
     let source = "export default function ZbHello({ name = \"World\", items = [\"a\", \"b\"] }) {\n  return (\n    <p class=\"hi\">\n      Hello {name}!\n      {items.length > 1 && <b>many</b>}\n    </p>\n  )\n}\n";
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<zb-hello><p class=\"hi\"><!---->Hello World!<!--[--><b>many</b><!--]--></p></zb-hello>"
+        "<zb-hello><p class=\"hi\"><?zb ?>Hello World!<?zb [?><b>many</b><?zb ]?></p></zb-hello>"
     );
     assert_eq!(
         compile(source, r#"{"name":"Ada","items":[]}"#).unwrap(),
-        "<zb-hello name=\"Ada\" items=\"[]\"><p class=\"hi\"><!---->Hello Ada!<!--[--><!--]--></p></zb-hello>"
+        "<zb-hello name=\"Ada\" items=\"[]\"><p class=\"hi\"><?zb ?>Hello Ada!<?zb [?><?zb ]?></p></zb-hello>"
     );
 }
 
@@ -210,7 +210,7 @@ export default function ZbPanel({ open = false, size = 10, tone = "red" }) {
     }
     assert_eq!(
         compile(source, "{}").unwrap(),
-        "<zb-panel><!----><div class=\"wide\" style=\"font-size: 10px; --tone: red\"><form>send</form></div></zb-panel>"
+        "<zb-panel><?zb ?><div class=\"wide\" style=\"font-size: 10px; --tone: red\"><form>send</form></div></zb-panel>"
     );
 }
 

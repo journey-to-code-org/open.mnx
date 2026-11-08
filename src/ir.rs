@@ -18,14 +18,16 @@ pub struct Component {
 pub enum Node {
     Text(Vec<Part>),
     Element(Element),
-    /// `<!---->`: marks where a dynamic text node starts, for hydration.
+    /// `<?zb ?>`: marks where a dynamic text node starts, for hydration. (The server writes
+    /// markers as processing instructions, which minifiers keep; client templates use the
+    /// comment form, `<!---->`, which the runtime reads too.)
     Anchor,
-    /// `<!--[-->` and `<!--]-->`: the start and end of an `zb-if` or `zb-each` region, or of
+    /// `<?zb [?>` and `<?zb ]?>`: the start and end of an `zb-if` or `zb-each` region, or of
     /// one row of a list, for hydration.
     Open,
-    /// `<!--[!-->`: the start of a slot region holding supplied (static) content.
+    /// `<?zb [!?>`: the start of a slot region holding supplied (static) content.
     OpenProjected,
-    /// `<!--[?-->`: the start of a region the element renders (partial rendering left it empty).
+    /// `<?zb [??>`: the start of a region the element renders (partial rendering left it empty).
     OpenClient,
     Close,
 }

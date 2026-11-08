@@ -155,7 +155,7 @@ fn request_answers_one_json_request_on_stdin() {
     assert_eq!(response["ok"], true);
     assert_eq!(
         response["output"],
-        "<zb-a x=\"2\"><!--[!--><i>{y}</i><!--]--><b>2</b></zb-a>"
+        "<zb-a x=\"2\"><?zb [!?><i>{y}</i><?zb ]?><b>2</b></zb-a>"
     );
     let (ok, _, stderr) = zubra(&["request", "extra"]);
     assert!(!ok);
@@ -179,7 +179,7 @@ fn slots_html_takes_server_rendered_content() {
     assert!(ok, "{stderr}");
     assert_eq!(
         stdout,
-        "<zb-panel><!--[!--><p>{kept}</p><!--]--></zb-panel>\n"
+        "<zb-panel><?zb [!?><p>{kept}</p><?zb ]?></zb-panel>\n"
     );
     let (ok, _, stderr) = zubra(&[
         "compile",

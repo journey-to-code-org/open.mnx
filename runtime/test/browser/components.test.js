@@ -115,7 +115,7 @@ test('hydrates server markup in place, keeping every node', async () => {
 
 test('hydrates dynamic text beside other nodes through its anchor', async () => {
   const html = compiler(join(here, 'fixtures/greeting.zb'));
-  assert.match(html, /<b>there<\/b><!---->, Ada! <i>glad<\/i>/);
+  assert.match(html, /<b>there<\/b><\?zb \?>, Ada! <i>glad<\/i>/);
   const { page, messages } = await open(html, {
     beforeModules: `window.p = document.querySelector('zb-greeting p'); window.nodes = [...window.p.childNodes];`,
     modules: ['greeting'],
@@ -166,7 +166,7 @@ test('markup whose parts would line up but whose shape differs is re-rendered to
 });
 
 test('a template with several top-level nodes renders, hydrates and updates', async () => {
-  const read = (page) => page.$eval('zb-pair', (pair) => pair.innerHTML.replace(/<!--.*?-->/g, ''));
+  const read = (page) => page.$eval('zb-pair', (pair) => pair.innerHTML.replace(/<!--.*?-->|<\?zb.*?>/g, ''));
   const fresh = await open('<zb-pair></zb-pair>', { modules: ['pair'] });
   assert.equal(await read(fresh.page), 'Hi Ada <p>x</p><i>y</i>');
   await fresh.page.close();
@@ -536,7 +536,7 @@ test('hydrated(): false in the server HTML (rendered, not left for the browser),
   const html = compiler(join(here, 'fixtures/live-filters.zb'));
   assert.match(html, /<button class="apply">Apply<\/button>/);
   assert.match(html, /Press Apply/);
-  assert.doesNotMatch(html, /\[\?/, 'nothing is left for the browser');
+  assert.doesNotMatch(html, /<\?zb \[\?\?>/, 'nothing is left for the browser');
   const { page, messages } = await open(html, { modules: ['filters'] });
   await page.waitForFunction(() => document.querySelector('.hint').textContent === 'Filters apply as you type');
   assert.equal(await page.locator('.apply').count(), 0);
@@ -553,13 +553,13 @@ test('hydrated(): false in the server HTML (rendered, not left for the browser),
   await page.close();
 });
 
-const strip = (html) => html.replace(/<!--[^]*?-->/g, '');
+const strip = (html) => html.replace(/<!--[^]*?-->|<\?zb[^]*?>/g, '');
 // Every node of the server markup, kept by the page before the element starts.
 const keepNodes = (selector) => `window.kept = [...document.querySelectorAll(${JSON.stringify(selector)})].flatMap((host) => [...host.querySelectorAll('*')]);`;
 
 test('server markup whose comments were stripped hydrates in place: anchors, zb-if, zb-each and slots are put back by structure', async () => {
   const html = strip(compiler(join(here, 'fixtures/stripped-card.zb')));
-  assert.doesNotMatch(html, /<!--/);
+  assert.doesNotMatch(html, /<!--|<\?zb/);
   const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('zb-stripped') });
   await page.evaluate(() => document.querySelector('zb-stripped').updateComplete);
   const kept = await page.evaluate(() => window.kept.length > 0 && window.kept.every((node) => node.isConnected));
@@ -598,7 +598,7 @@ test('stripped markup that cannot be placed for sure (an zb-await) renders fresh
   const { page, messages } = await open(html, { modules: ['stripped-await'] });
   await page.waitForFunction(() => document.querySelector('zb-stripped-await span')?.textContent === 'done');
   assert.equal(messages.length, 1, messages.join('\n'));
-  assert.match(messages[0], /hydration markers .* are missing.*removed the comments/);
+  assert.match(messages[0], /hydration markers .* are missing.*removed them/);
   await page.close();
 });
 

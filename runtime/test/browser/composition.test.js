@@ -67,7 +67,7 @@ test('parent changes flow into child props and slotted content; keyed children m
 test('hydrates a parent and its children from nested server markup', async () => {
   const html = compiler(join(here, 'fixtures/inbox.zb'));
   assert.match(html, /<zb-badge class="row" data-who="Ada" label="Ada" count="3" info="\{&quot;color&quot;:&quot;red&quot;\}">/, 'the child is rendered inline, with its props on the host');
-  assert.match(html, /<!--\[!--><em slot="icon">\*<\/em><!--\]-->/, 'slotted content is where the child puts it');
+  assert.match(html, /<\?zb \[!\?><em slot="icon">\*<\/em><\?zb \]\?>/, 'slotted content is where the child puts it');
   assert.match(html, /<x-widget config="\{&quot;size&quot;:2\}" mode="plain">/);
   const { page, messages } = await open(html, {
     beforeModules: WIDGET + `window.before = [...document.querySelectorAll('zb-inbox *')].filter((node) => node.localName !== 'x-widget');`,

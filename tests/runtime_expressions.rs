@@ -158,16 +158,16 @@ fn partial_html_leaves_browser_only_parts_to_the_element() {
     };
     assert_eq!(
         partial(SOURCE, "{}").unwrap(),
-        "<zb-x>\n  <p></p>\n  <button>+</button>\n  <!--[--><!--[-->\n    <i>1.0</i>\n  <!--]--><!--[-->\n    <i>2.0</i>\n  <!--]--><!--[-->\n    <i>3.0</i>\n  <!--]--><!--]-->\n</zb-x>",
+        "<zb-x>\n  <p></p>\n  <button>+</button>\n  <?zb [?><?zb [?>\n    <i>1.0</i>\n  <?zb ]?><?zb [?>\n    <i>2.0</i>\n  <?zb ]?><?zb [?>\n    <i>3.0</i>\n  <?zb ]?><?zb ]?>\n</zb-x>",
         "the text and the browser-computed default are left out; the list's map and toFixed render"
     );
     assert_eq!(
         partial(SOURCE, r#"{"stamp":5,"min":2}"#).unwrap(),
-        "<zb-x min=\"2\" stamp=\"5\">\n  <p></p>\n  <button>+</button>\n  <!--[--><!--[-->\n    <i>1.0</i>\n  <!--]--><!--[-->\n    <i>2.0</i>\n  <!--]--><!--[-->\n    <i>3.0</i>\n  <!--]--><!--]-->\n</zb-x>"
+        "<zb-x min=\"2\" stamp=\"5\">\n  <p></p>\n  <button>+</button>\n  <?zb [?><?zb [?>\n    <i>1.0</i>\n  <?zb ]?><?zb [?>\n    <i>2.0</i>\n  <?zb ]?><?zb [?>\n    <i>3.0</i>\n  <?zb ]?><?zb ]?>\n</zb-x>"
     );
     assert_eq!(
         partial("<script>const now = Date.now()</script>\n<zb-x a=\"x\"><p title={now} class=\"c {now}\">{a}</p><zb-if test={now > 0}><b>later</b></zb-if></zb-x>", "{}").unwrap(),
-        "<zb-x><p>x</p><!--[?--><!--]--></zb-x>"
+        "<zb-x><p>x</p><?zb [??><?zb ]?></zb-x>"
     );
     // Everything else is still checked.
     assert!(partial("<zb-x><p>{nope()}</p></zb-x>", "{}").is_err());

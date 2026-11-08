@@ -5,10 +5,12 @@ import assert from 'node:assert/strict';
 import { define, $define, ABI } from '../src/index.js';
 
 test('modules compiled for runtime 1.x, or another interface, are refused clearly', () => {
-  assert.equal(ABI, 2);
+  assert.equal(ABI, 3);
   assert.throws(() => define('zb-old', { props: {}, setup: () => [] }), /<zb-old> was compiled for @zubra\/runtime 1\.x; recompile it with zubra 2/);
-  assert.throws(() => $define('zb-other', { abi: 3 }), /interface 3, this runtime is 2/);
-  assert.throws(() => $define('zb-none', {}), /interface 1, this runtime is 2/);
+  assert.throws(() => $define('zb-other', { abi: 4 }), /interface 4, this runtime is 3/);
+  assert.throws(() => $define('zb-none', {}), /interface 1, this runtime is 3/);
+  // Modules compiled by 3.x and 4.x (interface 2) have the same shape: they still run.
+  assert.equal($define('zb-four', { abi: 2, props: {} }).zubra.tag, 'zb-four');
   // The current interface: without a DOM, a stand-in with the element's description.
   const Element = $define('zb-now', { abi: ABI, props: { a: { attribute: 'a', default: 1 } } });
   assert.equal(Element.zubra.tag, 'zb-now');

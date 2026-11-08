@@ -230,7 +230,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     let list =
         |names: &mut dyn Iterator<Item = &str>| names.map(json).collect::<Vec<_>>().join(", ");
     out.push_str(&format!(
-        "  }},\n  abi: 2,\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}  template: {},\n  setup($p, $emit{}) {{\n",
+        "  }},\n  abi: 3,\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}  template: {},\n  setup($p, $emit{}) {{\n",
         component.shadow,
         component.form_associated,
         list(&mut slots.iter().map(String::as_str)),

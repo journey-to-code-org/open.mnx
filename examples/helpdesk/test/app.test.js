@@ -188,9 +188,11 @@ test('the dashboard\'s charts are in the server\'s HTML: the registry components
   assert.match(await page.locator('donut-chart .pct').first().textContent(), /^\d+%$/);
   assert.match(await page.getByRole('img', { name: /^New tickets per day: / }).getAttribute('aria-label'), /: (up|down|flat)$/);
   assert.match(await page.locator('spark-line polyline').getAttribute('points'), /^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
-  // The one pending region is the streamed activity list, whose swap needs JavaScript.
-  assert.equal(await page.evaluate(() => document.body.innerHTML.split('<!--[?-->').length - 1), 1, 'nothing else left for the browser');
-  assert.equal(await page.textContent('recent-activity .pending'), 'Loading recent activity…');
+  // Nothing is left for the browser: the one pending region, the streamed activity list, is put
+  // in place by the browser itself (out-of-order streaming, Chromium 150+), without JavaScript.
+  assert.equal(await page.evaluate(() => document.body.innerHTML.split('<?zb [??>').length - 1), 0, 'nothing left for the browser');
+  assert.equal(await page.locator('recent-activity .pending').count(), 0);
+  assert.ok((await page.locator('recent-activity li .who').count()) >= 3, 'the streamed list, without the swap script');
   await close();
 });
 
@@ -199,9 +201,9 @@ test('the dashboard streams its recent activity: the page first, the list as the
   const { page, messages, close } = await as('u-sam');
   const html = await page.evaluate(async () => (await fetch('/')).text());
   const shellEnd = html.indexOf('</html>');
-  const swap = html.indexOf('<template data-zb-swap=');
+  const swap = html.indexOf('<template for=');
   assert.ok(shellEnd > 0 && swap > shellEnd, 'the shell, then the swap');
-  assert.match(html.slice(0, shellEnd), /<recent-activity data-zb-stream="0"[^>]*>[^]*<!--\[\?-->[^]*Loading recent activity…/);
+  assert.match(html.slice(0, shellEnd), /<recent-activity data-zb-stream="0"[^>]*>[^]*<\?start name="zb-0-0"\?><\?zb \[\?\?>[^]*Loading recent activity…/);
   assert.match(html.slice(swap), /<li><span class="who">[^<]+<\/span><a href="\/tickets\/\d+">/);
   // In the browser: the list is there and hydrated, with no warnings.
   await settle(page);

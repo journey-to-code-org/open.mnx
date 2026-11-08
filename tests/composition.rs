@@ -69,7 +69,7 @@ fn renders_children_inline_with_props_as_values_and_content_in_their_slots() {
         "{html}"
     );
     assert!(
-        html.contains(r#"<span data-color="red"><!--[!--><em slot="icon">3</em><!--]--><b>Ada</b><!----> 3<!--[!-->mail<!--]--></span>"#),
+        html.contains(r#"<span data-color="red"><?zb [!?><em slot="icon">3</em><?zb ]?><b>Ada</b><?zb ?> 3<?zb [!?>mail<?zb ]?></span>"#),
         "{html}"
     );
 }
