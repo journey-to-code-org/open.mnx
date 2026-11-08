@@ -129,7 +129,7 @@ test('the landing page\'s Zubra source wraps its comments instead of scrolling s
   const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
   await page.goto(new URL('', site.url).href);
   const [scroll, client] = await page.evaluate(() => {
-    const code = document.querySelector('.versus .side:first-child .code');
+    const code = document.querySelector('.versus .side:last-child .code');
     return [code.scrollWidth, code.clientWidth];
   });
   assert.equal(scroll, client, 'nothing to scroll to');

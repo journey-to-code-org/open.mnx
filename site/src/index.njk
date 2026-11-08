@@ -59,12 +59,12 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
   <p class="section-lede">This is the same component as a hand-written custom element. It needs shadow DOM to scope one style rule, has no server HTML, and has the two bugs most hand-written elements have: a forgotten <code>#render()</code> and a listener removed with a different reference.</p>
   <div class="versus">
     <div class="side">
-      <p class="count"><strong>{{ samples.sourceLines }}</strong> lines with Zubra</p>
-      {{ samples.source | tighten | highlight("markup") | safe }}
-    </div>
-    <div class="side">
       <p class="count"><strong>{{ samples.byHandLines }}</strong> lines by hand</p>
       {{ samples.byHand | highlight("javascript") | safe }}
+    </div>
+    <div class="side">
+      <p class="count"><strong>{{ samples.sourceLines }}</strong> lines with Zubra</p>
+      {{ samples.source | tighten | highlight("markup") | safe }}
     </div>
   </div>
 </section>
