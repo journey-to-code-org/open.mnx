@@ -475,6 +475,17 @@ test('esbuild reports a compile error as the compiler wrote it', async () => {
 
 // Astro: components server-rendered at build time through the renderer (with @zubra/compiler,
 // or the native CLI standing in for its WebAssembly), hydrated on the client with client:load.
+test('astro: @zubra/compiler stays external in every server environment, so it finds zubra.wasm beside itself', async () => {
+  // Bundled into Astro's prerender chunks (as Vite does for a linked package), it looked for
+  // zubra.wasm there and the build failed.
+  const { default: astro } = await import('../src/astro.js');
+  const configs = [];
+  for (const options of [{}, { compilerModule: '/opt/zubra/compiler/index.js' }]) {
+    astro(options).hooks['astro:config:setup']({ addRenderer() {}, updateConfig: (config) => configs.push(config) });
+  }
+  assert.deepEqual(configs.map((config) => config.vite.resolve.external), [['@zubra/compiler'], ['/opt/zubra/compiler/index.js']]);
+});
+
 test('astro: server-rendered pages, hydrated with a client directive', async () => {
   const { available } = await import('@zubra/compiler');
   const saved = process.env.ZUBRA_COMPILER;
