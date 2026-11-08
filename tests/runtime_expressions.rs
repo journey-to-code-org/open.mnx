@@ -98,6 +98,11 @@ fn names_are_checked_and_only_props_can_be_assigned() {
         local.message,
         "`total` can't be assigned here: a template can assign props and state (a `let`) only"
     );
+    // A script name declared without `let` says how to make it state.
+    assert_eq!(
+        local.help.as_deref(),
+        Some("declare `total` with `let` in <script> to make it state, or call a function from <script> that updates it")
+    );
     let row = compile_js(
         "<zb-x items={[1]}><zb-each items={items} as=\"item\"><b onclick={() => { item = 2 }}>x</b></zb-each></zb-x>",
         "@zubra/runtime",
@@ -115,6 +120,51 @@ fn names_are_checked_and_only_props_can_be_assigned() {
         "x.zb"
     )
     .is_ok());
+}
+
+#[test]
+fn a_misspelled_assignment_target_is_an_unknown_name_with_a_suggestion() {
+    // `cont++` is a typo for `count`: that's what to report, not that `cont` can't be assigned.
+    let typo = compile_js(
+        "<script>let count = 0</script>\n<zb-x><button onclick={() => cont++}>{count}</button></zb-x>",
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(typo.message, "unknown reference `cont`");
+    assert_eq!(typo.help.as_deref(), Some("did you mean `count`?"));
+    // Plain assignment is the same.
+    let plain = compile_js(
+        "<script>let count = 0</script>\n<zb-x><button onclick={() => (cont = 1)}>{count}</button></zb-x>",
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(plain.message, "unknown reference `cont`");
+    // A name nothing is close to is still unknown, without a suggestion.
+    let far = compile_js(
+        "<script>let count = 0</script>\n<zb-x><button onclick={() => (zzzzzz = 1)}>{count}</button></zb-x>",
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(far.message, "unknown reference `zzzzzz`");
+    assert_eq!(far.help, None);
+}
+
+#[test]
+fn a_browser_global_is_not_called_unknown_when_assigned() {
+    // `location` exists; a template just can't assign it, which is what to say.
+    let global = compile_js(
+        "<zb-x><button onclick={() => (location = \"/\")}>x</button></zb-x>",
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(
+        global.message,
+        "`location` can't be assigned here: a template can assign props and state (a `let`) only"
+    );
 }
 
 #[test]
