@@ -602,7 +602,7 @@ The result is compiled as part of the conversion, and a compile error is shown a
 ## Editors and tooling without Rust
 
 - **`@zubra/compiler`** (`compiler/`) is the compiler built to WebAssembly, for Node: the same output and errors as the CLI, with no Rust toolchain. `@zubra/unplugin` uses it automatically when it's installed.
-- **Editor support** (`editors/`): a language server (diagnostics as you type, completion, hover, go to definition) and a VS Code extension with syntax highlighting. See `editors/README.md`.
+- **Editor support** (`editors/`): a language server (diagnostics as you type, completion, hover, go to definition) and a VS Code extension with syntax highlighting, [on the Marketplace](https://marketplace.visualstudio.com/items?itemName=JourneytoCode.zubra) (`code --install-extension JourneytoCode.zubra`). See [docs/editor-support.md](docs/editor-support.md) and `editors/README.md`.
 - **`--emit html-data`** writes VS Code HTML custom data, for completing Zubra elements in plain `.html` files.
 
 ## Describing components to tools

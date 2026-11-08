@@ -14,6 +14,7 @@ const shot = (id) => existsSync(join(repo, 'demos/shots', `${id}.jpg`));
 export default {
   version: JSON.parse(readFileSync(join(repo, 'runtime/package.json'), 'utf8')).version,
   github: `https://github.com/${repository}`,
+  marketplace: 'https://marketplace.visualstudio.com/items?itemName=JourneytoCode.zubra',
   groups: [...new Set(demos.map((demo) => demo.group))].map((name) => ({
     name,
     demos: demos.filter((demo) => demo.group === name).map((demo) => ({

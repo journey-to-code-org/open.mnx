@@ -92,3 +92,12 @@ test('the page\'s Copy button is a Zubra component, compiled with the page', () 
   const runtime = map.imports['@zubra/runtime'];
   assert.ok(runtime.endsWith('/landing/runtime/index.js') && existsSync(join(dir, runtime.replace(/^.*?\/landing\//, 'landing/'))), 'the import map points at a runtime that is in the build');
 });
+
+test('the page links the VS Code extension and the editor docs', () => {
+  const html = page();
+  assert.match(html, /href="https:\/\/marketplace\.visualstudio\.com\/items\?itemName=JourneytoCode\.zubra"/, 'the Marketplace page');
+  const manifest = JSON.parse(readFileSync(join(repo, 'editors/vscode/package.json'), 'utf8'));
+  assert.ok(html.includes(`itemName=${manifest.publisher}.${manifest.name}`), 'it names the extension the manifest publishes');
+  assert.ok(existsSync(join(dir, 'docs/editor-support/index.html')), 'the editor-support page is built');
+  assert.ok(html.includes('/docs/editor-support/'), 'and linked');
+});
