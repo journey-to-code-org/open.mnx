@@ -14,18 +14,22 @@ const here = join(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const work = mkdtempSync(join(tmpdir(), 'zubra-vsix-'));
 // A shell, because npm and npx are .cmd files on Windows, which Node won't start directly. The arguments are fixed strings.
-const run = (command, args) => execFileSync(command, args, { cwd: work, stdio: ['ignore', 'pipe', 'inherit'], shell: true }).toString();
+const run = (command, args, { show = true } = {}) => execFileSync(command, args, { cwd: work, stdio: ['ignore', show ? 'inherit' : 'pipe', 'inherit'], shell: true })?.toString() ?? '';
+const step = (message) => console.log(`vscode: ${message}`);
 try {
   for (const name of ['LICENSE', 'README.md', 'icon.png', 'extension.js', 'language-configuration.json', 'syntaxes', '.vscodeignore']) cpSync(join(here, name), join(work, name), { recursive: true });
   manifest.dependencies['@zubra/language-server'] = manifest.version;
   delete manifest.devDependencies;
   writeFileSync(join(work, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  step('installing the extension\'s dependencies (the first run can take a minute)…');
   run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock']);
-  const files = run('npx', ['--yes', '@vscode/vsce', 'ls']);
+  step('checking what would go in the package (npx fetches @vscode/vsce the first time)…');
+  const files = run('npx', ['--yes', '@vscode/vsce', 'ls'], { show: false });
   for (const needed of ['node_modules/@zubra/language-server/server.js', 'node_modules/vscode-languageclient/package.json', 'icon.png', 'README.md']) {
     if (!files.includes(needed)) throw new Error(`the package would be missing ${needed}`);
   }
   const vsix = `zubra-${manifest.version}.vsix`;
+  step('packaging…');
   run('npx', ['@vscode/vsce', 'package', '--out', vsix]);
   renameSync(join(work, vsix), join(here, vsix));
   console.log(`vscode: ${join(here, vsix)}`);
