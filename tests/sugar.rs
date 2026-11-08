@@ -337,3 +337,53 @@ fn markup_in_braces_outside_the_three_forms_says_what_to_write() {
         assert!(rendered.contains(message), "{source}\n{rendered}");
     }
 }
+
+#[test]
+fn let_names_and_switch_render_and_bind() {
+    let source = r#"<zb-x cart={[{id: 1, price: 3, qty: 2}, {id: 2, price: 5, qty: 1}]} status="shipped">
+  <ul><zb-each items={cart} as="{ id, price, qty }" key={id} let:total={price * qty} let:big={total > 5}><li class:big={big}>{id}: {total}</li></zb-each></ul>
+  <zb-switch value={status}>
+    <zb-case is="paid"><p>Paid</p></zb-case>
+    <zb-case is={["shipped", "delivered"]}><p>On its way</p></zb-case>
+    <zb-else><p>Waiting</p></zb-else>
+  </zb-switch>
+</zb-x>"#;
+    assert_eq!(
+        html(source),
+        "<zb-x>\n  <ul><!--[--><!--[--><li class=\"big\">1: 6</li><!--]--><!--[--><li>2: 5</li><!--]--><!--]--></ul>\n  <!--[--><!--[--><p>On its way</p><!--]--><!--]-->\n</zb-x>"
+    );
+    let code = js(source);
+    assert!(
+        code.contains(
+            r#"text: () => $t($r($b0_0).id) + ": " + $t((($r($b0_0).price * $r($b0_0).qty)))"#
+        ),
+        "{code}"
+    );
+    assert!(
+        code.contains(r#"when: () => (($p.status === "shipped") || ($p.status === "delivered"))"#),
+        "{code}"
+    );
+    // A switch is the zb-if chain it stands for.
+    let chain = r#"<zb-x status="shipped">
+  <zb-if test={status === "paid"}><p>Paid</p><zb-else-if test={status === "shipped" || status === "delivered"}><p>On its way</p></zb-else-if><zb-else><p>Waiting</p></zb-else></zb-if>
+</zb-x>"#;
+    assert_eq!(html(&source.replace(r#"<ul><zb-each items={cart} as="{ id, price, qty }" key={id} let:total={price * qty} let:big={total > 5}><li class:big={big}>{id}: {total}</li></zb-each></ul>
+  "#, "")).replace("<zb-x cart", "<zb-x"), html(chain));
+}
+
+#[test]
+fn let_and_switch_errors_say_what_to_write() {
+    for (source, message) in [
+        ("<zb-x a={[1]}>\n  <zb-each items={a} as=\"n\" let:d={n * 2}><button onclick={() => (d = 3)}>{d}</button></zb-each>\n</zb-x>", "can't be assigned"),
+        ("<zb-x a={1}>\n  <p let:x={a}>{x}</p>\n</zb-x>", "`let:` goes on <zb-each> or <zb-then>"),
+        ("<zb-x a={[1]}>\n  <zb-each items={a} as=\"n\" let:d=\"x\">{d}</zb-each>\n</zb-x>", "is an expression"),
+        ("<zb-x a={1}>\n  <zb-switch value={a}><p>x</p></zb-switch>\n</zb-x>", "contains <zb-case is={…}> elements"),
+        ("<zb-x a={1}>\n  <zb-case is={1}>x</zb-case>\n</zb-x>", "only valid as a child of zb-switch"),
+        ("<zb-x a={1}>\n  <zb-switch value={a}><zb-else>x</zb-else><zb-case is={1}>y</zb-case></zb-switch>\n</zb-x>", "can't come after the zb-switch's zb-else"),
+        ("<zb-x a={1}>\n  <zb-switch value={a}></zb-switch>\n</zb-x>", "needs at least one"),
+        ("<zb-x a={1}>\n  <zb-switch value={a}><zb-case is={[]}>y</zb-case></zb-switch>\n</zb-x>", "never matches"),
+    ] {
+        let rendered = error(source);
+        assert!(rendered.contains(message), "{source}\n{rendered}");
+    }
+}

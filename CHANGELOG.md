@@ -2,6 +2,35 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 4.3.0 — 2026-11-08
+
+The rest of the template sugar (`plan/roadmap-4.x.md`, 4.3). Additive.
+
+### Added
+
+- **`let:name={…}` on `<zb-each>` and `<zb-then>`** names an expression for the row or the result:
+
+  ```html
+  <zb-each items={cart} as="{ price, qty }" let:total={price * qty} let:big={total > 5}>
+    <li class:big={big}>{total}</li>
+  </zb-each>
+  ```
+
+  - It's derived: each read is its current value, so it follows the row.
+  - It's read-only: assigning it is the same error as assigning a loop variable.
+  - Later `let:`s can use earlier ones, and the key can use them too.
+  - The server evaluates them for values known at build time; a `let:` the server can't evaluate leaves the list to the browser.
+  - On any other element, `let:` is an error.
+- **`<zb-switch value={…}>`** with `<zb-case is="paid">`, `<zb-case is={["shipped", "delivered"]}>` and an optional final `<zb-else>`.
+  - The first case whose `is` equals the value, or whose array lists it, renders.
+  - It compiles to the `zb-if` chain it stands for (`===`, and `||` for an array), so known values render on the server and the markers don't change.
+  - A quoted `is` is a string.
+  - Errors cover: other content in the switch, a case after the `zb-else`, no cases, an empty `is={[]}`, and a stray `<zb-case>`.
+- **Tools and examples:**
+  - the language server and the grammar know `zb-switch`, `zb-case` and `let:`;
+  - the README, the guide's templates page and the skill describe them;
+  - the planner's event tabs are a `zb-switch`.
+
 ## 4.2.0 — 2026-11-08
 
 Async that reads well (`plan/roadmap-4.x.md`, 4.2). Additive: every 4.1 component compiles and runs as before.

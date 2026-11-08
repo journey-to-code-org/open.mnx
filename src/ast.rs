@@ -171,6 +171,8 @@ pub enum Node {
         index: Option<String>,
         /// `key={todo.id}`: rows follow their key when the list is reordered.
         key: Option<(Expression, Span)>,
+        /// `let:total={item.price * item.qty}`: names derived once per row (4.3).
+        lets: Vec<Let>,
         children: Vec<Node>,
         span: Span,
     },
@@ -211,7 +213,18 @@ pub enum Node {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Branch {
     pub name: Option<String>,
+    /// `let:name={…}` on a zb-then (4.3).
+    pub lets: Vec<Let>,
     pub children: Vec<Node>,
+    pub span: Span,
+}
+
+/// `let:name={expression}`: a name for an expression, in scope inside the element, derived
+/// (read again when what it reads changes) and read-only.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Let {
+    pub name: String,
+    pub value: Expression,
     pub span: Span,
 }
 
@@ -282,6 +295,7 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
             Node::Each {
                 items,
                 items_span,
+                lets,
                 key,
                 children,
                 ..
@@ -289,6 +303,9 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
                 visit(items, *items_span);
                 if let Some((key, span)) = key {
                     visit(key, *span);
+                }
+                for binding in lets {
+                    visit(&binding.value, binding.span);
                 }
                 for_each_expression(children, visit);
             }
@@ -314,6 +331,9 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
                 }
                 for_each_expression(pending, visit);
                 for branch in then.iter().chain(catch) {
+                    for binding in &branch.lets {
+                        visit(&binding.value, binding.span);
+                    }
                     for_each_expression(&branch.children, visit);
                 }
             }

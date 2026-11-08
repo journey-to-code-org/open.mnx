@@ -635,7 +635,23 @@ impl<'a> Emitter<'a> {
         params: &[String],
         at: &[usize],
     ) -> Result<String, Diagnostic> {
+        self.block_with(nodes, params, &[], at)
+    }
+
+    /// A block whose `let:` names read their expressions (4.3): derived, so each read is the
+    /// expression's current value.
+    fn block_with(
+        &mut self,
+        nodes: &[Node],
+        params: &[String],
+        lets: &[ast::Let],
+        at: &[usize],
+    ) -> Result<String, Diagnostic> {
         let (params, mut block) = self.scoped(params);
+        for binding in lets {
+            let js = format!("({})", block.js(&binding.value));
+            block.scopes.push((binding.name.clone(), js));
+        }
         block.base = self.base.iter().chain(at).copied().collect();
         block.nodes(nodes, &[], true)?;
         self.slot_paths.append(&mut block.slot_paths);
@@ -735,6 +751,7 @@ impl<'a> Emitter<'a> {
                     item,
                     index: position,
                     key,
+                    lets,
                     children,
                     ..
                 } => {
@@ -744,11 +761,15 @@ impl<'a> Emitter<'a> {
                         item.clone(),
                         position.clone().unwrap_or_else(|| "$index".to_owned()),
                     ];
-                    let row = self.block(children, &params, &region)?;
+                    let row = self.block_with(children, &params, lets, &region)?;
                     // The key gets plain values (not row signals): it identifies a row.
                     let key = match key {
                         Some((key, _)) => {
-                            let (names, scoped) = self.scoped(&params);
+                            let (names, mut scoped) = self.scoped(&params);
+                            for binding in lets.iter() {
+                                let js = format!("({})", scoped.js(&binding.value));
+                                scoped.scopes.push((binding.name.clone(), js));
+                            }
                             format!(", key: ({}) => {}", names.join(", "), scoped.js(key))
                         }
                         None => String::new(),
@@ -827,7 +848,7 @@ impl<'a> Emitter<'a> {
                                 if unnamed == "$error" {
                                     params.push("retry".to_owned());
                                 }
-                                self.block(&branch.children, &params, &region)?
+                                self.block_with(&branch.children, &params, &branch.lets, &region)?
                             }
                             None => "null".to_owned(),
                         });

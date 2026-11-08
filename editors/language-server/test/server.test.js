@@ -93,7 +93,7 @@ test('completion: directives and imported components, their props and events', a
   const text = "<script>\n  import './badge.zb'\n</script>\n<zb-page heading=\"\">\n  <zb-\n  <zb-badge \n  <p>{}</p>\n</zb-page>\n";
   notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
   const labels = async (line, character) => (await call('textDocument/completion', { textDocument: { uri }, position: { line, character } })).map((item) => item.label);
-  assert.deepEqual((await labels(4, 6)).sort(), ['zb-await', 'zb-badge', 'zb-catch', 'zb-each', 'zb-else', 'zb-if', 'zb-pending', 'zb-slot', 'zb-then']);
+  assert.deepEqual((await labels(4, 6)).sort(), ['zb-await', 'zb-badge', 'zb-case', 'zb-catch', 'zb-each', 'zb-else', 'zb-if', 'zb-pending', 'zb-slot', 'zb-switch', 'zb-then']);
   assert.deepEqual(await labels(5, 12), ['label', 'count', 'onpick', 'zb-if', 'zb-else-if', 'zb-else']);
   assert.deepEqual(await labels(6, 6), ['heading'], 'props in expressions');
   const items = await call('textDocument/completion', { textDocument: { uri }, position: { line: 5, character: 12 } });

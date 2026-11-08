@@ -990,6 +990,7 @@ impl<'a> TemplateParser<'a> {
                     item,
                     index,
                     key,
+                    lets: Vec::new(),
                     children: vec![node],
                     span,
                 });
@@ -1790,8 +1791,85 @@ fn reserved_attributes(element: &Element) -> Result<(), Diagnostic> {
     Ok(())
 }
 
-fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
+/// `let:name={…}` attributes, taken off a zb-each or zb-then (4.3); anywhere else they're an
+/// error.
+fn take_lets(element: &mut Element, allowed: bool) -> Result<Vec<crate::ast::Let>, Diagnostic> {
+    let mut lets = Vec::new();
+    let mut kept = Vec::new();
+    for attribute in std::mem::take(&mut element.attributes) {
+        let Some(name) = attribute.name.strip_prefix("let:") else {
+            kept.push(attribute);
+            continue;
+        };
+        if !allowed {
+            return Err(Diagnostic::new(
+                attribute.span,
+                format!("`let:` goes on <zb-each> or <zb-then>, where it names a value per row or result; not on <{}>", element.name),
+            ));
+        }
+        if !is_identifier(name) {
+            return Err(Diagnostic::new(
+                attribute.span,
+                format!("`let:{name}`: the name must be a valid identifier"),
+            ));
+        }
+        let AttributeValue::Expression(value, span) = attribute.value else {
+            return Err(Diagnostic::new(
+                attribute.span,
+                format!("`let:{name}` is an expression: write let:{name}={{…}}"),
+            ));
+        };
+        if lets
+            .iter()
+            .any(|binding: &crate::ast::Let| binding.name == name)
+        {
+            return Err(Diagnostic::new(
+                attribute.span,
+                format!("`let:{name}` is given twice"),
+            ));
+        }
+        lets.push(crate::ast::Let {
+            name: name.to_owned(),
+            value,
+            span,
+        });
+    }
+    element.attributes = kept;
+    Ok(lets)
+}
+
+/// `<zb-case is={…}>` against `value`: `value === is`, or one `===` per item of an array `is`,
+/// joined by `||`, so a switch over known values renders on the server.
+fn case_test(value: &Expression, is: &Expression, span: Span) -> Result<Expression, Diagnostic> {
+    use crate::expression::{BinaryOperator, LogicalOperator};
+    if let Expression::Array(items) = is {
+        let mut tests = items.iter().map(|item| case_test(value, item, span));
+        let first = tests.next().ok_or_else(|| {
+            Diagnostic::new(span, "`is={[]}` never matches; give it at least one value")
+        })??;
+        return tests.try_fold(first, |left, right| {
+            Ok(Expression::Logical {
+                operator: LogicalOperator::Or,
+                left: Box::new(left),
+                right: Box::new(right?),
+            })
+        });
+    }
+    if !value.is_runtime() && !is.is_runtime() {
+        return Ok(Expression::Binary {
+            operator: BinaryOperator::Equal,
+            left: Box::new(value.clone()),
+            right: Box::new(is.clone()),
+        });
+    }
+    let plain = |expression: &Expression| expression.to_js_with(&|name| name.to_owned());
+    let source = format!("({}) === ({})", plain(value), plain(is));
+    expression_text(&source, span, span).map(|(expression, _)| expression)
+}
+
+fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
     let lower = element.name.to_ascii_lowercase();
+    let lets = take_lets(&mut element, lower == "zb-each" || lower == "zb-then")?;
     if let Some(rest) = lower.strip_prefix("mnix-") {
         if matches!(
             rest,
@@ -1887,6 +1965,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 item,
                 index,
                 key,
+                lets,
                 children: element.children,
                 span: element.span,
             })
@@ -1908,6 +1987,84 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 fallback: element.children,
                 span: element.span,
             })
+        }
+        "zb-switch" => {
+            allow_attributes(&element, &["value"])?;
+            let (value, _) = required_expression(&element, "value")?;
+            // Each zb-case, in order, then an optional zb-else: an zb-if chain.
+            let mut cases: Vec<(Expression, Span, Vec<Node>, Span)> = Vec::new();
+            let mut otherwise: Option<Vec<Node>> = None;
+            for child in element.children {
+                match child {
+                    Node::Text(parts) if is_blank(&parts) => {}
+                    Node::Element(case) if case.name.eq_ignore_ascii_case("zb-case") => {
+                        if otherwise.is_some() {
+                            return Err(Diagnostic::new(
+                                case.span,
+                                "a zb-case can't come after the zb-switch's zb-else",
+                            ));
+                        }
+                        allow_attributes(&case, &["is"])?;
+                        // `is="paid"` is the string; `is={…}` any value, or an array of them.
+                        let (is, is_span) = match find(&case, "is").map(|attribute| (&attribute.value, attribute.span)) {
+                            Some((AttributeValue::Text(parts), span)) => match parts.as_slice() {
+                                [Part::Literal(text)] => (Expression::String(html_escape::decode_html_entities(text).into_owned()), span),
+                                _ => return Err(Diagnostic::new(span, "`is` is a string (is=\"paid\") or an expression (is={…}), not both")),
+                            },
+                            _ => required_expression(&case, "is")?,
+                        };
+                        let test = case_test(&value, &is, is_span)?;
+                        cases.push((test, is_span, case.children, case.span));
+                    }
+                    Node::Else {
+                        test: None,
+                        children,
+                        span,
+                    } => {
+                        if otherwise.is_some() {
+                            return Err(Diagnostic::new(
+                                span,
+                                "a zb-switch takes only one zb-else",
+                            ));
+                        }
+                        otherwise = Some(children);
+                    }
+                    Node::Else {
+                        test: Some(_),
+                        span,
+                        ..
+                    } => {
+                        return Err(Diagnostic::new(
+                            span,
+                            "inside zb-switch, write <zb-case is={…}> instead of zb-else-if",
+                        ));
+                    }
+                    other => {
+                        let span = match &other {
+                            Node::Element(e) => e.span,
+                            _ => element.span,
+                        };
+                        return Err(Diagnostic::new(span, "a zb-switch contains <zb-case is={…}> elements and an optional final <zb-else>"));
+                    }
+                }
+            }
+            if cases.is_empty() {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "a zb-switch needs at least one <zb-case is={…}>",
+                ));
+            }
+            let mut alternate = otherwise.unwrap_or_default();
+            while let Some((test, test_span, consequent, span)) = cases.pop() {
+                alternate = vec![Node::If {
+                    test,
+                    test_span,
+                    consequent,
+                    alternate,
+                    span,
+                }];
+            }
+            Ok(alternate.pop().expect("a case"))
         }
         "zb-await" => {
             allow_attributes(&element, &["value", "delay", "keep"])?;
@@ -1996,6 +2153,7 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 caught: lower == "zb-catch",
                 branch: crate::ast::Branch {
                     name,
+                    lets,
                     children: element.children,
                     span: element.span,
                 },

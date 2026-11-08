@@ -160,7 +160,9 @@ export default function ZbRating({ value = 0, onValueChange }) {
 
 - `<zb-if test={…}>`, with `<zb-else-if test={…}>` and an optional final `<zb-else>` inside it. For one element, the condition can be an attribute: `<p zb-if={…}>`, with `zb-else-if={…}` and `zb-else` on the siblings right after it (since 4.1). Both forms compile to the same thing. The `zb-` attribute prefix is reserved: any other `zb-` attribute is an error.
 - **Markup in braces** (since 4.1), in the three forms that are directives: `{a && <p>…</p>}` is a `zb-if`, `{a ? <b>…</b> : <i>…</i>}` a `zb-if` with a `zb-else` (either side may be text, an expression or `null`), and `{list.map((item, i) => <li key={item.id}>…</li>)}` a `zb-each`, keyed by the element's `key`. The markup inside is the template's HTML, one element per brace. Other markup in braces, and markup in an attribute's braces, are errors that say what to write instead.
+- `<zb-switch value={…}>` with `<zb-case is="paid">`, `<zb-case is={["shipped", "delivered"]}>` and an optional final `<zb-else>` (since 4.3): the first case whose `is` equals the value, or that lists it, renders. It is the `zb-if` chain it stands for, so known values render on the server.
 - `<zb-each items={list} as="item" index="i" key={item.id}>` over any array. `key` is optional; keys must be strings or numbers and unique (checked at build time for known values, and reported at runtime).
+- `let:name={…}` on `<zb-each>` or `<zb-then>` (since 4.3) names an expression for the row or the result: `<zb-each items={cart} as="item" let:total={item.price * item.qty}>`. It's derived (each read is its current value), read-only, and later `let:`s can use earlier ones.
 - `<zb-slot name="…">` with fallback content; without `name`, the default slot.
 - `<zb-await value={…}>` with pending content, `<zb-then as="…">` and `<zb-catch as="…">` (see Async data).
 

@@ -873,6 +873,12 @@ impl Context<'_> {
         for node in nodes {
             match node {
                 ast::Node::Text(parts) => self.resolve_parts(parts, scopes)?,
+                ast::Node::Element(element) if element.name.eq_ignore_ascii_case("zb-case") => {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "zb-case is only valid as a child of zb-switch",
+                    ));
+                }
                 ast::Node::Element(element) if element.name.eq_ignore_ascii_case("zb-pending") => {
                     return Err(Diagnostic::new(
                         element.span,
@@ -909,16 +915,21 @@ impl Context<'_> {
                     item,
                     index,
                     key,
+                    lets,
                     children,
                     ..
                 } => {
                     self.resolve_expression(items, *items_span, scopes)?;
                     scopes.push(bound_names(item).into_iter().chain(index.clone()).collect());
-                    let result = match key {
-                        Some((key, key_span)) => self.resolve_expression(key, *key_span, scopes),
-                        None => Ok(()),
-                    }
-                    .and_then(|()| self.resolve_nodes(children, scopes));
+                    let result = self
+                        .resolve_lets(lets, scopes)
+                        .and_then(|()| match key {
+                            Some((key, key_span)) => {
+                                self.resolve_expression(key, *key_span, scopes)
+                            }
+                            None => Ok(()),
+                        })
+                        .and_then(|()| self.resolve_nodes(children, scopes));
                     scopes.pop();
                     result?;
                 }
@@ -966,7 +977,9 @@ impl Context<'_> {
                             names.push("retry".to_owned());
                         }
                         scopes.push(names);
-                        let result = self.resolve_nodes(&branch.children, scopes);
+                        let result = self
+                            .resolve_lets(&branch.lets, scopes)
+                            .and_then(|()| self.resolve_nodes(&branch.children, scopes));
                         scopes.pop();
                         result?;
                     }
@@ -980,6 +993,22 @@ impl Context<'_> {
                         ),
                     ));
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// `let:` names: each expression resolved in the scope so far, then its name added to it.
+    fn resolve_lets(
+        &self,
+        lets: &[ast::Let],
+        scopes: &mut [Vec<String>],
+    ) -> Result<(), Diagnostic> {
+        for binding in lets {
+            let mut nested = scopes.to_vec();
+            self.resolve_expression(&binding.value, binding.span, &mut nested)?;
+            if let Some(scope) = scopes.last_mut() {
+                scope.push(binding.name.clone());
             }
         }
         Ok(())
@@ -1170,6 +1199,17 @@ impl Context<'_> {
     }
 
     /// `block_top`: these nodes are the top level of an `zb-if` branch or `zb-each` row.
+    /// `let:` values for the innermost scope, evaluated in order (each may use the ones before).
+    fn lower_lets(&self, lets: &[ast::Let], state: &mut LowerState) -> Result<(), Diagnostic> {
+        for binding in lets {
+            let value = self.evaluate(&binding.value, binding.span, state)?;
+            if let Some(scope) = state.scopes.last_mut() {
+                scope.push((binding.name.clone(), value));
+            }
+        }
+        Ok(())
+    }
+
     fn lower_block(
         &self,
         nodes: &[ast::Node],
@@ -1252,10 +1292,17 @@ impl Context<'_> {
                 item,
                 index,
                 key,
+                lets,
                 children,
                 ..
             } => {
-                let Some(value) = self.evaluate_known(items, *items_span, state)? else {
+                // A `let:` the server can't evaluate leaves the list to the browser.
+                let browser_only = lets.iter().any(|binding| binding.value.is_runtime());
+                let Some(value) = (if browser_only {
+                    None
+                } else {
+                    self.evaluate_known(items, *items_span, state)?
+                }) else {
                     return Ok(vec![Node::OpenClient, Node::Close]);
                 };
                 let Value::Array(list) = value else {
@@ -1276,6 +1323,10 @@ impl Context<'_> {
                         scope.push((index.clone(), Value::from(position)));
                     }
                     state.scopes.push(scope);
+                    if let Err(error) = self.lower_lets(lets, state) {
+                        state.scopes.pop();
+                        return Err(error);
+                    }
                     if let Some((key, key_span)) = key {
                         let checked = self.evaluate_known(key, *key_span, state).and_then(
                             |value| match value {
@@ -1421,7 +1472,9 @@ impl Context<'_> {
                                 .flat_map(|name| destructure(name, &resolved))
                                 .collect(),
                         );
-                        let lowered = self.lower_block(&branch.children, state, true);
+                        let lowered = self
+                            .lower_lets(&branch.lets, state)
+                            .and_then(|()| self.lower_block(&branch.children, state, true));
                         state.scopes.pop();
                         output.extend(lowered?);
                     }

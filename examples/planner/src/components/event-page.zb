@@ -88,10 +88,12 @@
       </zb-each>
     </div>
     <section role="tabpanel" aria-label={tab}>
-      <schedule-list zb-if={tab === "schedule"} event={event}></schedule-list>
-      <guest-list zb-if={tab === "guests"} event={event}></guest-list>
-      <budget-table zb-if={tab === "budget"} event={event}></budget-table>
-      <task-list zb-if={tab === "tasks"} event={event}></task-list>
+      <zb-switch value={tab}>
+        <zb-case is="schedule"><schedule-list event={event}></schedule-list></zb-case>
+        <zb-case is="guests"><guest-list event={event}></guest-list></zb-case>
+        <zb-case is="budget"><budget-table event={event}></budget-table></zb-case>
+        <zb-case is="tasks"><task-list event={event}></task-list></zb-case>
+      </zb-switch>
     </section>
     <zb-else>
       <div class="missing"><h1>Not found</h1><p>This event doesn't exist (any more). <a href="#/">Back to the calendar</a></p></div>

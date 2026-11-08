@@ -232,7 +232,7 @@
       ]
     },
     "directive": {
-      "begin": "(</?)(zb-(?:if|else|each|slot|await|pending|then|catch))\\b",
+      "begin": "(</?)(zb-(?:if|else|each|slot|await|pending|then|catch|switch|case))\\b",
       "beginCaptures": {
         "1": {
           "name": "punctuation.definition.tag.begin.html"
@@ -302,7 +302,7 @@
           }
         },
         {
-          "match": "\\b(class|style)(:)([^\\s\"'<>/=]+)",
+          "match": "\\b(class|style|let)(:)([^\\s\"'<>/=]+)",
           "captures": {
             "1": {
               "name": "entity.other.attribute-name.html"

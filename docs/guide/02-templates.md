@@ -23,6 +23,8 @@ Templates are HTML with `{expressions}` and a few elements that start with `zb-`
 
 - **One element, one condition:** `zb-if={…}` on the element, then `zb-else-if={…}` and `zb-else` on the siblings right after it (whitespace may come between). This keeps tables and lists valid HTML for editors and formatters (`<tr zb-if={…}>`).
 - **Several siblings, or text:** wrap them, `<zb-if test={…}>…<zb-else-if test={…}>…</zb-else-if><zb-else>…</zb-else></zb-if>`. Both forms compile to the same thing.
+- **One value, several cases:** `<zb-switch value={order.status}>` with `<zb-case is="paid">…</zb-case>`, `<zb-case is={["shipped", "delivered"]}>…</zb-case>` and an optional `<zb-else>`.
+- **A value per row:** `let:total={item.price * item.qty}` on `<zb-each>` names it once for the row, instead of repeating the expression. It stays in sync and can't be assigned.
 - `zb-if` switches only when the chosen branch changes.
 - `zb-each` with a `key` moves rows when the list reorders, along with their DOM state (focus, a half-typed input). Changing one item updates only that row.
 - Mutate the list the ordinary way: `items.push({ … })`, `items.splice(i, 1)`, `item.done = !item.done`. State tracks each property, so a push adds one row and a write to one item updates one row. (Reassigning, `items = items.filter(…)`, works too.)
