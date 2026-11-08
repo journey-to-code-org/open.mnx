@@ -15,3 +15,13 @@ export declare function registerRenderer(tag: string, render: (props: Record<str
 export declare function canRender(Element: unknown): Element is MnxElementClass;
 /** The element's server-rendered HTML, which it hydrates in the browser. */
 export declare function renderToString(Element: MnxElementClass, options?: RenderOptions): string;
+/**
+ * An element's server-rendered content for a host a framework renders bare: a shadow-DOM
+ * element's declarative shadow root, or a light-DOM element's rendered children, plus a form
+ * control's hidden fallback input when `name` is given. Empty when it can't be rendered here.
+ * The React and Vue wrappers use it; a framework must leave the host's content alone while
+ * hydrating (`dangerouslySetInnerHTML`, `innerHTML`).
+ */
+export declare function serverContent(Element: MnxElementClass, options?: { props?: Record<string, unknown>; name?: string }): string;
+/** `serverContent` for a shadow-DOM element only (the 2.11 name). */
+export declare function shadowContent(Element: MnxElementClass, options?: { props?: Record<string, unknown>; name?: string }): string;

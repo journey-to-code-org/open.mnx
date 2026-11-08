@@ -270,9 +270,17 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
       if (server && ssrFramework && path.endsWith('.mnx') && !warnedLight.has(path) && isLightDom(readFileSync(path, 'utf8'))) {
         warnedLight.add(path);
-        this.warn(`${relativePath(path)} is a light-DOM component, and ${ssrFramework} hydrates the server's HTML: when the element renders into its host first, `
-          + `${ssrFramework === 'Nuxt' ? 'Vue removes what it finds there' : ssrFramework === 'SvelteKit' ? 'Svelte fails to hydrate the page' : 'React re-renders the page'}. `
-          + 'Add `shadow` to its host tag (see examples/meta/README.md).');
+        // Since 3.3 the React and Vue wrappers server-render a light-DOM element's content and
+        // keep the framework out of the host while hydrating, so light DOM works there when the
+        // element is given no framework children. Svelte uses the element directly, claims every
+        // node, and fails on the element's own.
+        if (ssrFramework === 'SvelteKit') {
+          this.warn(`${relativePath(path)} is a light-DOM component, and SvelteKit hydrates the server's HTML: when the element renders into its host first, Svelte fails to hydrate the page. `
+            + 'Add `shadow` to its host tag (see examples/meta/README.md).');
+        } else {
+          this.warn(`${relativePath(path)} is a light-DOM component: in ${ssrFramework}, that works when the element is given no children from ${ssrFramework === 'Nuxt' ? 'Vue' : 'React'} (its content is server-rendered and hydrated in place); `
+            + `an element given children must be \`shadow\`, or ${ssrFramework === 'Nuxt' ? 'Vue removes what it finds there' : 'React re-renders the page'} (see examples/meta/README.md).`);
+        }
       }
       // (A JSX component is typed by its own source: TypeScript reads the function.)
       if (typings && path.endsWith('.mnx')) writeTypings(path);

@@ -1,4 +1,4 @@
-export interface PropInfo { name: string; attribute: string; type: string; default: unknown; model: boolean }
+export interface PropInfo { name: string; attribute: string; type: string; default: unknown; model: boolean; required: boolean }
 export interface ComponentInfo { tag: string; shadow: boolean; form: boolean; props: PropInfo[]; events: string[] }
 
 export interface Page {
@@ -12,6 +12,16 @@ export interface Page {
   scripts(): string;
   /** A whole page with `head()` put before `</head>` and `scripts()` before `</body>`. */
   finish(html: string): string;
+  /**
+   * Whether a rendered component was given a promise as a prop. Such a prop renders as pending
+   * (its `mnx-await` shows its pending content); `stream()` sends the resolved region with the
+   * value after the page.
+   */
+  readonly pending: boolean;
+  /** The page as a Node stream: `finish(html)`, then each resolved region as its promise settles. */
+  stream(html: string): import('node:stream').Readable;
+  /** The same as a web `Response` (fetch-style servers). */
+  streamResponse(html: string, init?: ResponseInit): Response;
 }
 
 export interface Mnx {
@@ -33,9 +43,9 @@ export interface Mnx {
    * shadow root, and a hidden input for form-associated ones with a `name` (`forms: false` leaves
    * those out).
    */
-  injectShadowRoots(html: string, options?: { forms?: boolean }): string;
+  injectShadowRoots(html: string, options?: { forms?: boolean; lightDom?: boolean }): string;
   /** `injectShadowRoots` as a Node Transform stream, for streamed pages. */
-  injectShadowRootsStream(options?: { forms?: boolean }): import('node:stream').Transform;
+  injectShadowRootsStream(options?: { forms?: boolean; lightDom?: boolean }): import('node:stream').Transform;
   /** A component's browser module (JavaScript). */
   module(name: string): string;
   /** Static sites: write the browser modules and @mnx/runtime under `dir` (at `<dir>/_mnx/…`). */

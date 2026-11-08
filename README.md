@@ -410,7 +410,7 @@ The code that does this (`remark.js`) is loaded only when an element meets such 
 
 ### In frameworks that hydrate
 
-In Next.js, React Router, Nuxt and SvelteKit, the framework hydrates the server's HTML around the elements. A light-DOM component renders its template into its host before the framework hydrates, and the framework then finds children it didn't render: React redoes the page, Vue removes them, and Svelte fails. Use `shadow` for components those apps server-render. `@mnx/unplugin` warns when a light-DOM component is server-rendered in React Router, Nuxt or SvelteKit. Solid doesn't mind. See `examples/meta/README.md`.
+In Next.js, React Router, Nuxt and SvelteKit, the framework hydrates the server's HTML around the elements. Since 3.3 the React and Vue wrappers render an element's content into its host on the server (a light-DOM element's rendered children, a shadow-DOM element's declarative shadow root) and keep the framework out of the host while hydrating (React: `dangerouslySetInnerHTML` with an empty string in the browser and `suppressHydrationWarning`; Vue: a vnode with no children), so the element hydrates in place either way. Two cases still need `shadow`: an element given React or Vue children (slot content), and every component under SvelteKit, which uses elements directly and claims every node it finds. `@mnx/unplugin` warns about both. Solid leaves nodes it didn't render alone; `injectShadowRoots(html, { lightDom: true })` gives its light-DOM hosts their children. See `examples/meta/README.md`.
 
 **The SSR bridge.** A framework renders only the host tag. For the element's markup to be in the page before JavaScript, there are two steps:
 1. **Props on the host.** The React and Vue wrappers write the props as one JSON attribute, `mnx-props`, on the server and in the browser alike. In Svelte and Solid, which use elements directly, `@mnx/unplugin` adds it in the server build (since 2.10), from the attributes that set the element's props (`log={…}`, `{log}`, `bind:value={…}`, Solid's `prop:items={…}`). The element starts with these props before the framework sets them.
@@ -452,6 +452,8 @@ app.get('/', (req, res) => {
 ```
 
 `page.finish(html)` puts the used components' CSS and the import map before `</head>`, and their modules before `</body>`. `page.head()` and `page.scripts()` give you the same pieces to place yourself. `mnx.handle(req, res)` (Node) and `mnx.fetch(request)` (fetch-style servers) serve `/_mnx/…`. For a static site, `mnx.writeAssets(dir)` writes those files. `examples/helpdesk/` (Express and EJS), `examples/hypermedia/` (Hono) and `examples/meta/eleventy-trails/` use it.
+
+**Streaming** (3.3). A prop given as a promise renders as pending: the component's `<mnx-await>` shows its pending content, in an empty region. `page.stream(html)` (a Node stream; `page.streamResponse(html)` a web `Response`) sends the page at once and, as each promise settles, a `<template>` with the resolved region and an inline script that swaps it in before the element starts, or hands the element the value if it has. The element hydrates the region as it would any server-rendered `mnx-then`; a rejection reaches its `mnx-catch`. `page.pending` says whether anything is streaming. Without JavaScript the pending content stays, so await the data before rendering when the page must be complete without it. The help desk's dashboard streams its recent activity.
 
 `@mnx/compiler` underneath renders a single component, from Node and without Rust:
 

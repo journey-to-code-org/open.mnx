@@ -2,6 +2,20 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.3.0 — 2026-11-07
+
+The last server gaps (`plan/roadmap-4.0.md`, 3.3): "SSR isn't great with web components" was the belief two of the survey's nine respondents held, and three visible gaps confirmed it.
+
+### Added
+
+- **Light DOM under framework hydration**, for an element given no framework children. The React and Vue wrappers (`@mnx/runtime/react`, `@mnx/runtime/vue`) render an element's content into its host on the server (a light-DOM element's rendered children; a shadow-DOM element's declarative shadow root, as since 2.11) and keep the framework out of the host while hydrating (React: `dangerouslySetInnerHTML` with an empty string in the browser and `suppressHydrationWarning`; Vue: a vnode with no children at all, so Vue never looks inside), so the element hydrates its markup in place. `serverContent(Element, { props, name })` from `@mnx/runtime/server` is the function behind both (`shadowContent` remains, for shadow DOM only). `@mnx/server`'s `injectShadowRoots(html, { lightDom: true })` does the same for frameworks that leave nodes they didn't render alone (Solid). The React Router balance list, the Nuxt stock meter, the Next.js session card and the SolidStart dish board are light DOM now, with their no-JavaScript tests passing. Still `shadow`: an element given React or Vue children, and every component under SvelteKit. `@mnx/unplugin`'s warning says which.
+- **Streaming.** In `@mnx/server`, a prop given as a promise renders as pending (the compiler's new `pending` request field: the prop is unknown, so its `mnx-await` shows the pending content in an empty region), and `page.stream(html)` (a Node stream) or `page.streamResponse(html)` (a web `Response`) sends the page first, then, as each promise settles, a `<template>` with the resolved region and an inline script that swaps it in before the element starts (or hands the element the value if it has; a held promise keeps the `mnx-await` pending meanwhile; a rejection reaches `mnx-catch`). The streamed page's module script is `async`, so the elements start before the stream ends. `page.pending` says whether a page is streaming. The help desk's dashboard streams its recent activity (`components/recent-activity.mnx`).
+- `HtmlOptions.pending` in the Rust API; `--emit interface` typings carry `required`.
+
+### Documented, not fixed
+
+- **Next.js elements given React children** can't carry server-rendered content: `dangerouslySetInnerHTML` and children are exclusive in React, and a declarative shadow root as a React child breaks hydration. They draw in the browser until React understands declarative shadow DOM. `docs/server-rendering.md` records it.
+
 ## 3.2.0 — 2026-11-07
 
 Usable by agents (`plan/roadmap-4.0.md`, 3.2): the thing the survey said nobody had asked a web-component tool for yet.

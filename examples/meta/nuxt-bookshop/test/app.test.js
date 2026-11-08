@@ -60,9 +60,12 @@ test('the list: server-rendered, filtered by genre through v-model on an mnx ele
   await direct.page.close();
 });
 
-test('without JavaScript: the stock meters and the genre switch are in the server HTML (declarative shadow roots)', async () => {
+test('without JavaScript: the stock meters (light DOM) and the genre switch (a declarative shadow root) are in the server HTML', async () => {
   const html = await (await fetch(`${base}/`)).text();
-  assert.match(html, /<stock-meter mnx-props="[^"]*"><template shadowrootmode="open">/, 'the Vue wrapper wrote mnx-props, and @mnx/server the shadow root');
+  // The stock meter is a light-DOM component: the Vue wrapper wrote its props and its rendered
+  // children (3.3); the segmented control is shadow DOM, filled by @mnx/server's injectShadowRoots.
+  assert.match(html, /<stock-meter mnx-props="[^"]*">\s*<div role="meter"/, 'the Vue wrapper wrote mnx-props and the light-DOM content');
+  assert.match(html, /<segmented-control mnx-props="[^"]*"><template shadowrootmode="open">/, 'the shadow root');
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto(`${base}/`);

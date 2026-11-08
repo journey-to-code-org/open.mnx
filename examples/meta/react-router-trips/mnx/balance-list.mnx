@@ -17,7 +17,7 @@
   .amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
   .amount.down { color: #c92a2a; }
 </style>
-<balance-list shadow balances={[]}>
+<balance-list balances={[]}>
   <ul>
     <mnx-each items={balances} as="person" key={person.name}>
       <li>

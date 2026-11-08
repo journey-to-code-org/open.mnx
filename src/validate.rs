@@ -153,6 +153,20 @@ pub fn record_gaps<T>(render: impl FnOnce() -> T) -> (T, Vec<Gap>) {
     (result, gaps)
 }
 
+thread_local! {
+    /// Props a streaming server hasn't got values for yet: rendered as unknown (see `pending`).
+    static PENDING: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Set the pending props for the renders that follow (returns the previous list, to restore).
+pub fn set_pending(names: Vec<String>) -> Vec<String> {
+    PENDING.with(|pending| pending.replace(names))
+}
+
+fn pending(name: &str) -> bool {
+    PENDING.with(|pending| pending.borrow().iter().any(|pending| pending == name))
+}
+
 /// Like [`validate`], but what only the browser can compute (runtime-only values, JavaScript
 /// expressions, defaults computed in the browser) is left for the element instead of being an
 /// error: text renders empty, attributes are left out, and conditionals and lists render as
@@ -594,6 +608,18 @@ fn evaluate_props(
             ));
         }
         let default = prop_default(declaration, locals)?;
+        if pending(&declaration.name) {
+            // A value a streaming server will have later: unknown for now, so what reads it is
+            // left as an empty region, filled when the value arrives.
+            props.push(Prop {
+                name: declaration.name.clone(),
+                attribute: kebab(&declaration.name),
+                default: default.and_then(Result::ok),
+                value: Value::Null,
+                unknown: true,
+            });
+            continue;
+        }
         let value = match (overrides.get(&declaration.name), &default) {
             (Some(value), Some(Ok(default))) => {
                 if !same_type(default, value) {

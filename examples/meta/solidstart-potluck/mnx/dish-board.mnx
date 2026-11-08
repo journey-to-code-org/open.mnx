@@ -12,7 +12,7 @@
   ul { margin: 0.4rem 0 0; padding: 0; list-style: none; font-size: 0.85rem; color: #4b463c; }
   .open { color: #9a5b00; font-size: 0.8rem; }
 </style>
-<dish-board shadow courses={[]}>
+<dish-board courses={[]}>
   <ol>
     <mnx-each items={courses} as="course" key={course.id}>
       <li data-course={course.id}>

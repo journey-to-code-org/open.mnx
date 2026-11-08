@@ -210,19 +210,24 @@ pub fn compile_html_from(
         HtmlOptions {
             slot_source,
             partial: false,
+            pending: Vec::new(),
         },
         loader,
     )
 }
 
 /// How the HTML output is rendered.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct HtmlOptions {
     /// What slot content is written in.
     pub slot_source: SlotSource,
     /// Leave what only the browser can compute (JavaScript expressions, runtime-only values)
     /// for the element to fill in, instead of reporting it: the rest is server-rendered.
     pub partial: bool,
+    /// Props whose values aren't known yet (a streaming server's promises): rendered as unknown,
+    /// so what depends on them is left as an empty region, to be filled when the value arrives.
+    /// Implies `partial`.
+    pub pending: Vec<String>,
 }
 
 /// What a server without JavaScript (the CLI, or any renderer of the HTML output) leaves out of
@@ -243,6 +248,7 @@ pub fn server_gaps(
             HtmlOptions {
                 slot_source: SlotSource::Template,
                 partial: true,
+                pending: Vec::new(),
             },
             loader,
         )
@@ -280,11 +286,14 @@ pub fn compile_html_with_options(
         let component = load(source, path, Some(loader))?;
         let props = parse_json(props_json, "props")?;
         let slots = parse_json(slots_json, "slots")?;
-        if options.partial {
+        let previous = validate::set_pending(options.pending.clone());
+        let result = if options.partial || !options.pending.is_empty() {
             html_partial(component, &props, &slots, options.slot_source)
         } else {
             html(component, &props, &slots, options.slot_source)
-        }
+        };
+        validate::set_pending(previous);
+        result
     })
 }
 

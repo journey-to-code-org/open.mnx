@@ -212,6 +212,7 @@ fn run() -> Result<(), String> {
         mnx_compiler::HtmlOptions {
             slot_source,
             partial,
+            pending: Vec::new(),
         },
         &mnx_compiler::filesystem,
     )

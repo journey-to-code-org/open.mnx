@@ -9,7 +9,7 @@ mnx renders components without a DOM on the server: the compiler emits the HTML,
 
 1. **Pick the path** from the table. Done when the server's HTML contains the component's rendered markup (not an empty host tag), the browser logs no hydration warning, and the page's forms submit with JavaScript off.
 2. **Keep components in the server's subset** for what must be in the HTML: props, arithmetic, ternaries, template literals, string/array methods, `Math` (not `random`), `Object.keys/values/entries`. `Date`, `Intl`, `window`, `navigator` are browser-only; `mnx check --server <file>` names each such part. Move them into `onMount` or behind `hydrated()`.
-3. **Inside a hydrating framework, make the component `shadow`**, or the framework's hydration will remove or re-render what the element drew. Light DOM is right everywhere else.
+3. **Inside a hydrating framework, an element given framework children must be `shadow`**, and so must every component under SvelteKit; a light-DOM element with no framework children works under Next.js, React Router, Nuxt and SolidStart (the wrappers, or `injectShadowRoots` with `lightDom: true` for Solid, render its content and keep the framework out of the host).
 
 | Server | Path |
 |---|---|
@@ -17,8 +17,12 @@ mnx renders components without a DOM on the server: the compiler emits the HTML,
 | Node without a framework, Bun, scripts | `render(path, { props, slots })` from `@mnx/compiler` returns `{ html, css }`. |
 | Flask, Rails, Go, PHP, Eleventy, anything that isn't Node | One long-lived `mnx serve` process; a JSON line per render (the request format is in the `mnx-cli` skill). Serve the compiled modules and `@mnx/runtime` statically. `examples/backends/flask-garden/` is the pattern. |
 | Astro | `@mnx/unplugin/astro`; components render on the server and `client:load` hydrates. |
-| Nuxt, SvelteKit, React Router, SolidStart | The framework renders only the host tag. Pass the page's HTML through `mnx.injectShadowRoots(html)` (or `injectShadowRootsStream()`) from `@mnx/server` in the framework's HTML hook: SvelteKit `handle`'s `transformPageChunk`, a Nitro plugin on `render:html` (Nuxt, SolidStart), React Router's `entry.server`. Each is in `examples/meta/`. Components must be `shadow`. The plugin writes `mnx-props` on each host so the element starts with its props. |
-| Next.js | `@mnx/unplugin/loader` with a server rule (`condition: { not: 'browser' }, options: { server: true }`) and `serverExternalPackages: ['@mnx/compiler']`. Shadow-DOM elements without React children render on the server; others draw in the browser. |
+| Nuxt, React Router, Next.js | The React and Vue wrappers render each element's content into its host on the server (light or shadow DOM) for elements with no framework children, and leave it alone while hydrating; nothing to add. Next.js needs `@mnx/unplugin/loader` with a server rule (`condition: { not: 'browser' }, options: { server: true }`) and `serverExternalPackages: ['@mnx/compiler']`. Elements given framework children must be `shadow` and go through `injectShadowRoots` (below), or draw in the browser under Next.js. |
+| SvelteKit, SolidStart | The framework renders only the host tag. Pass the page's HTML through `mnx.injectShadowRoots(html)` (or `injectShadowRootsStream()`) from `@mnx/server` in the framework's HTML hook: SvelteKit `handle`'s `transformPageChunk`, a middleware in SolidStart (with `{ lightDom: true }`: Solid tolerates light-DOM children). Components under SvelteKit must be `shadow`. The plugin writes `mnx-props` on each host so the element starts with its props. |
+
+## Streaming slow data
+
+Give a prop as a promise: `page.render('reviews', { items: fetchReviews() })`. The component's `<mnx-await value={items}>` renders its pending content; `page.stream(html).pipe(res)` (Express/Node) or `return page.streamResponse(html)` (Hono) sends the page, then the resolved region when the promise settles, hydrated by the element. Without JavaScript the pending content stays, so stream only what the page can show late.
 
 ## Without JavaScript
 

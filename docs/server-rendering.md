@@ -15,8 +15,8 @@ The element then hydrates that HTML in the browser: it finds its template's part
 | **The Rust CLI** (`mnx compile`, `mnx serve`), so Flask, Rails, Go, PHP, Eleventy, any server at all | Native | Everything in the deterministic subset (below) |
 | **`@mnx/compiler`** on Node or Bun (`render()`), **`@mnx/server`** (Express, Fastify, Hono, or any engine) | The same compiler, as WebAssembly | The same subset, so Flask and Node produce byte-identical HTML |
 | **Astro** (`@mnx/unplugin/astro`) | Components render on the server; a client directive hydrates them | The same |
-| **Nuxt, SvelteKit, React Router, SolidStart** | The framework renders the host tag; `@mnx/server`'s `injectShadowRoots()` fills it with the server-rendered template as a declarative shadow root, before the framework's hydration runs | The same |
-| **Next.js** | No HTML hook, so the React wrapper writes the shadow root itself in the server build, for elements with no React children | The same |
+| **Nuxt, React Router, Next.js** | The React and Vue wrappers write the element's content into the host on the server (light DOM: its rendered children; shadow DOM: a declarative shadow root) and keep the framework out of the host while hydrating; `@mnx/server`'s `injectShadowRoots()` is the alternative for shadow DOM where the page has an HTML hook | The same |
+| **SvelteKit, SolidStart** | The framework renders the host tag; `@mnx/server`'s `injectShadowRoots()` fills it (shadow roots; with `lightDom: true` under Solid, light-DOM children too), before the framework's hydration runs | The same |
 
 ### The deterministic subset
 
@@ -34,15 +34,15 @@ What it doesn't evaluate: anything non-deterministic (`Date`, `Intl`, `Math.rand
 
 ## Where it still falls short
 
-These are the honest gaps as of 3.1, each on the roadmap:
+These are the honest gaps as of 3.3, each on the roadmap:
 
-1. **Light DOM inside a hydrating framework.** A light-DOM component renders its template into its host before React, Vue or Svelte hydrate the page, and the framework then finds children it didn't render: React re-renders the page, Vue removes the children, Svelte fails. In Nuxt, SvelteKit, React Router and Next.js, server-rendered mnx components must be `shadow`, and `@mnx/unplugin` warns if they aren't. Solid and Astro don't mind. Plain servers, Flask, Hono, Eleventy and htmx are fine with light DOM, which is why it stays the default.
-2. **Next.js elements given React children.** An element whose slot content is React nodes can't also carry a server-rendered shadow root under Next.js, because React hydrates the children. Those elements render in the browser.
-3. **No streaming.** The server sends a complete page. `<mnx-await>` lets a page render its shell with pending regions, but resolved content is not streamed in afterwards.
+1. **Light DOM inside a hydrating framework, for an element given framework children.** Since 3.3 a light-DOM element with *no* React or Vue children works under Next.js, React Router and Nuxt: the wrapper server-renders its content as the host's inner HTML and keeps the framework out of the host while hydrating, so the element hydrates in place and page CSS reaches in. SolidStart works through `injectShadowRoots(html, { lightDom: true })`, since Solid leaves nodes it didn't render alone. What's left: an element whose slot content is React or Vue nodes must still be `shadow` (React would re-render the page, Vue would remove the element's nodes), and so must every component under SvelteKit, which uses elements directly and claims every node. `@mnx/unplugin` says which.
+2. **Next.js elements given React children.** An element whose slot content is React nodes can't also carry server-rendered content: React's `dangerouslySetInnerHTML` and children are exclusive, and a declarative shadow root as a React child breaks hydration (the parser turns it into a shadow root, so React's first child is gone). Those elements render in the browser. This needs React to understand declarative shadow DOM, which it doesn't yet; it isn't something mnx can fix from its side, so it stays documented rather than planned.
+3. **Streaming is for slow data, not for pages that must work without JavaScript.** Since 3.3, `@mnx/server` streams: a prop given as a promise renders as pending (the component's `mnx-await` shows its pending content), and `page.stream(html)` sends the page first and the resolved region as the promise settles, swapped in by a short inline script and hydrated by the element. Without JavaScript the pending content stays, so a page that has to be complete without it should await the data before rendering, as before.
 4. **`Date` and `Intl` components are browser-only** on the server, by design: formatting a date on the server and the client can disagree, and a hydration mismatch is worse than an empty region. `mnx check --server` names them.
 
 ## What this means in practice
 
 - **A plain server** (any language) gets complete, correct HTML for every component in the subset, with hydration that keeps focus and input state. This is the case mnx was built for, and it's the smoothest.
-- **A meta-framework** gets complete HTML through the bridge, with shadow DOM. It works in every one in CI (`examples/meta/`, each with a no-JavaScript test), and it's one `shadow` flag away from the plain-server experience, which is the gap above.
-- **Compared with a framework's own SSR**, Next.js or Nuxt rendering their own components is still smoother: no bridge, no shadow-DOM requirement, streaming. mnx's server story is complete for leaf components and plain servers, and good inside frameworks; it isn't yet invisible there.
+- **A meta-framework** gets complete HTML through the bridge, with light or shadow DOM for elements without framework children (3.3) and shadow DOM for the rest. It works in every one in CI (`examples/meta/`, each with a no-JavaScript test).
+- **Compared with a framework's own SSR**, Next.js or Nuxt rendering their own components is still smoother: no bridge, no `shadow` flag for an element with children, and the framework's own streaming. mnx's server story is complete for leaf components and plain servers, and close to it inside frameworks.

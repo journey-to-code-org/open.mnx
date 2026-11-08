@@ -9,7 +9,8 @@
 //!   "files": { "/app/inbox.mnx": "…", "/app/badge.mnx": "…" },
 //!   "runtime": "@mnx/runtime", "keepImports": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
-//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true }
+//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true,
+//!   "pending": ["reviews"] }
 //! ```
 //!
 //! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }`: `output` is the
@@ -215,6 +216,17 @@ fn respond(request: &Map<String, Value>) -> Value {
                 crate::HtmlOptions {
                     slot_source,
                     partial,
+                    pending: request
+                        .get("pending")
+                        .and_then(Value::as_array)
+                        .map(|names| {
+                            names
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 },
                 &loader,
             )

@@ -16,7 +16,7 @@
   button { grid-row: 1 / span 2; grid-column: 3; align-self: center; width: 2.4rem; height: 2.4rem; border: 1px solid #e3e6ee; border-radius: 50%; background: white; font-size: 1.2rem; color: #c9ccd6; cursor: pointer; }
   button[aria-pressed=true] { color: #e0a100; border-color: #f3d27a; background: #fff8e1; }
 </style>
-<session-card shadow id-text="" title-text="" speaker="" start="" end="" room="" track="" href="" starred:model={false}>
+<session-card id-text="" title-text="" speaker="" start="" end="" room="" track="" href="" starred:model={false}>
   <article data-track={track}>
     <div class="time">{start}<small>to {end}</small></div>
     <h3><a href={href}>{titleText}</a></h3>

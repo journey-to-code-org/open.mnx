@@ -18,7 +18,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, wri
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
-import { Transform } from 'node:stream';
+import * as nodeStream from 'node:stream';
+const { Transform } = nodeStream;
 import { findCompiler } from './compiler.js';
 
 export { findCompiler };
@@ -81,8 +82,8 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
   const byTag = () => once('tags', () => new Map([...files.keys()].map((name) => [describe(name).tag, name])));
   const nameOf = (nameOrTag) => (files.has(nameOrTag) ? nameOrTag : byTag().get(nameOrTag));
 
-  const render = (name, props = {}, slots = {}) =>
-    call(pathOf(name), { emit: 'html', props, slots, slotSource: 'html', partial: true });
+  const render = (name, props = {}, slots = {}, pending = []) =>
+    call(pathOf(name), { emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
   const js = (name) => once(`js:${name}`, () => {
     const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@mnx/runtime' });
@@ -95,7 +96,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     const styles = names.map(css).join('\n');
     return `${styles ? `<style data-mnx-components>${styles}</style>\n` : ''}${importMap()}`;
   };
-  const scripts = (names) => (names.length ? `<script type="module">${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '');
+  const scripts = (names, async = false) => (names.length ? `<script type="module"${async ? ' async' : ''}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '');
 
   /** What a request for `pathname` gets: `{ status, type, body }`, or null if it isn't ours. */
   function serve(pathname) {
@@ -137,13 +138,45 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     const use = (name) => {
       if (!used.includes(name)) used.push(name);
     };
+    // Streaming (3.3): a prop given as a promise renders as pending (its `mnx-await` shows its
+    // pending content, in an empty region), and `stream()` sends the resolved region after the
+    // page, with the value, for the element to hydrate.
+    const pendingRenders = [];
+    let streamed = 0;
     return {
       used,
-      render(name, props, slots) {
+      render(name, props = {}, slots) {
         const key = nameOf(name) ?? name;
-        const html = render(key, props, slots);
         use(key);
-        return html;
+        const promises = Object.entries(props).filter(([, value]) => value && typeof value.then === 'function');
+        if (!promises.length) return render(key, props, slots);
+        const given = Object.fromEntries(Object.entries(props).filter(([, value]) => !(value && typeof value.then === 'function')));
+        const names = promises.map(([name]) => name);
+        const id = String(streamed++);
+        const shell = withStreamId(render(key, given, slots, names), id);
+        pendingRenders.push({ key, id, given, slots, promises: new Map(promises), shell });
+        // Until the values arrive, the element (should it start first) holds a promise for
+        // each, set before it upgrades, so its `mnx-await` shows the pending content.
+        return `${shell}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
+      },
+      /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
+      get pending() {
+        return pendingRenders.length > 0;
+      },
+      /**
+       * The page as a stream: `finish(html)` first, then, as each promise prop settles, the
+       * resolved regions and the value, in a `<template>` and a short inline script that swaps
+       * them in before the element starts (or just hands the element the value, if it has).
+       * `stream(html)` is a Node Readable; `streamResponse(html)` a web `Response` body.
+       */
+      stream(html) {
+        const { Readable } = nodeStream;
+        return Readable.from(chunks(html));
+      },
+      streamResponse(html, init = {}) {
+        const { Readable } = nodeStream;
+        const body = Readable.toWeb(Readable.from(chunks(html)));
+        return new Response(body, { ...init, headers: { 'content-type': 'text/html; charset=utf-8', ...init.headers } });
       },
       /** The components' CSS and the import map, for the page's `<head>`. */
       head: () => head(used),
@@ -154,6 +187,39 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
         return insertBefore(insertBefore(html, '</head>', head(used)), '</body>', scripts(used));
       },
     };
+
+    async function* chunks(html) {
+      // The shell: as the ordinary page, but with the module script `async`, so the elements
+      // start as soon as it has loaded instead of when the stream ends (a module script is
+      // deferred until the document is complete). A region that arrives after an element has
+      // started reaches it as a property change.
+      yield insertBefore(insertBefore(html, '</head>', head(used)), '</body>', scripts(used, true));
+      const waiting = pendingRenders.splice(0).flatMap((entry) =>
+        [...entry.promises].map(([name, promise]) => promise.then(
+          (value) => ({ entry, name, value }),
+          (error) => ({ entry, name, error: error instanceof Error ? error.message : String(error) }),
+        )));
+      // In the order they settle.
+      const open = new Set(waiting.map((promise) => {
+        const tagged = promise.then((result) => ({ result, tagged }));
+        return tagged;
+      }));
+      while (open.size) {
+        const { result, tagged } = await Promise.race(open);
+        open.delete(tagged);
+        const { entry, name, value, error } = result;
+        if (error !== undefined) {
+          yield swapScript(entry.id, null, { [name]: { error } });
+          continue;
+        }
+        entry.given[name] = value;
+        entry.promises.delete(name);
+        const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()]), entry.id);
+        const regions = regionSwaps(entry.shell, resolved);
+        entry.shell = resolved;
+        yield swapScript(entry.id, regions, { [name]: { value } });
+      }
+    }
   }
 
   /**
@@ -162,29 +228,32 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
    * JSON, or its attributes), so it shows before JavaScript; the browser attaches it while
    * parsing, before any framework hydrates. Form-associated components with a `name` also get a
    * hidden input with their value, so the form submits without JavaScript (the element removes
-   * it when it starts). Light-DOM components are left alone: frameworks would see their markup.
+   * it when it starts). Light-DOM components are left alone unless `lightDom: true` (3.3): then
+   * an empty light-DOM host gets its rendered children, for frameworks that leave nodes they
+   * didn't render alone while hydrating (Solid; React and Vue through their wrappers do this
+   * themselves). Not for Svelte, which claims every node.
    */
-  /** The shadow-DOM components by tag, and a pattern for their hosts' start tags. */
-  function shadowHosts() {
+  /** The components by tag (shadow-DOM ones, or all with `lightDom`), and a pattern for their hosts' start tags. */
+  function shadowHosts(lightDom = false) {
     const shadowTags = new Map();
     for (const name of files.keys()) {
       const info = describe(name);
-      if (info.shadow) shadowTags.set(info.tag, { name, info });
+      if (info.shadow || lightDom) shadowTags.set(info.tag, { name, info });
     }
     const pattern = shadowTags.size ? new RegExp(`<(${[...shadowTags.keys()].map((tag) => tag.replace(/[-]/g, '\\-')).join('|')})(\\s[^>]*)?>`, 'g') : null;
     return { shadowTags, pattern };
   }
 
-  function injectShadowRoots(html, { forms = true } = {}) {
-    const { shadowTags, pattern } = shadowHosts();
+  function injectShadowRoots(html, { forms = true, lightDom = false } = {}) {
+    const { shadowTags, pattern } = shadowHosts(lightDom);
     if (!pattern) return html;
     let out = '';
     let last = 0;
     for (const match of html.matchAll(pattern)) {
       const end = match.index + match[0].length;
-      // Already has one (rendered by mnx, or a second pass).
-      if (/^\s*<template\s[^>]*shadowroot/i.test(html.slice(end, end + 200))) continue;
       const { name, info } = shadowTags.get(match[1]);
+      // Already has one (rendered by mnx, or a second pass); a light-DOM host must be empty.
+      if (info.shadow ? /^\s*<template\s[^>]*shadowroot/i.test(html.slice(end, end + 200)) : !new RegExp(`^\\s*</${match[1]}>`).test(html.slice(end, end + 200))) continue;
       const props = propsFrom(match[2] ?? '', info);
       let rendered;
       try {
@@ -192,7 +261,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
       } catch {
         continue; // leave it to the browser rather than break the page
       }
-      const template = shadowTemplate(rendered);
+      const template = info.shadow ? shadowTemplate(rendered) : lightContent(rendered, match[1]);
       if (!template) continue;
       out += html.slice(last, end) + template + (forms ? fallbackInput(match[2] ?? '', info, props) : '');
       last = end;
@@ -230,7 +299,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
       let cut = open > all.lastIndexOf('>') ? open : all.length;
       // A host's start tag near the end: what follows may be its own <template> (a React
       // wrapper renders it), so wait for more before deciding.
-      const { pattern } = shadowHosts();
+      const { pattern } = shadowHosts(options?.lightDom);
       if (!flush && pattern) {
         let last = null;
         for (const match of all.slice(0, cut).matchAll(pattern)) last = match;
@@ -334,6 +403,131 @@ function shadowTemplate(rendered) {
     if (depth === 0) return rendered.slice(start, match.index + match[0].length);
   }
   return null;
+}
+
+/** The host's start tag with `data-mnx-stream="<id>"`, so the stream's scripts can find it. */
+function withStreamId(html, id) {
+  return html.replace(/^(\s*<[a-z][\w.-]*)/, `$1 data-mnx-stream="${id}"`);
+}
+
+/**
+ * The pending regions of `shell` that `resolved` has rendered: `[{ index, html }]`, where
+ * `index` counts the shell's top-level `<!--[?-->` regions in order and `html` is the resolved
+ * region (markers included). The two renders differ only inside those regions (and the host's
+ * start tag, which is compared past).
+ */
+function regionSwaps(shell, resolved) {
+  const skipTag = (html) => html.match(/^\s*<[a-z][\w.-]*(?:\s[^>]*)?>/)?.[0].length ?? 0;
+  let a = skipTag(shell);
+  let b = skipTag(resolved);
+  const swaps = [];
+  let index = 0;
+  const PENDING = '<!--[?-->';
+  const regionEnd = (html, start) => {
+    // From the region's opening marker to its matching `<!--]-->`.
+    const markers = /<!--\[[?!]?-->|<!--\]-->/g;
+    markers.lastIndex = start;
+    let depth = 0;
+    for (const match of html.slice(start).matchAll(markers)) {
+      depth += match[0] === '<!--]-->' ? -1 : 1;
+      if (depth === 0) return start + match.index + match[0].length;
+    }
+    return html.length;
+  };
+  while (a < shell.length && b < resolved.length) {
+    if (shell.startsWith(PENDING, a)) {
+      const endA = regionEnd(shell, a);
+      const endB = regionEnd(resolved, b);
+      const region = resolved.slice(b, endB);
+      if (!region.startsWith(PENDING)) swaps.push({ index, html: region });
+      index++;
+      a = endA;
+      b = endB;
+      continue;
+    }
+    if (shell[a] !== resolved[b]) break; // not a difference this function understands
+    a++;
+    b++;
+  }
+  return swaps;
+}
+
+/** The chunk for one settled promise: the regions as a template, and the script that swaps them in. */
+function swapScript(id, regions, values) {
+  const template = regions?.length ? `<template data-mnx-swap="${id}">${regions.map((region) => `<div data-mnx-region="${region.index}">${region.html}</div>`).join('')}</template>` : '';
+  const script = `<script>(${swapInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
+  return `${template}${script}\n`;
+}
+
+// Runs in the browser, inlined, right after a streamed host: a promise per pending prop, as a
+// property the element captures when it upgrades, resolved by the swap script later.
+function holdInBrowser(id, names) {
+  var host = document.querySelector('[data-mnx-stream="' + id + '"]');
+  var held = (window.__mnxStream = window.__mnxStream || {});
+  for (var i = 0; i < names.length; i++) {
+    (function (name) {
+      host[name] = new Promise(function (resolve, reject) { held[id + ':' + name] = { resolve: resolve, reject: reject }; });
+    })(names[i]);
+  }
+}
+
+// Runs in the browser, inlined: before the element starts, replace its pending regions with the
+// rendered ones and set the values as properties (captured when the element upgrades); once it
+// has started, setting the property is enough (the element renders the region itself).
+function swapInBrowser(id, values) {
+  var host = document.querySelector('[data-mnx-stream="' + id + '"]');
+  var script = document.currentScript;
+  var template = script && script.previousElementSibling;
+  if (template && template.tagName !== 'TEMPLATE') template = null;
+  if (template) template.remove();
+  if (!host) return;
+  var started = host.matches(':state(hydrated), [data-hydrated]');
+  if (template && !started) {
+    var regions = [];
+    var walker = document.createTreeWalker(host, NodeFilter.SHOW_COMMENT);
+    var depth = 0;
+    var current = null;
+    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
+      var text = node.data;
+      if (text === '[?' && depth === 0) { current = { open: node }; }
+      if (text === '[' || text === '[?' || text === '[!') depth++;
+      else if (text === ']') { depth--; if (depth === 0 && current) { current.close = node; regions.push(current); current = null; } }
+    }
+    var pieces = template.content.querySelectorAll('[data-mnx-region]');
+    for (var i = 0; i < pieces.length; i++) {
+      var region = regions[Number(pieces[i].getAttribute('data-mnx-region'))];
+      if (!region) continue;
+      var range = document.createRange();
+      range.setStartBefore(region.open);
+      range.setEndAfter(region.close);
+      range.deleteContents();
+      var fragment = document.createDocumentFragment();
+      while (pieces[i].firstChild) fragment.appendChild(pieces[i].firstChild);
+      range.insertNode(fragment);
+    }
+  }
+  var held = window.__mnxStream || {};
+  for (var name in values) {
+    var hold = held[id + ':' + name];
+    if (values[name].error !== undefined) {
+      var rejected = Promise.reject(new Error(values[name].error));
+      rejected.catch(function () {});
+      if (hold) hold.reject(new Error(values[name].error));
+      else host[name] = rejected;
+    } else {
+      if (hold) hold.resolve(values[name].value);
+      host[name] = values[name].value;
+    }
+    delete held[id + ':' + name];
+  }
+}
+
+/** A rendered light-DOM host's children: between its start tag and its end tag. */
+function lightContent(rendered, tag) {
+  const open = rendered.match(/^\s*<[a-z][\w.-]*(?:\s[^>]*)?>/);
+  const close = rendered.lastIndexOf(`</${tag}>`);
+  if (!open || close < open[0].length) return null;
+  return rendered.slice(open[0].length, close);
 }
 
 /** A form-associated component's value, as the form would submit it, in a hidden input. */
