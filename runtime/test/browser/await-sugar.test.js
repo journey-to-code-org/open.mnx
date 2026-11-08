@@ -11,20 +11,22 @@ const shown = (page) => page.evaluate(() => [...document.querySelectorAll('.pend
 const loading = (page) => page.evaluate(() => document.querySelector('zb-loader').matches(':state(loading)'));
 
 test('delay hides a quick wait; an array of a resource and a promise resolves together, destructured', async () => {
-  // Timed from the element's start, not the page's: a slow browser can take longer than the
-  // delay to load the modules.
+  // Recorded in the page, timed from the element's start: a slow browser can take longer than
+  // the delay to load the modules, or than the pending block shows to answer a query.
   const { page, messages } = await open('<script>window.wait = 300</script><zb-loader></zb-loader>', {
     modules: ['loader'],
     beforeModules: `customElements.whenDefined('zb-loader').then(() => { window.started = performance.now(); });
-      new MutationObserver(() => { if (!window.pendingAt && document.querySelector('.pending')) window.pendingAt = performance.now(); })
-        .observe(document, { childList: true, subtree: true });`,
+      window.seen = [];
+      new MutationObserver(() => {
+        const text = [...document.querySelectorAll('.pending, .done')].map((el) => el.textContent).join();
+        if (text && text !== window.seen.at(-1)?.text) window.seen.push({ text, at: performance.now() - window.started });
+      }).observe(document, { childList: true, subtree: true, characterData: true });`,
   });
-  await page.waitForSelector('.pending');
-  assert.deepEqual(await shown(page), ['Loading…'], 'the pending block after the delay');
-  const waited = await page.evaluate(() => window.pendingAt - window.started);
-  assert.ok(waited >= 90, `nothing before the delay (the pending block came after ${Math.round(waited)} ms)`);
   await page.waitForSelector('.done');
   assert.deepEqual(await shown(page), ['Ada: 2']);
+  const seen = await page.evaluate(() => window.seen);
+  assert.deepEqual(seen.map((step) => step.text), ['Loading…', 'Ada: 2'], 'the pending block, then the result');
+  assert.ok(seen[0].at >= 90, `nothing before the delay (the pending block came after ${Math.round(seen[0].at)} ms)`);
   assert.equal(await page.textContent('.short'), 'Ada', '<zb-await {user}> is value={user}');
   assert.deepEqual(messages, []);
   await page.close();
