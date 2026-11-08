@@ -4,6 +4,8 @@ Zubra is a compiler for Web Components. You write a component as HTML with `{exp
 
 The runtime is built on what the web platform is standardizing: the TC39 Signals API, template parts in the shape of DOM Parts, the Context Protocol, form-associated custom elements and declarative shadow DOM. The aim is for the platform to absorb what Zubra proves, so the runtime shrinks as native features ship. See `runtime/README.md`.
 
+**Nothing is hidden.** `zubra compile` prints the HTML and the JavaScript module it generates, and every part of them exists because of a rule of the platform. Reading the output is the quickest way to learn how Web Components work: [Read the output](docs/guide/08-read-the-output.md) goes through one component's real output and the nine rules behind it (names, constructors, attributes, upgrades, lifecycle, events, shadow DOM, forms, server HTML).
+
 **Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/playground/) runs Zubra in your browser, the [demo gallery](https://journey-to-code-org.github.io/zubra/) has a live app for every framework, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. This README is the reference.
 
 **Status: 5.x.** The `.zb` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 6.0. 5.0 changed only the server markup's hydration markers (`docs/migrating-to-5.0.md`: update the packages together, no component changes). Zubra was called mnx until 4.0; `docs/migrating-to-4.0.md` renames a project in one command. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
@@ -93,6 +95,8 @@ customElements.define("copy-button", CopyButton);
 
 It needs shadow DOM to scope one style rule, has no server HTML, and has the two bugs most hand-written elements have (a forgotten `#render()`, a listener removed with a different reference). The compiler writes all of it.
 </details>
+
+The by-hand version is the platform's own API with nothing in the way. The compiled output is the same behaviour in two pieces: a short description of this component (the module `--emit js` prints) and one class every component shares (`defineElement` in `runtime/src/element.js`). [Read the output](docs/guide/08-read-the-output.md) maps each rule in the by-hand version to where Zubra handles it.
 
 The reactivity is the point, not a feature. `let` is state, and the template is bound to it:
 

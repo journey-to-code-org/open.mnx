@@ -23,6 +23,7 @@ Each step builds on the last, in about ten minutes each.
 5. [Forms](05-forms.md): elements that are real form controls.
 6. [Async data](06-async-data.md): loading, errors and refetching, without effects.
 7. [Server rendering](07-server-rendering.md): HTML first, hydrated in place.
+8. [Read the output](08-read-the-output.md): what Zubra compiles to, and the platform rule behind each part.
 
 ## Coming from a framework
 
