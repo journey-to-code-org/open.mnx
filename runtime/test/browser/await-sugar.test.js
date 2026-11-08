@@ -11,11 +11,18 @@ const shown = (page) => page.evaluate(() => [...document.querySelectorAll('.pend
 const loading = (page) => page.evaluate(() => document.querySelector('zb-loader').matches(':state(loading)'));
 
 test('delay hides a quick wait; an array of a resource and a promise resolves together, destructured', async () => {
-  const { page, messages } = await open('<script>window.wait = 300</script><zb-loader></zb-loader>', { modules: ['loader'] });
-  await page.waitForTimeout(50);
-  assert.deepEqual(await shown(page), [], 'nothing before the delay');
+  // Timed from the element's start, not the page's: a slow browser can take longer than the
+  // delay to load the modules.
+  const { page, messages } = await open('<script>window.wait = 300</script><zb-loader></zb-loader>', {
+    modules: ['loader'],
+    beforeModules: `customElements.whenDefined('zb-loader').then(() => { window.started = performance.now(); });
+      new MutationObserver(() => { if (!window.pendingAt && document.querySelector('.pending')) window.pendingAt = performance.now(); })
+        .observe(document, { childList: true, subtree: true });`,
+  });
   await page.waitForSelector('.pending');
   assert.deepEqual(await shown(page), ['Loading…'], 'the pending block after the delay');
+  const waited = await page.evaluate(() => window.pendingAt - window.started);
+  assert.ok(waited >= 90, `nothing before the delay (the pending block came after ${Math.round(waited)} ms)`);
   await page.waitForSelector('.done');
   assert.deepEqual(await shown(page), ['Ada: 2']);
   assert.equal(await page.textContent('.short'), 'Ada', '<zb-await {user}> is value={user}');
