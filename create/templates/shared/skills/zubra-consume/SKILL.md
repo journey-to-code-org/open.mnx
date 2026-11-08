@@ -35,7 +35,7 @@ Props, events, two-way binding, slots, form participation, refs to the host and 
 
 ## Server rendering in a framework
 
-Nuxt, SvelteKit, React Router and SolidStart: components must be `shadow` and the page goes through `@zubra/server`'s `injectShadowRoots()` (one hook per framework, in `examples/meta/`). Next.js: the loader's server rule renders shadow-DOM elements without React children. Astro and plain servers render light-DOM components as they are. Details: https://github.com/journey-to-code-org/zubra/blob/main/docs/server-rendering.md.
+Nuxt, React Router and SolidStart: an element given framework children must be `shadow`, and the page goes through `zubra.injectShadowRoots()` from `@zubra/server` (SolidStart with `{ lightDom: true }`); under SvelteKit every component must be `shadow` (one hook per framework, in `examples/meta/`). Next.js: the loader's server rule renders shadow-DOM elements without React children. Astro and plain servers render light-DOM components as they are. Details: https://github.com/journey-to-code-org/zubra/blob/main/docs/server-rendering.md.
 
 ## Reference
 

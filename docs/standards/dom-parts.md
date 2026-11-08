@@ -1,6 +1,6 @@
 # Parts in production: a usage report for DOM Parts and declarative templating
 
-*Zubra 1.6, November 2026. For [WICG/webcomponents#1069](https://github.com/WICG/webcomponents/issues/1069) and the [DOM Parts](https://github.com/WICG/webcomponents/issues/1028) discussions. Neither has a spec yet. This is evidence from a compiler that already ships a parts model, about the shape of what it needed.*
+*Zubra 5.0, November 2026. For [WICG/webcomponents#1069](https://github.com/WICG/webcomponents/issues/1069) and the [DOM Parts](https://github.com/WICG/webcomponents/issues/1028) discussions. Neither has a spec yet. This is evidence from a compiler that already ships a parts model, about the shape of what it needed.*
 
 ## The model Zubra uses
 
@@ -12,14 +12,14 @@ This is the DOM Parts shape: a template, the parts within it, and values pushed 
 
 The HTML output (from the Rust compiler, or from `@zubra/compiler` in Node) marks:
 
-| Marker | Up to 4.x | Meaning |
-|---|---|---|
-| `<?zb [?>` … `<?zb ]?>` | `<!--[-->` … `<!--]-->` | a region: a branch, a list, one list row |
-| `<?zb [!?>` | `<!--[!-->` | a slot region holding content the caller supplied (left alone on hydration) |
-| `<?zb [??>` | `<!--[?-->` | a region the server couldn't compute and left for the element (partial rendering) |
-| `<?zb ?>` | `<!---->` | where a dynamic text node starts, when it has siblings |
+| Marker | Meaning |
+|---|---|
+| `<?zb [?>` … `<?zb ]?>` | a region: a branch, a list, one list row |
+| `<?zb [!?>` | a slot region holding content the caller supplied (left alone on hydration) |
+| `<?zb [??>` | a region the server couldn't compute and left for the element (partial rendering) |
+| `<?zb ?>` | where a dynamic text node starts, when it has siblings |
 
-Since 5.0 the markers are processing instructions, which HTML gained with out-of-order streaming (Chrome 150): minifiers, sanitizers and `parseHTMLUnsafe()` dropped comments, and keep these. Browsers that don't parse them yet make each a comment (`?zb [?`), which the runtime reads the same way. Nothing else is needed. In particular, text that is an element's only child is bound through the element, and attributes need no markers. The most important lesson: **paths must count only elements and markers**, because parsers merge adjacent text and drop empty text. A whole region counts as one position, so a list's length never shifts the paths after it. If DOM Parts serializes parts in markup, we'd ask for these properties, and Zubra 2.0 will emit that serialization if it has settled by then.
+The markers are processing instructions, which HTML gained with out-of-order streaming (Chrome 150): minifiers, sanitizers and `parseHTMLUnsafe()` dropped comments, and keep these. Browsers that don't parse them yet make each a comment (`?zb [?`), which the runtime reads the same way. Nothing else is needed. In particular, text that is an element's only child is bound through the element, and attributes need no markers. The most important lesson: **paths must count only elements and markers**, because parsers merge adjacent text and drop empty text. A whole region counts as one position, so a list's length never shifts the paths after it. If DOM Parts serializes parts in markup, we'd ask for these properties, and Zubra will emit that serialization once it settles.
 
 ### 2. Regions are the hard part, not attributes
 
@@ -41,7 +41,7 @@ Before binding, the runtime compares the server markup's shape (top-level tags a
 
 ### 5. HTML first
 
-Zubra's canonical format is HTML (`.zb` files), with JSX lowered into it. The same template drives server rendering and hydration. The comment in #1069 preferring to move templating forward "on the HTML side rather than in JS" matches our experience: the declarative form is what lets the server render without running component code. Zubra's partial rendering shows the boundary. What the server can't compute becomes a `<!--[?-->` region for the client.
+Zubra's canonical format is HTML (`.zb` files), with JSX lowered into it. The same template drives server rendering and hydration. The comment in #1069 preferring to move templating forward "on the HTML side rather than in JS" matches our experience: the declarative form is what lets the server render without running component code. Zubra's partial rendering shows the boundary. What the server can't compute becomes a `<?zb [??>` region for the client.
 
 ## Reproducing
 

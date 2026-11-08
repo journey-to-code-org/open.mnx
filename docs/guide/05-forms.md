@@ -55,7 +55,7 @@ On a server-rendered page, the same form should work with JavaScript off and get
 - **`.mod`** is ⌘ on a Mac and Ctrl elsewhere, so `onkeydown.mod.enter` is the usual "send" shortcut.
 - **`hydrated()`** is `false` in the server's HTML and `true` once the element has started. Here the Apply button exists only until then. The host also gets `:state(hydrated)` for CSS.
 
-Native controls (inputs, selects, checkboxes) in light DOM submit before any JavaScript. A form-associated element submits only once it has started, so keep a native control inside it when the page must work without JavaScript. `zubra check --server` tells you where the server's HTML would leave a control's state out.
+Native controls (inputs, selects, checkboxes) in light DOM submit before any JavaScript. A form-associated element submits only once it has started, so keep a native control inside it when the page must work without JavaScript. (In a meta-framework, `@zubra/server`'s `injectShadowRoots` covers this: it gives a form-associated element with a `name` a hidden input holding its server-rendered value.) `zubra check --server` tells you where the server's HTML would leave a control's state out.
 
 In frameworks it's an ordinary control too: Vue's `v-model`, React's controlled pattern (`value` + `onValueChange`), and in Angular, `ZubraModel` with `ngModel` or `formControlName`.
 

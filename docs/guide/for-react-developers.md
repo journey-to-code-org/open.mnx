@@ -42,6 +42,6 @@ export default function MyCounter({ label = "Clicks", count = model(0) }) {
 
 ## Using Zubra components in a React app
 
-With `@zubra/unplugin`, importing an `.zb` file into a `.jsx`/`.tsx` file gives you a typed React component: props are set as properties, `onValueChange`-style props listen for the element's events, and `value` + `onValueChange` is a controlled component. React 19 also uses the elements directly (`<my-counter count={n} onvaluechange={…}>`).
+With `@zubra/unplugin`, importing a `.zb` file into a `.jsx`/`.tsx` file gives you a typed React component: props are set as properties, `onValueChange`-style props listen for the element's events, and `value` + `onValueChange` is a controlled component. React 19 also uses the elements directly (`<my-counter count={n} oncountchange={…}>`).
 
 Why bother, if you already have React? The same component works in the Vue app next door, in server-rendered HTML, and in a plain page, and it can be published once for all of them.

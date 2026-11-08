@@ -14,7 +14,7 @@ Finished sessions are saved as JSON in your user data folder, and each one ends 
 notification.
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
+cargo build                 # from the repository root (the CLI stands in for @zubra/compiler's WebAssembly build)
 cd examples/desktop/focus-timer
 npm install
 npm start
@@ -37,10 +37,9 @@ app through Playwright's Electron support, with a fake clock so 25 minutes take 
 - **`window.focus` is taken.** The first name for the preload's API was `focus`, which is
   `window.focus()`, so `contextBridge` refused it. (Not a Zubra problem, but worth knowing in an
   app called Focus.)
-- **A prop that seeds state needed an effect to follow changes** (fixed in 2.9). `let left =
-  seconds` reads `seconds` once, so when the app switched modes, the timer noticed the new length
-  with a saved copy and an `effect()`. Now it's `let left = from(seconds)` and
-  `let running = from(seconds, false)`: both start over on a new length. `zubra convert` writes the
+- **A prop that seeds state follows it with `from()`.** `let left = seconds` would read
+  `seconds` once, so switching modes wouldn't reset the timer. `let left = from(seconds)` and
+  `let running = from(seconds, false)` start over on a new length. `zubra convert` writes the
   same for React's `useState(prop)` plus a reset effect.
 - **The renderer's `document.title` isn't the window's title.** Tests read the window's title
   from the main process.

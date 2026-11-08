@@ -18,7 +18,7 @@ Solid uses custom elements directly: `prop:` sets a property and `on:` listens f
 ```
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
+cargo build                 # from the repository root (the CLI stands in for @zubra/compiler's WebAssembly build)
 cd examples/meta/solidstart-potluck
 npm install
 npm run dev                 # or: npm run build && npm start
@@ -26,12 +26,12 @@ npm run dev                 # or: npm run build && npm start
 
 ## What it found
 
-- **Solid's hydration tolerates light DOM.** With `dish-board` switched to light DOM, the page
-  still hydrated without errors. Solid claims only the nodes it marked, and leaves an element's
-  own children alone. That's unlike React, Vue and Svelte (`../README.md`). The components are
-  shadow DOM anyway, for consistency with the other apps.
-- **The same server gap** (fixed in 2.8). Solid renders the hosts with no inner markup, and
-  `prop:` values are properties, so they weren't in the server HTML either. Now the hosts carry
-  `zb-props` (written by the Zubra plugin since 2.10; by hand in 2.8), and `src/middleware.js` runs `zubra.injectShadowRoots` on each page. Without
-  JavaScript the action gets the course and head count, and the sign-up goes through.
+- **Solid's hydration tolerates light DOM.** Solid claims only the nodes it marked, and leaves
+  an element's own children alone. That's unlike React, Vue and Svelte (`../README.md`). So
+  `dish-board` is light DOM; the registry's two controls are shadow DOM.
+- **Solid renders the hosts with no inner markup**, and `prop:` values are properties, so they
+  aren't in the server HTML either. The Zubra plugin adds `zb-props` to the hosts in the server
+  build, and `src/middleware.js` runs `zubra.injectShadowRoots` on each page with
+  `lightDom: true`, so the board's children and the controls' shadow roots are in the page.
+  Without JavaScript the action gets the course and head count, and the sign-up goes through.
 - **The template wants Node.js 24** (`engines`). It builds and runs on 22, which CI uses.

@@ -65,7 +65,7 @@ Comments, formatting and everything else were left as they were.
 
 ## What it turned up
 
-Seeding state from a prop (`let draft = card`, which is what `useState(card)` converts to) needs the prop to be set before the component's script runs. The React adapter used to set props after React inserted the element, so the script saw `undefined`. Since 2.6.1 the adapter lets React 19 set them as it creates the element. `runtime/test/browser/adapters.test.js` covers this. Under React 18 the script still sees the default; read the prop where it's used instead.
+Seeding state from a prop (`let draft = card`, which is what `useState(card)` converts to) needs the prop to be set before the component's script runs. React 19 sets the props as it creates the element, before inserting it. Under React 18 the element reads them from the `zb-props` attribute the adapter writes, which carries props that can be written as JSON. `runtime/test/browser/adapters.test.js` covers both.
 
 ## The shared library
 

@@ -22,7 +22,7 @@ A project made with `npm create zubra@latest` already has `@zubra/compiler`.
 
 ## Other editors
 
-The extension is a thin client for `@zubra/language-server`. Run it with `zubra-language-server --stdio` from Neovim, Helix, Zed, Sublime LSP or any other editor that speaks LSP. It uses `@zubra/compiler` when it's installed, or the `zubra` command, or the one named in `initializationOptions.compiler`.
+The extension is a thin client for `@zubra/language-server`. Run it with `zubra-language-server --stdio` from Neovim, Helix, Zed, Sublime LSP or any other editor that speaks LSP. It uses the compiler named in `initializationOptions.compiler` if there is one; otherwise `@zubra/compiler` when it's installed, then the command in the `ZUBRA_COMPILER` environment variable, then `zubra` on the `PATH`.
 
 ## `.html` files that use Zubra elements
 

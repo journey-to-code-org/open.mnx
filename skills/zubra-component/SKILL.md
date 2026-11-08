@@ -10,7 +10,7 @@ A Zubra component is one `.zb` file: a `<script>`, a `<style>`, and a template w
 1. **Decide whether it's a leaf.** A component takes data in through props and sends it out through events; it may hold children through slots. If it would need the app's store, router, context or component types, it's a container: write that in the app's framework and put Zubra components inside it. (https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the full list.)
 2. **Name the element with a hyphen** (`star-rating`, not `rating`), and put the file at `src/components/<tag>.zb` unless the project has another convention.
 3. **Write the host tag with every prop**, each with its default, then the script, then the template. Follow the format below.
-4. **Run `zubra check <file>`** (`npx zubra check` without a Rust toolchain). It prints each error with a caret and a suggested fix; `--format json` gives the same as data. Done when it prints `no errors`.
+4. **Run `zubra check <file>`** (`npx zubra check` without a Rust toolchain). It prints each error with a caret and a suggested fix; `--format json` gives the same as data (Rust CLI only). Done when it prints `no errors`.
 5. **If the component is server-rendered, run `zubra check --server <file>`** and move anything it names (a `Date`, an `Intl` call, a `window` read) into `onMount` or behind `hydrated()`, so the server HTML is complete.
 6. **Write the test** the project's other components have (a browser test from `npm create zubra`, or `node --test` with the project's harness), covering each prop, each event and keyboard use.
 
@@ -60,7 +60,7 @@ A Zubra component is one `.zb` file: a `<script>`, a `<style>`, and a template w
 | `<zb-switch value={x}><zb-case is="a">…</zb-case><zb-case is={["b", "c"]}>…</zb-case><zb-else>…</zb-else></zb-switch>` | one value, several cases (status values, enums) |
 | `let:total={item.price * item.qty}` on `zb-each` / `zb-then` | a derived name for the row or result, instead of repeating the expression |
 | `<zb-slot>` and `<zb-slot name="x">fallback</zb-slot>` | children; `hasSlot('x')` says whether content was given |
-| `<zb-await value={promiseOrResource}><zb-pending>…</zb-pending><zb-then as="data">…</zb-then><zb-catch as="error">… {retry}</zb-catch></zb-await>` | async; `value={[a, b]}` waits for both; `as` may destructure (`as="{ name }"`); `retry()` in zb-catch; `delay={ms}`, `keep` |
+| `<zb-await value={promiseOrResource}><zb-pending>…</zb-pending><zb-then as="data">…</zb-then><zb-catch as="error">… <button onclick={retry}>Retry</button></zb-catch></zb-await>` | async; `value={[a, b]}` waits for both; `as` may destructure (`as="{ name }"`); `retry()` in zb-catch; `delay={ms}`, `keep` |
 | `<my-child value:bind={state}>` | two-way binding to a child's `:model` prop |
 
 Markup in braces (`{a && <p>…</p>}`, `{a ? <b>…</b> : <i>…</i>}`, `{list.map((x) => <li key={x.id}>…</li>)}`) compiles to the same directives and is accepted, but write the directives: they're the house style. Any other `zb-` attribute is an error.
@@ -86,7 +86,7 @@ A `.zb.jsx` / `.zb.tsx` file default-exports a function; same element, same rule
 
 ## What the server can't render
 
-The server evaluates the deterministic subset (props, arithmetic, ternaries, template literals, string and array methods, `Math` except `random`, `Object.keys/values/entries`). `Date`, `Intl`, `Math.random`, `toLocaleString`, `window`, `document` and `navigator` are browser-only: put them in `onMount`, in a handler, or in a `let` set from an effect, and show a server-safe fallback. `hydrated()` is `false` on the server and `true` once the element has started, for markup that only works with JavaScript.
+The server evaluates the deterministic subset (props, arithmetic, ternaries, template literals, arrow functions defined in the script (not `function` declarations), string and array methods, `Math` except `random`, `Object.keys/values/entries`). `Date`, `Intl`, `Math.random`, `toLocaleString`, `window`, `document` and `navigator` are browser-only: put them in `onMount`, in a handler, or in a `let` set from an effect, and show a server-safe fallback. `hydrated()` is `false` on the server and `true` once the element has started, for markup that only works with JavaScript.
 
 ## Reference
 

@@ -90,7 +90,7 @@ class Zubra:
             self._process.stdin.flush()
             line = self._process.stdout.readline()
         if not line:
-            raise ZubraError(f"{self.compiler} serve stopped (is it zubra 2.7 or later?)")
+            raise ZubraError(f"{self.compiler} serve stopped")
         response = json.loads(line)
         if not response["ok"]:
             raise ZubraError(response["error"])

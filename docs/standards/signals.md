@@ -1,6 +1,6 @@
 # Signals in production: an integration report for the TC39 proposal
 
-*Zubra 1.6, November 2026. For the [Signals proposal](https://github.com/tc39/proposal-signals) champions. The proposal is at Stage 1. Before Stage 2 its authors want production-grade polyfills, and integrations into frameworks tested in real applications. This report is one of each.*
+*Zubra 5.0, November 2026. For the [Signals proposal](https://github.com/tc39/proposal-signals) champions. The proposal is at Stage 1. Before Stage 2 its authors want production-grade polyfills, and integrations into frameworks tested in real applications. This report is one of each.*
 
 ## What Zubra is
 
@@ -44,7 +44,7 @@ The proposal leaves effects to libraries, rightly. Every component framework nee
 2. **Pausing.** A detached element's effects are unwatched, so long-lived signals hold no reference to them, but they keep their cached state. On re-attach, only effects whose sources changed re-run. The version check in `Signal.Computed` already makes this nearly free.
 3. **Batched re-runs** in a microtask.
 
-Zubra's version is `runtime/src/effect.js` (about 200 lines, documented). We'd suggest a shared "effects on Signals" pattern document, so frameworks converge.
+Zubra's version is `runtime/src/effect.js` (about 230 lines, documented). We'd suggest a shared "effects on Signals" pattern document, so frameworks converge.
 
 The leak suite (`runtime/test/browser/leaks.test.js`) checks the property that matters: removed elements, including ones reading a signal that outlives them, are garbage-collected. It counts live instances through the DevTools protocol.
 

@@ -17,7 +17,7 @@ They're hydrated in the browser with no bundler. The browser gets:
 - `@zubra/runtime`, through an import map.
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
+cargo build                 # from the repository root (the CLI stands in for @zubra/compiler's WebAssembly build)
 cd examples/meta/eleventy-trails
 npm install
 npm start                   # http://localhost:8080
@@ -36,15 +36,13 @@ miles on every card. The choice is remembered.
 
 ## What it found
 
-- **HTML minifiers removed the hydration markers** (up to 4.x). Zubra's markers were comments. A
-  minifier with `removeComments: true` removed them, and the elements rendered afresh instead of
-  hydrating (since 2.10 they put their markers back by structure, where they could). Keeping them
-  took html-minifier-terser's `ignoreCustomComments: [/^[[\]?!]*$/]`. Since 5.0 the markers are
-  processing instructions (`<?zb [?>`), which minifiers keep: `MINIFY=1 npm run build` uses plain
-  `removeComments: true`, and the elements hydrate in place.
-- **Precomputed data, again.** The elevation profile's SVG points, both units, and the climb in
-  feet are worked out in `_data/trails.js` or with `%` arithmetic. The build-time renderer
-  evaluates arithmetic, not `.map()`, `Math.round()` or `toFixed()`. Eleventy runs in Node.js,
-  so rendering with JavaScript (roadmap challenge 1) would remove all of it.
+- **HTML minifiers keep the hydration markers.** They're processing instructions (`<?zb [?>`),
+  which minifiers keep: `MINIFY=1 npm run build` uses plain `removeComments: true`, and the
+  elements hydrate in place. If something strips them anyway, an element puts them back by
+  structure where it can.
+- **Build-time rendering runs the components' JavaScript.** The elevation profile works out its
+  own SVG points with `.map()` and `Math.round()`: the renderer runs a component's deterministic
+  JavaScript (never `Intl`, `Date` or `Math.random`). `_data/trails.js` gives each trail both
+  units and its climb.
 - **The filter needs JavaScript, so it only renders once live** (the `live` pattern, a fourth
   time).

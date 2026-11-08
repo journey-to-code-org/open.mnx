@@ -25,8 +25,8 @@ wherever htmx puts them.
 
 | | |
 |---|---|
-| `src/app.js` | Routes and templates, with `hono/html`. |
-| `src/zubra.js` | Renders components (with `@zubra/compiler`), and serves their browser modules and `@zubra/runtime`. |
+| `src/app.js` | Routes and templates, with `hono/html`. `@zubra/server/hono`'s middleware renders components (with `@zubra/compiler`), and serves their browser modules and `@zubra/runtime`. |
+| `src/store.js` | The inventory, in memory. |
 | `components/` | `price-tag` and `stock-gauge` (rendered completely on the server), `tag-list`, and `qty-input` (a native number input that gains − and + buttons). |
 | `test/app.test.js` | Chromium against the server on Node.js and on Bun, with and without JavaScript. |
 
@@ -35,25 +35,23 @@ CLI from `cargo build` stands in for it, as in `examples/helpdesk/`.
 
 ## What it found
 
-- **Hydration markers were HTML comments (up to 4.x), and comments don't always survive.**
+- **Hydration markers survive htmx's fragment parser.**
   - htmx 2 parses fragments with `Document.parseHTMLUnsafe()` where the browser has it.
   - In the Chromium build Playwright ships (153), that drops every comment. MDN says it
     shouldn't with no sanitizer, so this looks like a browser bug, but it's what this browser
     does.
-  - The swapped-in elements' markers were gone. Until 2.10 Zubra rendered them fresh (with a
-    warning, and without keeping focus); since 2.10 they put their markers back by structure. The
-    layout also removed `parseHTMLUnsafe`, so htmx fell back to `DOMParser`, which keeps comments.
-  - Since 5.0 the markers are processing instructions (`<?zb [?>`), which `parseHTMLUnsafe`
-    keeps. The workaround is gone, and a test checks that swapped elements keep their markers.
+  - Zubra's markers are processing instructions (`<?zb [?>`), which `parseHTMLUnsafe` keeps, and
+    a test checks that swapped elements keep their markers. If something strips them anyway, an
+    element puts them back by structure where it can.
 - **Custom elements can't be table rows.** `<inventory-row>` in a `<tbody>` is moved out of the
   table by the HTML parser. So the rows are plain `<tr>`s in Hono's templates, with components
   in their cells, and each row costs three renders.
 - **One render per component, per row.** A page of 10 rows is 30 renders. With the CLI standing
   in (one process each), that's about 100 ms. With the WebAssembly build in the same process,
   it would be far less. A batch render (many components in one request) would help either way.
-- **Formatting money takes arithmetic.** The server's renderer doesn't run
-  `Intl.NumberFormat` (or `toFixed`), so `price-tag` builds `$1,299.00` from `%` and `/`.
-  It works, but nobody should have to write it.
+- **Formatting money takes string work.** The server's renderer runs `toFixed` and `slice`, but
+  not `Intl.NumberFormat`, whose output depends on the platform. So `price-tag` groups the
+  thousands itself to build `$1,299.00`.
 - **htmx and Zubra agree on form fields.** `qty-input` keeps its native `<input name>` in light
   DOM, so htmx's `hx-post` sends it like any other field. Its `valuechange` and htmx's own
   events don't collide.

@@ -18,7 +18,7 @@ If you write single-file components, Zubra will look familiar: a script, scoped 
 | `@submit.prevent="save"` | `onsubmit.prevent={save}` |
 | `@keydown.enter="send"` | `onkeydown.enter={send}` |
 | `ref="input"` | `ref={input}` with `let input = null` |
-| `defineEmits` + `emit('select', id)` | `emit('select', id)`: calling it declares it |
+| `defineEmits` + `emit('select', id)` | `emit('select', id)`, imported from `@zubra/runtime`: calling it declares it |
 | `defineModel()` | `value:model={…}` on the host |
 | `<slot>`, `<slot name="footer">` | `<zb-slot>`, `<zb-slot name="footer">` |
 | `$slots.footer` | `hasSlot('footer')` |
@@ -27,10 +27,11 @@ If you write single-file components, Zubra will look familiar: a script, scoped 
 
 ## Using Zubra components in a Vue app
 
-With `@zubra/unplugin`, importing an `.zb` file into a `.vue` file gives you a Vue component: `v-model` binds the `value` + `valuechange` pair (or any `:model` prop with `v-model:name`), events work with `@name`, and slots map to slots.
+With `@zubra/unplugin`, importing a `.zb` file into a `.vue` file gives you a Vue component: `v-model` binds the `value` + `valuechange` pair (or any `:model` prop with `v-model:name`), events work with `@name`, and slots map to slots.
 
 ```vue
 <script setup>
+import { ref } from 'vue';
 import QuantityStepper from './components/quantity-stepper.zb';
 const tickets = ref(1);
 </script>

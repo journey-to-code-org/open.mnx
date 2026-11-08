@@ -19,7 +19,7 @@ All four libraries below put their theme in CSS variables, so a theme switch (da
 [`examples/frameworks/tailwind-cafe/`](../../examples/frameworks/tailwind-cafe/)
 
 ```html
-<menu-card item={{}}>
+<menu-card item={{}} picked={false}>
   <article class="rounded-2xl border bg-white p-4 shadow-sm dark:bg-stone-900">
     <button class="rounded-lg data-active:bg-roast" data-active={picked ? "" : null}>M</button>
   </article>
