@@ -2,6 +2,8 @@
 // HTML (and in React and Vue, when the site was built with them), and every compiler output.
 // No server: state lives in the URL (#…), so a link is the whole example.
 
+import { highlight } from './highlight.js';
+
 const PATH = '/playground/component.zb';
 
 const EXAMPLES = {
@@ -146,6 +148,28 @@ const $ = (selector) => document.querySelector(selector);
 const source = $('#source');
 const page = $('#page');
 const status = $('#status');
+
+/**
+ * Colours a textarea's text: the text is drawn by a <pre> behind it, and the textarea on top keeps
+ * the caret, the selection and the typing but paints no text of its own.
+ */
+function colour(area, language) {
+  const wrapper = document.createElement('div');
+  wrapper.className = `editor${area.classList.contains('short') ? ' short' : ''}`;
+  area.replaceWith(wrapper);
+  const behind = document.createElement('pre');
+  behind.setAttribute('aria-hidden', 'true');
+  wrapper.append(behind, area);
+  const draw = () => { behind.innerHTML = `${highlight(area.value, language)}\n`; };
+  area.addEventListener('input', draw);
+  area.addEventListener('scroll', () => { behind.scrollTop = area.scrollTop; behind.scrollLeft = area.scrollLeft; });
+  draw();
+  return draw;
+}
+const drawSource = colour(source, 'zb');
+const drawPage = colour(page, 'html');
+/** Fill an output panel with coloured code. */
+const show = (selector, text, language) => { $(selector).innerHTML = highlight(text, language); };
 
 // ---- the compiler ---------------------------------------------------------------------------
 
@@ -300,6 +324,8 @@ async function main() {
   }
   source.value = initial.source;
   page.value = initial.page;
+  drawSource();
+  drawPage();
 
   try {
     frameworks = (await (await fetch('vendor/frameworks.json')).json()).filter((kind) => kind in PREVIEWS);
@@ -335,10 +361,10 @@ async function main() {
     }
     error.hidden = !js.warnings.length;
     error.textContent = js.warnings.join('\n');
-    $('#out-js').textContent = js.output;
-    $('#out-html').textContent = html.ok ? html.output : html.error;
-    $('#out-dts').textContent = dts.ok ? dts.output : dts.error;
-    $('#out-manifest').textContent = manifest.ok ? manifest.output : manifest.error;
+    show('#out-js', js.output, 'js');
+    show('#out-html', html.ok ? html.output : html.error, 'html');
+    show('#out-dts', dts.ok ? dts.output : dts.error, 'js');
+    show('#out-manifest', manifest.ok ? manifest.output : manifest.error, 'js');
     showPreviews(js.output);
     status.textContent = `Compiled (${compiler.kind})`;
     const hash = await encode({ source: text, page: page.value });
@@ -354,7 +380,7 @@ async function main() {
       if (event.key !== 'Tab' || event.shiftKey || event.metaKey || event.ctrlKey) return;
       event.preventDefault();
       area.setRangeText('  ', area.selectionStart, area.selectionEnd, 'end');
-      soon();
+      area.dispatchEvent(new Event('input'));
     });
   }
   select.addEventListener('change', () => {
@@ -362,6 +388,8 @@ async function main() {
     if (!example) return;
     source.value = example.source;
     page.value = example.page;
+    drawSource();
+    drawPage();
     update();
   });
   $('#tabs').addEventListener('click', (event) => {
