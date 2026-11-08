@@ -13,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 const here = join(dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const work = mkdtempSync(join(tmpdir(), 'zubra-vsix-'));
-const run = (command, args) => execFileSync(command, args, { cwd: work, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
+// A shell, because npm and npx are .cmd files on Windows, which Node won't start directly. The arguments are fixed strings.
+const run = (command, args) => execFileSync(command, args, { cwd: work, stdio: ['ignore', 'pipe', 'inherit'], shell: true }).toString();
 try {
   for (const name of ['LICENSE', 'README.md', 'icon.png', 'extension.js', 'language-configuration.json', 'syntaxes', '.vscodeignore']) cpSync(join(here, name), join(work, name), { recursive: true });
   manifest.dependencies['@zubra/language-server'] = manifest.version;
