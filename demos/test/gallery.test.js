@@ -124,3 +124,14 @@ test('the landing page\'s stripe bar stops under the header when scrolled to, as
   assert.equal(after.stripes, after.header, 'it sits right under the header once scrolled');
   await page.close();
 });
+
+test('the landing page\'s Zubra source wraps its comments instead of scrolling sideways, on a phone', async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+  await page.goto(new URL('', site.url).href);
+  const [scroll, client] = await page.evaluate(() => {
+    const code = document.querySelector('.versus .side:first-child .code');
+    return [code.scrollWidth, code.clientWidth];
+  });
+  assert.equal(scroll, client, 'nothing to scroll to');
+  await page.close();
+});

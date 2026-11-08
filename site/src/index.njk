@@ -60,7 +60,7 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
   <div class="versus">
     <div class="side">
       <p class="count"><strong>{{ samples.sourceLines }}</strong> lines with Zubra</p>
-      {{ samples.source | highlight("markup") | safe }}
+      {{ samples.source | tighten | highlight("markup") | safe }}
     </div>
     <div class="side">
       <p class="count"><strong>{{ samples.byHandLines }}</strong> lines by hand</p>
