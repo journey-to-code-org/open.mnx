@@ -273,15 +273,58 @@ pub fn tag_in(source: &str, path: &str) -> Result<String, Diagnostic> {
 /// Lower the JSX component at `path`. `loader` finds imported components (for their tags).
 pub fn lower(source: &str, path: &str, loader: Option<Loader<'_>>) -> Result<Lowered, Diagnostic> {
     LOWERED.with(|lowered| lowered.borrow_mut().remove(path));
-    let lowered = lower_uncached(source, path, loader)?;
+    let lowered = lower_uncached(source, path, loader, false)?;
     LOWERED.with(|cache| cache.borrow_mut().insert(path.to_owned(), lowered.clone()));
     Ok(lowered)
+}
+
+/// The JSX component as a readable `.mnx` file, for `mnx convert --as mnx`: the script as
+/// written (`let` state, props by name, `on…` calls as `emit()`), the template with its
+/// indentation, and nothing the compiler adds for itself.
+pub fn lower_readable(source: &str, path: &str) -> Result<String, Diagnostic> {
+    let lowered = lower_uncached(source, path, None, true)?;
+    let text = lowered.text.replace(&format!("{EMIT}("), "emit(");
+    Ok(dedent_template(&text))
+}
+
+/// The template lines (after `</script>`), left with two spaces of indentation at their shallowest.
+fn dedent_template(text: &str) -> String {
+    let Some(at) = text.find("</script>\n") else {
+        return text.to_owned();
+    };
+    let (script, template) = text.split_at(at + "</script>\n".len());
+    let lines: Vec<&str> = template.lines().collect();
+    let inner: Vec<&str> = lines
+        .iter()
+        .copied()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty() && !line.starts_with("</"))
+        .collect();
+    let shallowest = inner
+        .iter()
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(2);
+    let strip = shallowest.saturating_sub(2);
+    let mut out = script.to_owned();
+    for (index, line) in lines.iter().enumerate() {
+        let trimmed_lead = line.len() - line.trim_start().len();
+        let line = if index == 0 || line.starts_with("</") {
+            (*line).to_owned()
+        } else {
+            line[trimmed_lead.min(strip)..].to_owned()
+        };
+        out.push_str(line.trim_end());
+        out.push('\n');
+    }
+    out
 }
 
 fn lower_uncached(
     source: &str,
     path: &str,
     loader: Option<Loader<'_>>,
+    readable: bool,
 ) -> Result<Lowered, Diagnostic> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type(path)).parse();
@@ -454,6 +497,12 @@ fn lower_uncached(
         tags: HashMap::new(),
         props: Vec::new(),
         from: from_names,
+        readable,
+        type_ranges: if path.ends_with(".tsx") {
+            crate::typescript::type_ranges_tsx(source)
+        } else {
+            Vec::new()
+        },
     };
     lowering.parameters(function)?;
     let body = function
@@ -525,11 +574,21 @@ fn lower_uncached(
         },
         0,
     );
-    out.synthetic(
-        &format!("import {{ state as {STATE}, computed as {COMPUTED}, emit as {EMIT} }} from \"@mnx/runtime\";\n"),
-        0,
-    );
-    out.synthetic(HELPERS, 0);
+    if readable {
+        let emits = lowering
+            .symbols
+            .values()
+            .any(|kind| matches!(kind, Kind::Callback(_)));
+        if emits {
+            out.synthetic("import { emit } from '@mnx/runtime';\n", 0);
+        }
+    } else {
+        out.synthetic(
+            &format!("import {{ state as {STATE}, computed as {COMPUTED}, emit as {EMIT} }} from \"@mnx/runtime\";\n"),
+            0,
+        );
+        out.synthetic(HELPERS, 0);
+    }
     for (range, replacement) in &imports {
         match replacement {
             Some(text) => out.synthetic(text, range.start),
@@ -604,10 +663,33 @@ fn lower_uncached(
         }
     }
     out.synthetic(">", id.span.start as usize);
+    if readable {
+        // On its own line, with the indentation it has in the JSX, so the template dedents evenly.
+        let start = match &template {
+            Template::Children(children) => children.first().map(|child| child.span().start),
+            Template::Expression(expression) => Some(expression.span().start),
+            Template::Empty => None,
+        };
+        let indent = start.map_or(2, |start| {
+            let line_start = source[..start as usize].rfind('\n').map_or(0, |at| at + 1);
+            let lead = &source[line_start..start as usize];
+            if lead.trim().is_empty() {
+                lead.len()
+            } else {
+                2
+            }
+        });
+        if !matches!(template, Template::Children(_)) {
+            out.synthetic(&format!("\n{}", " ".repeat(indent)), id.span.start as usize);
+        }
+    }
     match template {
         Template::Children(children) => lowering.children(&mut out, children)?,
         Template::Expression(expression) => lowering.node(&mut out, expression)?,
         Template::Empty => {}
+    }
+    if readable {
+        out.synthetic("\n", function.span.end as usize);
     }
     out.synthetic(&format!("</{tag}>\n"), function.span.end as usize);
     Ok(Lowered {
@@ -661,6 +743,12 @@ fn element_name(name: &JSXElementName<'_>) -> Option<String> {
     }
 }
 
+/// Whether a JSX tag names a component (`<Badge>`) rather than an element (`<span>`).
+fn name_is_component(name: &JSXElementName<'_>) -> bool {
+    element_name(name)
+        .is_some_and(|name| name.starts_with(|character: char| character.is_ascii_uppercase()))
+}
+
 fn attribute_name(name: &JSXAttributeName<'_>) -> String {
     match name {
         JSXAttributeName::Identifier(identifier) => identifier.name.to_string(),
@@ -696,6 +784,11 @@ struct Lowering<'s, 'l> {
     props: Vec<PropOut>,
     /// The local names of the runtime's `from` (`let left = from(seconds)`).
     from: Vec<String>,
+    /// `lower_readable`: keep the script as written, apart from `on…` calls, and the template's
+    /// whitespace.
+    readable: bool,
+    /// In a .tsx file, the type syntax to blank in template expressions (`e.target as Element`).
+    type_ranges: Vec<std::ops::Range<usize>>,
 }
 
 impl Lowering<'_, '_> {
@@ -874,10 +967,15 @@ impl Lowering<'_, '_> {
             lowering: self,
             context,
         };
-        reactive::rewrite_statement(&names, statement, &|id| {
-            matches!(id, BindingPattern::BindingIdentifier(identifier)
-                if self.symbols.get(&identifier.symbol_id()) == Some(&Kind::Derived))
-        })
+        reactive::rewrite_statement_with(
+            &names,
+            statement,
+            &|id| {
+                matches!(id, BindingPattern::BindingIdentifier(identifier)
+                    if self.symbols.get(&identifier.symbol_id()) == Some(&Kind::Derived))
+            },
+            !self.readable,
+        )
     }
 
     fn rewrite_expression(
@@ -961,7 +1059,20 @@ impl Lowering<'_, '_> {
         close: &str,
     ) -> Result<(), Diagnostic> {
         let span = expression.span();
-        let edits = self.rewrite_expression(expression, Context::Template)?;
+        let mut edits = self.rewrite_expression(expression, Context::Template)?;
+        // TypeScript in a template expression: blanked, as in the script.
+        for range in &self.type_ranges {
+            if span.start as usize <= range.start && range.end <= span.end as usize {
+                let blank: String = self.source[range.clone()]
+                    .chars()
+                    .map(|character| if character == '\n' { '\n' } else { ' ' })
+                    .collect();
+                edits.push(Edit {
+                    range: range.clone(),
+                    text: blank,
+                });
+            }
+        }
         // Errors about the expression point at its `{`, as in an .mnx file.
         let before = self.source[..span.start as usize].trim_end();
         let brace = if before.ends_with('{') {
@@ -1109,12 +1220,15 @@ impl Lowering<'_, '_> {
         for child in children {
             match child {
                 JSXChild::Text(text) => {
-                    let cleaned = clean_text(
-                        text.raw
-                            .as_ref()
-                            .map_or(text.value.as_str(), |raw| raw.as_str()),
-                    );
-                    out.synthetic(&cleaned, text.span.start as usize);
+                    let raw = text
+                        .raw
+                        .as_ref()
+                        .map_or(text.value.as_str(), |raw| raw.as_str());
+                    if self.readable {
+                        out.synthetic(raw, text.span.start as usize);
+                    } else {
+                        out.synthetic(&clean_text(raw), text.span.start as usize);
+                    }
                 }
                 JSXChild::Element(element) => self.element(out, element)?,
                 JSXChild::Fragment(fragment) => self.children(out, &fragment.children)?,
@@ -1149,10 +1263,19 @@ impl Lowering<'_, '_> {
         for attribute in &opening.attributes {
             let attribute = match attribute {
                 JSXAttributeItem::Attribute(attribute) => attribute,
+                JSXAttributeItem::SpreadAttribute(spread) if !name_is_component(&opening.name) => {
+                    // `{...attributes}` on an element: the same spread as in an .mnx template.
+                    if let Some(at) = contains_jsx(&spread.argument) {
+                        return Err(self.error(at, "JSX inside a spread isn't supported"));
+                    }
+                    out.synthetic(" ", spread.span.start as usize);
+                    self.expression(out, &spread.argument, "{...", "}")?;
+                    continue;
+                }
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     return Err(self.error(
                         spread.span.start,
-                        "spread attributes aren't supported; pass each prop",
+                        "spreading onto an mnx component isn't supported; pass each prop",
                     ));
                 }
             };
@@ -1201,6 +1324,10 @@ impl Lowering<'_, '_> {
                                 (name == "ref", expression)
                             {
                                 // `ref={box}` names the variable to assign, not a value to read.
+                                if self.readable {
+                                    out.synthetic(&format!(" ref={{{}}}", identifier.name), start);
+                                    continue;
+                                }
                                 let assign = match self.kind_of(identifier) {
                                     Some(Kind::State) => format!(
                                         "($el) => {}({}, $el)",
@@ -1338,7 +1465,14 @@ struct JsxNames<'r, 's, 'l> {
 
 impl reactive::Names for JsxNames<'_, '_, '_> {
     fn kind(&self, identifier: &IdentifierReference<'_>) -> Option<Kind> {
-        self.lowering.kind_of(identifier).cloned()
+        let kind = self.lowering.kind_of(identifier).cloned();
+        if self.lowering.readable {
+            // Readable output keeps `let`, props and derived consts as written; only `on…`
+            // calls become `emit()`.
+            kind.filter(|kind| matches!(kind, Kind::Callback(_)))
+        } else {
+            kind
+        }
     }
     fn is_write(&self, identifier: &IdentifierReference<'_>) -> bool {
         self.lowering

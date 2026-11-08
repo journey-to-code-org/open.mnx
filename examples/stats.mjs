@@ -32,6 +32,8 @@ const rows = [
   ['host() for querying', count(/host\(\)/g)],
   ['addEventListener on window/document', count(/(window|document)?\.?addEventListener\(/g)],
   ['.get() in templates and scripts', count(/\.get\(\)/g)],
+  // 3.2: state updated immutably because mutation didn't react (`x = [...x, y]`, `x = x.filter(…)`).
+  ['a let rebuilt instead of mutated', count(/\b(\w+) = (?:\[\.\.\.\1\b|\{ ?\.\.\.\1\b|\1\.(?:filter|map|concat|toSorted|toSpliced|with)\()/g)],
 ];
 // The patterns 2.7's progressive enhancement replaces (plan/roadmap-server.md).
 const counted = countIn(later);

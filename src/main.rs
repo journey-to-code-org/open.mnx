@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx serve   (JSON lines: a request per line in, a response per line out)\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|mnx] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx serve   (JSON lines: a request per line in, a response per line out)\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -212,6 +212,7 @@ fn run() -> Result<(), String> {
         mnx_compiler::HtmlOptions {
             slot_source,
             partial,
+            pending: Vec::new(),
         },
         &mnx_compiler::filesystem,
     )
@@ -408,15 +409,28 @@ fn entry(
 /// (`--out` elsewhere, `--stdout` to print it). What wasn't converted is reported, and the exit
 /// status is 1 then, so a script can tell.
 fn convert(arguments: Vec<String>) -> Result<(), String> {
-    let usage = "usage: mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]";
+    let usage = "usage: mnx convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|mnx] [--out <file> | --stdout]";
     let mut path = None;
     let mut prefix = None;
     let mut out = None;
     let mut stdout = false;
+    let mut as_mnx = false;
+    let mut component = None;
     let mut iterator = arguments.into_iter();
     while let Some(argument) = iterator.next() {
         match argument.as_str() {
             "--prefix" => prefix = Some(iterator.next().ok_or(usage)?),
+            "--component" => component = Some(iterator.next().ok_or(usage)?),
+            "--as" => match iterator.next().as_deref() {
+                Some("mnx") => as_mnx = true,
+                Some("jsx") => as_mnx = false,
+                other => {
+                    return Err(format!(
+                        "unknown --as `{}`; expected jsx or mnx",
+                        other.unwrap_or_default()
+                    ))
+                }
+            },
             "--out" => out = Some(iterator.next().ok_or(usage)?),
             "--stdout" => stdout = true,
             other if other.starts_with("--") => {
@@ -429,8 +443,17 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
     let path = path.ok_or(usage)?;
     let source = fs::read_to_string(&path)
         .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-    let conversion = mnx_compiler::convert(&source, &path, prefix.as_deref())
-        .map_err(|diagnostic| diagnostic.render_in(&source, &path))?;
+    let mut conversion =
+        mnx_compiler::convert_component(&source, &path, prefix.as_deref(), component.as_deref())
+            .map_err(|diagnostic| diagnostic.render_in(&source, &path))?;
+    let mut lowering_error = None;
+    if as_mnx {
+        if conversion.unsupported.is_empty() && conversion.compile_error.is_none() {
+            lowering_error = mnx_compiler::convert_as_mnx(&mut conversion);
+        } else {
+            conversion.changes.push("left as JSX: `--as mnx` writes the .mnx file once nothing is left to finish by hand".to_owned());
+        }
+    }
     let target = out.unwrap_or_else(|| {
         std::path::Path::new(&path)
             .with_file_name(&conversion.file_name)
@@ -438,7 +461,6 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
             .into_owned()
     });
     // Written elsewhere: relative imports still point at what they did.
-    let mut conversion = conversion;
     let from_dir = std::path::Path::new(&path)
         .parent()
         .unwrap_or(std::path::Path::new(""));
@@ -472,7 +494,12 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
         // (In the output, where it is to be fixed.)
         eprint!("{}", error.render_warning(&conversion.output, &target));
     }
-    let left = conversion.unsupported.len() + usize::from(conversion.compile_error.is_some());
+    if let Some(error) = &lowering_error {
+        eprint!("{}", error.render_warning(&conversion.output, &target));
+    }
+    let left = conversion.unsupported.len()
+        + usize::from(conversion.compile_error.is_some())
+        + usize::from(lowering_error.is_some());
     if left == 0 {
         return Ok(());
     }

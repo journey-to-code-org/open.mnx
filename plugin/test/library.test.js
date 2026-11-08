@@ -29,7 +29,11 @@ before(async () => {
   process.env.MNX_COMPILER ??= join(repo, 'target/debug/mnx');
   rmSync(work, { recursive: true, force: true });
   const { buildLibrary } = await import('../../compiler/library.js');
-  buildLibrary(join(repo, 'registry/components'), { out: lib, name: '@demo/ui', version: '1.2.3' });
+  const { standalone } = await import('../../registry/build-index.mjs');
+  // The registry without combo-box (it imports Zag, which these apps don't install).
+  buildLibrary(standalone(join(work, 'components')), { out: lib, name: '@demo/ui', version: '1.2.3' });
+  // And all of it, for the peer dependencies a component's own imports add.
+  buildLibrary(join(repo, 'registry/components'), { out: join(work, 'full'), name: '@demo/full', version: '1.2.3' });
   browser = await chromium.launch();
 });
 after(async () => {
@@ -76,9 +80,13 @@ test('the package: an element module per component, React and Vue entries, typin
   assert.equal(pkg.name, '@demo/ui');
   assert.equal(pkg.version, '1.2.3');
   assert.equal(pkg.customElements, './custom-elements.json');
-  // The runtime this compiler's major version targets.
-  const major = JSON.parse(readFileSync(new URL('../../compiler/package.json', import.meta.url), 'utf8')).version.split('.')[0];
-  assert.equal(pkg.peerDependencies['@mnx/runtime'], `^${major}.0.0`);
+  // The runtime this compiler's version targets (`^<major>.<minor>.0`).
+  const [major, minor] = JSON.parse(readFileSync(new URL('../../compiler/package.json', import.meta.url), 'utf8')).version.split('.');
+  assert.equal(pkg.peerDependencies['@mnx/runtime'], `^${major}.${minor}.0`);
+  assert.deepEqual(Object.keys(pkg.peerDependencies), ['@mnx/runtime', 'react', 'vue']);
+  // A component that imports npm packages makes them the package's peers.
+  const full = JSON.parse(readFileSync(join(work, 'full/package.json'), 'utf8'));
+  assert.deepEqual(Object.keys(full.peerDependencies), ['@mnx/runtime', '@zag-js/combobox', '@zag-js/vanilla', 'react', 'vue']);
   for (const target of Object.values(pkg.exports).flatMap((entry) => (typeof entry === 'string' ? [entry] : Object.values(entry)))) {
     assert.ok(existsSync(join(lib, target)), `${target} exists`);
   }
@@ -86,7 +94,7 @@ test('the package: an element module per component, React and Vue entries, typin
   const manifest = JSON.parse(readFileSync(join(lib, 'custom-elements.json'), 'utf8'));
   assert.equal(manifest.schemaVersion, '2.1.0');
   const tags = manifest.modules.flatMap((module) => module.declarations.map((declaration) => declaration.tagName));
-  assert.equal(tags.length, 20);
+  assert.equal(tags.length, 24);
   for (const module of manifest.modules) assert.ok(existsSync(join(lib, module.path)), module.path);
   assert.match(readFileSync(join(lib, 'index.js'), 'utf8'), /export \{ default as QuantityStepper \} from "\.\/quantity-stepper\.js";/);
   // React's entries are client components, importable from React Server Components (Next.js).
@@ -163,7 +171,7 @@ test('a plain page imports the elements with an import map, no build step', asyn
   const pages = join(work, 'plain');
   mkdirSync(pages, { recursive: true });
   writeFileSync(join(pages, 'index.html'), `<!doctype html>
-<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js", "@demo/ui": "/ui/index.js" } }</script>
+<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js", "@mnx/runtime/spread": "/runtime/spread.js", "@mnx/runtime/primitives": "/runtime/primitives.js", "@demo/ui": "/ui/index.js" } }</script>
 <star-rating label="Stars" value="3"></star-rating>
 <script type="module">import '@demo/ui'; await customElements.whenDefined('star-rating'); window.ready = true;</script>`);
   const url = await serve([['/runtime/', runtime], ['/ui/', lib], ['/', pages]]);

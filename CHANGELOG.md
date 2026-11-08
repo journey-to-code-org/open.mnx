@@ -2,6 +2,118 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.6.0 — 2026-11-07
+
+Accessible primitives (`plan/roadmap-3.5.md`, 3.6). The Zag.js spike showed that the platform does most of what a headless library is for, that two keyboard behaviours are missing, and that Zag covers the hard widgets once spread exists. This release ships each of those.
+
+### Added
+
+- **`@mnx/runtime/primitives`** (1.0 KB gzipped): `rovingFocus(container, { selector, orientation, loop, onMove })`, one tab stop for a group with arrow keys, Home and End between the items (it skips disabled and hidden items and swaps Left and Right in RTL), and `typeahead(container, { selector, text, timeout, onMatch })`, type a letter to jump to an item. Both work on any element in any framework and return their cleanup.
+- **`@mnx/runtime/zag`** (0.3 KB): `useMachine(machine, props)` runs a [Zag.js](https://zagjs.com) machine in a component, and `normalizeProps` comes with it. The props function is read whenever Zag asks, so it can read state and props. The service is read reactively, so `computed(() => x.connect(machine.current, normalizeProps))` stays current. Each connection gets a fresh machine, because a stopped Zag machine can't be restarted, so moving the element keeps working. `@zag-js/vanilla` is an optional peer dependency.
+- **Five registry components**, each tested by role, accessible name and keyboard (the registry now has 25):
+  - `accordion-panel`: `<details>`; the same `group` gives an exclusive accordion.
+  - `tool-tip`: `popover="manual"`, `aria-describedby` on the trigger; shown on hover and focus after `delay`; Escape hides it without moving focus.
+  - `tab-list`: `rovingFocus`, automatic or `manual` activation; the slotted `data-tab` elements become labelled tab panels.
+  - `dropdown-menu`: `popover` with `popovertarget`; Up and Down open it, arrows and typing move, focus returns to the button, Tab closes it, and it fires `itemselect`.
+  - `combo-box`: Zag's combobox through `@mnx/runtime/zag` and spread; a form control.
+  - `tool-tip` and `dropdown-menu` use CSS anchor positioning, and place themselves with script where it isn't supported.
+- **`mnx add` says which npm packages a component imports**, and how to install them. `registry/index.json` lists them under `packages`.
+- **The guide: [Accessible widgets without a headless library](docs/guide/accessible-widgets.md)**. It maps Radix and shadcn/ui to the platform, the primitives, a registry component or Zag, and gives what each path costs.
+- **`mnx build --lib` lists the npm packages its components import as peer dependencies**, with the project's own version range where it lists one (`@zag-js/combobox` and `@zag-js/vanilla` for a library with `combo-box`).
+- The registry's tests run in Firefox and WebKit in CI as well, because the widgets rely on newer platform features. All 25 components hydrate in place from stripped server markup.
+- The test harness takes extra import-map entries (`useBrowser(components, files, imports)`).
+
+### Changed
+
+- The example library (`examples/frameworks/ui/`) and the plugin's library test build the registry's components that have no npm dependencies. That leaves out `combo-box`, so their apps and the plain page don't need Zag.
+
+## 3.5.0 — 2026-11-07
+
+Spread (`plan/roadmap-3.5.md`, 3.5). Two findings pointed at the same gap: `mnx convert` stopped at a spread in nearly every shadcn/ui component, and the Zag.js spike needed a `ref` callback for every part of its combobox. Both now go through one feature.
+
+### Added
+
+- **`{...object}` in a start tag**, in `.mnx` and JSX: an object's entries as an element's attributes, listeners and properties, the way headless libraries hand out behaviour (`<input {...api.getInputProps()}>`).
+  - **Listeners:** `on<Name>` functions are listeners, replaced when the function changes and removed with their key.
+  - **Properties:** `value`, `checked`, `selected` and `indeterminate` are set as properties; `className` and `htmlFor` mean `class` and `for`.
+  - **Classes and styles:** `class` merges token by token with the element's own classes and `class:` toggles; `style` is an object set through the CSSOM.
+  - **Values:** `true` is a bare attribute; `aria-*` booleans are written as `"true"`/`"false"`; `false`, `null` and `undefined` remove the attribute; entries that disappear are removed.
+  - **Precedence:** an attribute written on the element wins.
+  - **Refused:** text handlers, `style` text, unsafe URLs and markup keys (`innerHTML`, `srcdoc`, `children`, …). Nothing a spread does could not be done by an attribute.
+  - **Server:** a spread known at build time renders, with the same checks; one known only in the browser is left for the element.
+  - **Not allowed** on the host, a directive or an imported mnx component, each with an error that says why.
+  - **Where the code lives:** `@mnx/runtime/spread` (1.4 KB gzipped), which a compiled module imports only when its template spreads, so the main runtime is unchanged (12.9 KB). An import map needs its entry; `@mnx/server`, the playground and the Flask example have it.
+- **`mnx check`: a runtime hook used without its import is an error**, with the import to add (`computed`, `emit`, `onMount` and the rest). It would have thrown in the browser. Every component in the repository passes.
+- **TypeScript in a `.mnx.tsx` template expression** (`(e.target as HTMLElement)`, `a!`) is stripped, like the script's.
+- The playground has a spread example.
+
+### `mnx convert`
+
+- A spread onto an element is an mnx spread, not a report; a spread onto another component is reported.
+- `...props` spread onto the returned element is dropped: the host carries the consumer's attributes. `className` becomes the host's own `class`. The props' React type goes.
+- A component built on a third-party React primitive (Radix, Headless UI, React Aria, Ark, Base UI, cmdk, vaul, sonner, Recharts, …) is refused up front, with what to use instead.
+- Fixed: an insertion at the edge of a removed span was dropped (`useMemo(() => { … }, deps)` lost its `)()`); a file's other components were checked as if they were converted; removing them left blank lines.
+- **shadcn/ui, re-measured** (`docs/convert-measured.md`): 50 of the 68 components in its plain-markup files convert and compile (0 in 3.2); its 46 primitive-based files are refused with one message each.
+
+## 3.4.0 — 2026-11-07
+
+Evidence (`plan/roadmap-4.0.md`, 3.4): the claims the pitch rests on, with numbers, written for the people who argued against them.
+
+### Added
+
+- **`docs/standards/one-source-n-consumers.md`.** The argument for one source made as the weaker claim it has become now that agents make ports cheap: N copies are N things to review and keep matching, and what goes wrong in a port is what the compiler generates. With numbers: the registry's 20 components across the matrix are 140 hand-written ports against 20 files and 367 lines of adapter written once; the ten framework-specific bugs the adapters absorbed, each fixed once; and an experiment (`docs/standards/ports-experiment/`, reproducible) in which an agent ported three registry components to React, Vue and Svelte in three minutes, a reviewing agent found 47 behavioural differences in the nine fresh ports (form reset and submission, event semantics, host semantics: the generated parts), and two fixes were then propagated to all six affected ports without error. The conclusion is the one the survey's instructor would accept: propagation is solved; divergence happens at port time.
+- **`docs/framework-matrix.md`**: what each framework's row in CI proves, row by row, and what isn't in a row (SvelteKit with light DOM, Next.js elements with React children, Qwik).
+
+### Corrected
+
+- **React 18 prop timing was already fixed.** `progress.md` listed "React 18: props still arrive after the script runs" as open; since 2.8 the element reads the React wrapper's `mnx-props` when it starts, before React 18's effect sets properties, and `runtime/test/browser/adapters.test.js` asserts a script seeded from a prop sees it under React 18. No change was needed; the roadmap's decision 2 is moot.
+
+## 3.3.0 — 2026-11-07
+
+The last server gaps (`plan/roadmap-4.0.md`, 3.3): "SSR isn't great with web components" was the belief two of the survey's nine respondents held, and three visible gaps confirmed it.
+
+### Added
+
+- **Light DOM under framework hydration**, for an element given no framework children. The React and Vue wrappers (`@mnx/runtime/react`, `@mnx/runtime/vue`) render an element's content into its host on the server (a light-DOM element's rendered children; a shadow-DOM element's declarative shadow root, as since 2.11) and keep the framework out of the host while hydrating (React: `dangerouslySetInnerHTML` with an empty string in the browser and `suppressHydrationWarning`; Vue: a vnode with no children at all, so Vue never looks inside), so the element hydrates its markup in place. `serverContent(Element, { props, name })` from `@mnx/runtime/server` is the function behind both (`shadowContent` remains, for shadow DOM only). `@mnx/server`'s `injectShadowRoots(html, { lightDom: true })` does the same for frameworks that leave nodes they didn't render alone (Solid). The React Router balance list, the Nuxt stock meter, the Next.js session card and the SolidStart dish board are light DOM now, with their no-JavaScript tests passing. Still `shadow`: an element given React or Vue children, and every component under SvelteKit. `@mnx/unplugin`'s warning says which.
+- **Streaming.** In `@mnx/server`, a prop given as a promise renders as pending (the compiler's new `pending` request field: the prop is unknown, so its `mnx-await` shows the pending content in an empty region), and `page.stream(html)` (a Node stream) or `page.streamResponse(html)` (a web `Response`) sends the page first, then, as each promise settles, a `<template>` with the resolved region and an inline script that swaps it in before the element starts (or hands the element the value if it has; a held promise keeps the `mnx-await` pending meanwhile; a rejection reaches `mnx-catch`). The streamed page's module script is `async`, so the elements start before the stream ends. `page.pending` says whether a page is streaming. The help desk's dashboard streams its recent activity (`components/recent-activity.mnx`).
+- `HtmlOptions.pending` in the Rust API; `--emit interface` typings carry `required`.
+
+### Documented, not fixed
+
+- **Next.js elements given React children** can't carry server-rendered content: `dangerouslySetInnerHTML` and children are exclusive in React, and a declarative shadow root as a React child breaks hydration. They draw in the browser until React understands declarative shadow DOM. `docs/server-rendering.md` records it.
+
+## 3.2.0 — 2026-11-07
+
+Usable by agents (`plan/roadmap-4.0.md`, 3.2): the thing the survey said nobody had asked a web-component tool for yet.
+
+### Added
+
+- **Mutating state updates the DOM.** `let items = []` then `items.push(x)`, `items.splice(i, 1)`, `items[0].done = true`, `form.email = "…"`, `delete form.email`: a `let` (or `state()`, or `from()`) holding an array or a plain object holds a reactive proxy, with a `Signal.State` per property, so a write re-runs only what read that property (`runtime/src/deep.js`, about 370 B gzipped). Nested arrays and objects are wrapped as they're read; class instances, `Map`, `Set`, `Date`, DOM nodes and functions aren't. `raw(value)` from `@mnx/runtime` gives the original back. Props aren't wrapped. `mnx-each` reads the list's length and indices, so pushes and splices re-run it and keyed rows keep their elements. The compiler's output is unchanged. (`plan/decisions/deep-reactivity.md`.) The runtime's gzip budgets are 13.5 KB (development) and 13 KB (production), up from 13 / 12.5.
+- **`skills/`**: `mnx-component` (writing one), `mnx-consume` (using one from each framework), `mnx-cli`, `mnx-server`, each written so an agent can do the job from it alone, and **`AGENTS.md`** naming them. `skills/test/skills.test.js` compiles every component example in them and checks the copies; `skills/test/agent.test.js` has an agent write a component from the skill alone and checks it compiles, renders on the server and works in Chromium (run with `MNX_AGENT="claude -p"`; a non-blocking CI job where `ANTHROPIC_API_KEY` is set).
+- **`npm create mnx` writes `AGENTS.md` and `skills/`** into the new project; **`mnx build --lib` writes `skills/using-<package>/SKILL.md`** from the manifest, so a library tells agents its components' props, events, slots and two-way bindings.
+- **`mnx convert`**: `useReducer` becomes a `let` and a `dispatch` that assigns; `createContext` and `useContext` become the runtime's (`inject()`), with `<Context.Provider>`, exported contexts and contexts from other modules reported; a received event prop passed on (`onClose={onClose}`) becomes a call; `--component <Name>` converts one of a file's several exported components (`export function X` or `export { X }`); `--as mnx` writes the HTML-first `.mnx` file, with the script as written and the template's indentation, once nothing is left to finish. `docs/convert-measured.md` runs it over shadcn/ui's 325 components: 0 convert without a hand finish, 323 because of spread props, which is the next thing to build.
+- `--emit interface` includes `required` per prop; `scripts/sync-skills.sh`.
+
+### Examples
+
+- The trail filter and the recipe reviews mutate their lists instead of rebuilding them; the scoreboard counts "a let rebuilt instead of mutated" (0).
+
+## 3.1.0 — 2026-11-07
+
+Who this is for (`plan/roadmap-4.0.md`, 3.1). The first release whose evidence is what people who don't use web components said, rather than what building the examples took. Nothing in the compiler or runtime changed; the positioning did.
+
+### Added
+
+- **`docs/who-this-is-for.md`**: where a compiled web component earns its place (a library or design system with consumers on more than one stack, components handed to other people's stacks, a CMS or an older app, a server that isn't JavaScript) and where it doesn't (one app on one framework, a container of the app's own components, one button on one page). The honest objections, with where mnx stands on each.
+- **`docs/what-crosses-the-boundary.md`**: what crosses a custom element (props, events, two-way binding, slots, form participation, the Context Protocol, host refs, server rendering, outside styling) and what doesn't (render props, framework context, Suspense and transitions, framework hooks, the consumer's components by name), with the rule of thumb: a leaf fits, a container belongs in the framework.
+- **`docs/server-rendering.md`**: the server story in plain terms, with what renders where, what works without JavaScript, and the four gaps that remain (light DOM inside hydrating frameworks, Next.js elements with React children, no streaming, `Date`/`Intl` browser-only).
+- `scripts/bump-version.sh`.
+
+### Changed
+
+- **The README's first screen** is the copy button from the conversation that started this roadmap, next to the same element written by hand (about 55 lines, in a `<details>`), then `let count = 0` updating one text node, then "who it's for" with the Astro line: Astro lets frameworks coexist on a page; mnx lets one component be used by all of them. The framework matrix moves below.
+- The guide's first page says in one sentence that the button renders in light DOM and shadow DOM is a flag.
+
 ## 3.0.0 — 2026-11-07
 
 The first major version since 2.0 (`plan/roadmap-3.0.md`). One change in meaning, one removal; `docs/migrating-to-3.0.md` has the upgrade. Compiled code is unchanged (`abi: 2`), so components built with 2.x run on the 3.0 runtime.

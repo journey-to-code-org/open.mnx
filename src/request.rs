@@ -9,7 +9,8 @@
 //!   "files": { "/app/inbox.mnx": "…", "/app/badge.mnx": "…" },
 //!   "runtime": "@mnx/runtime", "keepImports": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
-//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true }
+//!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true,
+//!   "pending": ["reviews"] }
 //! ```
 //!
 //! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }`: `output` is the
@@ -101,8 +102,17 @@ fn respond(request: &Map<String, Value>) -> Value {
 
     // `convert`: a React component → an mnx JSX component (`prefix` names a one-word one).
     if text("command") == Some("convert") {
-        return match crate::convert(source, &path, text("prefix")) {
-            Ok(conversion) => {
+        return match crate::convert_component(source, &path, text("prefix"), text("component")) {
+            Ok(mut conversion) => {
+                // `"as": "mnx"`: the readable .mnx file, once nothing is left to finish.
+                if text("as") == Some("mnx")
+                    && conversion.unsupported.is_empty()
+                    && conversion.compile_error.is_none()
+                {
+                    if let Some(error) = crate::convert_as_mnx(&mut conversion) {
+                        conversion.unsupported.push(error);
+                    }
+                }
                 let target = match path.rsplit_once('/') {
                     Some((directory, _)) => format!("{directory}/{}", conversion.file_name),
                     None => conversion.file_name.clone(),
@@ -206,6 +216,17 @@ fn respond(request: &Map<String, Value>) -> Value {
                 crate::HtmlOptions {
                     slot_source,
                     partial,
+                    pending: request
+                        .get("pending")
+                        .and_then(Value::as_array)
+                        .map(|names| {
+                            names
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 },
                 &loader,
             )

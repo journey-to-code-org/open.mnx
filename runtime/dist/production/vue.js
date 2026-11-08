@@ -14,6 +14,7 @@
 // - Other attributes and listeners (class, style, @click, …) go to the element; slots become its
 //   children, named slots with `slot="name"`.
 import { defineComponent, h, withDirectives, Text, Comment, Fragment } from 'vue';
+import { serverContent } from './server.js';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 const pascal = (tag) => tag.split(/[-.]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('');
@@ -110,7 +111,15 @@ export function wrap(Element) {
         }
         // The given props as JSON, on the server and in the browser alike (see the React adapter).
         const json = propsJson(Object.fromEntries(Object.keys(props).map((name) => [name, primary && name === primary.prop && given.modelValue !== undefined ? given.modelValue : given[name]])));
-        return withDirectives(h(tag, { ...attrs, ...listeners, ...(json ? { 'mnx-props': json } : {}), ref: (node) => { element = node; } }, children), [[setProps, values]]);
+        // An element with no children: on the server, its content (a shadow-DOM element's
+        // declarative shadow root, a light-DOM element's rendered children) as the host's inner
+        // HTML, so it shows before JavaScript. In the browser the vnode has no children at all
+        // (`null`, not `[]`): Vue then never looks inside the host while hydrating, so the
+        // element's markup stays for the element to hydrate in place (3.3). (A page can also go
+        // through @mnx/server's injectShadowRoots, which is the same for shadow DOM.)
+        const bare = children.length === 0;
+        const inner = bare && typeof window === 'undefined' ? { innerHTML: serverContent(Element, { props: json ? JSON.parse(json) : {}, name: attrs.name }) } : {};
+        return withDirectives(h(tag, { ...attrs, ...listeners, ...(json ? { 'mnx-props': json } : {}), ...inner, ref: (node) => { element = node; } }, bare ? null : children), [[setProps, values]]);
       };
     },
   });

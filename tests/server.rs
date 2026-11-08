@@ -41,8 +41,56 @@ fn the_interface_says_what_a_server_needs_to_read_a_host_back() {
     assert_eq!(json["form"], true);
     assert_eq!(
         json["props"][0],
-        serde_json::json!({ "name": "value", "attribute": "value", "type": "number", "default": 1, "model": true })
+        serde_json::json!({ "name": "value", "attribute": "value", "type": "number", "default": 1, "model": true, "required": false })
     );
     assert_eq!(json["props"][2]["default"], serde_json::json!([]));
     assert_eq!(json["events"], serde_json::json!(["valuechange"]));
+}
+
+#[test]
+fn a_pending_prop_renders_as_an_empty_region_for_a_stream_to_fill() {
+    let source = "<x-reviews reviews={[]}><h2>R</h2><mnx-await value={reviews}><p>…</p><mnx-then as=\"l\"><ul><mnx-each items={l} as=\"r\" key={r}><li>{r}</li></mnx-each></ul></mnx-then></mnx-await></x-reviews>";
+    let options = |pending: Vec<String>| mnx_compiler::HtmlOptions {
+        slot_source: mnx_compiler::SlotSource::Html,
+        partial: false,
+        pending,
+    };
+    let shell = mnx_compiler::compile_html_with_options(
+        source,
+        "x.mnx",
+        "{}",
+        "{}",
+        options(vec!["reviews".into()]),
+        &mnx_compiler::filesystem,
+    )
+    .unwrap();
+    assert!(shell.contains("<!--[?--><p>…</p><!--]-->"), "{shell}");
+    assert!(
+        !shell.contains("reviews=\""),
+        "no attribute for a value not known yet: {shell}"
+    );
+    let resolved = mnx_compiler::compile_html_with_options(
+        source,
+        "x.mnx",
+        "{\"reviews\":[\"a\"]}",
+        "{}",
+        options(vec![]),
+        &mnx_compiler::filesystem,
+    )
+    .unwrap();
+    assert!(
+        resolved.contains("<!--[--><ul><!--[--><!--[--><li>a</li><!--]--><!--]--></ul><!--]-->"),
+        "{resolved}"
+    );
+    // A pending prop with a value given keeps it unknown (the stream renders again once it has it).
+    let still = mnx_compiler::compile_html_with_options(
+        source,
+        "x.mnx",
+        "{\"reviews\":[\"a\"]}",
+        "{}",
+        options(vec!["reviews".into()]),
+        &mnx_compiler::filesystem,
+    )
+    .unwrap();
+    assert_eq!(still, shell);
 }

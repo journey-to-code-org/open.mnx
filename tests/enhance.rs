@@ -161,6 +161,7 @@ fn a_known_first_operand_decides_and_and_or_on_the_server() {
         mnx_compiler::HtmlOptions {
             slot_source: mnx_compiler::SlotSource::Template,
             partial: true,
+            pending: Vec::new(),
         },
         &mnx_compiler::filesystem,
     )

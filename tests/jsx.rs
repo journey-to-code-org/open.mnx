@@ -134,10 +134,11 @@ fn mistakes_are_reported_in_the_jsx() {
             .0
             .contains("renaming")
     );
+    // Spreading onto an element compiles since 3.5; onto an mnx component, it's an error.
     assert!(
-        error("export default function MnxX({ a = 1 }) {\n  return <p {...a} />\n}\n")
+        error("import Badge from './badge.mnx';\nexport default function MnxX({ a = 1 }) {\n  return <Badge {...a} />\n}\n")
             .0
-            .contains("spread")
+            .contains("spreading onto an mnx component")
     );
     assert!(
         error("export default function MnxX({ a = 1 }) {\n  return <p title={<b />} />\n}\n")
@@ -213,4 +214,15 @@ export default function MnxPanel({ open = false, size = 10, tone = "red" }) {
         compile(source, "{}").unwrap(),
         "<mnx-panel><!----><div class=\"wide\" style=\"font-size: 10px; --tone: red\"><form>send</form></div></mnx-panel>"
     );
+}
+
+#[test]
+fn typescript_in_a_tsx_template_expression_is_blanked_like_the_script_s() {
+    let source = "export default function MnxX({ a = 1 }) {\n  return <p onClick={(e) => (e.target as HTMLElement).focus()} title={String(a!)}>x</p>\n}\n";
+    let output = mnx_compiler::compile_js(source, "@mnx/runtime", "x.mnx.tsx").unwrap();
+    assert!(
+        output.contains("((e) => (e.target               ).focus())"),
+        "{output}"
+    );
+    assert!(output.contains("String($p.a )"), "{output}");
 }

@@ -6,9 +6,9 @@
 //   mnx add --list
 //   mnx compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
 //   mnx check <file>... [--server]          --server: what a server without JavaScript leaves out
-//   mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]   React → mnx JSX
+//   mnx convert <Component.jsx> [--prefix <word>] [--as jsx|mnx] [--out <file> | --stdout]   React → mnx JSX, or .mnx
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileFile, request } from './index.js';
 import { buildLibrary } from './library.js';
@@ -52,6 +52,13 @@ export function add(names, { target = 'src/components', force = false, registry 
   if (clashes.length && !force) throw new Error(`mnx add: ${clashes.map((file) => join(target, file)).join(', ')} already exists (--force replaces it)`);
   for (const file of files) copyFileSync(join(registry, 'components', file), join(target, file));
   return files.map((file) => join(target, file));
+}
+
+/** The npm packages the added files import (beyond the runtime), from the registry's index. */
+export function packagesFor(files, registry = registryDir()) {
+  const added = new Set(files.map((file) => basename(file)));
+  const { components } = readRegistry(registry);
+  return [...new Set(components.filter((component) => component.files.some((file) => added.has(file))).flatMap((component) => component.packages ?? []))];
 }
 
 /** Edit distance, for "did you mean". */
@@ -114,10 +121,12 @@ function main(argv) {
     if (!rest.length) throw new Error('usage: mnx add <component>... [--dir src/components] [--force]   (mnx add --list)');
     const files = add(rest, { target: flags.dir ?? 'src/components', force: flags.force });
     console.log(`mnx: added ${files.join(', ')}. They're yours now: edit them as you like.`);
+    const packages = packagesFor(files);
+    if (packages.length) console.log(`mnx: they import ${packages.join(', ')}: npm install ${packages.join(' ')}`);
   } else if (command === 'convert') {
-    if (rest.length !== 1) throw new Error('usage: mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]');
+    if (rest.length !== 1) throw new Error('usage: mnx convert <Component.jsx> [--prefix <word>] [--as jsx|mnx] [--out <file> | --stdout]');
     const path = resolve(rest[0]);
-    const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix });
+    const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix, as: flags.as });
     if (!response.ok) throw new Error(response.error);
     for (const change of response.changes) process.stderr.write(`${rest[0]}: ${change}\n`);
     if (flags.stdout) process.stdout.write(response.output);

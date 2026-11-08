@@ -151,6 +151,7 @@ fn partial_html_leaves_browser_only_parts_to_the_element() {
             HtmlOptions {
                 slot_source: SlotSource::Template,
                 partial: true,
+                pending: Vec::new(),
             },
             &loader,
         )

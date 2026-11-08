@@ -102,6 +102,29 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
     Ok((stripped, stripper.types))
 }
 
+/// The type syntax in a TSX file (`as T`, annotations, type arguments): ranges to blank. For a
+/// JSX component's template expressions, which are copied into the template and must be
+/// JavaScript. (Errors are left to the script's own stripping.)
+pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+    if !parsed.diagnostics.is_empty() {
+        return Vec::new();
+    }
+    let mut stripper = Stripper {
+        source,
+        blanks: Vec::new(),
+        types: Types::default(),
+        error: None,
+    };
+    stripper.visit_program(&parsed.program);
+    stripper
+        .blanks
+        .iter()
+        .map(|range| range.start as usize..range.end as usize)
+        .collect()
+}
+
 struct Stripper<'s> {
     source: &'s str,
     blanks: Vec<Range>,

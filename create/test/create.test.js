@@ -15,7 +15,7 @@ for (const framework of Object.keys(FRAMEWORKS)) {
   test(`${framework}: an app with the component, the plugin, a test, and no placeholders left`, () => {
     const dir = join(work(), 'My App');
     const files = create(dir, framework);
-    for (const file of ['.gitignore', 'README.md', 'package.json', 'src/components/hello-counter.mnx', 'test/app.test.js', 'test/build.js']) {
+    for (const file of ['.gitignore', 'README.md', 'package.json', 'src/components/hello-counter.mnx', 'test/app.test.js', 'test/build.js', 'AGENTS.md', 'skills/mnx-component/SKILL.md', 'skills/mnx-consume/SKILL.md']) {
       assert.ok(files.includes(file), `${file} in ${files.join(', ')}`);
     }
     for (const file of files) {
@@ -29,6 +29,7 @@ for (const framework of Object.keys(FRAMEWORKS)) {
     const config = files.find((file) => /^(vite|astro)\.config\./.test(file));
     assert.match(readFileSync(join(dir, config), 'utf8'), /@mnx\/unplugin\/(vite|astro)/);
     assert.match(readFileSync(join(dir, 'README.md'), 'utf8'), /^# My App/);
+    assert.match(readFileSync(join(dir, 'AGENTS.md'), 'utf8'), /^# My App/);
   });
 }
 

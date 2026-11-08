@@ -21,6 +21,60 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::diagnostic::Diagnostic;
 
+/// What `@mnx/runtime` exports for scripts (runtime/src/index.js): called without an import,
+/// each would throw in the browser.
+pub const RUNTIME_EXPORTS: &[&str] = &[
+    "state",
+    "computed",
+    "watch",
+    "onMount",
+    "onUnmount",
+    "id",
+    "props",
+    "host",
+    "emit",
+    "adoptStyles",
+    "createContext",
+    "provide",
+    "inject",
+    "formValue",
+    "validity",
+    "onFormReset",
+    "onFormRestore",
+    "onFormDisabled",
+    "prevent",
+    "stop",
+    "selfOnly",
+    "submit",
+    "keys",
+    "model",
+    "hasSlot",
+    "hydrated",
+    "signal",
+    "from",
+    "raw",
+    "resource",
+    "effect",
+    "scope",
+    "flush",
+    "tick",
+];
+
+/// The local names an import statement binds (`import a, { b as c } from "x"` → a, c).
+pub fn imported_names(text: &str) -> Vec<String> {
+    let allocator = oxc_allocator::Allocator::default();
+    let parsed = oxc_parser::Parser::new(&allocator, text, oxc_span::SourceType::mjs()).parse();
+    let mut names = Vec::new();
+    for statement in &parsed.program.body {
+        if let Statement::ImportDeclaration(import) = statement {
+            for specifier in import.specifiers.iter().flatten() {
+                names.push(specifier.local().name.to_string());
+            }
+        }
+    }
+    names
+}
+
 pub const STATE: &str = "__mnxState";
 pub const COMPUTED: &str = "__mnxComputed";
 pub const EMIT: &str = "__mnxEmit";
@@ -136,8 +190,21 @@ pub fn rewrite_statement(
     statement: &Statement<'_>,
     derived: &dyn Fn(&BindingPattern<'_>) -> bool,
 ) -> Result<Vec<Edit>, Diagnostic> {
+    rewrite_statement_with(names, statement, derived, true)
+}
+
+/// As [`rewrite_statement`]; with `declarations` false, `let` and derived `const`s are left as
+/// written and only the names are rewritten (readable JSX lowering).
+pub fn rewrite_statement_with(
+    names: &impl Names,
+    statement: &Statement<'_>,
+    derived: &dyn Fn(&BindingPattern<'_>) -> bool,
+    declarations: bool,
+) -> Result<Vec<Edit>, Diagnostic> {
     let mut rewriter = Rewriter::new(names);
-    if let Statement::VariableDeclaration(declaration) = statement {
+    if !declarations {
+        rewriter.visit_statement(statement);
+    } else if let Statement::VariableDeclaration(declaration) = statement {
         let start = declaration.span.start as usize;
         match declaration.kind {
             VariableDeclarationKind::Let => {
@@ -491,6 +558,7 @@ pub fn rewrite_script(
     body: &str,
     props: &[String],
     makers: &[String],
+    imported: &[String],
     from: &[String],
     start: crate::diagnostic::Span,
 ) -> Result<ScriptCode, Diagnostic> {
@@ -508,6 +576,33 @@ pub fn rewrite_script(
         from,
         start,
     };
+    // A runtime hook called but never imported (or declared) would throw in the browser.
+    let scoping = semantic.scoping();
+    let mut unimported: Vec<(u32, &str)> = Vec::new();
+    for (name, references) in scoping.root_unresolved_references() {
+        let name: &str = name;
+        if !RUNTIME_EXPORTS.contains(&name)
+            || props.iter().any(|prop| prop == name)
+            || imported.iter().any(|local| local == name)
+        {
+            continue;
+        }
+        if let Some(first) = references.first() {
+            let node = semantic
+                .nodes()
+                .get_node(scoping.get_reference(*first).node_id());
+            unimported.push((oxc_span::GetSpan::span(&node.kind()).start, name));
+        }
+    }
+    if let Some((offset, name)) = unimported.into_iter().min() {
+        return Err(Diagnostic::new(
+            crate::scanner::span_after(start, body, offset as usize),
+            format!("`{name}` is a hook from @mnx/runtime, but the script doesn't import it"),
+        )
+        .with_help(format!(
+            "import it: `import {{ {name} }} from '@mnx/runtime'`"
+        )));
+    }
     let mut code = ScriptCode::default();
     // Classify in order: a derived `const` may read the ones before it.
     for statement in &parsed.program.body {

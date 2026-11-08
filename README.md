@@ -9,34 +9,105 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 **Status: 3.x.** The `.mnx` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 4.0. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
 ```html
-<!-- header.mnx -->
+<!-- copy-button.mnx -->
 <script>
-  const titleDefault = "Mikey Nichols"
-  const dataDefault = { sample: "sample data", sampleTwo: "additional data" }
+  let copied = false                               // state: assigning it updates the DOM
+
+  async function copy() {
+    await navigator.clipboard.writeText(text)      // `text` is a prop, by name
+    copied = true
+    setTimeout(() => (copied = false), 1500)
+  }
 </script>
-<mnx-header title={titleDefault} data={dataDefault}>
-  <header>
-    <nav>
-      <h1>{title}</h1>
-      <menu>
-        <li>{data.sample}</li>
-        <li>{data.sampleTwo}</li>
-      </menu>
-    </nav>
-  </header>
-</mnx-header>
+<style>
+  button.done { color: green; }                    /* scoped to this component, in light DOM */
+</style>
+<copy-button text label="Copy">                    <!-- the host tag: the element and its props -->
+  <button type="button" onclick={copy} class:done={copied}>
+    {copied ? "Copied!" : label}
+  </button>
+</copy-button>
 ```
 
 ```sh
-mnx compile header.mnx                 # server-rendered HTML
-mnx compile header.mnx --emit js       # the custom element
+mnx compile copy-button.mnx --props props.json   # the HTML a server sends, for {"text":"npm create mnx"}:
+#   <copy-button text="npm create mnx"><button type="button">Copy</button></copy-button>
+mnx compile copy-button.mnx --emit js             # the custom element that hydrates it
 ```
 
-```tsx
-// In a Vite app with @mnx/unplugin: a React component in .tsx files, a Vue component in .vue files.
-import Header from './header.mnx';
-<Header title="Journey to Code" data={{ sample: "a", sampleTwo: "b" }} />
+```html
+<copy-button text="npm create mnx"></copy-button>      <!-- plain HTML -->
 ```
+```tsx
+<CopyButton text="npm create mnx" />                   // React or Vue, through @mnx/unplugin: same file, typed
+```
+
+<details>
+<summary>The same element written by hand (about 55 lines)</summary>
+
+```js
+const template = document.createElement("template");
+template.innerHTML = `<style>button.done { color: green; }</style><button type="button"></button>`;
+
+class CopyButton extends HTMLElement {
+  static observedAttributes = ["text", "label"];
+  #copied = false;
+  #timer = null;
+  #button;
+  #onClick = () => this.copy();              // a stored reference, so removeEventListener works
+
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" }).append(template.content.cloneNode(true));
+    this.#button = this.shadowRoot.querySelector("button");
+  }
+  get text() { return this.getAttribute("text") ?? ""; }
+  set text(v) { this.setAttribute("text", v); }
+  get label() { return this.getAttribute("label") ?? "Copy"; }
+  set label(v) { this.setAttribute("label", v); }
+
+  connectedCallback() {
+    this.#button.addEventListener("click", this.#onClick);
+    this.#render();
+  }
+  disconnectedCallback() {
+    this.#button.removeEventListener("click", this.#onClick);
+    clearTimeout(this.#timer);
+  }
+  attributeChangedCallback() { this.#render(); }
+
+  async copy() {
+    await navigator.clipboard.writeText(this.text);
+    this.#copied = true;
+    this.#render();                           // every state change has to remember this
+    clearTimeout(this.#timer);
+    this.#timer = setTimeout(() => { this.#copied = false; this.#render(); }, 1500);
+  }
+  #render() {
+    this.#button.textContent = this.#copied ? "Copied!" : this.label;
+    this.#button.classList.toggle("done", this.#copied);
+  }
+}
+customElements.define("copy-button", CopyButton);
+```
+
+It needs shadow DOM to scope one style rule, has no server HTML, and has the two bugs most hand-written elements have (a forgotten `#render()`, a listener removed with a different reference). The compiler writes all of it.
+</details>
+
+The reactivity is the point, not a feature. `let` is state, and the template is bound to it:
+
+```html
+<script>
+  let count = 0
+</script>
+<click-counter>
+  <button onclick={() => count++}>Clicked {count} times</button>
+</click-counter>
+```
+
+Nothing re-renders: `count++` updates one text node. The script runs once per element, the way Solid and Svelte 5 work, on the TC39 Signals API.
+
+**Who it's for.** One component with more than one consumer: a component library or design system used from more than one framework, components handed to other people's stacks, anything that has to live in a CMS, an older app or a static site, and servers that aren't JavaScript. If one app on one framework is the only consumer, you don't need it; [Who mnx is for](docs/who-this-is-for.md) says why, and [What crosses the boundary](docs/what-crosses-the-boundary.md) says which components fit through an element and which belong in the framework. Astro lets frameworks coexist on a page; mnx lets one component be used by all of them.
 
 ## Writing a component
 
@@ -123,6 +194,7 @@ In the HTML output, directives are expanded at build time and wrapped in `<!--[-
 - **Event modifiers**: `onsubmit.prevent`, `.stop`, `.once`, `.self` (only events on the element itself), `.capture`, `.passive`. Key filters on `keydown`/`keyup`/`keypress`: `.enter`, `.escape` (`.esc`), `.space`, `.tab`, `.up`/`.down`/`.left`/`.right` (or `.arrowup`, …), `.delete`, `.backspace`, `.home`, `.end`, `.pageup`, `.pagedown`, and any single letter or digit. Several keys mean any of them (`onkeydown.enter.space`). With a key filter, `.shift`, `.ctrl`, `.alt` and `.meta` must be held and the others not, so `onkeydown.enter` and `onkeydown.shift.enter` don't overlap. `.mod` is ⌘ on Apple platforms and Ctrl elsewhere (`onkeydown.mod.enter`). `.submit` submits the element's form after any handler, with `requestSubmit()`, so validation and `submit` listeners run: `<select onchange.submit>` needs no handler at all. They work on child components' events too (`onvaluechange.stop`).
 - **`value:bind={color}`** on a child custom element keeps a two-way (`:model`) prop and a `let` (or prop) in step: it's `value={color}` plus `onvaluechange={(event) => (color = event.detail)}`.
 - **`ref={name}`** assigns the element to a `let` once rendered, and `null` when it's removed. `ref={(element) => …}` calls a function instead.
+- **`{...object}`** spreads an object's entries onto an element (since 3.5), the way headless libraries hand out behaviour: `<input {...api.getInputProps()} class="field">`. Functions under `on<Name>` keys are listeners (`onClick`, `onkeydown`), replaced when the function changes. `value`, `checked`, `selected` and `indeterminate` are properties, and `className`/`htmlFor` mean `class`/`for`. `class` merges token by token with the element's own classes. `style` is an object set through the CSSOM. `true` is a bare attribute, `aria-*` booleans are written as `"true"`/`"false"`, and `false`, `null` and `undefined` remove the attribute. Entries that disappear are removed, and an attribute written on the element itself wins. A spread can't do what an attribute couldn't: text handlers, `style` text, unsafe URLs and markup keys (`innerHTML`, `srcdoc`, …) are refused. A spread known at build time renders on the server; otherwise the element applies it. It works on HTML elements and other libraries' custom elements, not on the host, a directive or an imported mnx component (pass each prop). Its code is in `@mnx/runtime/spread` (about 1.4 KB gzipped), which a compiled module imports only when its template spreads; an import map needs that entry too.
 - **`<mnx-window>` and `<mnx-document>`** take event listeners (with modifiers), added while they're rendered and removed after. They render nothing.
 - **`<mnx-else-if test={…}>`** goes between `mnx-if` and its `mnx-else`.
 - **In scripts and JSX**, the modifiers are functions from `@mnx/runtime`: `prevent(fn)`, `stop(fn)`, `selfOnly(fn)`, `submit(fn)` and `keys('shift+enter', fn)` (`keys('mod+enter', fn)` for ⌘/Ctrl). In JSX, `className={{ … }}`, `style={{ … }}`, `class:open={…}` and `ref={panel}` work as in `.mnx`.
@@ -147,6 +219,7 @@ In the HTML output, directives are expanded at build time and wrapped in `<!--[-
 
 - **A prop's name is the prop**, in the script as in the template: read `label`, assign `label = …` (the element updates as if it were set from outside). So the script can't declare a name a prop has. A default taken from the script uses another name: `<mnx-card title={titleDefault}>`.
 - **A top-level `let` is state.** Reading it in the template, in a `computed` or an effect tracks it, and assigning it (`count++`, `count = 0`, `count += 2`) updates what reads it. Its initial value renders on the server.
+- **Mutating state works too** (since 3.2): `items.push(x)`, `items.splice(i, 1)`, `items[0].done = true`, `form.email = "…"`, `delete form.email`. A `let` holding an array or a plain object holds a reactive proxy of it, which tracks each property separately, so `items[0].done = true` updates only what read it, and nested arrays and objects are wrapped as they're read. Class instances, `Map`, `Set`, `Date`, DOM nodes and functions aren't wrapped. The proxy is the same object each time and works as the original does (`Array.isArray`, `JSON.stringify`, spread, every method), but it isn't the original: `raw(items)` from `@mnx/runtime` gives that back, for `structuredClone`, `postMessage` or a library that compares by identity. Props aren't wrapped (they're the parent's); `let draft = from(items)` is a mutable copy that follows one.
 - **`let left = from(seconds)`** (from `@mnx/runtime`) is state that follows a prop until it's assigned, and starts over when the prop changes: a timer's time left resets when its length does. `let running = from(seconds, false)` starts as `false` instead, again whenever `seconds` changes. A plain `let left = seconds` reads the prop once. `mnx convert` writes `from()` for React's `useState(prop)` plus an effect that resets it.
 - **A top-level `const` that reads props or state** (outside nested functions) is derived: it's recomputed when they change. Other `const`s, functions and imports are plain JavaScript, run once per element.
 - `state()` and `computed()` give explicit signals, for custom hooks and shared state. A `const` holding one (from `state`, `computed`, `inject`, `hasSlot` or `hydrated`) **reads like a value**, in the template and (since 3.0) in the script: `user.name` means `user.get().name`, and a `const` derived from it (`const me = user?.name`) stays in sync like any other. `.get()` and `.set(…)` written out still work. To pass the signal itself (`watch(signal(count), …)`, `formValue(signal(count))`), wrap it in `signal()` from `@mnx/runtime`.
@@ -321,6 +394,8 @@ The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated)
 
 ## Server rendering and hydration
 
+`docs/server-rendering.md` is the plain account: what renders where, what works without JavaScript, and the gaps that remain.
+
 The HTML output is the server rendering: static, deterministic, escaped markup. Props that differ from their defaults are written onto the host (JSON for arrays and objects). When the element starts in the browser, it first checks that the markup has its template's shape. If it does, it binds to the existing DOM: nothing is re-rendered, and a part writes only when its value differs. Markup that doesn't match is replaced, with a warning.
 
 ### Hydration markers
@@ -336,7 +411,7 @@ The code that does this (`remark.js`) is loaded only when an element meets such 
 
 ### In frameworks that hydrate
 
-In Next.js, React Router, Nuxt and SvelteKit, the framework hydrates the server's HTML around the elements. A light-DOM component renders its template into its host before the framework hydrates, and the framework then finds children it didn't render: React redoes the page, Vue removes them, and Svelte fails. Use `shadow` for components those apps server-render. `@mnx/unplugin` warns when a light-DOM component is server-rendered in React Router, Nuxt or SvelteKit. Solid doesn't mind. See `examples/meta/README.md`.
+In Next.js, React Router, Nuxt and SvelteKit, the framework hydrates the server's HTML around the elements. Since 3.3 the React and Vue wrappers render an element's content into its host on the server (a light-DOM element's rendered children, a shadow-DOM element's declarative shadow root) and keep the framework out of the host while hydrating (React: `dangerouslySetInnerHTML` with an empty string in the browser and `suppressHydrationWarning`; Vue: a vnode with no children), so the element hydrates in place either way. Two cases still need `shadow`: an element given React or Vue children (slot content), and every component under SvelteKit, which uses elements directly and claims every node it finds. `@mnx/unplugin` warns about both. Solid leaves nodes it didn't render alone; `injectShadowRoots(html, { lightDom: true })` gives its light-DOM hosts their children. See `examples/meta/README.md`.
 
 **The SSR bridge.** A framework renders only the host tag. For the element's markup to be in the page before JavaScript, there are two steps:
 1. **Props on the host.** The React and Vue wrappers write the props as one JSON attribute, `mnx-props`, on the server and in the browser alike. In Svelte and Solid, which use elements directly, `@mnx/unplugin` adds it in the server build (since 2.10), from the attributes that set the element's props (`log={…}`, `{log}`, `bind:value={…}`, Solid's `prop:items={…}`). The element starts with these props before the framework sets them.
@@ -378,6 +453,8 @@ app.get('/', (req, res) => {
 ```
 
 `page.finish(html)` puts the used components' CSS and the import map before `</head>`, and their modules before `</body>`. `page.head()` and `page.scripts()` give you the same pieces to place yourself. `mnx.handle(req, res)` (Node) and `mnx.fetch(request)` (fetch-style servers) serve `/_mnx/…`. For a static site, `mnx.writeAssets(dir)` writes those files. `examples/helpdesk/` (Express and EJS), `examples/hypermedia/` (Hono) and `examples/meta/eleventy-trails/` use it.
+
+**Streaming** (3.3). A prop given as a promise renders as pending: the component's `<mnx-await>` shows its pending content, in an empty region. `page.stream(html)` (a Node stream; `page.streamResponse(html)` a web `Response`) sends the page at once and, as each promise settles, a `<template>` with the resolved region and an inline script that swaps it in before the element starts, or hands the element the value if it has. The element hydrates the region as it would any server-rendered `mnx-then`; a rejection reaches its `mnx-catch`. `page.pending` says whether anything is streaming. Without JavaScript the pending content stays, so await the data before rendering when the page must be complete without it. The help desk's dashboard streams its recent activity.
 
 `@mnx/compiler` underneath renders a single component, from Node and without Rust:
 
@@ -454,7 +531,7 @@ The package needs no bundler or mnx tooling on the consumer's side:
 
 `buildLibrary(dir, options)` from `@mnx/compiler/library` does the same from a script. `examples/frameworks/ui/` is one, built from the registry, and the React and Vue example apps import it like a package from npm.
 
-**Start from the registry.** `npx mnx add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty, from form controls to a modal dialog and charts, each tested from the keyboard and by role and accessible name. `npx mnx add --list` lists them; `registry/README.md` has the details and the theme properties.
+**Start from the registry.** `npx mnx add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty-five, from form controls and charts to tabs, menus, tooltips and a combobox, each tested from the keyboard and by role and accessible name. `npx mnx add --list` lists them; `registry/README.md` has the details and the theme properties. For the widgets Radix and shadcn/ui give React apps (menus, tabs, tooltips, comboboxes), see [Accessible widgets without a headless library](docs/guide/accessible-widgets.md): the platform, two keyboard primitives in `@mnx/runtime/primitives`, and Zag.js through `@mnx/runtime/zag`.
 
 **Storybook.** With `@storybook/web-components`, give Storybook the manifest and it fills each story's controls and docs (attributes, properties, events, slots, descriptions) from it:
 
@@ -477,6 +554,8 @@ export const Default = { args: { value: 2, max: 5 } };
 ```sh
 mnx convert src/TodoItem.jsx              # or npx mnx convert, from @mnx/compiler
 mnx convert src/Counter.jsx --prefix app  # one-word names need a prefix: <app-counter>
+mnx convert src/Menu.jsx --component MenuItem   # one of several exported components
+mnx convert src/TodoItem.jsx --as mnx     # the HTML-first .mnx file instead of JSX (once nothing is left to finish)
 ```
 
 The body of an mnx component runs once per element, so the hooks become what they stand for:
@@ -488,12 +567,17 @@ The body of an mnx component runs once per element, so the hooks become what the
 | `useRef(null)` and `ref.current` | `let ref = null` and `ref` |
 | `useEffect(fn, [])` | `onMount(fn)` |
 | `useEffect(fn, deps)` | `onMount(() => effect(fn))`: after the DOM updates, re-run when what it reads changes |
+| `const [s, dispatch] = useReducer(r, init)` | `let s = init` and `const dispatch = (action) => (s = r(s, action))` |
+| `createContext(x)`, `useContext(Ctx)` | the runtime's `createContext` and `inject(Ctx)` (the Context Protocol); a `<Ctx.Provider>` is reported: the parent calls `provide(Ctx, value)` |
+| `<Child onClose={onClose}>` (a received event prop, passed on) | `onClose={(event) => onClose(event)}`, since an event prop fires the event |
 | `onChange` on a text field, `onDoubleClick` | `onInput`, `onDblClick` (the DOM's events) |
 
 Preact's hooks (`preact/hooks`) convert the same way. Comments and formatting are kept, since only what changes is rewritten. What it can't convert, it reports, with advice, and it exits with status 1:
-- other hooks (`useContext`, `useReducer`, custom hooks);
+- custom hooks, a context created in another module, an exported context (a component file exports only its component), `<Context.Provider>`;
 - props taken as one object rather than destructured;
-- spread attributes and `dangerouslySetInnerHTML`.
+- a spread onto another component, the rest of the props used anywhere but spread onto the returned element, and `dangerouslySetInnerHTML`.
+
+Since 3.5, shadcn-style components convert: `{...props}` spread onto the returned element is dropped (the host carries the consumer's attributes itself), `className` becomes the host's own `class`, the props' React type goes, and a spread onto an element is an mnx spread. A component built on a third-party React primitive (Radix, Headless UI, React Aria, cmdk, vaul, …) is refused up front, with what to use instead: its behaviour is the primitive's, and there's no HTML to convert to. `docs/convert-measured.md` runs it over shadcn/ui: 50 of the 68 components in its plain-markup files convert and compile, and the 46 primitive-based files are refused with one message each.
 
 The result is compiled as part of the conversion, and a compile error is shown at its place in the output. With `--out` in another folder, relative imports are adjusted to it.
 
@@ -537,6 +621,8 @@ mnx is meant to be absorbed by the platform. These reports give the standards di
 - [`docs/standards/signals.md`](docs/standards/signals.md): an integration report for the TC39 Signals proposal, including two reference-polyfill behaviours the README rules out and the cost of unwatching one effect at a time.
 - [`docs/standards/dom-parts.md`](docs/standards/dom-parts.md): what a parts model needed in practice (markers, regions, hydration), for DOM Parts and declarative templating.
 - [`docs/standards/declarative-custom-elements.md`](docs/standards/declarative-custom-elements.md): the `.mnx` format as a worked declarative custom elements explainer.
+- [`docs/standards/one-source-n-consumers.md`](docs/standards/one-source-n-consumers.md): the case for one source against agent-made ports, with numbers: what the compiler generates for the registry across the matrix, the ten framework bugs the adapters absorbed once, and an experiment where an agent ported three components to three frameworks (47 behavioural differences before any change; a fix propagated to all six ports without error).
+- [`docs/framework-matrix.md`](docs/framework-matrix.md): what each framework's row in CI proves, and what isn't in a row.
 
 ## Stability
 
@@ -561,6 +647,7 @@ Upgrading from 1.x: `mnx migrate` rewrites what 2.0 needs; see `docs/migrating-t
 - `create/`: `create-mnx`, the starter (`npm create mnx`), with a template per framework.
 - `playground/`: the in-browser playground, published to GitHub Pages by `.github/workflows/pages.yml`.
 - `docs/guide/`: the tutorial.
+- `docs/who-this-is-for.md`, `docs/what-crosses-the-boundary.md`, `docs/server-rendering.md`: where mnx fits, which components fit through an element, and the server story with its gaps.
 - `registry/`: the components `mnx add` copies, with their accessibility tests.
 
 Install Rust 1.97 or newer and Node 20 or newer.

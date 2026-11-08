@@ -242,6 +242,13 @@ fn normalize(source: &str) -> String {
 /// written kebab-case on the host tag (the same rule custom elements use for attributes).
 fn prop_name(attribute: &Attribute) -> Result<String, Diagnostic> {
     let name = &attribute.name;
+    if name == SPREAD {
+        return Err(Diagnostic::new(
+            attribute.span,
+            "the host tag declares the component's props, so it can't take a {...} spread",
+        )
+        .with_help("spread onto an element inside the component"));
+    }
     if name.bytes().any(|byte| byte.is_ascii_uppercase()) {
         let kebab: String = name
             .chars()
@@ -556,6 +563,15 @@ impl<'a> TemplateParser<'a> {
                 return Err(self.error("unterminated start tag"));
             }
             let attribute_span = self.current_span();
+            if !self.html && self.starts_with("{") {
+                let (expression, span) = self.parse_spread()?;
+                attributes.push(Attribute {
+                    name: SPREAD.to_owned(),
+                    value: AttributeValue::Expression(expression, span),
+                    span: attribute_span,
+                });
+                continue;
+            }
             let attribute_name = self.parse_name()?;
             if !seen.insert(attribute_name.to_ascii_lowercase()) {
                 return Err(Diagnostic::new(
@@ -681,44 +697,26 @@ impl<'a> TemplateParser<'a> {
         if braced.inner.trim().is_empty() {
             return Err(Diagnostic::new(braced.open_span, "empty {} expression"));
         }
-        let subset = expression::parse(braced.inner);
-        let inner = braced.inner.trim();
-        let v02 = inner
-            .strip_prefix('{')
-            .and_then(|rest| rest.strip_suffix('}'))
-            .is_some_and(|name| is_identifier(name.trim()));
-        // Beyond the build-time subset, any JavaScript expression is accepted; it runs in the
-        // browser only (see `runtime_expression`).
-        if subset.is_err() && !v02 {
-            if let Ok(names) = crate::runtime_expression::parse(braced.inner) {
-                let expression = Expression::Runtime {
-                    source: braced.inner.to_owned(),
-                    names,
-                };
-                return Ok((expression, braced.open_span));
-            }
-        }
-        let expression = subset.map_err(|error| {
-            // `{{ name }}` parses as an (invalid) object literal; it's almost certainly v0.2.
-            let inner = braced.inner.trim();
-            if let Some(name) = inner
-                .strip_prefix('{')
-                .and_then(|rest| rest.strip_suffix('}'))
-            {
-                let name = name.trim();
-                if is_identifier(name) {
-                    return Diagnostic::new(
-                        braced.open_span,
-                        "`{{ … }}` is v0.2 syntax; v0.3 uses single braces",
-                    )
-                    .with_help(format!("write {{{name}}} instead of {{{{ {name} }}}}"));
-                }
-            }
-            Diagnostic::new(
-                span_after(braced.inner_span, braced.inner, error.offset),
-                error.message,
+        expression_text(braced.inner, braced.open_span, braced.inner_span)
+    }
+
+    /// `{...expression}` in a start tag: an object whose entries become the element's attributes
+    /// and listeners.
+    fn parse_spread(&mut self) -> Result<(Expression, Span), Diagnostic> {
+        let braced = self.cursor.scan_braced()?;
+        let lead = braced.inner.len() - braced.inner.trim_start().len();
+        let Some(rest) = braced.inner.trim_start().strip_prefix("...") else {
+            return Err(Diagnostic::new(
+                braced.open_span,
+                "a {…} in a start tag must spread an object: {...attributes}",
             )
-        })?;
+            .with_help("give an attribute a name to bind one value: name={…}"));
+        };
+        if rest.trim().is_empty() {
+            return Err(Diagnostic::new(braced.open_span, "empty {...} spread"));
+        }
+        let rest_span = span_after(braced.inner_span, braced.inner, lead + 3);
+        let (expression, _) = expression_text(rest, braced.open_span, rest_span)?;
         Ok((expression, braced.open_span))
     }
 
@@ -1369,6 +1367,15 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
 
 fn allow_attributes(element: &Element, allowed: &[&str]) -> Result<(), Diagnostic> {
     for attribute in &element.attributes {
+        if attribute.name == SPREAD {
+            return Err(Diagnostic::new(
+                attribute.span,
+                format!(
+                    "<{}> is a directive, so it can't take a {{...}} spread",
+                    element.name
+                ),
+            ));
+        }
         if !allowed
             .iter()
             .any(|name| attribute.name.eq_ignore_ascii_case(name))
@@ -1453,4 +1460,51 @@ fn kebab_attribute(name: &str) -> String {
         }
     }
     out
+}
+
+/// The name a `{...expression}` spread takes in the AST (it can't clash: names never start with `.`).
+pub const SPREAD: &str = "...";
+
+/// `inner` (the text inside `{…}`) as an expression: the build-time subset where it fits, any
+/// JavaScript expression otherwise.
+fn expression_text(
+    inner: &str,
+    open_span: Span,
+    inner_span: Span,
+) -> Result<(Expression, Span), Diagnostic> {
+    let subset = expression::parse(inner);
+    let trimmed = inner.trim();
+    let v02 = trimmed
+        .strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'))
+        .is_some_and(|name| is_identifier(name.trim()));
+    // Beyond the build-time subset, any JavaScript expression is accepted; it runs in the
+    // browser only (see `runtime_expression`).
+    if subset.is_err() && !v02 {
+        if let Ok(names) = crate::runtime_expression::parse(inner) {
+            let expression = Expression::Runtime {
+                source: inner.to_owned(),
+                names,
+            };
+            return Ok((expression, open_span));
+        }
+    }
+    let expression = subset.map_err(|error| {
+        // `{{ name }}` parses as an (invalid) object literal; it's almost certainly v0.2.
+        if let Some(name) = trimmed
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+        {
+            let name = name.trim();
+            if is_identifier(name) {
+                return Diagnostic::new(
+                    open_span,
+                    "`{{ … }}` is v0.2 syntax; v0.3 uses single braces",
+                )
+                .with_help(format!("write {{{name}}} instead of {{{{ {name} }}}}"));
+            }
+        }
+        Diagnostic::new(span_after(inner_span, inner, error.offset), error.message)
+    })?;
+    Ok((expression, open_span))
 }

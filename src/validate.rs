@@ -153,6 +153,20 @@ pub fn record_gaps<T>(render: impl FnOnce() -> T) -> (T, Vec<Gap>) {
     (result, gaps)
 }
 
+thread_local! {
+    /// Props a streaming server hasn't got values for yet: rendered as unknown (see `pending`).
+    static PENDING: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Set the pending props for the renders that follow (returns the previous list, to restore).
+pub fn set_pending(names: Vec<String>) -> Vec<String> {
+    PENDING.with(|pending| pending.replace(names))
+}
+
+fn pending(name: &str) -> bool {
+    PENDING.with(|pending| pending.borrow().iter().any(|pending| pending == name))
+}
+
 /// Like [`validate`], but what only the browser can compute (runtime-only values, JavaScript
 /// expressions, defaults computed in the browser) is left for the element instead of being an
 /// error: text renders empty, attributes are left out, and conditionals and lists render as
@@ -594,6 +608,18 @@ fn evaluate_props(
             ));
         }
         let default = prop_default(declaration, locals)?;
+        if pending(&declaration.name) {
+            // A value a streaming server will have later: unknown for now, so what reads it is
+            // left as an empty region, filled when the value arrives.
+            props.push(Prop {
+                name: declaration.name.clone(),
+                attribute: kebab(&declaration.name),
+                default: default.and_then(Result::ok),
+                value: Value::Null,
+                unknown: true,
+            });
+            continue;
+        }
         let value = match (overrides.get(&declaration.name), &default) {
             (Some(value), Some(Ok(default))) => {
                 if !same_type(default, value) {
@@ -1155,11 +1181,19 @@ impl Context<'_> {
                 let custom = element.name.contains('-');
                 let mut attributes = Vec::with_capacity(element.attributes.len());
                 for attribute in &element.attributes {
+                    if attribute.name == crate::parser::SPREAD {
+                        continue; // after the element's own (an explicit attribute wins)
+                    }
                     if let Some(lowered) = self.lower_attribute(attribute, state, custom)? {
                         attributes.push(lowered);
                     }
                 }
                 self.lower_directives(element, &mut attributes, state)?;
+                for attribute in &element.attributes {
+                    if attribute.name == crate::parser::SPREAD {
+                        self.lower_spread(element, attribute, &mut attributes, state)?;
+                    }
+                }
                 let mut lowered = ir::Element {
                     name: element.name.clone(),
                     attributes,
@@ -1585,6 +1619,164 @@ impl Context<'_> {
         Ok(())
     }
 
+    /// `{...object}` in the HTML output: its entries as attributes, when the object is known at
+    /// build time (otherwise left for the element), with the checks an attribute gets. Listeners
+    /// and properties aren't markup; `class` merges; `style` must be an object.
+    fn lower_spread(
+        &self,
+        element: &ast::Element,
+        attribute: &ast::Attribute,
+        attributes: &mut Vec<ir::Attribute>,
+        state: &LowerState,
+    ) -> Result<(), Diagnostic> {
+        let AttributeValue::Expression(expression, span) = &attribute.value else {
+            return Ok(());
+        };
+        let Some(value) = self.evaluate_known(expression, *span, state)? else {
+            gap_attribute("{...}");
+            return Ok(()); // set by the element
+        };
+        let entries = match value {
+            Value::Null => return Ok(()),
+            Value::Object(entries) => entries,
+            other => {
+                return Err(Diagnostic::new(
+                    *span,
+                    format!(
+                        "{{...}} spreads an object of attributes (found {})",
+                        expression::type_name(&other)
+                    ),
+                ))
+            }
+        };
+        let own: Vec<String> = element
+            .attributes
+            .iter()
+            .filter(|other| other.name != crate::parser::SPREAD)
+            .map(|other| other.name.to_ascii_lowercase())
+            .collect();
+        for (key, value) in entries {
+            let lower = key.to_ascii_lowercase();
+            if lower.len() > 2 && lower.starts_with("on") {
+                if value.is_string() {
+                    return Err(Diagnostic::new(
+                        *span,
+                        format!("a spread can't add a handler as text (`{key}`): pass a function"),
+                    ));
+                }
+                continue; // listeners exist only in the browser
+            }
+            if [
+                "innerhtml",
+                "outerhtml",
+                "innertext",
+                "textcontent",
+                "srcdoc",
+                "dangerouslysetinnerhtml",
+                "children",
+            ]
+            .contains(&lower.as_str())
+            {
+                return Err(Diagnostic::new(
+                    *span,
+                    format!("a spread can't set `{key}`"),
+                ));
+            }
+            let name = match lower.as_str() {
+                "classname" => "class".to_owned(),
+                "htmlfor" => "for".to_owned(),
+                _ if lower.starts_with("aria-") || lower.starts_with("data-") => key.clone(),
+                _ => lower.clone(),
+            };
+            if name == "style" {
+                let Value::Object(properties) = value else {
+                    if value.is_null() || value == Value::Bool(false) {
+                        continue;
+                    }
+                    return Err(Diagnostic::new(
+                        *span,
+                        "a spread's `style` must be an object of properties, not text",
+                    ));
+                };
+                let mut declarations = Vec::new();
+                for (property, value) in properties {
+                    if value.is_null() || value == Value::Bool(false) {
+                        continue;
+                    }
+                    let css = if property.starts_with("--") {
+                        property.clone()
+                    } else {
+                        kebab_case(&property)
+                    };
+                    if own.contains(&format!("style:{css}")) {
+                        continue;
+                    }
+                    let text = expression::to_display_string(&value)
+                        .map_err(|message| Diagnostic::new(*span, message))?;
+                    if !is_safe_css_value(&text) {
+                        return Err(Diagnostic::new(
+                            *span,
+                            format!("the spread's `{css}` value `{text}` isn't a single CSS value"),
+                        ));
+                    }
+                    declarations.push(format!("{css}: {text}"));
+                }
+                if !declarations.is_empty() {
+                    merge_attribute(attributes, "style", &declarations.join("; "), "; ");
+                }
+                continue;
+            }
+            if name == "class" {
+                let text = expression::to_display_string(&value)
+                    .map_err(|message| Diagnostic::new(*span, message))?;
+                if !text.trim().is_empty() {
+                    merge_attribute(attributes, "class", text.trim(), " ");
+                }
+                continue;
+            }
+            if own.contains(&name.to_ascii_lowercase())
+                || attributes
+                    .iter()
+                    .any(|existing| existing.name.eq_ignore_ascii_case(&name))
+            {
+                continue; // the element's own attribute wins
+            }
+            let rendered = match &value {
+                Value::Null | Value::Bool(false) if !name.starts_with("aria-") => continue,
+                Value::Bool(true) if !name.starts_with("aria-") => None,
+                Value::Bool(flag) => Some(flag.to_string()),
+                Value::Array(_) | Value::Object(_) => {
+                    return Err(Diagnostic::new(
+                        *span,
+                        format!("a spread can't write an object to the `{name}` attribute"),
+                    ));
+                }
+                other => Some(
+                    expression::to_display_string(other)
+                        .map_err(|message| Diagnostic::new(*span, message))?,
+                ),
+            };
+            if let Some(text) = &rendered {
+                if URL_ATTRIBUTES.contains(&name.to_ascii_lowercase().as_str()) {
+                    if text.trim().is_empty() {
+                        continue;
+                    }
+                    let as_attribute = ast::Attribute {
+                        name: name.clone(),
+                        value: AttributeValue::None,
+                        span: *span,
+                    };
+                    check_url(&as_attribute, text)?;
+                }
+            }
+            attributes.push(ir::Attribute {
+                name,
+                value: rendered.map(|text| vec![Part::Escaped(text)]),
+            });
+        }
+        Ok(())
+    }
+
     fn lower_attribute(
         &self,
         attribute: &ast::Attribute,
@@ -1739,6 +1931,46 @@ fn form_value_as_html(element: &mut ir::Element) {
         }
     }
     mark(&mut element.children, &value);
+}
+
+/// Add `text` to an attribute (`class`, `style`), or add the attribute.
+fn merge_attribute(attributes: &mut Vec<ir::Attribute>, name: &str, text: &str, separator: &str) {
+    match attributes
+        .iter_mut()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case(name))
+    {
+        Some(attribute) => {
+            let mut parts = attribute.value.take().unwrap_or_default();
+            let existing = joined_parts(&parts);
+            let glue = if existing.trim().is_empty() {
+                ""
+            } else if separator == "; " && existing.trim_end().ends_with(';') {
+                " "
+            } else {
+                separator
+            };
+            parts.push(Part::Escaped(format!("{glue}{text}")));
+            attribute.value = Some(parts);
+        }
+        None => attributes.push(ir::Attribute {
+            name: name.to_owned(),
+            value: Some(vec![Part::Escaped(text.to_owned())]),
+        }),
+    }
+}
+
+/// `fontSize` → `font-size`.
+fn kebab_case(name: &str) -> String {
+    let mut out = String::new();
+    for character in name.chars() {
+        if character.is_ascii_uppercase() {
+            out.push('-');
+            out.push(character.to_ascii_lowercase());
+        } else {
+            out.push(character);
+        }
+    }
+    out
 }
 
 fn joined_parts(parts: &[Part]) -> String {
@@ -2091,6 +2323,13 @@ pub(crate) fn unknown_child_prop(
     interface: &Interface,
     attribute: &ast::Attribute,
 ) -> Diagnostic {
+    if attribute.name == crate::parser::SPREAD {
+        return Diagnostic::new(
+            attribute.span,
+            format!("<{tag}> is an mnx component: pass each prop rather than spreading an object onto it"),
+        )
+        .with_help("a spread works on HTML elements and other libraries' custom elements");
+    }
     let prop_name = camel(&attribute.name);
     let names: Vec<&str> = interface
         .props

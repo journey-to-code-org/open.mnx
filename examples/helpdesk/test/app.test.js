@@ -188,6 +188,27 @@ test('the dashboard\'s charts are in the server\'s HTML: the registry components
   assert.match(await page.locator('donut-chart .pct').first().textContent(), /^\d+%$/);
   assert.match(await page.getByRole('img', { name: /^New tickets per day: / }).getAttribute('aria-label'), /: (up|down|flat)$/);
   assert.match(await page.locator('spark-line polyline').getAttribute('points'), /^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
-  assert.equal(await page.evaluate(() => document.body.innerHTML.includes('<!--[?-->')), false, 'nothing left for the browser');
+  // The one pending region is the streamed activity list, whose swap needs JavaScript.
+  assert.equal(await page.evaluate(() => document.body.innerHTML.split('<!--[?-->').length - 1), 1, 'nothing else left for the browser');
+  assert.equal(await page.textContent('recent-activity .pending'), 'Loading recent activity…');
+  await close();
+});
+
+test('the dashboard streams its recent activity: the page first, the list as the store answers, hydrated in place', async () => {
+  // The raw response: the whole page (through </html>) comes before the streamed region.
+  const { page, messages, close } = await as('u-sam');
+  const html = await page.evaluate(async () => (await fetch('/')).text());
+  const shellEnd = html.indexOf('</html>');
+  const swap = html.indexOf('<template data-mnx-swap=');
+  assert.ok(shellEnd > 0 && swap > shellEnd, 'the shell, then the swap');
+  assert.match(html.slice(0, shellEnd), /<recent-activity data-mnx-stream="0"[^>]*>[^]*<!--\[\?-->[^]*Loading recent activity…/);
+  assert.match(html.slice(swap), /<li><span class="who">[^<]+<\/span><a href="\/tickets\/\d+">/);
+  // In the browser: the list is there and hydrated, with no warnings.
+  await settle(page);
+  await page.waitForFunction(() => document.querySelector('recent-activity')?.matches(':state(hydrated)'));
+  const items = await text(page, 'recent-activity li .who');
+  assert.ok(items.length >= 3 && items.length <= 8, `${items.length} recent messages`);
+  assert.equal(await page.locator('recent-activity .pending').count(), 0);
+  assert.deepEqual(messages, []);
   await close();
 });

@@ -10,6 +10,7 @@
 // Paths count element and comment children only. The browser merges and drops text nodes, so
 // text is reached through its element (an only child) or through an empty-comment anchor.
 import { Signal } from './signal.js';
+import { wrap, raw } from './deep.js';
 import { effect, scope, root as rootScope, tick, batch } from './effect.js';
 import { RESOURCE } from './resource.js';
 
@@ -87,8 +88,14 @@ function hooks(name) {
  */
 export const signal = (value) => value;
 
+/** The original object behind reactive state (`let items = []` holds a proxy of the array). */
+export { raw };
+
 export const state = (value, options) => {
-  const signal = new Signal.State(value, options);
+  const signal = new Signal.State(wrap(value), options);
+  // An array or plain object assigned later is wrapped the same way, so `items = [...]` followed
+  // by `items.push(x)` keeps updating.
+  signal.set = (next) => Signal.State.prototype.set.call(signal, wrap(next));
   current?.states?.push(signal);
   return signal;
 };
@@ -114,7 +121,7 @@ export function from(source, start) {
   const linked = new Signal.Computed(() => {
     const base = latest.get();
     const own = assigned.get();
-    return own && own.base === base ? own.value : base.value;
+    return wrap(own && own.base === base ? own.value : base.value);
   });
   linked.set = (value) => assigned.set({ base: untrack(() => latest.get()), value });
   current?.states?.push(linked);
@@ -661,6 +668,10 @@ function bind(part, node, hydrating, context) {
     // The handler is read when the event fires, so swapping it never re-subscribes.
     const [listener, options] = listen(part, node);
     node.addEventListener(part.on, listener, options);
+  } else if (part.bind) {
+    // A part whose code lives in its own entry (`{...spread}`: @mnx/runtime/spread), so
+    // components that don't use it don't load it.
+    part.bind(part, node);
   } else if (part.classes) {
     // A computed class beside class: toggles: token by token, leaving the toggles' alone.
     let previous = [];
@@ -1170,6 +1181,9 @@ function bindEach(part, open, hydrating, context) {
       if (list != null) console.error('mnx: mnx-each items must be an array; got', list);
       list = [];
     }
+    // Reactive state (deep.js) tracks by property: reading the length and each index here means
+    // `items.push(x)`, `items.splice(…)` and `items[i] = x` re-run this effect.
+    for (let index = 0, { length } = list; index < length; index++) list[index];
     const hydrate = first;
     first = false;
     untrack(() => {

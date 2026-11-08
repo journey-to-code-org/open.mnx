@@ -109,10 +109,18 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
                 .collect::<Vec<_>>()
         })
         .collect();
+    // Every name the script's imports bind (the body has them taken out).
+    let imported: Vec<String> = component
+        .script
+        .imports
+        .iter()
+        .flat_map(|import| crate::reactive::imported_names(&import.text))
+        .collect();
     let script = crate::reactive::rewrite_script(
         &component.script.body,
         &prop_names,
         &makers,
+        &imported,
         &component.script.from,
         component
             .script
@@ -276,8 +284,29 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         out.push_str(",\n");
     }
     out.push_str("    ];\n  },\n});\n");
+    // A spread's binder comes from `@mnx/runtime/spread`, imported only when the template uses one.
+    if out.contains(&format!("bind: {SPREAD_BINDER}")) {
+        let header_end = out.find('\n').map_or(0, |at| at + 1);
+        // `@mnx/runtime` → `@mnx/runtime/spread`; a file (`/vendor/mnx/index.js`) → its sibling.
+        let spread_module = match options.runtime.rsplit_once('/') {
+            Some((directory, file)) if file.ends_with(".js") || file.ends_with(".mjs") => {
+                format!("{directory}/spread.js")
+            }
+            _ => format!("{}/spread", options.runtime.trim_end_matches('/')),
+        };
+        out.insert_str(
+            header_end,
+            &format!(
+                "import {{ spread as {SPREAD_BINDER} }} from {};\n",
+                json(&spread_module)
+            ),
+        );
+    }
     Ok(out)
 }
+
+/// The local name of `@mnx/runtime/spread`'s binder in compiled modules.
+const SPREAD_BINDER: &str = "$spread";
 
 /// The children `component` imports, as its emitter needs them.
 /// The checks the HTML backend runs on a child component's attributes, with the values known at
@@ -793,7 +822,45 @@ impl<'a> Emitter<'a> {
         let custom = element.name.contains('-');
         self.template.push('<');
         self.template.push_str(&element.name);
+        // What the element binds itself, which a spread leaves alone (an explicit attribute wins).
+        let own: Vec<String> = element
+            .attributes
+            .iter()
+            .filter(|attribute| attribute.name != crate::parser::SPREAD)
+            .map(|attribute| {
+                let lower = attribute.name.to_ascii_lowercase();
+                match lower.split_once('.') {
+                    Some((name, _)) if is_event_attribute(name) => name.to_owned(),
+                    _ => lower,
+                }
+            })
+            .collect();
         for attribute in &element.attributes {
+            if attribute.name == crate::parser::SPREAD {
+                if let Some(info) = child {
+                    let _ = info;
+                    return Err(Diagnostic::new(
+                        attribute.span,
+                        format!("<{}> is an mnx component: pass each prop rather than spreading an object onto it", element.name),
+                    )
+                    .with_help("a spread works on HTML elements and other libraries' custom elements"));
+                }
+                let AttributeValue::Expression(expression, _) = &attribute.value else {
+                    unreachable!("a spread is always an expression");
+                };
+                // `bind`: the code that applies it, from its own runtime entry, so components
+                // without a spread don't load it.
+                let body = format!(
+                    "spread: () => {}, own: [{}], bind: {SPREAD_BINDER}",
+                    self.js(expression),
+                    own.iter()
+                        .map(|name| json(name))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                self.parts.push(JsPart::at(path, body));
+                continue;
+            }
             let lower = attribute.name.to_ascii_lowercase();
             let prop = validate::camel(&lower);
             // A prop of a known child component: always passed as a property value.

@@ -1,0 +1,11 @@
+<!-- Reviews that a streaming server sends after the page. -->
+<review-list reviews={[]} heading="Reviews">
+  <h2>{heading}</h2>
+  <mnx-await value={reviews}>
+    <p class="loading">Loading…</p>
+    <mnx-then as="list">
+      <ul><mnx-each items={list} as="r" key={r.id}><li>{r.name}: {r.stars}</li></mnx-each></ul>
+    </mnx-then>
+    <mnx-catch as="error"><p class="error">{error.message}</p></mnx-catch>
+  </mnx-await>
+</review-list>

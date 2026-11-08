@@ -1,6 +1,6 @@
 {
   "name": "@mnx/runtime",
-  "version": "3.0.0",
+  "version": "3.6.0",
   "description": "Browser runtime for mnx compiled components, built on the TC39 Signals API",
   "license": "ISC",
   "repository": {
@@ -24,6 +24,21 @@
       "types": "./types/effect.d.ts",
       "production": "./dist/production/effect.js",
       "default": "./src/effect.js"
+    },
+    "./spread": {
+      "types": "./types/spread.d.ts",
+      "production": "./dist/production/spread.js",
+      "default": "./src/spread.js"
+    },
+    "./zag": {
+      "types": "./types/zag.d.ts",
+      "production": "./dist/production/zag.js",
+      "default": "./src/zag.js"
+    },
+    "./primitives": {
+      "types": "./types/primitives.d.ts",
+      "production": "./dist/production/primitives.js",
+      "default": "./src/primitives.js"
     },
     "./react": {
       "types": "./types/react.d.ts",
@@ -57,6 +72,7 @@
   "peerDependencies": {
     "@angular/core": ">=16",
     "@angular/forms": ">=16",
+    "@zag-js/vanilla": ">=1.47",
     "react": ">=18",
     "vue": "^3.3"
   },
@@ -65,6 +81,9 @@
       "optional": true
     },
     "@angular/forms": {
+      "optional": true
+    },
+    "@zag-js/vanilla": {
       "optional": true
     },
     "react": {
@@ -83,6 +102,8 @@
     "@angular/platform-browser": "22.2.5",
     "@babel/core": "8.1.0",
     "@types/react": "19.3.0",
+    "@zag-js/combobox": "1.47.0",
+    "@zag-js/vanilla": "1.47.0",
     "ajv": "^8.20.0",
     "custom-elements-manifest": "^2.1.0",
     "esbuild": "0.28.2",

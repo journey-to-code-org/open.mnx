@@ -9,8 +9,14 @@ export type MaybeSignal<T> = T | Signal.State<T> | Signal.Computed<T>;
 
 // ---- state ----------------------------------------------------------------------------------
 
-/** A writable signal (`Signal.State`). */
+/**
+ * A writable signal (`Signal.State`). An array or plain object is held as a reactive proxy, so
+ * mutating it (`push`, `splice`, a property write) updates what read that property; `raw()` gives
+ * the original back.
+ */
 export declare function state<T>(value: T, options?: Signal.Options<T>): Signal.State<T>;
+/** The original object behind reactive state's proxy, or the value itself. */
+export declare function raw<T>(value: T): T;
 /** A derived signal (`Signal.Computed`); what it reads is tracked automatically. */
 export declare function computed<T>(fn: () => T, options?: Signal.Options<T>): Signal.Computed<T>;
 /** Call `callback(next, previous)` when `source` changes (not on the first run). */

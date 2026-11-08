@@ -17,7 +17,9 @@ async function launch() {
   window = await app.firstWindow();
   window.on('pageerror', (error) => errors.push(error.message));
   window.on('console', (message) => ['error', 'warning'].includes(message.type()) && errors.push(message.text()));
-  await window.clock.install();
+  // At noon on a fixed day, so the half hour of fake time the tests run never crosses midnight
+  // ("Today" would lose the session after the restart when CI ran just before it).
+  await window.clock.install({ time: new Date(2026, 2, 10, 12) });
   await window.reload();
   await window.waitForSelector('body[data-ready]');
 }

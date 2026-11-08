@@ -29,6 +29,17 @@ Templates are HTML with `{expressions}` and a few elements that start with `mnx-
 
 - `mnx-if` switches only when the chosen branch changes.
 - `mnx-each` with a `key` moves rows when the list reorders, along with their DOM state (focus, a half-typed input). Changing one item updates only that row.
+- Mutate the list the ordinary way: `items.push({ … })`, `items.splice(i, 1)`, `item.done = !item.done`. State tracks each property, so a push adds one row and a write to one item updates one row. (Reassigning, `items = items.filter(…)`, works too.)
+
+## Spreading attributes
+
+`{...object}` puts an object's entries on an element: attributes, `on<Name>` listeners and properties such as `value`. It's how a headless library (Zag.js, for one) hands you a widget's behaviour:
+
+```html
+<input {...api.getInputProps()} class="field">
+```
+
+An attribute written on the element wins over the same key in the spread, and a spread can't do anything an attribute couldn't (no handler as text, no `style` text, no unsafe URLs, no `innerHTML`).
 
 ## Classes and styles
 

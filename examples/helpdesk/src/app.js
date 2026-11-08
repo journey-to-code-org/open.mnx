@@ -43,7 +43,11 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
     const data = { ...res.locals, ...locals, mnx: components.render, user: res.locals.user };
     const body = await ejs.renderFile(join(VIEWS, `${view}.ejs`), data, { async: false });
     const html = await ejs.renderFile(join(VIEWS, 'layout.ejs'), { ...data, body });
-    res.status(status).type('html').send(components.finish(html));
+    res.status(status).type('html');
+    // A component given a promise as a prop (the dashboard's recent activity) is pending in the
+    // page; the rest streams in as the promise settles.
+    if (components.pending) components.stream(html).pipe(res);
+    else res.send(components.finish(html));
   }
 
   const requireUser = (req, res, next) => (req.user ? next() : res.redirect(303, `/login?next=${encodeURIComponent(req.originalUrl)}`));
@@ -51,6 +55,22 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
 
   // Display shapes for the components.
   const names = async () => Object.fromEntries((await store.listUsers()).map((user) => [user.id, user]));
+  /** The last eight messages across every ticket, newest first (a promise: the page streams it). */
+  const recentActivity = async (people, at) => {
+    const tickets = await store.listTickets({});
+    const hours = (ms) => Math.max(0, Math.round((at - ms) / 3600000));
+    return tickets
+      .flatMap((ticket) => ticket.messages.filter((message) => !message.internal).map((message) => ({ ticket, message })))
+      .sort((a, b) => b.message.at - a.message.at)
+      .slice(0, 8)
+      .map(({ ticket, message }) => ({
+        id: `${ticket.id}:${message.id}`,
+        who: people[message.author]?.name ?? '?',
+        subject: ticket.subject,
+        href: `/tickets/${ticket.id}`,
+        ago: hours(message.at) < 1 ? 'just now' : `${hours(message.at)}h ago`,
+      }));
+  };
   const row = (ticket, people, at) => ({
     id: ticket.id,
     subject: ticket.subject,
@@ -90,9 +110,13 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
     }
     const stats = await store.stats(at);
     const queue = (await store.listTickets({})).filter((ticket) => ticket.status !== 'solved' && (ticket.assignee === req.user.id || !ticket.assignee));
+    // Streamed: the dashboard doesn't wait for the activity list (`recent-activity` shows
+    // "loading" until it arrives, then hydrates the list in place).
+    const activity = recentActivity(people, at);
     await page(res, 'dashboard', {
       title: 'Dashboard',
       stats,
+      activity,
       segments: [
         { label: 'Open', value: stats.byStatus.open, tone: 0 },
         { label: 'Pending', value: stats.byStatus.pending, tone: 2 },

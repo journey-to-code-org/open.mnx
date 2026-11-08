@@ -27,9 +27,11 @@ export function compiler(...args) {
 
 /**
  * Register setup and teardown. `components` maps module names to `.mnx` paths; `files` maps
- * extra served paths to their contents (plain modules a component imports, …).
+ * extra served paths to their contents (plain modules a component imports, …); `imports` adds
+ * to the pages' import map (bare specifiers for those modules).
  */
-export function useBrowser(components, files = {}) {
+export function useBrowser(components, files = {}, imports = {}) {
+extraImports = imports;
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   site = mkdtempSync(join(tmpdir(), 'mnx-browser-'));
@@ -66,11 +68,12 @@ after(async () => {
 }
 
 let pageCount = 0;
+let extraImports = {};
 /** Open a page with `body`; `modules` are imported after the body is in place. */
 export async function open(body, { modules = [], beforeModules = '' } = {}) {
   const path = `/page-${++pageCount}.html`;
   pages.set(path, `<!doctype html><meta charset="utf-8">
-<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js" } }</script>
+<script type="importmap">${JSON.stringify({ imports: { '@mnx/runtime': '/runtime/index.js', '@mnx/runtime/spread': '/runtime/spread.js', '@mnx/runtime/primitives': '/runtime/primitives.js', ...extraImports } })}</script>
 <script>window.lifecycle = []; window.messages = [];</script>
 <body>${body}</body>
 <script type="module">

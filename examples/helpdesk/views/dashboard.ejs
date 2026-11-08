@@ -19,5 +19,9 @@
     <p class="muted"><%= stats.perDay.reduce((a, b) => a + b, 0) %> in the last two weeks</p>
   </div>
 </section>
+<section class="panel">
+  <h2>Recent activity</h2>
+  <%- mnx('recent-activity', { events: activity, label: 'Recent activity' }) %>
+</section>
 <h2>Your queue <small class="muted">assigned to you, or to no one</small></h2>
 <%- mnx('ticket-table', { tickets: queue }) %>
