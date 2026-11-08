@@ -873,6 +873,12 @@ impl Context<'_> {
         for node in nodes {
             match node {
                 ast::Node::Text(parts) => self.resolve_parts(parts, scopes)?,
+                ast::Node::Element(element) if element.name.eq_ignore_ascii_case("zb-pending") => {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "zb-pending is only valid as the first child of zb-await",
+                    ));
+                }
                 ast::Node::Element(element) => {
                     for attribute in &element.attributes {
                         match &attribute.value {
@@ -907,7 +913,7 @@ impl Context<'_> {
                     ..
                 } => {
                     self.resolve_expression(items, *items_span, scopes)?;
-                    scopes.push(std::iter::once(item.clone()).chain(index.clone()).collect());
+                    scopes.push(bound_names(item).into_iter().chain(index.clone()).collect());
                     let result = match key {
                         Some((key, key_span)) => self.resolve_expression(key, *key_span, scopes),
                         None => Ok(()),
@@ -937,12 +943,29 @@ impl Context<'_> {
                     pending,
                     then,
                     catch,
+                    delay,
                     ..
                 } => {
                     self.resolve_expression(value, *value_span, scopes)?;
+                    if let Some((delay, span)) = delay {
+                        self.resolve_expression(delay, *span, scopes)?;
+                    }
                     self.resolve_nodes(pending, scopes)?;
-                    for branch in then.iter().chain(catch) {
-                        scopes.push(branch.name.iter().cloned().collect());
+                    for (branch, caught) in then
+                        .iter()
+                        .map(|b| (b, false))
+                        .chain(catch.iter().map(|b| (b, true)))
+                    {
+                        let mut names: Vec<String> = branch
+                            .name
+                            .iter()
+                            .flat_map(|name| bound_names(name))
+                            .collect();
+                        // `retry()` in zb-catch runs the value again (4.2).
+                        if caught {
+                            names.push("retry".to_owned());
+                        }
+                        scopes.push(names);
                         let result = self.resolve_nodes(&branch.children, scopes);
                         scopes.pop();
                         result?;
@@ -1248,7 +1271,7 @@ impl Context<'_> {
                 let mut output = vec![Node::Open];
                 let mut keys = HashSet::new();
                 for (position, entry) in list.into_iter().enumerate() {
-                    let mut scope = vec![(item.clone(), entry)];
+                    let mut scope = destructure(item, &entry);
                     if let Some(index) = index {
                         scope.push((index.clone(), Value::from(position)));
                     }
@@ -1395,7 +1418,7 @@ impl Context<'_> {
                             branch
                                 .name
                                 .iter()
-                                .map(|name| (name.clone(), resolved.clone()))
+                                .flat_map(|name| destructure(name, &resolved))
                                 .collect(),
                         );
                         let lowered = self.lower_block(&branch.children, state, true);
@@ -2544,4 +2567,43 @@ pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
         }
     }
     table[a.len()][b.len()]
+}
+
+/// The names an `as` binds: itself, or a pattern's names.
+fn bound_names(text: &str) -> Vec<String> {
+    if crate::ast::is_pattern(text) {
+        crate::ast::bindings(text)
+            .map(|names| names.into_iter().map(|(name, _)| name).collect())
+            .unwrap_or_default()
+    } else {
+        vec![text.trim().to_owned()]
+    }
+}
+
+/// An `as` bound to a value known at build time: each name with the part of the value its path
+/// reaches (`null` where the value has no such property or index, as JavaScript gives
+/// `undefined`).
+fn destructure(text: &str, value: &Value) -> Vec<(String, Value)> {
+    if !crate::ast::is_pattern(text) {
+        return vec![(text.trim().to_owned(), value.clone())];
+    }
+    crate::ast::bindings(text)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, path)| {
+            let mut current = value;
+            for step in &path {
+                current = match (step, current) {
+                    (crate::ast::Step::Key(key), Value::Object(map)) => {
+                        map.get(key).unwrap_or(&Value::Null)
+                    }
+                    (crate::ast::Step::Index(index), Value::Array(list)) => {
+                        list.get(*index).unwrap_or(&Value::Null)
+                    }
+                    _ => &Value::Null,
+                };
+            }
+            (name, current.clone())
+        })
+        .collect()
 }

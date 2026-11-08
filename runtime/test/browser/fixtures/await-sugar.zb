@@ -1,0 +1,35 @@
+<!-- 4.2's zb-await: zb-pending, an array of a resource and a promise, destructuring, retry,
+  delay and keep. The page controls timing through `window.wait` and `window.failNext`. -->
+<script>
+  import { resource } from '@zubra/runtime'
+  let attempts = 0
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const user = resource(async () => {
+    attempts++
+    await sleep(window.wait ?? 0)
+    if (window.failNext) {
+      window.failNext = false
+      throw new Error("down")
+    }
+    return { name: "Ada" }
+  })
+  const posts = () => {
+    window.calls = (window.calls ?? 0) + 1
+    return sleep(window.wait ?? 0).then(() => ["a", "b"])
+  }
+</script>
+<zb-loader>
+  <zb-await value={[user, posts()]} delay={100} keep>
+    <zb-pending><p class="pending">Loading…</p></zb-pending>
+    <zb-then as="[{ name }, list]">
+      <p class="done">{name}: {list.length}</p>
+      <button class="reload" onclick={() => user.refresh()}>Reload</button>
+    </zb-then>
+    <zb-catch as="{ message }">
+      <p class="error">{message}</p>
+      <button class="retry" onclick={retry}>Retry</button>
+    </zb-catch>
+  </zb-await>
+  <p class="attempts">{attempts}</p>
+  <zb-await {user}><zb-then as="u"><i class="short">{u.name}</i></zb-then></zb-await>
+</zb-loader>

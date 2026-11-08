@@ -614,6 +614,26 @@ impl<'a> TemplateParser<'a> {
                 return Err(self.error("unterminated start tag"));
             }
             let attribute_span = self.current_span();
+            if !self.html
+                && self.starts_with("{")
+                && name.eq_ignore_ascii_case("zb-await")
+                && !self.cursor.rest()[1..].trim_start().starts_with("...")
+            {
+                // `<zb-await {user}>` is `<zb-await value={user}>` (4.2).
+                let (expression, span) = self.parse_braced_expression()?;
+                if !seen.insert("value".to_owned()) {
+                    return Err(Diagnostic::new(
+                        attribute_span,
+                        "duplicate attribute `value`",
+                    ));
+                }
+                attributes.push(Attribute {
+                    name: "value".to_owned(),
+                    value: AttributeValue::Expression(expression, span),
+                    span: attribute_span,
+                });
+                continue;
+            }
             if !self.html && self.starts_with("{") {
                 let (expression, span) = self.parse_spread()?;
                 attributes.push(Attribute {
@@ -642,6 +662,22 @@ impl<'a> TemplateParser<'a> {
                         .cursor
                         .take_while(|byte| !byte.is_ascii_whitespace() && byte != b'>');
                     AttributeValue::Text(vec![Part::Literal(value.to_owned())])
+                } else if (self.starts_with("\"") || self.starts_with("'"))
+                    && !self.html
+                    && attribute_name.eq_ignore_ascii_case("as")
+                    && ["zb-each", "zb-then", "zb-catch"]
+                        .iter()
+                        .any(|directive| name.eq_ignore_ascii_case(directive))
+                {
+                    // `as="{ name, email }"`: braces in `as` are a pattern, not an interpolation.
+                    let quote = self.cursor.peek_byte().unwrap_or(b'"');
+                    self.advance(1);
+                    let raw = self.cursor.take_while(|byte| byte != quote);
+                    if self.cursor.is_at_end() {
+                        return Err(self.error("unterminated attribute value"));
+                    }
+                    self.advance(1);
+                    AttributeValue::Text(vec![Part::Literal(raw.to_owned())])
                 } else if self.starts_with("\"") || self.starts_with("'") {
                     let quote = self.cursor.peek_byte().unwrap_or(b'"') as char;
                     self.advance(1);
@@ -917,16 +953,20 @@ impl<'a> TemplateParser<'a> {
                     .strip_prefix('(')
                     .and_then(|rest| rest.strip_suffix(')'))
                     .unwrap_or(parameters);
-                let names: Vec<&str> = parameters.split(',').map(str::trim).collect();
+                let names = split_top_level(parameters);
+                let bindable = |item: &str| {
+                    is_identifier(item)
+                        || crate::ast::is_pattern(item) && crate::ast::bindings(item).is_ok()
+                };
                 let (item, index) = match names.as_slice() {
-                    [item] if is_identifier(item) => (item.to_string(), None),
-                    [item, index] if is_identifier(item) && is_identifier(index) && item != index => {
+                    [item] if bindable(item) => (item.to_string(), None),
+                    [item, index] if bindable(item) && is_identifier(index) && item != index => {
                         (item.to_string(), Some(index.to_string()))
                     }
                     _ => {
                         return Err(Diagnostic::new(
                             span_of(call),
-                            "the .map() callback takes the item, and optionally its index: (item) or (item, i); for anything else use <zb-each>",
+                            "the .map() callback takes the item (a name or a { … } / [ … ] pattern), and optionally its index: (item) or (item, i); for anything else use <zb-each>",
                         ))
                     }
                 };
@@ -1549,6 +1589,42 @@ impl TopLevel {
     }
 }
 
+/// `a, { b, c }, d` split at its top-level commas, each part trimmed.
+fn split_top_level(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let (mut depth, mut start) = (0i32, 0);
+    for (i, byte) in text.bytes().enumerate() {
+        match byte {
+            b'{' | b'[' | b'(' => depth += 1,
+            b'}' | b']' | b')' => depth -= 1,
+            b',' if depth == 0 => {
+                parts.push(text[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(text[start..].trim());
+    parts
+}
+
+/// An `as`: a name, or a destructuring pattern (4.2).
+fn check_binding(text: &str, span: Span, what: &str) -> Result<(), Diagnostic> {
+    if crate::ast::is_pattern(text) {
+        return crate::ast::bindings(text)
+            .map(|_| ())
+            .map_err(|message| Diagnostic::new(span, format!("{what}: {message}")));
+    }
+    if is_identifier(text.trim()) {
+        Ok(())
+    } else {
+        Err(Diagnostic::new(
+            span,
+            format!("{what} must be a valid identifier, or a {{ … }} or [ … ] pattern"),
+        ))
+    }
+}
+
 const CONDITIONS: [&str; 3] = ["zb-if", "zb-else-if", "zb-else"];
 
 /// A condition written as an attribute: `<p zb-if={…}>`, `<p zb-else-if={…}>`, `<p zb-else>`.
@@ -1790,20 +1866,16 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
             allow_attributes(&element, &["items", "as", "index", "key"])?;
             let (items, items_span) = required_expression(&element, "items")?;
             let item = required_text(&element, "as")?;
-            if !is_identifier(&item) {
-                return Err(Diagnostic::new(
-                    element.span,
-                    "zb-each as must be a valid identifier",
-                ));
-            }
+            check_binding(&item, element.span, "zb-each as")?;
             let index = optional_text(&element, "index")?;
-            if index
-                .as_deref()
-                .is_some_and(|index| !is_identifier(index) || index == item)
-            {
+            if index.as_deref().is_some_and(|index| {
+                !is_identifier(index)
+                    || crate::ast::bindings(&item)
+                        .is_ok_and(|names| names.iter().any(|(name, _)| name == index))
+            }) {
                 return Err(Diagnostic::new(
                     element.span,
-                    "zb-each index must be a valid identifier different from `as`",
+                    "zb-each index must be a valid identifier different from `as` and the names it binds",
                 ));
             }
             let key = find(&element, "key")
@@ -1838,13 +1910,40 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
             })
         }
         "zb-await" => {
-            allow_attributes(&element, &["value"])?;
+            allow_attributes(&element, &["value", "delay", "keep"])?;
             let (value, value_span) = required_expression(&element, "value")?;
+            let delay = match find(&element, "delay") {
+                Some(_) => Some(required_expression(&element, "delay")?),
+                None => None,
+            };
+            let keep = match find(&element, "keep") {
+                Some(attribute) if attribute.value == AttributeValue::None => true,
+                Some(attribute) => {
+                    return Err(Diagnostic::new(
+                        attribute.span,
+                        "`keep` takes no value: <zb-await value={…} keep>",
+                    ))
+                }
+                None => false,
+            };
             let mut pending = Vec::new();
+            let mut named_pending = false;
             let mut then = None;
             let mut catch = None;
             for child in element.children {
                 match child {
+                    // `<zb-pending>`: the pending content, named (4.2).
+                    Node::Element(pending_element) if pending_element.name.eq_ignore_ascii_case("zb-pending") => {
+                        allow_attributes(&pending_element, &[])?;
+                        if named_pending || then.is_some() || catch.is_some() || pending.iter().any(|node| !matches!(node, Node::Text(parts) if is_blank(parts))) {
+                            return Err(Diagnostic::new(
+                                pending_element.span,
+                                "zb-await takes one <zb-pending>, first, instead of pending content written straight inside it",
+                            ));
+                        }
+                        named_pending = true;
+                        pending = pending_element.children;
+                    }
                     Node::Settled { caught, branch } => {
                         let slot = if caught { &mut catch } else { &mut then };
                         if slot.is_some() {
@@ -1858,11 +1957,18 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                     Node::Text(parts)
                         if (then.is_some() || catch.is_some())
                             && parts.iter().all(|part| matches!(part, Part::Literal(text) if text.trim().is_empty())) => {}
+                    Node::Text(parts) if named_pending && is_blank(&parts) => {}
                     child => {
                         if then.is_some() || catch.is_some() {
                             return Err(Diagnostic::new(
                                 element.span,
                                 "zb-await's pending content comes first, then zb-then and zb-catch",
+                            ));
+                        }
+                        if named_pending {
+                            return Err(Diagnostic::new(
+                                element.span,
+                                "with a <zb-pending>, the pending content goes inside it",
                             ));
                         }
                         pending.push(child);
@@ -1875,17 +1981,16 @@ fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
                 pending,
                 then,
                 catch,
+                delay,
+                keep,
                 span: element.span,
             })
         }
         "zb-then" | "zb-catch" => {
             allow_attributes(&element, &["as"])?;
             let name = optional_text(&element, "as")?;
-            if name.as_deref().is_some_and(|name| !is_identifier(name)) {
-                return Err(Diagnostic::new(
-                    element.span,
-                    format!("{lower} as must be a valid identifier"),
-                ));
+            if let Some(name) = &name {
+                check_binding(name, element.span, &format!("{lower} as"))?;
             }
             Ok(Node::Settled {
                 caught: lower == "zb-catch",

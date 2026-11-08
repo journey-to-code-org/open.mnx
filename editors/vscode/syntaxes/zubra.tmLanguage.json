@@ -232,7 +232,7 @@
       ]
     },
     "directive": {
-      "begin": "(</?)(zb-(?:if|else|each|slot|await|then|catch))\\b",
+      "begin": "(</?)(zb-(?:if|else|each|slot|await|pending|then|catch))\\b",
       "beginCaptures": {
         "1": {
           "name": "punctuation.definition.tag.begin.html"

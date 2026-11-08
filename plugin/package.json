@@ -1,6 +1,6 @@
 {
   "name": "@zubra/unplugin",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Compile .zb components in Vite, Rollup, webpack, esbuild and Rspack, with React and Vue wrappers picked automatically",
   "license": "ISC",
   "repository": {
@@ -34,8 +34,8 @@
     "unplugin": "3.7.0"
   },
   "peerDependencies": {
-    "@zubra/compiler": "^4.1.0",
-    "@zubra/runtime": "^4.1.0"
+    "@zubra/compiler": "^4.2.0",
+    "@zubra/runtime": "^4.2.0"
   },
   "devDependencies": {
     "@zubra/compiler": "file:../compiler",

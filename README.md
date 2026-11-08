@@ -257,15 +257,19 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 </script>
 <zb-user id="1">
   <zb-await value={user}>
-    <p>Loading…</p>
+    <zb-pending><p>Loading…</p></zb-pending>
     <zb-then as="data"><h2>{data.name}</h2></zb-then>
-    <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>
+    <zb-catch as="error"><p class="error">{error.message} <button onclick={retry}>Try again</button></p></zb-catch>
   </zb-await>
 </zb-user>
 ```
 
 - **The fetcher re-runs** when a signal it read before its first `await` changes (here the `id` prop). A new run aborts the previous one through the `AbortSignal` it was given, and so does the element's removal. An answer that arrives after a newer run started is dropped. While a new run is pending, `value` keeps the previous result.
-- **`<zb-await value={…}>`** shows its content while the value is pending, then `<zb-then as="name">` with the resolved value, or `<zb-catch as="name">` with the error. Both are optional. It takes a promise, a `resource()` (followed through its states, so a reload shows the pending content again) or a plain value (`zb-then` at once). Only the latest value's outcome is shown.
+- **`<zb-await value={…}>`** shows `<zb-pending>` while the value is pending, then `<zb-then as="name">` with the resolved value, or `<zb-catch as="name">` with the error. All three are optional, and pending content written straight inside, before `<zb-then>`, works as `<zb-pending>` does. It takes a promise, a `resource()` (followed through its states, so a reload shows the pending content again) or a plain value (`zb-then` at once). Only the latest value's outcome is shown. `<zb-await {user}>` is short for `value={user}`.
+- **Several values at once** (since 4.2): an array `value={[user, posts]}` waits for every promise and resource in it, as `Promise.all` does, and resolves to the array of their values; any rejection goes to `zb-catch`.
+- **Destructuring** (since 4.2): `as` on `zb-then`, `zb-catch` and `zb-each`, and the item of `.map()` in braces, can be a pattern: `as="[{ name }, list]"`, `as="{ message }"`, `as="{ id, address: { city } }"`. Names, renames (`{ id: key }`), nesting and holes work. Defaults and rest elements are errors; use `??` where the value is read.
+- **`retry()`** (since 4.2), in `zb-catch`, refreshes the value's resources and evaluates the value again, so `value={load()}` calls `load()` again.
+- **`delay={ms}`** (since 4.2) shows the pending content only once the value has been pending that long, so a quick answer doesn't flash a spinner. **`keep`** keeps the settled content while a resource reloads, and the host has `:state(loading)` meanwhile, for a dimmed or spinning style.
 - **On the server**, a value known at build time renders `zb-then`. Otherwise the pending content is rendered in a region the element renders itself once the value settles.
 
 ## Slots

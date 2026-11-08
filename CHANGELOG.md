@@ -2,6 +2,28 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 4.2.0 — 2026-11-08
+
+Async that reads well (`plan/roadmap-4.x.md`, 4.2). Additive: every 4.1 component compiles and runs as before.
+
+### Added
+
+- **`<zb-pending>`** names `<zb-await>`'s pending content. Content written straight inside still works the same way.
+- **`<zb-await {user}>`** is short for `value={user}`.
+- **An array value** (`value={[user, posts]}`) waits for every promise and resource in it, as `Promise.all` does, and resolves to the array of their values. Any rejection goes to `zb-catch`. The value is evaluated again only when what it reads changes, so a resource settling doesn't call `posts()` again.
+- **Destructuring in `as`**, on `zb-then`, `zb-catch` and `zb-each`, and for the item of `.map()` in braces:
+  - for example `as="[{ name }, list]"`, `as="{ message }"` or `as="{ id, address: { city } }"`;
+  - names, renames, nesting and holes work;
+  - defaults and rest elements are errors that say why;
+  - each name reads through the row's or the branch's signal, so it stays reactive, and a value known at build time is destructured on the server.
+- **`retry()`** in `zb-catch` refreshes the value's resources and evaluates the value again.
+- **`delay={ms}`** shows the pending content only once the value has been pending that long. Until then the previous content stays, or nothing the first time.
+- **`keep`** keeps the settled content while a resource reloads, instead of showing the pending content again. The host has `:state(loading)` meanwhile.
+- **Tools and examples:**
+  - the language server and the grammar know `zb-pending`, `delay` and `keep`;
+  - the README, the guide's async page and the skill describe all of this;
+  - the help desk's recent activity and the recipe reviews use `<zb-pending>`, and the reviews retry on an error.
+
 ## 4.1.0 — 2026-11-07
 
 Conditions without wrappers (`plan/roadmap-4.x.md`, 4.1). Additive: every 4.0 component compiles as before, unless it has a `zb-` attribute on an element, which 4.0 silently ignored.

@@ -10,7 +10,7 @@ fn renders_the_pending_content_and_emits_three_blocks() {
         "<zb-x><!--[?--><p>x…</p><!--]--></zb-x>"
     );
     let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
-    assert!(js.contains(r#"await: () => $r(data), blocks: [{ template: "<p></p>", parts: () => [{ path: [0], text: () => $t($p.label) + "…" }] }, { template: "<b></b>", parts: (user) => [{ path: [0], text: () => $t($r(user).name) }] }, { template: "<i></i>", parts: (e) => [{ path: [0], text: () => $t($r(e).message) }] }]"#), "{js}");
+    assert!(js.contains(r#"await: () => $r(data), blocks: [{ template: "<p></p>", parts: () => [{ path: [0], text: () => $t($p.label) + "…" }] }, { template: "<b></b>", parts: (user) => [{ path: [0], text: () => $t($r(user).name) }] }, { template: "<i></i>", parts: (e, retry) => [{ path: [0], text: () => $t($r(e).message) }] }]"#), "{js}");
     let without = compile_js(
         "<zb-x v={1}><zb-await value={v}><zb-then><b>ok</b></zb-then></zb-await></zb-x>",
         "@zubra/runtime",
@@ -58,4 +58,47 @@ fn a_value_known_at_build_time_renders_zb_then() {
         compile("<zb-x user={{ name: \"Ada\" }}><zb-await value={user}><p>…</p><zb-then as=\"u\"><b>{u.name}</b></zb-then></zb-await></zb-x>", r#"{"user":{"name":"Grace"}}"#).unwrap(),
         "<zb-x user=\"{&quot;name&quot;:&quot;Grace&quot;}\"><!--[--><b>Grace</b><!--]--></zb-x>"
     );
+}
+
+#[test]
+fn named_pending_shorthand_patterns_delay_and_keep() {
+    // `<zb-pending>` and pending content written straight inside are the same thing.
+    let named = compile_js("<zb-x data={null}>\n  <zb-await {data} delay={150} keep><zb-pending><p>…</p></zb-pending><zb-then as=\"{ name, tags: [first] }\"><b>{name} {first}</b></zb-then><zb-catch as=\"e\"><button onclick={retry}>{e.message}</button></zb-catch></zb-await>\n</zb-x>", "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        named.contains("await: () => $p.data, blocks: [{ template: \"<p>…</p>\""),
+        "{named}"
+    );
+    assert!(named.contains("parts: ($b0_0) => [{ path: [0], text: () => $t($r($b0_0).name) + \" \" + $t($r($b0_0).tags[0]) }]"), "{named}");
+    assert!(
+        named.contains(
+            "parts: (e, retry) => [{ path: [0], on: \"click\", handler: () => $r(retry) }"
+        ),
+        "{named}"
+    );
+    assert!(named.contains("delay: () => 150, keep: true"), "{named}");
+    // A value known at build time renders zb-then, destructured.
+    let html = compile("<zb-x>\n  <zb-await value={{ name: \"Ada\", tags: [\"x\"] }}><zb-pending>…</zb-pending><zb-then as=\"{ name, tags: [first] }\">{name}/{first}</zb-then></zb-await>\n</zb-x>", "{}").unwrap();
+    assert!(html.contains("<!--[--><!---->Ada/x<!--]-->"), "{html}");
+    let rows = compile("<zb-x>\n  <zb-each items={[{ id: 1, at: { city: \"Oslo\" } }]} as=\"{ id, at: { city } }\" index=\"i\" key={id}><i>{i}{id}{city}</i></zb-each>\n</zb-x>", "{}").unwrap();
+    assert!(rows.contains("<i>01Oslo</i>"), "{rows}");
+}
+
+#[test]
+fn await_and_pattern_errors_say_what_to_write() {
+    for (source, message) in [
+        ("<zb-x d={1}>\n  <zb-await value={d}><p>x</p><zb-pending>y</zb-pending></zb-await>\n</zb-x>", "one <zb-pending>, first"),
+        ("<zb-x d={1}>\n  <zb-await value={d}><zb-pending>y</zb-pending><p>x</p></zb-await>\n</zb-x>", "the pending content goes inside it"),
+        ("<zb-x d={1}>\n  <zb-pending>y</zb-pending>\n</zb-x>", "only valid as the first child of zb-await"),
+        ("<zb-x d={1}>\n  <zb-await value={d} keep=\"yes\"><zb-then>x</zb-then></zb-await>\n</zb-x>", "`keep` takes no value"),
+        ("<zb-x d={1}>\n  <zb-await value={d}><zb-then as=\"{ a = 1 }\">{a}</zb-then></zb-await>\n</zb-x>", "a default"),
+        ("<zb-x d={[1]}>\n  <zb-each items={d} as=\"[a, ...rest]\">{a}</zb-each>\n</zb-x>", "a rest element"),
+        ("<zb-x d={[1]}>\n  <zb-each items={d} as=\"{ a }\" index=\"a\">{a}</zb-each>\n</zb-x>", "different from `as` and the names it binds"),
+        ("<zb-x d={1}>\n  <zb-await value={d}><zb-then as=\"v\"><button onclick={retry}>r</button></zb-then></zb-await>\n</zb-x>", "retry"),
+    ] {
+        let rendered = match compile_js(source, "@zubra/runtime", "x.zb") {
+            Ok(js) => panic!("expected an error for {source}\n{js}"),
+            Err(error) => error.render_in(source, "x.zb"),
+        };
+        assert!(rendered.contains(message), "{source}\n{rendered}");
+    }
 }

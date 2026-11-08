@@ -194,6 +194,10 @@ pub enum Node {
         pending: Vec<Node>,
         then: Option<Branch>,
         catch: Option<Branch>,
+        /// `delay={ms}`: show the pending content only once the value has been pending this long.
+        delay: Option<(Expression, Span)>,
+        /// `keep`: a reload keeps the settled content (the host gets `:state(loading)`).
+        keep: bool,
         span: Span,
     },
     /// `<zb-then as="…">` / `<zb-catch as="…">`, before they're attached to their `zb-await`.
@@ -301,9 +305,13 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
                 pending,
                 then,
                 catch,
+                delay,
                 ..
             } => {
                 visit(value, *value_span);
+                if let Some((delay, span)) = delay {
+                    visit(delay, *span);
+                }
                 for_each_expression(pending, visit);
                 for branch in then.iter().chain(catch) {
                     for_each_expression(&branch.children, visit);
@@ -311,5 +319,199 @@ pub fn for_each_expression(nodes: &[Node], visit: &mut dyn FnMut(&Expression, Sp
             }
             Node::Settled { branch, .. } => for_each_expression(&branch.children, visit),
         }
+    }
+}
+
+/// One step from a value to a destructured name: a property or an index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Step {
+    Key(String),
+    Index(usize),
+}
+
+/// The names an `as` binds, each with its path into the value: `item` is `[("item", [])]`;
+/// `{ name, address: { city } }` is `name` at `.name` and `city` at `.address.city`; `[a, , b]`
+/// is `a` at `[0]` and `b` at `[2]`. Patterns take names, renames (`{ id: key }`), nesting and
+/// holes; defaults and rest elements are errors (write them in the script).
+pub fn bindings(pattern: &str) -> Result<Vec<(String, Vec<Step>)>, String> {
+    let mut parser = PatternParser {
+        text: pattern.as_bytes(),
+        at: 0,
+    };
+    let mut out = Vec::new();
+    parser.space();
+    parser.pattern(&mut Vec::new(), &mut out)?;
+    parser.space();
+    if parser.at != parser.text.len() {
+        return Err(format!(
+            "unexpected `{}` in the pattern",
+            &pattern[parser.at..]
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for (name, _) in &out {
+        if !seen.insert(name.clone()) {
+            return Err(format!("`{name}` is bound twice in the pattern"));
+        }
+    }
+    Ok(out)
+}
+
+/// Whether an `as` is a destructuring pattern rather than one name.
+pub fn is_pattern(text: &str) -> bool {
+    matches!(text.trim_start().as_bytes().first(), Some(b'{' | b'['))
+}
+
+struct PatternParser<'t> {
+    text: &'t [u8],
+    at: usize,
+}
+
+impl PatternParser<'_> {
+    fn space(&mut self) {
+        while self.text.get(self.at).is_some_and(u8::is_ascii_whitespace) {
+            self.at += 1;
+        }
+    }
+    fn eat(&mut self, byte: u8) -> bool {
+        self.space();
+        if self.text.get(self.at) == Some(&byte) {
+            self.at += 1;
+            true
+        } else {
+            false
+        }
+    }
+    fn identifier(&mut self) -> Option<String> {
+        self.space();
+        let start = self.at;
+        while self
+            .text
+            .get(self.at)
+            .is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$')
+        {
+            self.at += 1;
+        }
+        let name = std::str::from_utf8(&self.text[start..self.at]).ok()?;
+        (!name.is_empty() && !name.as_bytes()[0].is_ascii_digit()).then(|| name.to_owned())
+    }
+    fn reject_extras(&mut self) -> Result<(), String> {
+        self.space();
+        if self.text[self.at..].starts_with(b"...") {
+            return Err(
+                "a rest element (`...`) can't go in an `as` pattern; pick the names you need"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+    fn pattern(
+        &mut self,
+        path: &mut Vec<Step>,
+        out: &mut Vec<(String, Vec<Step>)>,
+    ) -> Result<(), String> {
+        self.reject_extras()?;
+        if self.eat(b'{') {
+            loop {
+                if self.eat(b'}') {
+                    return Ok(());
+                }
+                self.reject_extras()?;
+                let key = if self.eat(b'"') {
+                    let start = self.at;
+                    while self.text.get(self.at).is_some_and(|&b| b != b'"') {
+                        self.at += 1;
+                    }
+                    let key = String::from_utf8_lossy(&self.text[start..self.at]).into_owned();
+                    self.at += 1;
+                    key
+                } else {
+                    self.identifier()
+                        .ok_or("expected a property name in the pattern")?
+                };
+                path.push(Step::Key(key.clone()));
+                if self.eat(b':') {
+                    self.pattern(path, out)?;
+                } else {
+                    out.push((key, path.clone()));
+                }
+                path.pop();
+                self.space();
+                if self.text.get(self.at) == Some(&b'=') {
+                    return Err("a default (`= …`) can't go in an `as` pattern; use `??` where the value is read".into());
+                }
+                if !self.eat(b',') {
+                    return if self.eat(b'}') {
+                        Ok(())
+                    } else {
+                        Err("expected , or } in the pattern".into())
+                    };
+                }
+            }
+        }
+        if self.eat(b'[') {
+            let mut index = 0;
+            loop {
+                if self.eat(b']') {
+                    return Ok(());
+                }
+                if self.eat(b',') {
+                    index += 1; // a hole
+                    continue;
+                }
+                path.push(Step::Index(index));
+                self.pattern(path, out)?;
+                path.pop();
+                self.space();
+                if self.text.get(self.at) == Some(&b'=') {
+                    return Err("a default (`= …`) can't go in an `as` pattern; use `??` where the value is read".into());
+                }
+                index += 1;
+                if !self.eat(b',') {
+                    return if self.eat(b']') {
+                        Ok(())
+                    } else {
+                        Err("expected , or ] in the pattern".into())
+                    };
+                }
+            }
+        }
+        let name = self
+            .identifier()
+            .ok_or("expected a name, or a { … } or [ … ] pattern")?;
+        out.push((name, path.clone()));
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod pattern_tests {
+    use super::*;
+
+    #[test]
+    fn patterns_bind_names_at_paths() {
+        assert_eq!(bindings("item").unwrap(), vec![("item".into(), vec![])]);
+        assert_eq!(
+            bindings("{ name, address: { city }, id: key }").unwrap(),
+            vec![
+                ("name".into(), vec![Step::Key("name".into())]),
+                (
+                    "city".into(),
+                    vec![Step::Key("address".into()), Step::Key("city".into())]
+                ),
+                ("key".into(), vec![Step::Key("id".into())]),
+            ]
+        );
+        assert_eq!(
+            bindings("[a, , [b]]").unwrap(),
+            vec![
+                ("a".into(), vec![Step::Index(0)]),
+                ("b".into(), vec![Step::Index(2), Step::Index(0)])
+            ]
+        );
+        assert!(bindings("{ a = 1 }").unwrap_err().contains("default"));
+        assert!(bindings("[a, ...rest]").unwrap_err().contains("rest"));
+        assert!(bindings("{ a, a }").unwrap_err().contains("twice"));
+        assert!(bindings("{ a b }").is_err());
     }
 }

@@ -321,8 +321,8 @@ fn markup_in_braces_outside_the_three_forms_says_what_to_write() {
             "the braces hold one element",
         ),
         (
-            "<zb-x items={[1]}>\n  {items.map(({ id }) => <p>{id}</p>)}\n</zb-x>",
-            "takes the item, and optionally its index",
+            "<zb-x items={[1]}>\n  {items.map((a, b, c) => <p>{a}</p>)}\n</zb-x>",
+            "and optionally its index",
         ),
         (
             "<zb-x a={1}>\n  {a && <p zb-if={a}>x</p>}\n</zb-x>",

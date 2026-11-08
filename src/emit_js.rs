@@ -474,7 +474,9 @@ struct Emitter<'a> {
     /// Shadow-DOM components compile zb-slot to a native <slot>.
     shadow: bool,
     /// Loop variables in scope, innermost last.
-    scopes: Vec<String>,
+    /// Names in scope in a branch or row, each with the JavaScript that reads it: `$r(item)`
+    /// for a row's item, `$r($b1_0).name` for a name a destructuring `as` binds.
+    scopes: Vec<(String, String)>,
     /// This emitter's position in the component template (non-empty inside zb-if blocks), so
     /// slot regions can be recorded with full paths.
     base: Vec<usize>,
@@ -484,7 +486,38 @@ struct Emitter<'a> {
 }
 
 impl<'a> Emitter<'a> {
-    fn child(&self, extra: &[String]) -> Emitter<'a> {
+    /// A block's function parameters for its `params` (names or `as` patterns), and the
+    /// emitter that reads them.
+    fn scoped(&self, params: &[String]) -> (Vec<String>, Emitter<'a>) {
+        let depth = self.scopes.len();
+        let mut names = Vec::new();
+        let mut entries = Vec::new();
+        for (i, param) in params.iter().enumerate() {
+            if crate::ast::is_pattern(param) {
+                let hidden = format!("$b{depth}_{i}");
+                for (name, path) in crate::ast::bindings(param).unwrap_or_default() {
+                    let mut js = format!("$r({hidden})");
+                    for step in path {
+                        match step {
+                            crate::ast::Step::Key(key) if crate::parser::is_identifier(&key) => {
+                                js = format!("{js}.{key}")
+                            }
+                            crate::ast::Step::Key(key) => js = format!("{js}[{}]", json(&key)),
+                            crate::ast::Step::Index(index) => js = format!("{js}[{index}]"),
+                        }
+                    }
+                    entries.push((name, js));
+                }
+                names.push(hidden);
+            } else {
+                entries.push((param.clone(), format!("$r({param})")));
+                names.push(param.clone());
+            }
+        }
+        (names, self.child(&entries))
+    }
+
+    fn child(&self, extra: &[(String, String)]) -> Emitter<'a> {
         let mut scopes = self.scopes.clone();
         scopes.extend(extra.iter().cloned());
         Emitter {
@@ -521,8 +554,8 @@ impl<'a> Emitter<'a> {
         let rewritten = reactive_expression(expression, self.state, self.derived, self.signals);
         let expression = rewritten.as_ref().unwrap_or(expression);
         expression.to_js_with(&|name| {
-            if self.scopes.iter().any(|scope| scope == name) {
-                format!("$r({name})")
+            if let Some((_, js)) = self.scopes.iter().rev().find(|(scope, _)| scope == name) {
+                js.clone()
             } else if self.interface.props.iter().any(|prop| prop.name == name) {
                 format!("$p.{name}")
             } else if runtime {
@@ -602,7 +635,7 @@ impl<'a> Emitter<'a> {
         params: &[String],
         at: &[usize],
     ) -> Result<String, Diagnostic> {
-        let mut block = self.child(params);
+        let (params, mut block) = self.scoped(params);
         block.base = self.base.iter().chain(at).copied().collect();
         block.nodes(nodes, &[], true)?;
         self.slot_paths.append(&mut block.slot_paths);
@@ -714,11 +747,10 @@ impl<'a> Emitter<'a> {
                     let row = self.block(children, &params, &region)?;
                     // The key gets plain values (not row signals): it identifies a row.
                     let key = match key {
-                        Some((key, _)) => format!(
-                            ", key: ({}) => {}",
-                            params.join(", "),
-                            self.child(&params).js(key)
-                        ),
+                        Some((key, _)) => {
+                            let (names, scoped) = self.scoped(&params);
+                            format!(", key: ({}) => {}", names.join(", "), scoped.js(key))
+                        }
                         None => String::new(),
                     };
                     let body = format!("each: () => {}{key}, block: {row}", self.js(items));
@@ -777,6 +809,8 @@ impl<'a> Emitter<'a> {
                     pending,
                     then,
                     catch,
+                    delay,
+                    keep,
                     ..
                 } => {
                     self.template.push_str("<!--[--><!--]-->");
@@ -788,17 +822,28 @@ impl<'a> Emitter<'a> {
                             Some(branch) => {
                                 let name =
                                     branch.name.clone().unwrap_or_else(|| unnamed.to_owned());
-                                self.block(&branch.children, &[name], &region)?
+                                // zb-catch's block also gets `retry` (4.2).
+                                let mut params = vec![name];
+                                if unnamed == "$error" {
+                                    params.push("retry".to_owned());
+                                }
+                                self.block(&branch.children, &params, &region)?
                             }
                             None => "null".to_owned(),
                         });
                     }
-                    let body = format!(
+                    let mut body = format!(
                         "await: () => {}, blocks: [{pending}, {}, {}]",
                         self.js(value),
                         settled[0],
                         settled[1]
                     );
+                    if let Some((delay, _)) = delay {
+                        body.push_str(&format!(", delay: () => {}", self.js(delay)));
+                    }
+                    if *keep {
+                        body.push_str(", keep: true");
+                    }
                     self.parts.push(JsPart::at(&region, body));
                 }
                 Node::Settled { caught, branch } => {

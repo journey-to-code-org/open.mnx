@@ -13,11 +13,12 @@ const BUDGETS = {
   // enhancement — hydrated(), the .submit and .mod modifiers, the missing-markers warning — took
   // it to 12.5 KB, and 2.8's server bridge — reading `zb-props`, dropping form fallbacks — to
   // 13 KB, and 3.2's deep reactivity — a state's arrays and objects update the DOM when
-  // mutated, `deep.js`, about 370 B — to 13.5 KB.)
-  'src/index.js': { gzip: 13.5 * 1024 },
+  // mutated, `deep.js`, about 370 B — to 13.5 KB, and 4.2's zb-await — an array value waited
+  // for together, retry(), delay and keep, about 320 B — to 14 KB.)
+  'src/index.js': { gzip: 14 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
-  // (12.5 KB until 3.2).
-  'dist/production/index.js': { gzip: 13 * 1024 },
+  // (12.5 KB until 3.2, 13 KB until 4.2).
+  'dist/production/index.js': { gzip: 13.5 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
   // `{...spread}`'s binder (3.5), loaded only by components whose template spreads.

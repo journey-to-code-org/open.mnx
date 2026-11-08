@@ -1078,39 +1078,91 @@ function bindWhen(part, open, hydrating, context) {
  * `zb-then` block with the resolved value, or the `zb-catch` block with the error. A value
  * that isn't a promise shows `zb-then` at once. Only the latest value's outcome is shown. A
  * `resource()` is followed through its states, so reloading it shows the pending content again.
+ *
+ * - An array value waits for every promise and resource in it, as `Promise.all` does, and
+ *   resolves to the array of their values (4.2).
+ * - `zb-catch` gets `retry()`: it refreshes the resources and evaluates the value again, so a
+ *   `load()` call is made again (4.2).
+ * - `delay`: the pending block shows only once the value has been pending that long; until
+ *   then the previous content stays (4.2).
+ * - `keep`: once settled, a reload keeps the settled content, and the host has
+ *   `:state(loading)` while it runs (4.2).
  */
+const loadingCounts = new WeakMap();
+function markLoading(states, step) {
+  if (!states) return;
+  const count = (loadingCounts.get(states) ?? 0) + step;
+  loadingCounts.set(states, count);
+  states[count > 0 ? 'add' : 'delete']('loading');
+}
 function bindAwait(part, open, hydrating, context) {
   hydrating = hydratable(open, hydrating);
   const close = matchingClose(open);
   let first = hydrating;
   let latest = null;
+  let settled = false; // a zb-then or zb-catch block is showing
+  const attempt = new Signal.State(0);
+  // The value, evaluated again only when what it reads changes or retry() asks: a resource
+  // settling re-runs the effect below, and mustn't call `load()` again.
+  const current = new Signal.Computed(() => (attempt.get(), $r(part.await())));
+  const retry = () => {
+    for (const value of [].concat(untrack(() => current.get()))) $r(value)?.[RESOURCE] && $r(value).refresh();
+    attempt.set(untrack(() => attempt.get()) + 1);
+  };
   effect(() => {
-    const value = $r(part.await());
+    const value = current.get();
+    const many = Array.isArray(value);
     const token = (latest = {});
     // Blocks mounted later (when the promise settles) still belong to this run.
     const owner = scope();
+    let timer;
+    let loading = 0;
     const show = (index, payload) => untrack(() => owner.run(() => {
+      clearTimeout(timer);
       const block = part.blocks[index];
       const hydrate = first; // the server rendered this branch, unless it left the region to us
       first = false;
-      if (block) mountBlock(block, index === 0 ? [] : [new Signal.State(payload)], open, close, hydrate, context);
+      settled = index > 0;
+      if (block) mountBlock(block, index ? [new Signal.State(payload), new Signal.State(retry)] : [], open, close, hydrate, context);
       else clearBetween(open, close);
     }));
-    if (value?.[RESOURCE]) {
-      // A resource: follow its state, so a reload shows the pending content again.
-      const status = value.status;
-      if (status === 'pending') show(0);
-      else if (status === 'ready') show(1, value.value);
-      else show(2, value.error);
-    } else if (value !== null && (typeof value === 'object' || typeof value === 'function') && typeof value.then === 'function') {
-      show(0);
-      value.then(
-        (resolved) => { if (latest === token && !owner.disposed) show(1, resolved); },
-        (error) => { if (latest === token && !owner.disposed) show(2, error); },
-      );
-    } else {
-      show(1, value);
-    }
+    const done = (index, payload) => {
+      if (latest !== token || owner.disposed) return;
+      if (loading) markLoading(context?.states, (loading = 0) - 1);
+      show(index, payload);
+    };
+    // Each value: a resource's state, a promise, or a plain value.
+    let pending = false;
+    let failed;
+    const promises = (many ? value : [value]).map((item) => {
+      item = $r(item);
+      if (item?.[RESOURCE]) {
+        const status = item.status;
+        if (status === 'error') failed ??= [item.error];
+        pending ||= status === 'pending';
+        return item.value;
+      }
+      if (item !== null && (typeof item === 'object' || typeof item === 'function') && typeof item.then === 'function') {
+        pending = true;
+        return item;
+      }
+      return item;
+    });
+    if (failed) done(2, failed[0]);
+    else if (pending) {
+      const delay = part.delay ? Number(untrack(part.delay)) : 0;
+      if (part.keep && settled) markLoading(context?.states, (loading = 1));
+      else if (delay > 0 && !first) timer = setTimeout(() => latest === token && !owner.disposed && show(0), delay);
+      else show(0);
+      // A pending resource re-runs this effect when it settles; promises are waited for here.
+      if (!(many ? value : [value]).some((item) => $r(item)?.[RESOURCE] && $r(item).status === 'pending')) {
+        Promise.all(promises).then((resolved) => done(1, many ? resolved : resolved[0]), (error) => done(2, error));
+      }
+    } else done(1, many ? promises : promises[0]);
+    return () => {
+      clearTimeout(timer);
+      if (loading) markLoading(context?.states, -1);
+    };
   });
 }
 
@@ -1585,7 +1637,7 @@ function defineElement(tag, definition) {
           }
         }
 
-        const context = { slots: new Map(), slotted: styled && !shadow ? tag : null, filled: this.#hooks.filled };
+        const context = { slots: new Map(), slotted: styled && !shadow ? tag : null, filled: this.#hooks.filled, states: this.#states };
         this.#context = context;
         const server = hasContent(root);
         // Server markup whose comments were stripped: put them back, where the template says.

@@ -12,7 +12,7 @@
 </style>
 <recent-activity events={[]} label="Recent activity">
   <zb-await value={events}>
-    <p class="pending">Loading {label.toLowerCase()}…</p>
+    <zb-pending><p class="pending">Loading {label.toLowerCase()}…</p></zb-pending>
     <zb-then as="list">
       <p zb-if={list.length === 0} class="empty">Nothing yet.</p>
       <ol zb-else aria-label={label}>

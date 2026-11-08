@@ -10,9 +10,10 @@ export const DIRECTIVES = {
     attributes: { items: 'The array: `items={…}`.', as: 'The name of each item.', index: 'The name of the index (optional).', key: 'A unique string or number per item, so rows follow their items: `key={item.id}`.' },
   },
   'zb-slot': { description: 'Where content given to the element goes; the children are the fallback.', attributes: { name: 'The slot name (omit for the default slot).' } },
-  'zb-await': { description: 'Show the content while `value` (a promise or a `resource()`) is pending, then `<zb-then>` or `<zb-catch>`.', attributes: { value: 'The promise or resource: `value={…}`.' } },
-  'zb-then': { description: 'The content of an `<zb-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value.' } },
-  'zb-catch': { description: 'The content of an `<zb-await>` if its value rejected.', attributes: { as: 'The name of the error.' } },
+  'zb-await': { description: 'Show `<zb-pending>` while `value` (a promise, a `resource()`, or an array of them) is pending, then `<zb-then>` or `<zb-catch>`. `<zb-await {user}>` is short for `value={user}`.', attributes: { value: 'The promise, resource, or array of them: `value={…}`.', delay: 'Show the pending content only after this many milliseconds: `delay={200}`.', keep: 'Keep the settled content while a resource reloads; the host gets `:state(loading)`.' } },
+  'zb-pending': { description: 'The content of a `<zb-await>` while its value is pending. Comes first.', attributes: {} },
+  'zb-then': { description: 'The content of a `<zb-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value, or a pattern: `as="{ name }"`, `as="[user, posts]"`.' } },
+  'zb-catch': { description: 'The content of a `<zb-await>` if its value rejected. `retry()` runs the value again.', attributes: { as: 'The name of the error, or a pattern: `as="{ message }"`.' } },
 };
 
 /** Line/character → offset. */
@@ -146,7 +147,7 @@ export function completions(text, offset, components) {
     const directive = DIRECTIVES[context.tag];
     if (directive) {
       return Object.entries(directive.attributes).map(([name, description]) => ({
-        label: name, kind: 'attribute', documentation: description, insertText: ['as', 'index', 'name'].includes(name) ? `${name}="$1"` : `${name}={$1}`, snippet: true,
+        label: name, kind: 'attribute', documentation: description, insertText: name === 'keep' ? 'keep' : ['as', 'index', 'name'].includes(name) ? `${name}="$1"` : `${name}={$1}`, snippet: true,
       }));
     }
     const component = components.find((candidate) => candidate.tag === context.tag);

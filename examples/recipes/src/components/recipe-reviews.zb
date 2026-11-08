@@ -38,7 +38,7 @@
 <recipe-reviews recipe="">
   <h2>Reviews <span class="average">{all.length ? `${average.toFixed(1)} ★ from ${all.length}` : "none yet"}</span></h2>
   <zb-await value={loaded}>
-    <p class="loading">Loading reviews…</p>
+    <zb-pending><p class="loading">Loading reviews…</p></zb-pending>
     <zb-then>
       <ul zb-if={all.length > 0}>
         <zb-each items={all} as="review" key={review.id}>
@@ -47,7 +47,7 @@
       </ul>
       <p zb-else class="empty">Be the first to review this.</p>
     </zb-then>
-    <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>
+    <zb-catch as="{ message }"><p class="error">{message} <button type="button" onclick={retry}>Try again</button></p></zb-catch>
   </zb-await>
   <form onsubmit.prevent={post}>
     <input name="name" required aria-label="Your name" placeholder="Your name">
