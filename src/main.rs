@@ -573,4 +573,3 @@ fn rebase_imports(text: &str, from: &std::path::Path, to: &std::path::Path) -> (
     out.push_str(rest);
     (out, moved)
 }
-
