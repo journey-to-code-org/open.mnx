@@ -2,6 +2,20 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.0.2 — 2026-11-08
+
+Packaging fixes found on the first publish. No code changes.
+
+### Fixed
+
+- **Commands in published packages.** npm 11 drops a `bin` written as `"./cli.js"` when it publishes. `create-zubra`, the `zubra` CLI (`@zubra/compiler`) and `zubra-language-server` would have installed without their commands. The bins are now written `"cli.js"`, and a test keeps them that way.
+- **`@zubra/compiler`'s tarball on Windows.** Its `prepack` was a `node -e` one-liner whose filter `cmd.exe` mangled, so `registry/test/` was packed. It's now a script file (`compiler/scripts/prepack.mjs`), and `files` excludes `registry/test` as well.
+- **`@zubra/compiler` can't be packed without `zubra.wasm`.** `prepack` stops with an error instead of publishing a compiler that can't compile. This was meant for 5.0.1 but missed its merge.
+
+### Tests
+
+- The stripped-markup hydration test waits for `:state(hydrated)` before clicking. `remark.js` loads on demand, and CI could click first.
+
 ## 5.0.1 — 2026-11-08
 
 A fix for Astro builds, plus the demo gallery and examples with the styling libraries people use. No API changes.
