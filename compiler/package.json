@@ -31,7 +31,7 @@
   "scripts": {
     "build": "cargo build -p zubra-wasm --target wasm32-unknown-unknown --release && cp ../target/wasm32-unknown-unknown/release/zubra_wasm.wasm zubra.wasm",
     "test": "node --test \"test/*.test.js\"",
-    "prepack": "node -e \"const fs=require('fs');fs.rmSync('registry',{recursive:true,force:true});fs.cpSync('../registry','registry',{recursive:true,filter:(p)=>!/[\\\\/](test|node_modules)([\\\\/]|$)/.test(p)})\""
+    "prepack": "node -e \"const fs=require('fs');if(!fs.existsSync('zubra.wasm'))throw new Error('zubra.wasm is missing: run npm run build first (it needs the wasm32-unknown-unknown Rust target)');fs.rmSync('registry',{recursive:true,force:true});fs.cpSync('../registry','registry',{recursive:true,filter:(p)=>!/[\\\\/](test|node_modules)([\\\\/]|$)/.test(p)})\""
   },
   "engines": {
     "node": ">=20"
