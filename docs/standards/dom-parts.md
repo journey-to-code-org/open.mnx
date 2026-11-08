@@ -1,6 +1,6 @@
 # Parts in production: a usage report for DOM Parts and declarative templating
 
-*Zubra 1.6, November 2026. For [WICG/webcomponents#1069](https://github.com/WICG/webcomponents/issues/1069) and the [DOM Parts](https://github.com/WICG/webcomponents/issues/1028) discussions. Neither has a spec yet. This is evidence from a compiler that already ships a parts model, about the shape of what it needed.*
+*Zubra 5.0.3, November 2026. For [WICG/webcomponents#1069](https://github.com/WICG/webcomponents/issues/1069) and the [DOM Parts](https://github.com/WICG/webcomponents/issues/1028) discussions. Neither has a spec yet. This is evidence from a compiler that already ships a parts model, about the shape of what it needed.*
 
 ## The model Zubra uses
 
@@ -19,7 +19,7 @@ The HTML output (from the Rust compiler, or from `@zubra/compiler` in Node) mark
 | `<?zb [??>` | `<!--[?-->` | a region the server couldn't compute and left for the element (partial rendering) |
 | `<?zb ?>` | `<!---->` | where a dynamic text node starts, when it has siblings |
 
-Since 5.0 the markers are processing instructions, which HTML gained with out-of-order streaming (Chrome 150): minifiers, sanitizers and `parseHTMLUnsafe()` dropped comments, and keep these. Browsers that don't parse them yet make each a comment (`?zb [?`), which the runtime reads the same way. Nothing else is needed. In particular, text that is an element's only child is bound through the element, and attributes need no markers. The most important lesson: **paths must count only elements and markers**, because parsers merge adjacent text and drop empty text. A whole region counts as one position, so a list's length never shifts the paths after it. If DOM Parts serializes parts in markup, we'd ask for these properties, and Zubra 2.0 will emit that serialization if it has settled by then.
+Since 5.0 the markers are processing instructions, which HTML gained with out-of-order streaming (Chrome and Edge 150; [whatwg/html#11818](https://github.com/whatwg/html/pull/11818), where the open questions are about attributes inside them, and Zubra's markers carry none). Minifiers, sanitizers and `parseHTMLUnsafe()` dropped comments, and keep these. As of November 2026 WebKit's and Gecko's positions are "support" and "proposed support" and neither has shipped them. Browsers that don't parse them yet make each a comment (`?zb [?`), which the runtime reads the same way. Nothing else is needed. In particular, text that is an element's only child is bound through the element, and attributes need no markers. The most important lesson: **paths must count only elements and markers**, because parsers merge adjacent text and drop empty text. A whole region counts as one position, so a list's length never shifts the paths after it. If DOM Parts serializes parts in markup, we'd ask for these properties. Zubra would emit that serialization instead of its own markers: moving from comments to processing instructions in 5.0 was a small change to the compiler and the runtime, and a parts syntax built on them would be smaller still.
 
 ### 2. Regions are the hard part, not attributes
 
@@ -33,7 +33,7 @@ A native parts API that covers attributes and text but not ranges of nodes would
 
 ### 3. Hydration needs a shape check
 
-Before binding, the runtime compares the server markup's shape (top-level tags and region markers) with the template's. Markup that doesn't match is rendered fresh, with a warning; markup that matches is bound in place. Measured on 1,000 server-rendered rows, hydration costs about what a fresh render does (77 ms against 83 ms, `runtime/test/browser/bench.test.js`). Its value is keeping every node and no layout shift, not speed. A native "attach parts to existing DOM" operation is where a browser could beat libraries.
+Before binding, the runtime compares the server markup's shape (top-level tags and region markers) with the template's. Markup that doesn't match is rendered fresh, with a warning; markup that matches is bound in place. Measured on 1,000 server-rendered rows, hydration costs about what a fresh render does: the two are within noise of each other and swap places between runs (81 ms against 73 ms in the latest, 77 against 83 earlier; `runtime/test/browser/bench.test.js` asserts hydration stays within 1.5 times a fresh render, and that every server node is kept). Its value is keeping every node and no layout shift, not speed. A native "attach parts to existing DOM" operation is where a browser could beat libraries.
 
 ### 4. Signals, not re-rendering
 
@@ -41,7 +41,7 @@ Before binding, the runtime compares the server markup's shape (top-level tags a
 
 ### 5. HTML first
 
-Zubra's canonical format is HTML (`.zb` files), with JSX lowered into it. The same template drives server rendering and hydration. The comment in #1069 preferring to move templating forward "on the HTML side rather than in JS" matches our experience: the declarative form is what lets the server render without running component code. Zubra's partial rendering shows the boundary. What the server can't compute becomes a `<!--[?-->` region for the client.
+Zubra's canonical format is HTML (`.zb` files), with JSX lowered into it. The same template drives server rendering and hydration. The comment in #1069 preferring to move templating forward "on the HTML side rather than in JS" matches our experience: the declarative form is what lets the server render without running component code. Zubra's partial rendering shows the boundary. What the server can't compute becomes a `<?zb [??>` region for the client.
 
 ## Reproducing
 

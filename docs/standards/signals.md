@@ -1,6 +1,6 @@
 # Signals in production: an integration report for the TC39 proposal
 
-*Zubra 1.6, November 2026. For the [Signals proposal](https://github.com/tc39/proposal-signals) champions. The proposal is at Stage 1. Before Stage 2 its authors want production-grade polyfills, and integrations into frameworks tested in real applications. This report is one of each.*
+*Zubra 5.0.3, November 2026. For the [Signals proposal](https://github.com/tc39/proposal-signals) champions. The proposal is at Stage 1. Before Stage 2 its authors want production-grade polyfills, and integrations into frameworks tested in real applications. This report is one of each.*
 
 ## What Zubra is
 
@@ -15,8 +15,8 @@ When `globalThis.Signal` exists, Zubra uses it; otherwise it uses its own implem
 
 ## The implementation, and how it is checked
 
-- **A second implementation of the API**, written from the README and the reference polyfill. It is about 400 lines and has no dependencies. Dependency bookkeeping is positional, with back-indices, so unlinking is O(1).
-- **Differential tests** against [`signal-polyfill`](https://github.com/proposal-signals/signal-polyfill). Each scenario runs against both implementations and the logs must be identical, including the order in which watchers are notified and `watched`/`unwatched` hooks fire. The scenarios are hand-written ones plus 300 seeded random graphs (data-dependent branches, errors, two watchers, random watch/unwatch). A one-off run of 5,000 seeds also matched.
+- **A second implementation of the API**, written from the README and the reference polyfill. It is about 375 lines and has no dependencies. Dependency bookkeeping is positional, with back-indices, so unlinking is O(1).
+- **Differential tests** against [`signal-polyfill`](https://github.com/proposal-signals/signal-polyfill). Each scenario runs against both implementations and the logs must be identical, including the order in which watchers are notified and `watched`/`unwatched` hooks fire. The scenarios are hand-written ones plus 300 seeded random graphs (data-dependent branches, errors, two watchers, random watch/unwatch). A run of 5,000 seeds also matches (5,026 tests, re-run for 5.0.3; change `seed <= 300` in `runtime/test/differential.test.js` to reproduce it).
 - **Used under load** by everything above, in the browser suites (Chromium) and in real Vite, Rollup, webpack and esbuild apps with React 18/19, Vue 3, Svelte 5, Solid, Lit, Angular and Astro.
 
 ## Findings for the proposal
@@ -34,7 +34,7 @@ We propose that the spec text (or the polyfill's tests) cover both. Each is a fe
 
 Unwatching scans the watcher's sources, so unwatching n effects one at a time costs O(n²). A framework that disposes or pauses a subtree (a list of 1,000 rows removed at once) hits this. In Zubra it made clearing 1,000 rows take 112 ms against 47 ms to create them.
 
-The fix is the API's own variadic form. Zubra collects what a subtree disposes and calls `unwatch(...signals)` once (28 ms). We suggest the README say so where it shows the effect pattern, because every framework will write the one-at-a-time version first.
+The fix is the API's own variadic form. Zubra collects what a subtree disposes and calls `unwatch(...signals)` once. On the same benchmark (`runtime/test/browser/bench.test.js`, 1,000 keyed rows, Chromium, best of three) clearing now takes 28.7 ms against 44.0 ms to create, and the test fails if it exceeds 1.5 times the creation. One detail for the README: spreading a very large list into the variadic call can hit the engine's argument-count limit, so Zubra unwatches in chunks of 10,000. We suggest the README say so where it shows the effect pattern, because every framework will write the one-at-a-time version first.
 
 ### Effects need ownership, and ownership needs pausing
 
@@ -44,9 +44,15 @@ The proposal leaves effects to libraries, rightly. Every component framework nee
 2. **Pausing.** A detached element's effects are unwatched, so long-lived signals hold no reference to them, but they keep their cached state. On re-attach, only effects whose sources changed re-run. The version check in `Signal.Computed` already makes this nearly free.
 3. **Batched re-runs** in a microtask.
 
-Zubra's version is `runtime/src/effect.js` (about 200 lines, documented). We'd suggest a shared "effects on Signals" pattern document, so frameworks converge.
+Zubra's version is `runtime/src/effect.js` (about 230 lines, documented). We'd suggest a shared "effects on Signals" pattern document, so frameworks converge.
 
 The leak suite (`runtime/test/browser/leaks.test.js`) checks the property that matters: removed elements, including ones reading a signal that outlives them, are garbage-collected. It counts live instances through the DevTools protocol.
+
+### Fine-grained state for objects and arrays is a `Signal.State` per property
+
+A script value holding an array or a plain object holds a proxy of it. Each property read through the proxy is tracked by its own `Signal.State`, created on the first read, and each write bumps that property's signal, so only what read the property re-runs. Nested arrays and objects are wrapped when they are read. That is the whole mechanism (`runtime/src/deep.js`, about 200 lines): it adds nothing to the API. Class instances, `Map`, `Set`, dates and promises are left unwrapped because a proxy would break their internals.
+
+It is the shape people reach for when they ask the proposal for collections or "deep" state. It works over the standard API, with the usual proxy limits (identity, and the types it must skip). We would suggest that any shared guidance on this pattern say so, and we can say that it needed no new primitive.
 
 ### Reads before the first `await`
 
@@ -54,7 +60,7 @@ The leak suite (`runtime/test/browser/leaks.test.js`) checks the property that m
 
 ## What we didn't need
 
-We never used `Signal.subtle.currentComputed` or the introspection APIs in shipped code; only tests use them. `untrack` was needed in exactly two kinds of place: running user callbacks from `watch()`, and mounting blocks inside an effect without the parent depending on what they read.
+We never used `Signal.subtle.currentComputed` or the introspection APIs in shipped code; only tests use them. `untrack` is used in a handful of places, in four kinds: running user callbacks (`watch()` callbacks and effect cleanups), mounting blocks or effects inside an effect without the parent depending on what they read, reading a value's latest state when it is being reassigned (a prop that resets to a new default and can still be written locally), and assigning element references.
 
 ## Reproducing
 
