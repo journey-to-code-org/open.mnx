@@ -6,7 +6,7 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 
 **Nothing is hidden.** `zubra compile` prints the HTML and the JavaScript module it generates, and every part of them exists because of a rule of the platform. Reading the output is the quickest way to learn how Web Components work: [Read the output](docs/guide/08-read-the-output.md) goes through one component's real output and the nine rules behind it (names, constructors, attributes, upgrades, lifecycle, events, shadow DOM, forms, server HTML).
 
-**Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/playground/) runs Zubra in your browser, the [demo gallery](https://journey-to-code-org.github.io/zubra/) has a live app for every framework, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. This README is the reference.
+**Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/playground/) runs Zubra in your browser, the [demo gallery](https://journey-to-code-org.github.io/zubra/) has a live app for every framework, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. The same pages, with this README as the reference, are [the documentation site](https://journey-to-code-org.github.io/zubra/docs/).
 
 **Status: 5.x.** The `.zb` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 6.0. 5.0 changed only the server markup's hydration markers (`docs/migrating-to-5.0.md`: update the packages together, no component changes). Zubra was called mnx until 4.0; `docs/migrating-to-4.0.md` renames a project in one command. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
@@ -660,8 +660,9 @@ Upgrading from 1.x: `zubra migrate` rewrites what 2.0 needs; see `docs/migrating
 - `editors/`: the language server and the VS Code extension.
 - `create/`: `create-zubra`, the starter (`npm create zubra`), with a template per framework.
 - `playground/`: the in-browser playground.
-- `demos/`: the demo gallery: `demos/build.mjs` builds the playground and every static example under one base path, `.github/workflows/pages.yml` publishes it to GitHub Pages, and `demos/shots/` holds every example's screenshot (`demos/screenshots.mjs` for the static ones; the others' tests take theirs with `ZUBRA_SHOTS`).
+- `demos/`: the demo gallery: `demos/build.mjs` builds the playground, the documentation site and every static example under one base path, `.github/workflows/pages.yml` publishes it to GitHub Pages, and `demos/shots/` holds every example's screenshot (`demos/screenshots.mjs` for the static ones; the others' tests take theirs with `ZUBRA_SHOTS`).
 - `docs/guide/`: the tutorial.
+- `docs/site/`: the documentation site: `build.mjs` renders the Markdown in `docs/`, this README and the CHANGELOG to HTML (`npm ci` there first; its navigation lists the pages, and a link to a file that doesn't exist fails the build).
 - `docs/who-this-is-for.md`, `docs/what-crosses-the-boundary.md`, `docs/server-rendering.md`: where Zubra fits, which components fit through an element, and the server story with its gaps.
 - `registry/`: the components `zubra add` copies, with their accessibility tests.
 

@@ -4,6 +4,7 @@
 //
 //   <base>                 the gallery (index.html): every example, with a screenshot
 //   <base>playground/      the playground (playground/build.mjs)
+//   <base>docs/            the documentation (docs/site/build.mjs; `npm ci` in docs/site)
 //   <base>demos/<id>/      each static example, built to be served from there
 //
 // --base defaults to /<repository>/ on GitHub Actions (Pages serves a project site there), and
@@ -44,6 +45,12 @@ const local = (dir, bin) => join(repo, dir, 'node_modules/.bin', bin);
 // The playground.
 if (!only?.length || only.includes('playground')) {
   run(process.execPath, [join(repo, 'playground/build.mjs'), '--out', join(out, 'playground'), ...(args.includes('--require-wasm') ? ['--require-wasm'] : [])], repo);
+}
+
+// The documentation: the guide, topics, reference and migration notes, as pages.
+if (!only?.length || only.includes('docs')) {
+  const { buildDocs } = await import(pathToFileURL(join(repo, 'docs/site/build.mjs')).href);
+  console.log(`demos: docs → ${base}docs/ (${buildDocs({ out, base, repository })} pages)`);
 }
 
 // The static examples.
@@ -155,6 +162,7 @@ function gallery({ built, shots }) {
       <p>Web components written like JSX and compiled ahead of time, used in every framework and on every kind of server. Each one is a complete app, tested in a browser on every change.</p>
       <div class="actions">
         <a class="primary" href="playground/">Try the playground</a>
+        <a href="docs/">Read the docs</a>
         <a href="https://github.com/${repository ?? 'journey-to-code-org/zubra'}">Source on GitHub</a>
       </div>
     </header>
