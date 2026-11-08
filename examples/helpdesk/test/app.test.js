@@ -197,12 +197,12 @@ test('the dashboard\'s charts are in the server\'s HTML: the registry components
 test('the dashboard streams its recent activity: the page first, the list as the store answers, hydrated in place', async () => {
   // The raw response: the whole page (through </html>) comes before the streamed region.
   const { page, messages, close } = await as('u-sam');
-  const text = await page.evaluate(async () => (await fetch('/')).text());
-  const shellEnd = text.indexOf('</html>');
-  const swap = text.indexOf('<template data-mnx-swap=');
+  const html = await page.evaluate(async () => (await fetch('/')).text());
+  const shellEnd = html.indexOf('</html>');
+  const swap = html.indexOf('<template data-mnx-swap=');
   assert.ok(shellEnd > 0 && swap > shellEnd, 'the shell, then the swap');
-  assert.match(text.slice(0, shellEnd), /<recent-activity data-mnx-stream="0"[^>]*>[^]*<!--\[\?-->[^]*Loading recent activity…/);
-  assert.match(text.slice(swap), /<li><span class="who">[^<]+<\/span><a href="\/tickets\/\d+">/);
+  assert.match(html.slice(0, shellEnd), /<recent-activity data-mnx-stream="0"[^>]*>[^]*<!--\[\?-->[^]*Loading recent activity…/);
+  assert.match(html.slice(swap), /<li><span class="who">[^<]+<\/span><a href="\/tickets\/\d+">/);
   // In the browser: the list is there and hydrated, with no warnings.
   await settle(page);
   await page.waitForFunction(() => document.querySelector('recent-activity')?.matches(':state(hydrated)'));
