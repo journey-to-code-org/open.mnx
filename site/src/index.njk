@@ -1,0 +1,127 @@
+---
+layout: layout.njk
+title: "Zubra: web components, written like HTML"
+description: "Zubra compiles a file of HTML, a script and styles into a standard custom element, the HTML a server sends, and typings. It works in plain HTML, every framework, and on the server."
+---
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="kicker">A compiler for web components</p>
+      <h1>Write components like HTML. Ship them as the platform’s own.</h1>
+      <p class="lede">A Zubra file is a script, some styles and a template. The compiler turns it into a standard custom element, the HTML a server sends, and typings. The element works in plain HTML, in React, Vue, Svelte and the rest, and on the server. Nothing is hidden: you can read every line it writes.</p>
+      <div class="install">
+        <code id="install-command">npm create zubra@latest</code>
+        <button type="button" class="copy" data-copy="npm create zubra@latest" hidden>Copy</button>
+      </div>
+      <p class="actions">
+        <a class="button primary" href="{{ '/docs/guide/01-first-component/' | url }}">Start the guide</a>
+        <a class="button" href="{{ '/playground/' | url }}">Try the playground</a>
+      </p>
+    </div>
+    <figure class="hero-code" aria-label="A Zubra component">
+      <figcaption>copy-button.zb <span>{{ samples.sourceLines }} lines</span></figcaption>
+      {{ samples.source | highlight("markup") | safe }}
+    </figure>
+  </div>
+</section>
+<div class="stripes" aria-hidden="true"></div>
+
+<section class="band" id="output">
+  <div class="wrap">
+    <h2>Read what it writes</h2>
+    <p class="section-lede">That one file compiles to the three things below. This page ran the compiler to produce them, so they are what <code>zubra compile</code> writes today.</p>
+    <ol class="pipeline">
+      <li class="step">
+        <h3><span class="n">1</span> The HTML a server sends</h3>
+        <p><code>zubra compile copy-button.zb --props props.json</code></p>
+        {{ samples.html | tidy | highlight("markup") | safe }}
+        <p class="note">Content on the page before any JavaScript runs. When the script loads, the element binds to this markup in place.</p>
+      </li>
+      <li class="step">
+        <h3><span class="n">2</span> The element</h3>
+        <p><code>zubra compile copy-button.zb --emit js</code></p>
+        {{ samples.js | tidy | highlight("javascript") | safe }}
+        <p class="note">A description, not a class. One shared definition in the runtime turns it into a custom element.</p>
+      </li>
+      <li class="step">
+        <h3><span class="n">3</span> Typings</h3>
+        <p><code>zubra compile copy-button.zb --emit dts</code></p>
+        {{ samples.dts | tidy | highlight("javascript") | safe }}
+        <p class="note">The element’s properties, events and form-control API, for the editor and for the same file imported into React or Vue.</p>
+      </li>
+    </ol>
+    <p class="more"><a href="{{ '/docs/guide/08-read-the-output/' | url }}">Read one component’s output, rule by rule</a>: why custom elements are awkward by hand, and where each rule shows up in the output.</p>
+  </div>
+</section>
+
+<section class="wrap by-hand" id="by-hand">
+  <h2>Without the compiler</h2>
+  <p class="section-lede">This is the same component as a hand-written custom element. It needs shadow DOM to scope one style rule, has no server HTML, and has the two bugs most hand-written elements have: a forgotten <code>#render()</code> and a listener removed with a different reference.</p>
+  <div class="versus">
+    <div class="side">
+      <p class="count"><strong>{{ samples.sourceLines }}</strong> lines with Zubra</p>
+      {{ samples.source | highlight("markup") | safe }}
+    </div>
+    <div class="side">
+      <p class="count"><strong>{{ samples.byHandLines }}</strong> lines by hand</p>
+      {{ samples.byHand | highlight("javascript") | safe }}
+    </div>
+  </div>
+</section>
+
+<section class="band" id="anywhere">
+  <div class="wrap">
+    <h2>Use it where you already are</h2>
+    <p class="section-lede">It is a custom element, so anything that renders HTML can use it.</p>
+    <div class="uses">
+      <div>
+        <h3>Plain HTML</h3>
+        {{ '<copy-button text="npm create zubra"></copy-button>' | highlight("markup") | safe }}
+      </div>
+      <div>
+        <h3>React or Vue</h3>
+        {{ '<CopyButton text="npm create zubra" />' | highlight("markup") | safe }}
+        <p class="note">Through <code>@zubra/unplugin</code>: the same file, typed.</p>
+      </div>
+      <div>
+        <h3>On a server</h3>
+        {{ 'zubra compile copy-button.zb --props props.json' | highlight("bash") | safe }}
+        <p class="note">Or <code>@zubra/server</code> for Express, Fastify, Hono and Eleventy.</p>
+      </div>
+    </div>
+    <p class="more"><a href="{{ '/docs/who-this-is-for/' | url }}">Who Zubra is for</a>, and <a href="{{ '/docs/what-crosses-the-boundary/' | url }}">what does and doesn’t cross the boundary</a> into a framework.</p>
+  </div>
+</section>
+
+<section class="wrap start" id="start">
+  <h2>Start in a minute</h2>
+  <ol class="start-steps">
+    <li><code>npm create zubra@latest my-app</code><span>Pick a framework, or none. You get a working app with one component, a dev server that updates components in place, and a browser test.</span></li>
+    <li><a href="{{ '/docs/guide/' | url }}">Follow the guide</a><span>Eight short pages: props and state, templates, events, slots, forms, async data, the server, and reading the output.</span></li>
+    <li><a href="{{ '/playground/' | url }}">Or try it in the browser</a><span>The playground compiles in the page and runs your component in plain HTML, React and Vue side by side.</span></li>
+  </ol>
+</section>
+
+<section class="band" id="demos">
+  <div class="wrap">
+    <h2>{{ site.count }} complete apps</h2>
+    <p class="section-lede">Every framework, server and kind of client, each tested in a browser on every change. The ones marked “needs a server” run locally: each one’s README has the commands.</p>
+    {% for group in site.groups %}
+    <h3 class="group">{{ group.name }}</h3>
+    <div class="grid">
+      {% for demo in group.demos %}
+      {% set open = ('/demos/' + demo.id + '/') | url if demo.live else demo.source %}
+      <article class="card">
+        <a class="shot" href="{{ open }}" tabindex="-1" aria-hidden="true">{% if demo.shot %}<img src="{{ ('/shots/' + demo.id + '.jpg') | url }}" alt="" width="1280" height="800" loading="lazy">{% else %}<span class="placeholder"></span>{% endif %}</a>
+        <div class="body">
+          <p class="stack">{{ demo.stack }}</p>
+          <h4><a href="{{ open }}">{{ demo.title }}</a></h4>
+          <p>{{ demo.blurb }}</p>
+          <p class="links">{% if demo.live %}<a href="{{ open }}">Open the demo</a>{% else %}<span class="server">Needs a server: run it locally</span>{% endif %} <a href="{{ demo.source }}">Source</a></p>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>

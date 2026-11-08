@@ -1,0 +1,15 @@
+{
+  "name": "zubra-landing-page",
+  "private": true,
+  "type": "module",
+  "description": "The landing page on GitHub Pages, built with Eleventy: node demos/build.mjs runs it (or `npm run build` here, with $ZUBRA_COMPILER set if compiler/zubra.wasm isn't built)",
+  "scripts": {
+    "build": "eleventy",
+    "start": "eleventy --serve"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@11ty/eleventy": "3.1.8",
+    "prismjs": "1.30.0"
+  }
+}

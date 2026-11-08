@@ -153,6 +153,8 @@ jobs:
       - run: npm ci
         working-directory: docs/site
       - run: npm ci
+        working-directory: site
+      - run: npm ci
         working-directory: examples/frameworks
       - name: Install the other static examples
         run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done

@@ -2,7 +2,7 @@
 
 Zubra doesn't hide the platform. A component compiles to things you can open and read: the HTML a server sends, a JavaScript module, and TypeScript typings. Each one is standard web platform code, or a plain description of it, and each exists because the platform has a rule. This chapter reads one component's output closely, then goes through the rules that make hand-written Web Components awkward and shows where Zubra handles each one. The aim isn't to protect you from the rules. It's to let you see them, so that when you need to write a custom element without Zubra, you can.
 
-If you've never written a custom element by hand, start with [the README's hand-written version](../../README.md) of the copy button (about 55 lines). Everything below is the same behaviour, split differently.
+If you've never written a custom element by hand, start with [the README's hand-written version](../../README.md) of the copy button (about 45 lines). Everything below is the same behaviour, split differently.
 
 ## Four things to read
 
