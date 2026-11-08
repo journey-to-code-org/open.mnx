@@ -54,3 +54,13 @@ test('the page links the docs and the playground it ships beside', () => {
   const html = page();
   for (const path of ['docs/', 'playground/']) assert.ok(html.includes(`href="${process.env.GALLERY_BASE ?? '/zubra/'}${path}`), `a link to ${path}`);
 });
+
+test('every link from the page into the docs lands on a page that was built', () => {
+  // The gallery test follows every link in a browser, in CI. This catches a wrong docs path without one.
+  const base = process.env.GALLERY_BASE ?? '/zubra/';
+  const links = [...page().matchAll(/href="([^"#]+)/g)].map((match) => match[1]).filter((href) => href.startsWith(`${base}docs/`));
+  assert.ok(links.length >= 6, `${links.length} docs links on the page`);
+  for (const href of new Set(links)) {
+    assert.ok(existsSync(join(dir, href.slice(base.length), 'index.html')), `${href} isn't a built docs page`);
+  }
+});
