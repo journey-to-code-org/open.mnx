@@ -25,7 +25,17 @@ export default function zubra(options = {}) {
           serverEntrypoint: '@zubra/unplugin/astro/server',
           clientEntrypoint: '@zubra/unplugin/astro/client',
         });
-        updateConfig({ vite: { plugins: [vite({ framework: 'element', ...options })] } });
+        updateConfig({
+          vite: {
+            plugins: [vite({ framework: 'element', ...options })],
+            // The server build renders with @zubra/compiler, which loads zubra.wasm from beside
+            // itself: bundled into Astro's prerender chunks, it would look for it there. (From
+            // npm it's external anyway; linked or in a workspace, Vite would bundle it.)
+            // Astro prerenders in its own Vite environment, so this is `resolve.external` (every
+            // server environment), not `ssr.external`.
+            resolve: { external: [options.compilerModule ?? '@zubra/compiler'] },
+          },
+        });
       },
     },
   };

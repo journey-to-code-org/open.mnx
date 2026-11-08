@@ -137,10 +137,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.97"
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The WebAssembly compiler, as the Pages deploy uses (the CLI hides problems with loading
+      # zubra.wasm, such as a bundler moving @zubra/compiler away from it).
+      - run: npm run build
+        working-directory: compiler
       - run: npm ci
         working-directory: runtime
       - run: npm ci
@@ -149,7 +154,7 @@ jobs:
         working-directory: examples/frameworks
       - name: Install the other static examples
         run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done
-      - run: node demos/build.mjs --out _site --base /open.mnx/
+      - run: node demos/build.mjs --require-wasm --out _site --base /open.mnx/
       - run: npx playwright install --with-deps chromium
         working-directory: examples/frameworks
       - run: node --test "demos/test/*.test.js"
