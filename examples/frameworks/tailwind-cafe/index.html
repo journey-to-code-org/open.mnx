@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Corner Café · Tailwind CSS and Zubra</title>
+  </head>
+  <body class="min-h-screen bg-stone-50 text-stone-900 antialiased dark:bg-stone-950 dark:text-stone-100">
+    <header class="border-b border-stone-200 bg-white/80 backdrop-blur dark:border-stone-800 dark:bg-stone-900/80">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <p class="text-lg font-bold tracking-tight">Corner <span class="text-amber-600">Café</span></p>
+        <p class="text-sm text-stone-500 dark:text-stone-400">Tailwind CSS 4 · Zubra components</p>
+      </div>
+    </header>
+    <main class="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[1fr_22rem]">
+      <section aria-labelledby="menu-heading">
+        <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <h1 id="menu-heading" class="text-2xl font-bold tracking-tight">Menu</h1>
+          <category-tabs id="tabs"></category-tabs>
+        </div>
+        <div id="menu" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+      </section>
+      <aside class="lg:sticky lg:top-6 lg:self-start">
+        <order-summary id="order"></order-summary>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

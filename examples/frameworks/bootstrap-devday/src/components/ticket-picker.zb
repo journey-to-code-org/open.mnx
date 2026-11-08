@@ -1,0 +1,48 @@
+<!--
+  The ticket, as cards to choose from: a form control (a radio group) that a <form> submits
+  under its `name`, and that takes part in validation, so Bootstrap's `.was-validated :invalid`
+  styles and `.invalid-feedback` work with it. A shadow-DOM component: it reads Bootstrap's CSS
+  variables (from the Sass theme, and switched by `data-bs-theme`), which inherit into shadow
+  roots. `tickets` is [{ id, name, price, perks }].
+  @fires valuechange - The ticket changed; `detail` is its id.
+-->
+<script>
+  import { validity } from '@zubra/runtime'
+
+  let group = null
+  validity(() => (value ? "" : "Choose a ticket."))
+
+  function move(index, step) {
+    value = tickets[(index + step + tickets.length) % tickets.length].id
+    queueMicrotask(() => group.querySelector(`[data-id="${value}"]`)?.focus())
+  }
+</script>
+<style>
+  :host { display: block; font-family: var(--bs-body-font-family); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
+  button {
+    display: grid; gap: 0.25rem; padding: 1rem; text-align: left; cursor: pointer;
+    border: var(--bs-border-width) solid var(--ticket-border, var(--bs-border-color)); border-radius: var(--bs-border-radius-lg);
+    background: var(--bs-body-bg); color: var(--bs-body-color); font: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  button:hover { border-color: rgba(var(--bs-primary-rgb), 0.5); }
+  button:focus-visible { outline: 0; box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25); }
+  button[aria-checked=true] { border-color: var(--bs-primary); box-shadow: 0 0 0 1px var(--bs-primary); background: rgba(var(--bs-primary-rgb), 0.06); }
+  .name { font-weight: 600; }
+  .price { color: var(--bs-primary); font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+  .perks { color: var(--bs-secondary-color); font-size: 0.875rem; }
+</style>
+<ticket-picker shadow form-associated value:model="" tickets={[]} label="Ticket">
+  <div class="grid" role="radiogroup" aria-label={label} ref={group}>
+    <zb-each items={tickets} as="ticket" index="index" key={ticket.id}>
+      <button type="button" role="radio" data-id={ticket.id} aria-checked={ticket.id === value ? "true" : "false"}
+        tabindex={ticket.id === value || (!value && index === 0) ? "0" : "-1"}
+        onclick={() => (value = ticket.id)} onkeydown.right.down.prevent={() => move(index, 1)} onkeydown.left.up.prevent={() => move(index, -1)}>
+        <span class="name">{ticket.name}</span>
+        <span class="price">€{ticket.price}</span>
+        <span class="perks">{ticket.perks}</span>
+      </button>
+    </zb-each>
+  </div>
+</ticket-picker>

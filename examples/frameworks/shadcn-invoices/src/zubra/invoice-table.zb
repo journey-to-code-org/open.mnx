@@ -1,0 +1,43 @@
+<!--
+  The invoices, as a table whose rows open an invoice (click, or Enter on a focused row). Light
+  DOM, styled with Tailwind classes on shadcn's tokens, like shadcn's Table.
+  `invoices` is [{ id, client, amount, due, status }].
+  @fires invoiceopen - A row was chosen; `detail` is the invoice's id.
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+  import './status-badge.zb'
+
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
+  const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" })
+  const shown = filter === "all" ? invoices : invoices.filter((invoice) => invoice.status === filter)
+</script>
+<invoice-table invoices={[]} filter="all">
+  <div class="relative w-full overflow-x-auto">
+    <table class="w-full caption-bottom text-sm">
+      <thead class="[&_tr]:border-b">
+        <tr class="border-b">
+          <th class="h-10 px-2 text-left align-middle font-medium text-foreground">Invoice</th>
+          <th class="h-10 px-2 text-left align-middle font-medium text-foreground">Client</th>
+          <th class="h-10 px-2 text-left align-middle font-medium text-foreground">Status</th>
+          <th class="h-10 px-2 text-left align-middle font-medium text-foreground">Due</th>
+          <th class="h-10 px-2 text-right align-middle font-medium text-foreground">Amount</th>
+        </tr>
+      </thead>
+      <tbody class="[&_tr:last-child]:border-0">
+        <zb-each items={shown} as="invoice" key={invoice.id}>
+        <tr tabindex="0" data-id={invoice.id}
+          onclick={() => emit("invoiceopen", invoice.id)} onkeydown.enter={() => emit("invoiceopen", invoice.id)}
+          class="cursor-pointer border-b transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted">
+          <td class="p-2 align-middle font-medium">{invoice.id}</td>
+          <td class="p-2 align-middle">{invoice.client}</td>
+          <td class="p-2 align-middle"><status-badge status={invoice.status}></status-badge></td>
+          <td class="p-2 align-middle text-muted-foreground">{day.format(new Date(`${invoice.due}T12:00`))}</td>
+          <td class="p-2 text-right align-middle tabular-nums">{money.format(invoice.amount)}</td>
+        </tr>
+        </zb-each>
+      </tbody>
+      <caption zb-if={shown.length === 0} class="mt-4 text-sm text-muted-foreground">No {filter} invoices.</caption>
+    </table>
+  </div>
+</invoice-table>

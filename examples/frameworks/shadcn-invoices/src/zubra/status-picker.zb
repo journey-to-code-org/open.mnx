@@ -1,0 +1,25 @@
+<!--
+  A status chooser for a form: a form-associated radio group, so a <form> submits it under its
+  `name` like an input, inside shadcn's Dialog (a Radix portal) too. Arrow keys move the choice.
+  @fires valuechange - The status changed; `detail` is the status.
+-->
+<script>
+  let group = null
+
+  function move(index, step) {
+    value = statuses[(index + step + statuses.length) % statuses.length]
+    queueMicrotask(() => group.querySelector(`[data-value="${value}"]`)?.focus())
+  }
+</script>
+<status-picker form-associated value:model="draft" statuses={["draft", "sent", "paid"]} label="Status">
+  <div role="radiogroup" aria-label={label} ref={group} class="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+    <zb-each items={statuses} as="status" index="index" key={status}>
+    <button type="button" role="radio" data-value={status}
+      aria-checked={status === value ? "true" : "false"} tabindex={status === value ? "0" : "-1"}
+      onclick={() => (value = status)} onkeydown.right.down.prevent={() => move(index, 1)} onkeydown.left.up.prevent={() => move(index, -1)}
+      class="rounded-md px-3 py-1.5 text-sm font-medium capitalize text-muted-foreground transition outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-checked:bg-background aria-checked:text-foreground aria-checked:shadow-sm">
+      {status}
+    </button>
+    </zb-each>
+  </div>
+</status-picker>

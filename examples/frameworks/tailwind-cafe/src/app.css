@@ -1,0 +1,7 @@
+/* The page's CSS: Tailwind, scanning the project (the .zb files too). */
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-roast: oklch(0.42 0.08 50);
+}

@@ -1,0 +1,16 @@
+// Bootstrap 5, customised the Sass way: variables before the import. Bootstrap turns them into
+// CSS variables (--bs-primary, --bs-border-radius, …), which the Zubra components read: the
+// light-DOM ones through Bootstrap's classes, the shadow-DOM one directly.
+$primary: #6d28d9;
+$border-radius: 0.6rem;
+$border-radius-lg: 0.9rem;
+$font-family-sans-serif: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+$enable-shadows: true;
+
+@import "bootstrap/scss/bootstrap";
+
+// A Zubra form control is matched by :invalid like an input, so Bootstrap's validation styles
+// need only its border here; `.invalid-feedback` after it shows by Bootstrap's own rule.
+.was-validated ticket-picker:invalid {
+  --ticket-border: var(--bs-form-invalid-border-color);
+}

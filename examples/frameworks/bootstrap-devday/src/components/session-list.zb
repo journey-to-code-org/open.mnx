@@ -1,0 +1,36 @@
+<!--
+  The workshops to pick from, up to `max`. Light DOM, built from Bootstrap's own classes
+  (list-group, form-check, badge, text-body-secondary), so it looks like the rest of the page.
+  `sessions` is [{ id, title, time, level, seats }].
+  @fires valuechange - The picked workshops changed; `detail` is their ids.
+-->
+<script>
+  const full = value.length >= max
+  const badge = { Beginner: "text-bg-success", Intermediate: "text-bg-warning", Advanced: "text-bg-danger" }
+
+  function toggle(id, checked) {
+    value = checked ? [...value, id] : value.filter((entry) => entry !== id)
+  }
+</script>
+<session-list value:model={[]} sessions={[]} max={2}>
+  <div class="list-group">
+    <zb-each items={sessions} as="session" key={session.id}>
+      <label class="list-group-item list-group-item-action d-flex gap-3 align-items-start py-3">
+        <input class="form-check-input flex-shrink-0 mt-1" type="checkbox" data-id={session.id}
+          checked={value.includes(session.id)} disabled={session.seats === 0 || (full && !value.includes(session.id))}
+          onchange={(event) => toggle(session.id, event.target.checked)} />
+        <span class="flex-grow-1">
+          <span class="d-flex flex-wrap align-items-center gap-2">
+            <strong>{session.title}</strong>
+            <span class={`badge rounded-pill ${badge[session.level]}`}>{session.level}</span>
+          </span>
+          <small class="d-block text-body-secondary">{session.time}</small>
+        </span>
+        <small class={session.seats === 0 ? "text-danger fw-semibold" : session.seats <= 5 ? "text-warning-emphasis" : "text-body-secondary"}>
+          {session.seats === 0 ? "Full" : `${session.seats} seats left`}
+        </small>
+      </label>
+    </zb-each>
+  </div>
+  <p zb-if={full} class="form-text mb-0">You've picked {max}: untick one to choose another.</p>
+</session-list>

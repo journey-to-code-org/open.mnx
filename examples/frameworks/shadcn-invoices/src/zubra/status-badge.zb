@@ -1,0 +1,8 @@
+<!--
+  An invoice's status, as a shadcn-style badge. Light DOM: Tailwind classes on shadcn's theme
+  tokens (`bg-primary`, `text-muted-foreground`), so it follows the theme like shadcn's own.
+-->
+<status-badge status="draft">
+  <span data-status={status}
+    class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium capitalize data-[status=draft]:border-border data-[status=draft]:text-muted-foreground data-[status=sent]:border-transparent data-[status=sent]:bg-secondary data-[status=sent]:text-secondary-foreground data-[status=paid]:border-transparent data-[status=paid]:bg-primary data-[status=paid]:text-primary-foreground data-[status=overdue]:border-transparent data-[status=overdue]:bg-destructive data-[status=overdue]:text-white">{status}</span>
+</status-badge>

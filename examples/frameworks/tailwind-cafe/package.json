@@ -1,0 +1,20 @@
+{
+  "name": "zubra-example-tailwind-cafe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@zubra/runtime": "file:../../../runtime"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.6"
+  }
+}

@@ -316,7 +316,7 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 
 ### Tailwind CSS
 
-Light-DOM components need no setup: utility classes in templates are just classes. Tailwind 4 detects `.zb` files with its other sources; if your components are somewhere it doesn't look, add `@source "./components";` to your CSS. Inside a component's `<style>`, add `@reference "tailwindcss";` to use `@apply` and theme values. For shadow components, pass Tailwind's compiled CSS to `adoptStyles`.
+Light-DOM components need no setup: utility classes in templates are just classes. Tailwind 4 detects `.zb` files with its other sources; if your components are somewhere it doesn't look, add `@source "./components";` to your CSS. Inside a component's `<style>`, add `@reference "tailwindcss";` to use `@apply` and theme values. For shadow components, pass Tailwind's compiled CSS to `adoptStyles`. `examples/frameworks/tailwind-cafe/` does both. [Zubra with Tailwind, shadcn/ui, MUI and Bootstrap](docs/guide/styling-libraries.md) covers the others, each with an example app.
 
 ## Events
 

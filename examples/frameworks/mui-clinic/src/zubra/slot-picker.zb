@@ -1,0 +1,43 @@
+<!--
+  A day's appointment times, as a form control: a radio group a <form> submits under its `name`,
+  inside MUI's form layout. A shadow-DOM component: MUI's CSS-in-JS doesn't reach it, but MUI's
+  theme does, as CSS variables (`createTheme({ cssVariables: … })` writes `--mui-palette-…`),
+  which inherit into shadow roots. Arrow keys move the choice. `slots` is [{ time, taken }].
+  @fires valuechange - The time changed; `detail` is the time.
+-->
+<script>
+  let group = null
+  const open = slots.filter((slot) => !slot.taken)
+
+  function move(time, step) {
+    const index = open.findIndex((slot) => slot.time === time)
+    value = open[(index + step + open.length) % open.length]?.time ?? value
+    queueMicrotask(() => group.querySelector(`[data-time="${value}"]`)?.focus())
+  }
+  const first = open[0]?.time
+</script>
+<style>
+  :host { display: block; font-family: var(--mui-font-body1, inherit); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 0.5rem; }
+  button {
+    padding: 0.55rem 0; border: 1px solid var(--mui-palette-divider); border-radius: var(--mui-shape-borderRadius);
+    background: var(--mui-palette-background-paper); color: var(--mui-palette-text-primary);
+    font: 500 0.875rem/1.5 var(--mui-font-body1, inherit); cursor: pointer; transition: background-color 150ms, border-color 150ms;
+  }
+  button:hover:not(:disabled, [aria-checked=true]) { border-color: var(--mui-palette-primary-main); background: var(--mui-palette-action-hover); }
+  button:focus-visible { outline: 2px solid var(--mui-palette-primary-main); outline-offset: 2px; }
+  button[aria-checked=true] { border-color: var(--mui-palette-primary-main); background: var(--mui-palette-primary-main); color: var(--mui-palette-primary-contrastText); }
+  button:disabled { color: var(--mui-palette-text-disabled); text-decoration: line-through; cursor: not-allowed; }
+  .empty { margin: 0; color: var(--mui-palette-text-secondary); }
+</style>
+<slot-picker shadow form-associated value:model="" slots={[]} label="Time">
+  <p zb-if={slots.length === 0} class="empty">Choose a doctor and a day first.</p>
+  <div zb-else class="grid" role="radiogroup" aria-label={label} ref={group}>
+    <zb-each items={slots} as="slot" key={slot.time}>
+      <button type="button" role="radio" data-time={slot.time} disabled={slot.taken}
+        aria-checked={slot.time === value ? "true" : "false"}
+        tabindex={slot.time === value || (!value && slot.time === first) ? "0" : "-1"}
+        onclick={() => (value = slot.time)} onkeydown.right.down.prevent={() => move(slot.time, 1)} onkeydown.left.up.prevent={() => move(slot.time, -1)}>{slot.time}</button>
+    </zb-each>
+  </div>
+</slot-picker>

@@ -21,6 +21,16 @@ export const demos = [
   { id: 'angular-booking', dir: 'examples/frameworks/angular-booking', title: 'Booking wizard', stack: 'Angular 22', group: 'Frameworks',
     blurb: 'Reactive forms whose controls are Zubra elements, with validation and a step indicator.', build: 'frameworks' },
 
+  // Styling libraries (also in examples/frameworks)
+  { id: 'tailwind-cafe', dir: 'examples/frameworks/tailwind-cafe', title: 'Café order builder', stack: 'Tailwind CSS 4', group: 'Styling libraries',
+    blurb: 'Tailwind utilities in .zb templates, and the same CSS in a shadow-DOM component through adoptStyles().', build: 'frameworks' },
+  { id: 'shadcn-invoices', dir: 'examples/frameworks/shadcn-invoices', title: 'Invoicing dashboard', stack: 'React + shadcn/ui (Radix)', group: 'Styling libraries',
+    blurb: 'Zubra components on shadcn’s theme next to its Dialog and DropdownMenu, restyled together by the theme menu.', build: 'frameworks' },
+  { id: 'mui-clinic', dir: 'examples/frameworks/mui-clinic', title: 'Appointment booking', stack: 'React + MUI', group: 'Styling libraries',
+    blurb: 'MUI’s theme reaching Zubra components as CSS variables, with a Zubra time picker in MUI’s form.', build: 'frameworks' },
+  { id: 'bootstrap-devday', dir: 'examples/frameworks/bootstrap-devday', title: 'Conference registration', stack: 'Bootstrap 5 + Sass', group: 'Styling libraries',
+    blurb: 'Bootstrap’s classes in a component, its Sass theme in a shadow root, and its validation with a Zubra form control.', build: 'frameworks' },
+
   // Rendered on the server or at build time
   { id: 'recipes', dir: 'examples/recipes', title: 'Recipes', stack: 'Astro', group: 'Server and static rendering',
     blurb: 'Zubra components as Astro islands, rendered at build time and hydrated where they’re interactive.', build: 'astro',

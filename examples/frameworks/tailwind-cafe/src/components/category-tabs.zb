@@ -1,0 +1,15 @@
+<!--
+  The menu's categories, as toggle buttons. Light DOM, styled only with Tailwind utilities: the
+  selected one through Tailwind's `aria-pressed:` variant.
+  @fires valuechange - The category changed; `detail` is the category.
+-->
+<category-tabs value:model="All" categories={["All"]} label="Category">
+  <div role="group" aria-label={label} class="inline-flex rounded-full bg-stone-200/70 p-1 dark:bg-stone-800">
+    <zb-each items={categories} as="category" key={category}>
+      <button type="button" aria-pressed={category === value ? "true" : "false"} onclick={() => (value = category)}
+        class="rounded-full px-3 py-1.5 text-sm font-medium text-stone-600 transition hover:text-stone-900 aria-pressed:bg-white aria-pressed:text-stone-900 aria-pressed:shadow-sm dark:text-stone-300 dark:hover:text-white dark:aria-pressed:bg-stone-600 dark:aria-pressed:text-white">
+        {category}
+      </button>
+    </zb-each>
+  </div>
+</category-tabs>
