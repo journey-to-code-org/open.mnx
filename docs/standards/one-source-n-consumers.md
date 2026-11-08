@@ -1,6 +1,6 @@
 # One source, N consumers: the claim with numbers
 
-*Written for the developers who said that agents make rewriting a component for another framework cheap, and the instructor who said that with ported tests, drift is a non-problem. They were largely right, and this page says what is left of the argument for one source once that is granted.*
+*Written in 3.4.0 (November 2026), counts re-checked for 5.0.3. Written for the two people in the survey who said that agents make rewriting a component for another framework cheap, and the instructor who said that with ported tests, drift is a non-problem. They were largely right, and this page says what is left of the argument for one source once that is granted.*
 
 ## The claim, stated as the weaker claim
 
@@ -10,7 +10,7 @@ The claim is: **N copies are N things to review, keep matching and keep correct,
 
 ## 1. What the compiler generates, counted
 
-The registry is 25 components, 1,131 lines of `.zb`. The matrix is eight consumers: React 18, React 19, Vue 3, Angular, Svelte 5, Solid, Lit and Preact (plus plain HTML, Astro and six server-rendering frameworks).
+The registry is 25 components, 1,131 lines of `.zb`. The matrix is eight consumers: React 18, React 19, Vue 3, Angular, Svelte 5, Solid, Lit and Preact (plus plain HTML, Astro and five server-rendering frameworks).
 
 | | Hand-written ports | Generated |
 |---|---|---|

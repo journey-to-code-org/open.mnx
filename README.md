@@ -634,6 +634,7 @@ zubra serve
 
 Zubra is meant to be absorbed by the platform. These reports give the standards discussions evidence from using it:
 
+- [`docs/standards/README.md`](docs/standards/README.md) indexes them; feedback is welcome, see `CONTRIBUTING.md`.
 - [`docs/standards/signals.md`](docs/standards/signals.md): an integration report for the TC39 Signals proposal, including two reference-polyfill behaviours the README rules out and the cost of unwatching one effect at a time.
 - [`docs/standards/dom-parts.md`](docs/standards/dom-parts.md): what a parts model needed in practice (markers, regions, hydration), for DOM Parts and declarative templating.
 - [`docs/standards/declarative-custom-elements.md`](docs/standards/declarative-custom-elements.md): the `.zb` format as a worked declarative custom elements explainer.

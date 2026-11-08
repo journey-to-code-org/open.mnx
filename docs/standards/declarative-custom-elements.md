@@ -1,6 +1,6 @@
 # The `.zb` format as a declarative custom elements explainer
 
-*Zubra 5.0, November 2026. Input for the declarative custom elements discussions in the Web Components Community Group ([w3c/webcomponents-cg#32](https://github.com/w3c/webcomponents-cg/issues/32)). There is no settled proposal. This describes a format that is in use, and why each choice was made, as evidence for one.*
+*Zubra 5.0.3, November 2026. Input for the declarative custom elements discussions in the Web Components Community Group ([w3c/webcomponents-cg#32](https://github.com/w3c/webcomponents-cg/issues/32)). There is no settled proposal. This describes a format that is in use, and why each choice was made, as evidence for one.*
 
 ## The shape
 
