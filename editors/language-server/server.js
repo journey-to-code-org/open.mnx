@@ -19,7 +19,8 @@ let backend;
 const manifests = new Map(); // path → { mtime, component }
 
 connection.onInitialize(async (params) => {
-  backend = await createBackend(params.initializationOptions ?? {});
+  const folder = params.workspaceFolders?.[0]?.uri ?? params.rootUri;
+  backend = await createBackend({ ...params.initializationOptions, root: folder ? fileURLToPath(folder) : undefined });
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,

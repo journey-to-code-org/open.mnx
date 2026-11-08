@@ -10,6 +10,10 @@ A documentation site, a landing page, a logo, and the VS Code extension on the M
 
 - **Two diagnostics taught the wrong thing.** Assigning to a misspelled name (`cnt = 1` for `count`) is now reported as an unknown name with a did-you-mean, not as "can't be assigned". The "can't be assigned" error says how to fix it. Browser globals such as `location = "/"` aren't reported as unknown.
 
+### Fixed
+
+- **The language server finds `@zubra/compiler` in the project you're editing.** It looked only beside itself, so in the VS Code extension (where the server lives in the extension's folder) it never saw a workspace's `@zubra/compiler` and needed the `zubra` command on the `PATH` for diagnostics, completion and hover. It now looks in the nearest `node_modules` above the workspace folder first, then beside itself, then falls back to the CLI. Ships when the packages are next released and the extension repackaged.
+
 ### Added
 
 - **A documentation site** at `<base>docs/` on GitHub Pages: the guide, the topics, the README as the reference, the changelog, the migration notes and the standards reports. A link to a file that doesn't exist fails the build, and code is coloured.
