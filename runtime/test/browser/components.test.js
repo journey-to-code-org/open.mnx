@@ -565,8 +565,11 @@ test('server markup whose comments were stripped hydrates in place: anchors, zb-
   const kept = await page.evaluate(() => window.kept.length > 0 && window.kept.every((node) => node.isConnected));
   assert.equal(kept, true, 'every server node is still in the page: nothing was rendered fresh');
   assert.equal(await page.textContent('zb-stripped h2'), 'Today: Drinks, 2 picks!');
+  // Hydrated (its listeners bound) once remark.js, loaded on demand, has put the markers back.
+  await page.waitForSelector('zb-stripped:state(hydrated)');
   await page.click('zb-stripped button');
-  await page.evaluate(() => document.querySelector('zb-stripped').updateComplete);
+  await page.waitForFunction(() => document.querySelector('zb-stripped h2').textContent === 'Today: Drinks, 3 picks!', null, { timeout: 2000 })
+    .catch(() => {});
   assert.equal(await page.textContent('zb-stripped h2'), 'Today: Drinks, 3 picks!', 'the anchored text updates');
   assert.equal(await page.evaluate(() => window.kept.includes(document.querySelector('zb-stripped h2 b'))), true);
   // The regions work as regions afterwards.
