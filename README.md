@@ -620,6 +620,8 @@ mnx is meant to be absorbed by the platform. These reports give the standards di
 - [`docs/standards/signals.md`](docs/standards/signals.md): an integration report for the TC39 Signals proposal, including two reference-polyfill behaviours the README rules out and the cost of unwatching one effect at a time.
 - [`docs/standards/dom-parts.md`](docs/standards/dom-parts.md): what a parts model needed in practice (markers, regions, hydration), for DOM Parts and declarative templating.
 - [`docs/standards/declarative-custom-elements.md`](docs/standards/declarative-custom-elements.md): the `.mnx` format as a worked declarative custom elements explainer.
+- [`docs/standards/one-source-n-consumers.md`](docs/standards/one-source-n-consumers.md): the case for one source against agent-made ports, with numbers: what the compiler generates for the registry across the matrix, the ten framework bugs the adapters absorbed once, and an experiment where an agent ported three components to three frameworks (47 behavioural differences before any change; a fix propagated to all six ports without error).
+- [`docs/framework-matrix.md`](docs/framework-matrix.md): what each framework's row in CI proves, and what isn't in a row.
 
 ## Stability
 

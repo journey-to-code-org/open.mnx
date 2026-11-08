@@ -1,6 +1,6 @@
 {
   "name": "@mnx/server",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "mnx on the server: render components into any template engine's pages, serve their browser modules, and give frameworks' HTML its components' shadow roots.",
   "type": "module",
   "main": "./src/index.js",

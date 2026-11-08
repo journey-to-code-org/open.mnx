@@ -2,6 +2,19 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.4.0 — 2026-11-07
+
+Evidence (`plan/roadmap-4.0.md`, 3.4): the claims the pitch rests on, with numbers, written for the people who argued against them.
+
+### Added
+
+- **`docs/standards/one-source-n-consumers.md`.** The argument for one source made as the weaker claim it has become now that agents make ports cheap: N copies are N things to review and keep matching, and what goes wrong in a port is what the compiler generates. With numbers: the registry's 20 components across the matrix are 140 hand-written ports against 20 files and 367 lines of adapter written once; the ten framework-specific bugs the adapters absorbed, each fixed once; and an experiment (`docs/standards/ports-experiment/`, reproducible) in which an agent ported three registry components to React, Vue and Svelte in three minutes, a reviewing agent found 47 behavioural differences in the nine fresh ports (form reset and submission, event semantics, host semantics: the generated parts), and two fixes were then propagated to all six affected ports without error. The conclusion is the one the survey's instructor would accept: propagation is solved; divergence happens at port time.
+- **`docs/framework-matrix.md`**: what each framework's row in CI proves, row by row, and what isn't in a row (SvelteKit with light DOM, Next.js elements with React children, Qwik).
+
+### Corrected
+
+- **React 18 prop timing was already fixed.** `progress.md` listed "React 18: props still arrive after the script runs" as open; since 2.8 the element reads the React wrapper's `mnx-props` when it starts, before React 18's effect sets properties, and `runtime/test/browser/adapters.test.js` asserts a script seeded from a prop sees it under React 18. No change was needed; the roadmap's decision 2 is moot.
+
 ## 3.3.0 — 2026-11-07
 
 The last server gaps (`plan/roadmap-4.0.md`, 3.3): "SSR isn't great with web components" was the belief two of the survey's nine respondents held, and three visible gaps confirmed it.
