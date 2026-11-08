@@ -1,10 +1,10 @@
 'use client';
-// Feedback through a Server Action. The rating and the switch are mnx form controls: they take
+// Feedback through a Server Action. The rating and the switch are zubra form controls: they take
 // part in the form like native inputs (FormData, validation, reset), so the action just reads
 // `rating` and `followup`.
 import { useActionState } from 'react';
-import StarRating from '../../../components/star-rating.mnx';
-import ToggleSwitch from '../../../components/toggle-switch.mnx';
+import StarRating from '../../../components/star-rating.zb';
+import ToggleSwitch from '../../../components/toggle-switch.zb';
 import { submitFeedback } from '@/app/actions.js';
 
 export default function FeedbackForm({ session }) {

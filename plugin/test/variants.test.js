@@ -9,8 +9,8 @@ test('the importer decides: React files, Vue files, components, everything else'
     assert.equal(variantFor('', '/app/App.jsx', project), project === 'vue' ? 'vue' : 'react');
     assert.equal(variantFor('', '/app/App.vue', project), 'vue');
     assert.equal(variantFor('', '/app/App.vue?vue&type=script&setup=true&lang.ts', project), 'vue', 'a .vue file\'s script block');
-    assert.equal(variantFor('', '/app/inbox.mnx', project), 'element', 'components import elements');
-    assert.equal(variantFor('', '/app/badge.mnx?mnx=react', project), 'element', 'a wrapper imports its element');
+    assert.equal(variantFor('', '/app/inbox.zb', project), 'element', 'components import elements');
+    assert.equal(variantFor('', '/app/badge.zb?zubra=react', project), 'element', 'a wrapper imports its element');
     assert.equal(variantFor('', '/app/util.ts', project), project, 'plain files get the project\'s framework');
     assert.equal(variantFor('', undefined, project), project, 'an entry point too');
   }
@@ -36,10 +36,10 @@ test('resolveId keeps a variant that is already chosen, with no importer to go b
   const { unplugin } = await import('../src/index.js');
   const plugin = unplugin.raw({ framework: 'react' }, { framework: 'vite' });
   const here = new URL('.', import.meta.url).pathname;
-  const file = `${here}apps/react/src/App.tsx`.replace('App.tsx', '../../../../../runtime/test/browser/fixtures/card.mnx');
+  const file = `${here}apps/react/src/App.tsx`.replace('App.tsx', '../../../../../runtime/test/browser/fixtures/card.zb');
   const { resolve } = await import('node:path');
   const path = resolve(file);
-  assert.equal(await plugin.resolveId.call({}, `${path}?mnx=element`, undefined), `${path}?mnx=element`);
-  assert.equal(await plugin.resolveId.call({}, path, undefined), `${path}?mnx=react`, 'otherwise the project\'s framework');
+  assert.equal(await plugin.resolveId.call({}, `${path}?zubra=element`, undefined), `${path}?zubra=element`);
+  assert.equal(await plugin.resolveId.call({}, path, undefined), `${path}?zubra=react`, 'otherwise the project\'s framework');
   assert.equal(await plugin.resolveId.call({}, './x.js', '/app/App.tsx'), null, 'not a component');
 });

@@ -63,11 +63,11 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         ..Script::default()
     };
     let mut import_ranges = Vec::new();
-    // `hydrated` imported from @mnx/runtime (its local names), and bindings initialized with a
+    // `hydrated` imported from @zubra/runtime (its local names), and bindings initialized with a
     // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
     let mut hydrated_names: Vec<String> = Vec::new();
     let mut calls: Vec<(usize, String)> = Vec::new();
-    // `from` imported from @mnx/runtime, and `let x = from(arg)` bindings: (binding, callee,
+    // `from` imported from @zubra/runtime, and `let x = from(arg)` bindings: (binding, callee,
     // the argument's text, whether it's a `let`, where it is).
     let mut from_names: Vec<String> = Vec::new();
     let mut linked: Vec<(usize, String, String, bool, u32)> = Vec::new();
@@ -296,7 +296,7 @@ pub fn template_emits(source: &str, emit: &str, span: Span) -> Result<Vec<Emit>,
 }
 
 /// The module components import hooks from.
-pub const RUNTIME: &str = "@mnx/runtime";
+pub const RUNTIME: &str = "@zubra/runtime";
 
 /// Finds `emit("name", detail)` calls; `emit` used any other way can't be analyzed.
 struct EmitFinder<'s, F: Fn(u32) -> Span> {
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn collects_build_time_bindings_and_runtime_names() {
         let script = parse(
-            "import { state } from '@mnx/runtime'\nconst title = \"Mikey\"\nlet count = 1 + 2\nconst now = Date.now()\nconst { a, b } = thing\nfunction inc() { emit('valuechange', 1) }\nclass Thing {}\nconsole.log(title)",
+            "import { state } from '@zubra/runtime'\nconst title = \"Mikey\"\nlet count = 1 + 2\nconst now = Date.now()\nconst { a, b } = thing\nfunction inc() { emit('valuechange', 1) }\nclass Thing {}\nconsole.log(title)",
             Span::new(2, 1),
             false,
         )
@@ -528,16 +528,17 @@ mod tests {
         assert_eq!(script.bindings[1].span, Span::new(4, 5));
         assert_eq!(
             script.imports[0].text,
-            "import { state } from '@mnx/runtime'"
+            "import { state } from '@zubra/runtime'"
         );
-        assert_eq!(script.imports[0].specifier, "@mnx/runtime");
+        assert_eq!(script.imports[0].specifier, "@zubra/runtime");
         assert_eq!(
             &script.imports[0].text[script.imports[0].specifier_range.clone()],
-            "'@mnx/runtime'"
+            "'@zubra/runtime'"
         );
-        assert!(script
-            .body
-            .starts_with("                                    \nconst title"));
+        assert!(script.body.starts_with(&format!(
+            "{}\nconst title",
+            " ".repeat("import { state } from '@zubra/runtime'".len())
+        )));
     }
 
     #[test]

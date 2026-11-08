@@ -1,17 +1,17 @@
-// @mnx/server: mnx components in a server's pages, with any template engine and no bundler.
+// @zubra/server: zubra components in a server's pages, with any template engine and no bundler.
 //
-//   import { createMnx } from '@mnx/server';
-//   const mnx = createMnx({ components: 'components' });
+//   import { createZubra } from '@zubra/server';
+//   const zubra = createZubra({ components: 'components' });
 //
-//   const page = mnx.page();                       // one per request
+//   const page = zubra.page();                       // one per request
 //   const body = `<h1>Tickets</h1>${page.render('ticket-table', { tickets })}`;
 //   res.end(page.finish(layout(body)));            // the components' CSS and modules go in
 //
-//   mnx.handle(req, res)    // Node: serves /_mnx/… (component modules, @mnx/runtime); false otherwise
-//   mnx.fetch(request)      // the same for fetch-style servers (Hono, Bun, Deno): a Response or null
+//   zubra.handle(req, res)    // Node: serves /_zubra/… (component modules, @zubra/runtime); false otherwise
+//   zubra.fetch(request)      // the same for fetch-style servers (Hono, Bun, Deno): a Response or null
 //
 // And for frameworks that render the host tags themselves (React Router, Nuxt, SvelteKit,
-// SolidStart, Next): `mnx.injectShadowRoots(html)` puts each shadow-DOM component's
+// SolidStart, Next): `zubra.injectShadowRoots(html)` puts each shadow-DOM component's
 // server-rendered template into the page as a declarative shadow root, and gives
 // form-associated ones a hidden input, so the page is complete before JavaScript.
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -24,24 +24,24 @@ import { findCompiler } from './compiler.js';
 
 export { findCompiler };
 
-findCompiler(); // (points @mnx/compiler at a native CLI when its WebAssembly build is missing)
-const compiler = await import('@mnx/compiler');
+findCompiler(); // (points @zubra/compiler at a native CLI when its WebAssembly build is missing)
+const compiler = await import('@zubra/compiler');
 
-const SOURCE = /\.mnx(?:\.[jt]sx)?$/;
+const SOURCE = /\.zb(?:\.[jt]sx)?$/;
 const posix = (path) => path.split(sep).join('/');
 const escapeAttribute = (text) => String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
 /**
- * `components`: the folder of `.mnx` (and `.mnx.jsx`/`.mnx.tsx`) files. `prefix`: the URL path
+ * `components`: the folder of `.zb` (and `.zb.jsx`/`.zb.tsx`) files. `prefix`: the URL path
  * the browser modules are served under. `cache`: keep compiled output (turn it off in
  * development to pick up edits). `production`: serve the runtime's production build, without hot
  * reloading (by default when `NODE_ENV` is `production`).
  */
-export function createMnx({ components = 'components', prefix = '/_mnx', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
+export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
   const root = resolve(components);
-  if (!existsSync(root)) throw new Error(`@mnx/server: no components folder at ${root}`);
-  const sourceDir = dirname(fileURLToPath(import.meta.resolve('@mnx/runtime')));
+  if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
+  const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
   const productionDir = join(sourceDir, '..', 'dist', 'production');
   const runtimeDir = production && existsSync(productionDir) ? productionDir : sourceDir;
   const base = prefix.replace(/\/$/, '');
@@ -67,7 +67,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
   const need = () => compiler;
   const pathOf = (name) => {
     const path = files.get(name) ?? files.get(byTag().get(name));
-    if (!path) throw new Error(`@mnx/server: no component "${name}" in ${root} (have: ${[...files.keys()].join(', ')})`);
+    if (!path) throw new Error(`@zubra/server: no component "${name}" in ${root} (have: ${[...files.keys()].join(', ')})`);
     return path;
   };
   const sourcesOf = (path) => once(`sources:${path}`, () => need().sources(path));
@@ -86,15 +86,15 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     call(pathOf(name), { emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
   const js = (name) => once(`js:${name}`, () => {
-    const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@mnx/runtime' });
+    const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@zubra/runtime' });
     if (!response.ok) throw new Error(response.error);
     return response.output;
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@mnx/runtime': `${base}/runtime/index.js`, '@mnx/runtime/spread': `${base}/runtime/spread.js`, '@mnx/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
   const head = (names) => {
     const styles = names.map(css).join('\n');
-    return `${styles ? `<style data-mnx-components>${styles}</style>\n` : ''}${importMap()}`;
+    return `${styles ? `<style data-zb-components>${styles}</style>\n` : ''}${importMap()}`;
   };
   const scripts = (names, async = false) => (names.length ? `<script type="module"${async ? ' async' : ''}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '');
 
@@ -138,7 +138,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     const use = (name) => {
       if (!used.includes(name)) used.push(name);
     };
-    // Streaming (3.3): a prop given as a promise renders as pending (its `mnx-await` shows its
+    // Streaming (3.3): a prop given as a promise renders as pending (its `zb-await` shows its
     // pending content, in an empty region), and `stream()` sends the resolved region after the
     // page, with the value, for the element to hydrate.
     const pendingRenders = [];
@@ -154,10 +154,14 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
         const names = promises.map(([name]) => name);
         const id = String(streamed++);
         const shell = withStreamId(render(key, given, slots, names), id);
-        pendingRenders.push({ key, id, given, slots, promises: new Map(promises), shell });
+        const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0 };
+        // Each pending region is a named range (`<?start name>`…`<?end>`) that a streamed
+        // `<template for>` replaces (out-of-order streaming).
+        entry.names = pendingRegions(shell).map(() => `zb-${id}-${entry.count++}`);
+        pendingRenders.push(entry);
         // Until the values arrive, the element (should it start first) holds a promise for
-        // each, set before it upgrades, so its `mnx-await` shows the pending content.
-        return `${shell}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
+        // each, set before it upgrades, so its `zb-await` shows the pending content.
+        return `${named(shell, entry.names)}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
       get pending() {
@@ -165,8 +169,9 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
       },
       /**
        * The page as a stream: `finish(html)` first, then, as each promise prop settles, the
-       * resolved regions and the value, in a `<template>` and a short inline script that swaps
-       * them in before the element starts (or just hands the element the value, if it has).
+       * resolved regions, each in a `<template for>` (which the browser puts in place itself
+       * where it streams out of order), and a short inline script that hands the element the
+       * value, and puts the regions in place where the browser didn't.
        * `stream(html)` is a Node Readable; `streamResponse(html)` a web `Response` body.
        */
       stream(html) {
@@ -215,8 +220,18 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
         entry.given[name] = value;
         entry.promises.delete(name);
         const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()]), entry.id);
-        const regions = regionSwaps(entry.shell, resolved);
+        const swaps = new Map(regionSwaps(entry.shell, resolved).map((swap) => [swap.index, swap.html]));
         entry.shell = resolved;
+        // The regions still pending keep their names; one that resolved is replaced, along with
+        // its name, by the pending regions inside it.
+        const regions = [];
+        entry.names = entry.names.flatMap((region, index) => {
+          if (!swaps.has(index)) return [region];
+          const html = swaps.get(index);
+          const inner = pendingRegions(html).map(() => `zb-${entry.id}-${entry.count++}`);
+          regions.push({ name: region, html: named(html, inner) });
+          return inner;
+        });
         yield swapScript(entry.id, regions, { [name]: { value } });
       }
     }
@@ -224,7 +239,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
 
   /**
    * Shadow roots for a framework's HTML: each shadow-DOM component's host gets its
-   * server-rendered template as a declarative shadow root (read from the host's `mnx-props`
+   * server-rendered template as a declarative shadow root (read from the host's `zb-props`
    * JSON, or its attributes), so it shows before JavaScript; the browser attaches it while
    * parsing, before any framework hydrates. Form-associated components with a `name` also get a
    * hidden input with their value, so the form submits without JavaScript (the element removes
@@ -252,7 +267,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     for (const match of html.matchAll(pattern)) {
       const end = match.index + match[0].length;
       const { name, info } = shadowTags.get(match[1]);
-      // Already has one (rendered by mnx, or a second pass); a light-DOM host must be empty.
+      // Already has one (rendered by zubra, or a second pass); a light-DOM host must be empty.
       if (info.shadow ? /^\s*<template\s[^>]*shadowroot/i.test(html.slice(end, end + 200)) : !new RegExp(`^\\s*</${match[1]}>`).test(html.slice(end, end + 200))) continue;
       const props = propsFrom(match[2] ?? '', info);
       let rendered;
@@ -270,8 +285,8 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
   }
 
   /**
-   * For static sites: write every component's browser module and @mnx/runtime under `dir`, at
-   * the paths the pages import (`<dir>/_mnx/components/…`, `<dir>/_mnx/runtime/…`).
+   * For static sites: write every component's browser module and @zubra/runtime under `dir`, at
+   * the paths the pages import (`<dir>/_zubra/components/…`, `<dir>/_zubra/runtime/…`).
    */
   function writeAssets(dir) {
     const out = join(resolve(dir), ...base.split('/').filter(Boolean));
@@ -360,13 +375,13 @@ export function parseAttributes(text) {
   return attributes;
 }
 
-/** The props a host tag carries: `mnx-props` JSON first, then each prop's attribute by its type. */
+/** The props a host tag carries: `zb-props` JSON first, then each prop's attribute by its type. */
 export function propsFrom(attributeText, info) {
   const attributes = parseAttributes(attributeText);
   let props = {};
-  if (attributes['mnx-props']) {
+  if (attributes['zb-props']) {
     try {
-      props = JSON.parse(attributes['mnx-props']);
+      props = JSON.parse(attributes['zb-props']);
     } catch {}
   }
   for (const prop of info.props) {
@@ -405,14 +420,14 @@ function shadowTemplate(rendered) {
   return null;
 }
 
-/** The host's start tag with `data-mnx-stream="<id>"`, so the stream's scripts can find it. */
+/** The host's start tag with `data-zb-stream="<id>"`, so the stream's scripts can find it. */
 function withStreamId(html, id) {
-  return html.replace(/^(\s*<[a-z][\w.-]*)/, `$1 data-mnx-stream="${id}"`);
+  return html.replace(/^(\s*<[a-z][\w.-]*)/, `$1 data-zb-stream="${id}"`);
 }
 
 /**
  * The pending regions of `shell` that `resolved` has rendered: `[{ index, html }]`, where
- * `index` counts the shell's top-level `<!--[?-->` regions in order and `html` is the resolved
+ * `index` counts the shell's top-level `<?zb [??>` regions in order and `html` is the resolved
  * region (markers included). The two renders differ only inside those regions (and the host's
  * start tag, which is compared past).
  */
@@ -422,14 +437,12 @@ function regionSwaps(shell, resolved) {
   let b = skipTag(resolved);
   const swaps = [];
   let index = 0;
-  const PENDING = '<!--[?-->';
+  const PENDING = '<?zb [??>';
   const regionEnd = (html, start) => {
-    // From the region's opening marker to its matching `<!--]-->`.
-    const markers = /<!--\[[?!]?-->|<!--\]-->/g;
-    markers.lastIndex = start;
+    // From the region's opening marker to its matching `<?zb ]?>`.
     let depth = 0;
-    for (const match of html.slice(start).matchAll(markers)) {
-      depth += match[0] === '<!--]-->' ? -1 : 1;
+    for (const match of html.slice(start).matchAll(/<\?zb \[[?!]?\?>|<\?zb \]\?>/g)) {
+      depth += match[0] === '<?zb ]?>' ? -1 : 1;
       if (depth === 0) return start + match.index + match[0].length;
     }
     return html.length;
@@ -452,18 +465,55 @@ function regionSwaps(shell, resolved) {
   return swaps;
 }
 
-/** The chunk for one settled promise: the regions as a template, and the script that swaps them in. */
+/**
+ * The top-level pending regions of `html` (`<?zb [??>` to its `<?zb ]?>`, not inside another
+ * pending region), as `[start, end]` offsets: the ones `regionSwaps` counts.
+ */
+function pendingRegions(html) {
+  const found = [];
+  let depth = 0;
+  let start = -1;
+  let outer = 0;
+  for (const match of html.matchAll(/<\?zb (\[[?!]?|\])\?>/g)) {
+    if (match[1] === ']') {
+      depth--;
+      if (start >= 0 && depth === outer) {
+        found.push([start, match.index + match[0].length]);
+        start = -1;
+      }
+      continue;
+    }
+    if (match[1] === '[?' && start < 0) {
+      start = match.index;
+      outer = depth;
+    }
+    depth++;
+  }
+  return found;
+}
+
+/** `html` with its top-level pending regions in named ranges, for `<template for>`. */
+function named(html, names) {
+  let out = html;
+  pendingRegions(html).reverse().forEach(([start, end], i, all) => {
+    const name = names[all.length - 1 - i];
+    out = `${out.slice(0, start)}<?start name="${name}"?>${out.slice(start, end)}<?end?>${out.slice(end)}`;
+  });
+  return out;
+}
+
+/** The chunk for one settled promise: each resolved region in a `<template for>`, and the script. */
 function swapScript(id, regions, values) {
-  const template = regions?.length ? `<template data-mnx-swap="${id}">${regions.map((region) => `<div data-mnx-region="${region.index}">${region.html}</div>`).join('')}</template>` : '';
+  const templates = (regions ?? []).map((region) => `<template for="${region.name}">${region.html}</template>`).join('');
   const script = `<script>(${swapInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
-  return `${template}${script}\n`;
+  return `${templates}${script}\n`;
 }
 
 // Runs in the browser, inlined, right after a streamed host: a promise per pending prop, as a
 // property the element captures when it upgrades, resolved by the swap script later.
 function holdInBrowser(id, names) {
-  var host = document.querySelector('[data-mnx-stream="' + id + '"]');
-  var held = (window.__mnxStream = window.__mnxStream || {});
+  var host = document.querySelector('[data-zb-stream="' + id + '"]');
+  var held = (window.__zubraStream = window.__zubraStream || {});
   for (var i = 0; i < names.length; i++) {
     (function (name) {
       host[name] = new Promise(function (resolve, reject) { held[id + ':' + name] = { resolve: resolve, reject: reject }; });
@@ -471,42 +521,47 @@ function holdInBrowser(id, names) {
   }
 }
 
-// Runs in the browser, inlined: before the element starts, replace its pending regions with the
-// rendered ones and set the values as properties (captured when the element upgrades); once it
-// has started, setting the property is enough (the element renders the region itself).
+// Runs in the browser, inlined: hand the element the values (as properties, captured when it
+// upgrades), and, before it starts, put the resolved regions in place where the browser didn't:
+// browsers without out-of-order streaming leave each `<template for>` as an element, and those
+// with it don't reach into a shadow root. Once the element has started it renders the regions
+// itself (it removed their names, so the browser has nothing to replace).
 function swapInBrowser(id, values) {
-  var host = document.querySelector('[data-mnx-stream="' + id + '"]');
+  var host = document.querySelector('[data-zb-stream="' + id + '"]');
   var script = document.currentScript;
-  var template = script && script.previousElementSibling;
-  if (template && template.tagName !== 'TEMPLATE') template = null;
-  if (template) template.remove();
-  if (!host) return;
-  var started = host.matches(':state(hydrated), [data-hydrated]');
-  if (template && !started) {
-    var regions = [];
-    var walker = document.createTreeWalker(host, NodeFilter.SHOW_COMMENT);
-    var depth = 0;
-    var current = null;
-    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
-      var text = node.data;
-      if (text === '[?' && depth === 0) { current = { open: node }; }
-      if (text === '[' || text === '[?' || text === '[!') depth++;
-      else if (text === ']') { depth--; if (depth === 0 && current) { current.close = node; regions.push(current); current = null; } }
+  var templates = [];
+  for (var node = script && script.previousElementSibling; node && node.tagName === 'TEMPLATE' && node.hasAttribute('for'); node = node.previousElementSibling) templates.push(node);
+  // A `<?start name>` or `<?end>`: a processing instruction, or the comment it parses as.
+  var kind = function (node) {
+    return node.nodeType === 7 ? node.target : node.nodeType === 8 ? (/^\?(start|end)\b/.exec(node.data) || [])[1] : null;
+  };
+  var started = host && host.matches(':state(hydrated), [data-hydrated]');
+  for (var i = 0; i < templates.length; i++) {
+    var template = templates[i];
+    template.remove();
+    if (!host || started) continue;
+    var name = 'name="' + template.getAttribute('for') + '"';
+    var start = null;
+    var roots = host.shadowRoot ? [host.shadowRoot, host] : [host];
+    for (var r = 0; r < roots.length && !start; r++) {
+      var walker = document.createTreeWalker(roots[r], NodeFilter.SHOW_COMMENT | NodeFilter.SHOW_PROCESSING_INSTRUCTION);
+      for (var at = walker.nextNode(); at; at = walker.nextNode()) {
+        if (kind(at) === 'start' && at.data.replace(/^\?start |\?$/g, '') === name) { start = at; break; }
+      }
     }
-    var pieces = template.content.querySelectorAll('[data-mnx-region]');
-    for (var i = 0; i < pieces.length; i++) {
-      var region = regions[Number(pieces[i].getAttribute('data-mnx-region'))];
-      if (!region) continue;
-      var range = document.createRange();
-      range.setStartBefore(region.open);
-      range.setEndAfter(region.close);
-      range.deleteContents();
-      var fragment = document.createDocumentFragment();
-      while (pieces[i].firstChild) fragment.appendChild(pieces[i].firstChild);
-      range.insertNode(fragment);
+    var end = start && start.nextSibling;
+    for (var depth = 0; end; end = end.nextSibling) {
+      if (kind(end) === 'start') depth++;
+      else if (kind(end) === 'end' && depth-- === 0) break;
     }
+    if (!end) continue;
+    var range = document.createRange();
+    range.setStartBefore(start);
+    range.setEndAfter(end);
+    range.deleteContents();
+    range.insertNode(template.content);
   }
-  var held = window.__mnxStream || {};
+  var held = window.__zubraStream || {};
   for (var name in values) {
     var hold = held[id + ':' + name];
     if (values[name].error !== undefined) {
@@ -539,5 +594,5 @@ function fallbackInput(attributeText, info, props) {
   const value = models[0].name in props ? props[models[0].name] : models[0].default;
   if (value == null || value === false || value === '') return '';
   const text = value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-mnx-fallback>`;
+  return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-zb-fallback>`;
 }

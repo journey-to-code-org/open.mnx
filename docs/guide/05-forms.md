@@ -3,9 +3,9 @@
 `form-associated` on the host makes the element a real form control: it submits a value under its `name`, takes part in validation, resets with the form, and is disabled by a disabled `<fieldset>`.
 
 ```html
-<!-- quantity-stepper.mnx -->
+<!-- quantity-stepper.zb -->
 <script>
-  import { validity } from '@mnx/runtime'
+  import { validity } from '@zubra/runtime'
 
   validity(() => (value > max ? `At most ${max}` : ""))
 </script>
@@ -31,11 +31,11 @@
 
 ## Forms that work before JavaScript
 
-On a server-rendered page, the same form should work with JavaScript off and get better with it on. mnx gives you the pieces:
+On a server-rendered page, the same form should work with JavaScript off and get better with it on. Zubra gives you the pieces:
 
 ```html
 <script>
-  import { hydrated } from '@mnx/runtime'
+  import { hydrated } from '@zubra/runtime'
   const live = hydrated()
 </script>
 <ticket-filters status="">
@@ -45,7 +45,7 @@ On a server-rendered page, the same form should work with JavaScript off and get
       <option value="open">Open</option>
     </select>
     <textarea name="note" onkeydown.mod.enter.prevent.submit></textarea>
-    <mnx-if test={!live}><button>Apply</button></mnx-if>
+    <zb-if test={!live}><button>Apply</button></zb-if>
   </form>
 </ticket-filters>
 ```
@@ -55,8 +55,8 @@ On a server-rendered page, the same form should work with JavaScript off and get
 - **`.mod`** is ⌘ on a Mac and Ctrl elsewhere, so `onkeydown.mod.enter` is the usual "send" shortcut.
 - **`hydrated()`** is `false` in the server's HTML and `true` once the element has started. Here the Apply button exists only until then. The host also gets `:state(hydrated)` for CSS.
 
-Native controls (inputs, selects, checkboxes) in light DOM submit before any JavaScript. A form-associated element submits only once it has started, so keep a native control inside it when the page must work without JavaScript. `mnx check --server` tells you where the server's HTML would leave a control's state out.
+Native controls (inputs, selects, checkboxes) in light DOM submit before any JavaScript. A form-associated element submits only once it has started, so keep a native control inside it when the page must work without JavaScript. `zubra check --server` tells you where the server's HTML would leave a control's state out.
 
-In frameworks it's an ordinary control too: Vue's `v-model`, React's controlled pattern (`value` + `onValueChange`), and in Angular, `MnxModel` with `ngModel` or `formControlName`.
+In frameworks it's an ordinary control too: Vue's `v-model`, React's controlled pattern (`value` + `onValueChange`), and in Angular, `ZubraModel` with `ngModel` or `formControlName`.
 
 **Next:** [Async data](06-async-data.md)

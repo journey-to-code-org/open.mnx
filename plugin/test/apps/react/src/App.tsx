@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import Rating from '../components/rating.mnx';
-import Card from '../components/card.mnx';
-import Inbox from '../components/inbox.mnx';
+import Rating from '../components/rating.zb';
+import Card from '../components/card.zb';
+import Inbox from '../components/inbox.zb';
 
 export function App() {
   const [stars, setStars] = useState(1);

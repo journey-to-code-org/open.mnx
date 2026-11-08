@@ -6,14 +6,14 @@ Import a component and use its tag:
 
 ```html
 <script>
-  import './user-avatar.mnx'
+  import './user-avatar.zb'
 
   let people = [{ id: 1, name: "Ada", online: true }]
 </script>
 <people-list>
-  <mnx-each items={people} as="person" key={person.id}>
+  <zb-each items={people} as="person" key={person.id}>
     <user-avatar name={person.name} online={person.online}></user-avatar>
-  </mnx-each>
+  </zb-each>
 </people-list>
 ```
 
@@ -24,18 +24,18 @@ The compiler knows the child's props, so a typo (`nmae={…}`), a wrong type or 
 Content placed inside an element goes to its slots:
 
 ```html
-<!-- info-card.mnx -->
+<!-- info-card.zb -->
 <script>
-  import { hasSlot } from '@mnx/runtime'
+  import { hasSlot } from '@zubra/runtime'
 
   const hasFooter = hasSlot('footer')
 </script>
 <info-card heading="">
   <h3>{heading}</h3>
-  <mnx-slot><p>Nothing here yet.</p></mnx-slot>
-  <mnx-if test={hasFooter}>
-    <footer><mnx-slot name="footer"></mnx-slot></footer>
-  </mnx-if>
+  <zb-slot><p>Nothing here yet.</p></zb-slot>
+  <zb-if test={hasFooter}>
+    <footer><zb-slot name="footer"></zb-slot></footer>
+  </zb-if>
 </info-card>
 ```
 
@@ -46,7 +46,7 @@ Content placed inside an element goes to its slots:
 </info-card>
 ```
 
-- `<mnx-slot>` is the default slot; `<mnx-slot name="footer">` takes children with `slot="footer"`. A slot's own content is its fallback, shown while nothing is given.
+- `<zb-slot>` is the default slot; `<zb-slot name="footer">` takes children with `slot="footer"`. A slot's own content is its fallback, shown while nothing is given.
 - `hasSlot(name)` says whether content was given, and follows it as content comes and goes. Use it to leave out markup that only makes sense around a used slot.
 - Slotted content stays live: when React or Vue update the children they passed, the slot follows.
 
@@ -60,6 +60,6 @@ Components render into **light DOM** by default: their markup is part of the pag
 
 ## Ready-made components, and publishing your own
 
-`npx mnx add modal-dialog` copies a component from the registry into your project: twenty-five accessible components, from form controls and charts to tabs, menus and a dialog. When yours are ready to share, `npx mnx build --lib src/components` makes them a package that works in every framework (the README's "Sharing components" section).
+`npx zubra add modal-dialog` copies a component from the registry into your project: twenty-five accessible components, from form controls and charts to tabs, menus and a dialog. When yours are ready to share, `npx zubra build --lib src/components` makes them a package that works in every framework (the README's "Sharing components" section).
 
 **Next:** [Forms](05-forms.md)

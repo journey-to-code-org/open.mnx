@@ -1,6 +1,6 @@
 // The options page: the widget on pages, the default colour, sites it's hidden on, and export.
-import './components/toggle-switch.mnx';
-import './components/color-swatches.mnx';
+import './components/toggle-switch.zb';
+import './components/color-swatches.zb';
 import { all, saveSettings, settings } from './notes.js';
 
 const toggle = document.querySelector('toggle-switch');

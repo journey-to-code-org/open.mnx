@@ -14,8 +14,8 @@
 
 import { Signal } from './signal.js';
 
-const RAW = Symbol('mnx.raw');
-const ITERATE = Symbol('mnx.iterate'); // "the set of keys" (ownKeys, `in`, array length)
+const RAW = Symbol('zubra.raw');
+const ITERATE = Symbol('zubra.iterate'); // "the set of keys" (ownKeys, `in`, array length)
 const proxies = new WeakMap(); // raw → proxy
 const signals = new WeakMap(); // raw → Map<key, Signal.State<number>>
 

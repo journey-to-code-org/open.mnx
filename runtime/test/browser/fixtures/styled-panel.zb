@@ -1,0 +1,7 @@
+<style>
+  :host { display: block }
+  h3 { color: rgb(255, 0, 0) }
+</style>
+<zb-styled-panel shadow heading="Panel">
+  <h3>{heading}</h3><slot></slot>
+</zb-styled-panel>

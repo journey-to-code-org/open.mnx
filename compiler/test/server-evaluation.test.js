@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-process.env.MNX_COMPILER ??= join(here, '../../target/debug/mnx');
+process.env.ZUBRA_COMPILER ??= join(here, '../../target/debug/zubra');
 const { request } = await import('../index.js');
 
 const SCRIPT = `
@@ -64,7 +64,7 @@ const LEFT = [
 const component = (expression) => `<script>${SCRIPT}</script>\n<x-e>\n  <p>{${expression}}</p>\n</x-e>\n`;
 const render = (expressions) => request({
   requests: expressions.map((expression) => ({
-    emit: 'html', path: '/x.mnx', files: { '/x.mnx': component(expression) }, partial: true,
+    emit: 'html', path: '/x.zb', files: { '/x.zb': component(expression) }, partial: true,
   })),
 }).responses.map((response, index) => {
   assert.ok(response.ok, `${expressions[index]}: ${response.error}`);

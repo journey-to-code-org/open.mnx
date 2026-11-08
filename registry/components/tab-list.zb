@@ -1,0 +1,59 @@
+<!--
+  Tabs: a tab list and the panels it switches between. The panels are the slotted elements with a
+  `data-tab` attribute matching a tab's value; they get role=tabpanel, are labelled by their tab,
+  and are hidden unless chosen. Arrow keys, Home and End move between the tabs (one tab stop), and
+  the focused tab is chosen as it moves, unless `manual`, where Enter or Space chooses it.
+  `tabs` is `[{ value, label }]`; `value` is two-way and defaults to the first tab.
+  @slot - The panels.
+  @fires valuechange - Another tab was chosen; `detail` is its value.
+-->
+<script>
+  import { id, host, effect, onMount } from '@zubra/runtime'
+  import { rovingFocus } from '@zubra/runtime/primitives'
+
+  const uid = id()
+  const element = host()
+  const current = value || tabs[0]?.value || ""
+  let list = null
+
+  const tabId = (tab) => `${uid}-tab-${tab}`
+  const panels = () => [...element.querySelectorAll("[data-tab]")].filter((panel) => panel.closest("tab-list") === element)
+
+  // The panels are the page's elements, not this template's: set them up here.
+  effect(() => {
+    if (!list) return
+    const chosen = current
+    tabs.length // and again when the tabs change
+    for (const panel of panels()) {
+      panel.id ||= `${uid}-panel-${panel.dataset.tab}`
+      panel.setAttribute("role", "tabpanel")
+      panel.setAttribute("aria-labelledby", tabId(panel.dataset.tab))
+      if (!panel.hasAttribute("tabindex")) panel.tabIndex = 0
+      panel.hidden = panel.dataset.tab !== chosen
+      list.querySelector(`[data-value="${CSS.escape(panel.dataset.tab)}"]`)?.setAttribute("aria-controls", panel.id)
+    }
+  })
+
+  onMount(() => rovingFocus(list, {
+    selector: "[role=tab]",
+    orientation: "horizontal",
+    onMove: (tab) => { if (!manual) value = tab.dataset.value },
+  }))
+</script>
+<style>
+  :host { display: block; }
+  [role=tablist] { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line, #dde); }
+  [role=tab] { padding: 0.55rem 0.9rem; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--muted, #667085); font: inherit; font-weight: 600; cursor: pointer; }
+  [role=tab][aria-selected=true] { color: var(--ink, #1d2130); border-bottom-color: var(--accent, #36c); }
+  [role=tab]:focus-visible { outline: 2px solid var(--accent, #36c); outline-offset: -2px; border-radius: 0.3rem; }
+  [role=tabpanel] { padding: 1rem 0.25rem; }
+  [role=tabpanel]:focus-visible { outline: 2px solid var(--accent, #36c); outline-offset: 2px; }
+</style>
+<tab-list value:model="" tabs={[]} label="" manual={false}>
+  <div role="tablist" aria-label={label || null} ref={list}>
+    <zb-each items={tabs} as="tab" key={tab.value}>
+      <button type="button" role="tab" id={tabId(tab.value)} data-value={tab.value} aria-selected={tab.value === current ? "true" : "false"} tabindex={tab.value === current ? 0 : -1} onclick={() => (value = tab.value)}>{tab.label}</button>
+    </zb-each>
+  </div>
+  <zb-slot></zb-slot>
+</tab-list>

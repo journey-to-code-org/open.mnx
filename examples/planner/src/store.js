@@ -2,7 +2,7 @@
 // provides it as context (the Web Components context protocol); any component below it gets it
 // with `usePlanner()`, without props passed down through every level.
 
-import { Signal, createContext, inject, computed } from '@mnx/runtime';
+import { Signal, createContext, inject, computed } from '@zubra/runtime';
 import { today, addDays } from './dates.js';
 
 export const Planner = createContext(null);
@@ -18,7 +18,7 @@ export function blankEvent(day = today()) {
 }
 
 /** Create the store. `storage` is a Storage (localStorage) or null. */
-export function createPlanner(storage, key = 'mnx-planner') {
+export function createPlanner(storage, key = 'zb-planner') {
   let saved = null;
   try {
     saved = JSON.parse(storage?.getItem(key) ?? 'null');
@@ -149,9 +149,9 @@ export function toIcs(event) {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//mnx//planner//EN',
+    'PRODID:-//zubra//planner//EN',
     'BEGIN:VEVENT',
-    `UID:${event.id}@mnx-planner`,
+    `UID:${event.id}@zb-planner`,
     `DTSTART:${stamp(event.day, event.start)}`,
     `DTEND:${stamp(event.day, event.end)}`,
     `SUMMARY:${text(event.title)}`,

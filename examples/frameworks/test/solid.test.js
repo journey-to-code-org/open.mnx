@@ -1,11 +1,11 @@
-// Solid: mnx elements in fine-grained JSX, with prop: and on: bindings that update on every tick
-// (prices, arrays of points, selection), nested mnx elements (a tile's spark line), an SVG
+// Solid: zubra elements in fine-grained JSX, with prop: and on: bindings that update on every tick
+// (prices, arrays of points, selection), nested zubra elements (a tile's spark line), an SVG
 // chart with pointer events, and For lists adding and removing elements.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts } from './harness.js';
 
-test('solid-markets: a live dashboard built from mnx elements', async () => {
+test('solid-markets: a live dashboard built from zubra elements', async () => {
   const { page, messages } = await launch('solid-markets');
   await page.waitForSelector('price-tile article');
   await page.click('button.toggle'); // pause, so the test steps the market itself

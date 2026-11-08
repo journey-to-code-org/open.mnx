@@ -1,4 +1,4 @@
 import solid from 'vite-plugin-solid';
-import mnx from '@mnx/unplugin/vite';
+import zubra from '@zubra/unplugin/vite';
 
-export default { plugins: [mnx(), solid()] };
+export default { plugins: [zubra(), solid()] };

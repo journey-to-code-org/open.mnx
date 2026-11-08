@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import threading
 import unittest
 
@@ -47,6 +48,17 @@ class Garden(unittest.TestCase):
                 "[...document.querySelectorAll(':not(:defined)')].filter((e) => e.localName.includes('-')).length === 0"
             )
         return page
+
+    def shot(self, page, name: str):
+        """The demo gallery's screenshot (demos/shots/), when ZUBRA_SHOTS names the folder."""
+        folder = os.environ.get("ZUBRA_SHOTS")
+        if not folder:
+            return
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.emulate_media(color_scheme="light")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(400)
+        page.screenshot(path=os.path.join(folder, f"{name}.jpg"), type="jpeg", quality=80)
 
     def tearDown(self):
         self.assertEqual(self.errors, [])
@@ -105,6 +117,7 @@ class Garden(unittest.TestCase):
 
     def test_with_javascript_arrow_keys_move_around_the_plot_map(self):
         page = self.open("/")
+        self.shot(page, "flask-garden")
         page.focus("plot-map a[href='/plots/A1']")
         page.keyboard.press("ArrowRight")
         page.keyboard.press("ArrowDown")

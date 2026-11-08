@@ -1,0 +1,38 @@
+<!--
+  How well you knew it: Again, Hard, Good or Easy. Keys 1–4 choose too, while `keys` is on.
+  @fires grade - A grade was chosen; `detail` is 0 (Again) to 3 (Easy).
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+
+  const GRADES = [
+    { label: "Again", detail: "Didn't know it", tone: "again" },
+    { label: "Hard", detail: "Took a while", tone: "hard" },
+    { label: "Good", detail: "Knew it", tone: "good" },
+    { label: "Easy", detail: "Instantly", tone: "easy" },
+  ]
+
+  // Keys 1–4 anywhere on the page, except while typing.
+  function key(event, grade) {
+    if (!keys || disabled || event.target.closest?.('input, textarea, select, [contenteditable]')) return
+    emit('grade', grade)
+  }
+</script>
+<style>
+  :host { display: block; }
+  div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+  button { display: grid; gap: 0.1rem; padding: 0.6rem 0.4rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  b { font-size: 0.9375rem; }
+  small { font-size: 0.7rem; color: var(--muted); }
+  kbd { font: inherit; font-size: 0.65rem; color: var(--muted); }
+  .again b { color: #d0403a; } .hard b { color: #c47f00; } .good b { color: #1b8a52; } .easy b { color: #2c6fd8; }
+</style>
+<grade-buttons disabled={false} keys={true}>
+  <zb-document onkeydown.1={(event) => key(event, 0)} onkeydown.2={(event) => key(event, 1)} onkeydown.3={(event) => key(event, 2)} onkeydown.4={(event) => key(event, 3)}></zb-document>
+  <div role="group" aria-label="How well did you know it?">
+    <zb-each items={GRADES} as="grade" index="index" key={grade.label}>
+      <button type="button" class={grade.tone} disabled={disabled} onclick={() => emit('grade', index)}><b>{grade.label}</b><small>{grade.detail}</small><kbd>{index + 1}</kbd></button>
+    </zb-each>
+  </div>
+</grade-buttons>

@@ -1,0 +1,14 @@
+<script>
+  import { state, emit } from '@zubra/runtime'
+  import './rating.zb'
+
+  const last = state('none')
+  // Re-fired as the survey's own: outside, only the survey's valuechange is seen.
+  function saved(event) {
+    last.set(String(event.detail))
+    emit('valuechange', { rating: event.detail })
+  }
+</script>
+<zb-survey>
+  <zb-rating onvaluechange={saved}></zb-rating><p>{last}</p>
+</zb-survey>

@@ -1,0 +1,6 @@
+<script>
+  const answer = Promise.resolve(42)
+</script>
+<zb-await-static>
+  <zb-await value={answer}><span>…</span><zb-then as="n"><i>{n}</i></zb-then></zb-await>
+</zb-await-static>

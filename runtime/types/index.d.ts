@@ -1,4 +1,4 @@
-// @mnx/runtime: what compiled components and their scripts use.
+// @zubra/runtime: what compiled components and their scripts use.
 import type { Signal } from './signal.js';
 
 export { Signal, isNative } from './signal.js';
@@ -66,14 +66,14 @@ export declare function signal<T>(value: T): T;
 
 /**
  * Whether content was given for a slot (`'default'` for the default slot), as a signal that
- * follows the content. Read it like a value in the template: `<mnx-if test={hasFooter}>`.
+ * follows the content. Read it like a value in the template: `<zb-if test={hasFooter}>`.
  */
 export declare function hasSlot(name?: string): Signal.State<boolean>;
 /** False while the element's markup is the server's (and on the server); true once it has started. The host also gets `:state(hydrated)`. */
 export declare function hydrated(): Signal.State<boolean>;
 /**
  * State that follows a prop until it's assigned, and starts over when the prop changes:
- * `let left = from(seconds)` in a `.mnx` script. With a second argument, it starts as that
+ * `let left = from(seconds)` in a `.zb` script. With a second argument, it starts as that
  * value instead: `let running = from(seconds, false)`. Elsewhere, pass functions or signals.
  */
 export declare function from<T>(source: T | (() => T) | Signal.State<T> | Signal.Computed<T>): Signal.Computed<T> & { set(value: T): void };
@@ -81,7 +81,7 @@ export declare function from<T>(source: unknown, start: T | (() => T) | Signal.S
 
 /**
  * In a JSX component's parameters, `value = model(0)` makes `value` two-way: assigning it fires
- * `valuechange` (like `value:model={0}` in `.mnx`). Returns its argument.
+ * `valuechange` (like `value:model={0}` in `.zb`). Returns its argument.
  */
 export declare function model<T>(value: T): T;
 
@@ -105,7 +105,7 @@ export declare function keys(combinations: string, fn?: Handler<KeyboardEvent>):
 // ---- styles ---------------------------------------------------------------------------------
 
 /**
- * Add stylesheets (CSS text or `CSSStyleSheet`s) to every mnx shadow root, now and later: for
+ * Add stylesheets (CSS text or `CSSStyleSheet`s) to every zubra shadow root, now and later: for
  * app-wide CSS such as Tailwind's output, which page styles can't carry into shadow DOM.
  * Light-DOM components already get page CSS.
  */
@@ -155,7 +155,7 @@ export interface PropSpec {
   required?: boolean;
 }
 
-/** What adapters and tools read from a compiled element class (`Element.mnx`). */
+/** What adapters and tools read from a compiled element class (`Element.zb`). */
 export interface ElementMeta {
   readonly tag: string;
   readonly props: Readonly<Record<string, Readonly<Required<PropSpec>>>>;
@@ -163,13 +163,13 @@ export interface ElementMeta {
   readonly slots: readonly string[];
   readonly shadow: boolean;
   readonly form: boolean;
-  /** The component has a `<style>` (light DOM: slotted content is marked `data-mnx-slotted`). */
+  /** The component has a `<style>` (light DOM: slotted content is marked `data-zb-slotted`). */
   readonly styled: boolean;
 }
 
-export interface MnxElementClass<E extends HTMLElement = HTMLElement> {
+export interface ZubraElementClass<E extends HTMLElement = HTMLElement> {
   new (): E & { readonly updateComplete: Promise<void> };
-  readonly mnx: ElementMeta;
+  readonly zubra: ElementMeta;
   readonly formAssociated: boolean;
   readonly observedAttributes: string[];
 }
@@ -193,7 +193,7 @@ export interface Definition {
  * @internal Register a compiled component: what the compiler's JavaScript output calls. Its
  * arguments are the compiled-code interface, version `ABI`, not a public API.
  */
-export declare function $define(tag: string, definition: Definition & { abi: number }): MnxElementClass;
+export declare function $define(tag: string, definition: Definition & { abi: number }): ZubraElementClass;
 /** The compiled-code interface version this runtime implements. */
 export declare const ABI: number;
 

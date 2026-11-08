@@ -1,6 +1,10 @@
 # To-do list
 
-The basic example: two `.mnx` components and a few lines of plain JavaScript, built with Vite.
+[![To-do list](../../demos/shots/todo.jpg)](https://journey-to-code-org.github.io/zubra/demos/todo/)
+
+**[Open the live demo](https://journey-to-code-org.github.io/zubra/demos/todo/)**, or browse [every example](https://journey-to-code-org.github.io/zubra/).
+
+The basic example: two `.zb` components and a few lines of plain JavaScript, built with Vite.
 
 ```sh
 cd examples/todo
@@ -10,15 +14,15 @@ npm run dev
 
 The example links the packages in this repository, so the compiler needs building once: either
 `npm run build` in `compiler/` (WebAssembly; needs the `wasm32-unknown-unknown` Rust target), or
-`cargo build` at the root and `MNX_COMPILER=../../target/debug/mnx npm run dev`.
+`cargo build` at the root and `ZUBRA_COMPILER=../../target/debug/zubra npm run dev`.
 
 ## What it shows
 
-- **`todo-app.mnx`** owns the list. `items` is a prop (the page sets it from `localStorage`);
+- **`todo-app.zb`** owns the list. `items` is a prop (the page sets it from `localStorage`);
   `filter` and `draft` are `let`, so they're state; `remaining` and `shown` are derived from
   them and update on their own. Every change goes through `update()`, which writes `items` and
   fires `change`.
-- **`todo-item.mnx`** is one row: a checkbox, a label you double-click to edit, and a remove
+- **`todo-item.zb`** is one row: a checkbox, a label you double-click to edit, and a remove
   button. It doesn't change the list itself; it fires `toggle`, `rename` and `remove`, and the
   app handles them with `ontoggle`, `onrename` and `onremove`.
 - **`main.js`** is the only glue: it loads the saved items into `<todo-app>` and saves them on

@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let server, url, browser;
@@ -52,13 +53,14 @@ const balance = (page, name) => page.locator('balance-list').getByRole('img', { 
 test('the page hydrates without errors, and the elements get their props from React', async () => {
   const page = await open();
   assert.equal(await balance(page, 'Ana'), 'Ana: $294.87');
+  await shot(page, 'react-router-trips');
   assert.equal(await balance(page, 'Chloé'), 'Chloé: −$153.12');
   assert.equal(await page.locator('segmented-control').getByRole('button', { name: 'food' }).getAttribute('aria-pressed'), 'true');
   assert.deepEqual(page.errors, []);
   await page.done();
 });
 
-test('adding an expense with <Form>: the mnx controls submit with it, the balances follow', async () => {
+test('adding an expense with <Form>: the zubra controls submit with it, the balances follow', async () => {
   const page = await open();
   await page.fill('input[name=what]', 'Kayak rental');
   await page.locator('money-input input').fill('90');
@@ -89,7 +91,7 @@ test('the server\'s validation comes back through the action', async () => {
 
 test('without JavaScript: the balances are in the server HTML; the category submits, a typed amount can\'t yet', async () => {
   const page = await open({ javascript: false });
-  // The shadow roots came with the page (app/entry.server.jsx streams it through @mnx/server).
+  // The shadow roots came with the page (app/entry.server.jsx streams it through @zubra/server).
   assert.equal(await page.locator('balance-list li').count(), 4);
   assert.equal(await page.locator('balance-list').getByRole('img', { name: /^Ana:/ }).getAttribute('aria-label'), 'Ana: $294.87');
   await page.fill('input[name=what]', 'Firewood');

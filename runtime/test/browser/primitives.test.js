@@ -1,4 +1,4 @@
-// @mnx/runtime/primitives in Chromium: roving focus and typeahead on plain markup.
+// @zubra/runtime/primitives in Chromium: roving focus and typeahead on plain markup.
 // `npm run test:browser`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

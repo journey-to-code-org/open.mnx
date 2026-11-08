@@ -1,0 +1,2 @@
+<!-- Several top-level nodes: text, elements and a region, with no wrapper. -->
+<zb-pair name="Ada" on={true}>Hi {name} <p>x</p><zb-if test={on}><i>y</i></zb-if></zb-pair>

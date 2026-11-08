@@ -1,7 +1,7 @@
 import angular from '@analogjs/vite-plugin-angular';
-import mnx from '@mnx/unplugin/vite';
+import zubra from '@zubra/unplugin/vite';
 
-// Analog's plugin compiles Angular ahead of time inside Vite; .mnx imports go through mnx.
+// Analog's plugin compiles Angular ahead of time inside Vite; .zb imports go through zubra.
 export default {
-  plugins: [mnx(), angular({ tsconfig: new URL('./tsconfig.json', import.meta.url).pathname })],
+  plugins: [zubra(), angular({ tsconfig: new URL('./tsconfig.json', import.meta.url).pathname })],
 };

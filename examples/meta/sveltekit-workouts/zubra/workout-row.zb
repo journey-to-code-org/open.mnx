@@ -1,0 +1,23 @@
+<!--
+  One logged workout: what, how much, how hard, and when.
+-->
+<script>
+  const STARS = [1, 2, 3, 4, 5]
+</script>
+<style>
+  :host { display: block; }
+  .row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1rem; align-items: center; padding: 0.7rem 0.9rem; background: white; border: 1px solid #e3e6ee; border-radius: 0.6rem; }
+  strong { text-transform: capitalize; }
+  .amount { font-variant-numeric: tabular-nums; color: #3d4356; }
+  .effort { color: #d1d5de; letter-spacing: 0.05em; }
+  .effort .on { color: #ea580c; }
+  time { grid-column: 1; color: #61677a; font-size: 0.8rem; }
+</style>
+<workout-row shadow exercise="" sets={0} reps={0} effort={0} day="">
+  <div class="row">
+    <strong>{exercise}</strong>
+    <span class="amount">{sets} × {reps}</span>
+    <span class="effort" role="img" aria-label={`Effort ${effort} of 5`}><zb-each items={STARS} as="n" key={n}><span class:on={n <= effort}>●</span></zb-each></span>
+    <time>{day}</time>
+  </div>
+</workout-row>

@@ -1,6 +1,6 @@
 //! Loading the components a component imports.
 //!
-//! `import "./button.mnx"` in a `<script>` makes `<mnx-button>` a known child component: the
+//! `import "./button.zb"` in a `<script>` makes `<zb-button>` a known child component: the
 //! compiler loads and parses it (recursively), so the HTML backend can render it inline and the
 //! JavaScript backend can pass it props as values and find its slotted content. Where sources
 //! come from is up to the caller — the filesystem for the CLI, a bundler's resolver for a plugin.
@@ -103,15 +103,15 @@ pub fn filesystem(specifier: &str, from: &str) -> Result<(String, String), Strin
     Ok((path.to_string_lossy().into_owned(), source))
 }
 
-/// Whether an import specifier names a component (`.mnx`, or a JSX component `.mnx.jsx` /
-/// `.mnx.tsx`).
+/// Whether an import specifier names a component (`.zb`, or a JSX component `.zb.jsx` /
+/// `.zb.tsx`).
 pub fn is_component(specifier: &str) -> bool {
     component_extension(specifier).is_some()
 }
 
 /// The component extension `specifier` ends with.
 pub fn component_extension(specifier: &str) -> Option<&'static str> {
-    [".mnx.jsx", ".mnx.tsx", ".mnx"]
+    [".zb.jsx", ".zb.tsx", ".zb"]
         .into_iter()
         .find(|extension| specifier.ends_with(extension))
 }

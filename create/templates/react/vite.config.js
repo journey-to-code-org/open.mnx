@@ -1,4 +1,4 @@
 import react from '@vitejs/plugin-react';
-import mnx from '@mnx/unplugin/vite';
+import zubra from '@zubra/unplugin/vite';
 
-export default { plugins: [mnx(), react()] };
+export default { plugins: [zubra(), react()] };

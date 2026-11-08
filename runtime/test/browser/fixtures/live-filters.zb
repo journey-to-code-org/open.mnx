@@ -1,0 +1,11 @@
+<script>
+  import { hydrated } from '@zubra/runtime'
+  const live = hydrated()
+</script>
+<zb-filters>
+  <form>
+    <input name="q">
+    <zb-if test={!live}><button class="apply">Apply</button></zb-if>
+    <span class="hint" class:on={live}>{live ? "Filters apply as you type" : "Press Apply"}</span>
+  </form>
+</zb-filters>

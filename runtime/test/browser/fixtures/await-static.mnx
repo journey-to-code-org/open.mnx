@@ -1,6 +1,0 @@
-<script>
-  const answer = Promise.resolve(42)
-</script>
-<mnx-await-static>
-  <mnx-await value={answer}><span>…</span><mnx-then as="n"><i>{n}</i></mnx-then></mnx-await>
-</mnx-await-static>

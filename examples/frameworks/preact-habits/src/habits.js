@@ -58,7 +58,7 @@ function seed(today) {
 
 export function load(today) {
   try {
-    const saved = JSON.parse(localStorage.getItem('mnx-habits'));
+    const saved = JSON.parse(localStorage.getItem('zb-habits'));
     if (Array.isArray(saved)) return saved;
   } catch {}
   return seed(today);
@@ -66,6 +66,6 @@ export function load(today) {
 
 export function save(habits) {
   try {
-    localStorage.setItem('mnx-habits', JSON.stringify(habits));
+    localStorage.setItem('zb-habits', JSON.stringify(habits));
   } catch {}
 }

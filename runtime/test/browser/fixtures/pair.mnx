@@ -1,2 +1,0 @@
-<!-- Several top-level nodes: text, elements and a region, with no wrapper. -->
-<mnx-pair name="Ada" on={true}>Hi {name} <p>x</p><mnx-if test={on}><i>y</i></mnx-if></mnx-pair>

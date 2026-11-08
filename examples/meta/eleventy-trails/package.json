@@ -1,8 +1,8 @@
 {
-  "name": "mnx-example-eleventy-trails",
+  "name": "zubra-example-eleventy-trails",
   "private": true,
   "type": "module",
-  "description": "A static trail guide built with Eleventy: mnx components rendered to HTML at build time by a shortcode, and hydrated in the browser with no bundler.",
+  "description": "A static trail guide built with Eleventy: Zubra components rendered to HTML at build time by a shortcode, and hydrated in the browser with no bundler.",
   "scripts": {
     "build": "eleventy",
     "start": "eleventy --serve",
@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@11ty/eleventy": "3.1.8",
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/runtime": "file:../../../runtime",
-    "@mnx/server": "file:../../../server"
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/server": "file:../../../server"
   },
   "devDependencies": {
     "html-minifier-terser": "7.2.0",

@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
 // Solid uses the element directly: prop:name sets a property, on:name listens.
-import './components/hello-counter.mnx';
+import './components/hello-counter.zb';
 
 export default function App() {
   const [count, setCount] = createSignal(0);

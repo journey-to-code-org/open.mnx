@@ -11,17 +11,17 @@
 <section class="charts">
   <div class="panel">
     <h2>By status</h2>
-    <%- mnx('donut-chart', { segments, label: 'Tickets by status' }) %>
+    <%- zubra('donut-chart', { segments, label: 'Tickets by status' }) %>
   </div>
   <div class="panel">
     <h2>New tickets, last 14 days</h2>
-    <%- mnx('spark-line', { points: stats.perDay, label: 'New tickets per day' }) %>
+    <%- zubra('spark-line', { points: stats.perDay, label: 'New tickets per day' }) %>
     <p class="muted"><%= stats.perDay.reduce((a, b) => a + b, 0) %> in the last two weeks</p>
   </div>
 </section>
 <section class="panel">
   <h2>Recent activity</h2>
-  <%- mnx('recent-activity', { events: activity, label: 'Recent activity' }) %>
+  <%- zubra('recent-activity', { events: activity, label: 'Recent activity' }) %>
 </section>
 <h2>Your queue <small class="muted">assigned to you, or to no one</small></h2>
-<%- mnx('ticket-table', { tickets: queue }) %>
+<%- zubra('ticket-table', { tickets: queue }) %>

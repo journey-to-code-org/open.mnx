@@ -1,0 +1,17 @@
+<script>
+  import { state, onMount, onUnmount } from '@zubra/runtime'
+
+  const count = state(0)
+  function increment() {
+    count.set(count.get() + 1)
+  }
+
+  onMount(() => {
+    window.lifecycle.push('mount')
+    return () => window.lifecycle.push('mount cleanup')
+  })
+  onUnmount(() => window.lifecycle.push('unmount'))
+</script>
+<zb-counter label="Clicks">
+  <button type="button" onclick={increment}>{label}: {count}</button>
+</zb-counter>

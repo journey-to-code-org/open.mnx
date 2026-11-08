@@ -1,4 +1,4 @@
 node_modules/
 build/
 .react-router/
-*.d.mnx.ts
+*.d.zb.ts

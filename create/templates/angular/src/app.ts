@@ -1,8 +1,8 @@
 import { Component, CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
-import './components/hello-counter.mnx';
+import './components/hello-counter.zb';
 
 // Angular uses the element directly: [count] sets the property, (countchange) listens. For
-// forms, MnxModel from @mnx/runtime/angular makes an element work with ngModel and formControl.
+// forms, ZubraModel from @zubra/runtime/angular makes an element work with ngModel and formControl.
 @Component({
   selector: 'app-root',
   schemas: [CUSTOM_ELEMENTS_SCHEMA],

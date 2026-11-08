@@ -1,0 +1,10 @@
+<!-- Conditions without wrappers (4.1): zb-if as an attribute, and markup in braces. -->
+<zb-conditions count={0} user={null} items={[]}>
+  <p class="count" zb-if={count === 0}>Nothing yet.</p>
+  <p class="count" zb-else-if={count < 5}>A few.</p>
+  <p class="count" zb-else>Many.</p>
+  <table><tbody><tr zb-if={count > 0}><td class="cell">{count}</td></tr></tbody></table>
+  {user ? <b class="who">{user.name}</b> : <a class="who" href="/login">Sign in</a>}
+  {count > 2 && <em class="lots">lots</em>}
+  <ul>{items.map((item, i) => <li key={item.id} onclick={() => (count = i)}>{item.label}</li>)}</ul>
+</zb-conditions>

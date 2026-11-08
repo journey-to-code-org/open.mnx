@@ -1,7 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
-import RecipeServings from '../../components/recipe-servings.mnx.tsx';
-import RecipeReviews from '../../components/recipe-reviews.mnx';
+import RecipeServings from '../../components/recipe-servings.zb.tsx';
+import RecipeReviews from '../../components/recipe-reviews.zb';
 import { recipes, byId } from '../../data/recipes.js';
 
 export function getStaticPaths() {
@@ -10,7 +10,7 @@ export function getStaticPaths() {
 const recipe = byId(Astro.params.id);
 ---
 <Base title={recipe.title}>
-  <p><a href="/">← All recipes</a></p>
+  <p><a href={import.meta.env.BASE_URL}>← All recipes</a></p>
   <h1>{recipe.title}</h1>
   <p class="lede">{recipe.summary} {recipe.minutes} minutes.</p>
 
@@ -25,7 +25,7 @@ const recipe = byId(Astro.params.id);
     </div>
   </section>
 
-  <RecipeReviews recipe={recipe.id} client:visible />
+  <RecipeReviews recipe={recipe.id} base={import.meta.env.BASE_URL} client:visible />
 </Base>
 
 <style>

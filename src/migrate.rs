@@ -1,16 +1,16 @@
-//! `mnx migrate`: rewrite a 1.x `.mnx` file for 2.0, and say what else changes.
+//! `zubra migrate`: rewrite a 1.x `.zb` file for 2.0, and say what else changes.
 //!
 //! 2.0 makes props names in the script (`value`, not `props().value`), so a script binding with
 //! a prop's name would clash with it. The usual case is a default taken from the script:
 //!
 //! ```html
 //! <script>const title = "Hi"</script>   →   <script>const titleDefault = "Hi"</script>
-//! <mnx-card title={title}>              →   <mnx-card title={titleDefault}>
+//! <zb-card title={title}>              →   <zb-card title={titleDefault}>
 //! ```
 //!
 //! The binding and every reference to it in the script and in host defaults are renamed. In the
 //! template, a prop's name already means the prop, so nothing there changes. The other 2.0
-//! change for `.mnx` files, `let` becoming state, needs no rewrite: such a `let` starts
+//! change for `.zb` files, `let` becoming state, needs no rewrite: such a `let` starts
 //! updating the template, which is reported as a note.
 
 use std::collections::{HashMap, HashSet};
@@ -79,7 +79,7 @@ fn offset_of(source: &str, span: Span) -> usize {
     source.len()
 }
 
-/// Migrate `source` (an `.mnx` file).
+/// Migrate `source` (an `.zb` file).
 pub fn migrate(source: &str) -> Result<Migration, Diagnostic> {
     let component = crate::parser::parse_for_migration(source)?;
     let mut migration = Migration {

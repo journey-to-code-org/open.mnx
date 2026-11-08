@@ -1,12 +1,12 @@
-// Lit: a LitElement app whose shadow root holds light-DOM mnx elements. Their scoped styles are
+// Lit: a LitElement app whose shadow root holds light-DOM zubra elements. Their scoped styles are
 // adopted into that shadow root; .prop and @event bindings; repeat() keyed lists; and the
-// signed-in user shared through the context protocol, provided by @lit/context and read by mnx's
+// signed-in user shared through the context protocol, provided by @lit/context and read by zubra's
 // inject().
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts } from './harness.js';
 
-test('lit-chat: a team chat built from mnx elements inside a Lit app', async () => {
+test('lit-chat: a team chat built from zubra elements inside a Lit app', async () => {
   const { page, messages, url } = await launch('lit-chat');
   await page.goto(`${url}/?delay=300`);
   await page.waitForSelector('chat-message article');

@@ -10,12 +10,12 @@ The claim is: **N copies are N things to review, keep matching and keep correct,
 
 ## 1. What the compiler generates, counted
 
-The registry is 20 components, 847 lines of `.mnx`. The matrix is eight consumers: React 18, React 19, Vue 3, Angular, Svelte 5, Solid, Lit and Preact (plus plain HTML, Astro and five server-rendering frameworks).
+The registry is 20 components, 847 lines of `.zb`. The matrix is eight consumers: React 18, React 19, Vue 3, Angular, Svelte 5, Solid, Lit and Preact (plus plain HTML, Astro and five server-rendering frameworks).
 
 | | Hand-written ports | Generated |
 |---|---|---|
-| Component files | 20 × 7 = **140** (one per framework that isn't plain HTML), each a rewrite | **20**, plus per component a React wrapper and a Vue wrapper of 4 lines each (`mnx build --lib`), typings, and one manifest |
-| Code that knows the frameworks | 140 files' worth, by the port's author | **367 lines**, once: `runtime/src/react.js` (124), `runtime/src/vue.js` (125), the Angular `MnxModel` directive (118) |
+| Component files | 20 × 7 = **140** (one per framework that isn't plain HTML), each a rewrite | **20**, plus per component a React wrapper and a Vue wrapper of 4 lines each (`zubra build --lib`), typings, and one manifest |
+| Code that knows the frameworks | 140 files' worth, by the port's author | **367 lines**, once: `runtime/src/react.js` (124), `runtime/src/vue.js` (125), the Angular `ZubraModel` directive (118) |
 | Reviews | 140 | 20, plus the three adapters |
 | Test suites | one per port, or one that covers one port | the registry's keyboard and accessibility tests, once; the matrix proves the adapters |
 
@@ -28,15 +28,15 @@ Every one of these would have been a per-port bug, found or not found per port. 
 | Fixed once | Where | Release |
 |---|---|---|
 | React 19 sets props after the element is inserted, so a script seeding state from a prop saw `undefined` | React wrapper sets props as it creates the element | 2.6.1 |
-| React 18 writes unknown props as attributes (`[object Object]`), so objects arrived late | the element reads the wrapper's `mnx-props` JSON when it starts, before React's effect | 2.8 (this page corrects `progress.md`, which still listed it as open) |
+| React 18 writes unknown props as attributes (`[object Object]`), so objects arrived late | the element reads the wrapper's `zb-props` JSON when it starts, before React's effect | 2.8 (this page corrects `progress.md`, which still listed it as open) |
 | Vue removes an element's own nodes as a hydration mismatch | the Vue wrapper renders a vnode with no children, so Vue never looks inside | 3.3 |
 | React re-renders the page (#418) around a light-DOM element | the React wrapper keeps React out of the host with `dangerouslySetInnerHTML` | 2.11 (shadow), 3.3 (light) |
 | Svelte's server rendering writes object props as `"[object Object]"` | treated as "not given yet" | 2.6.3 |
 | An empty URL prop (`href=""` before the app set it) logged an unsafe-URL error | left off quietly | 2.6.3 |
-| Vue's `v-model` needs `modelValue`/`update:modelValue`; Angular listens for `valueChange`, not `valuechange` | the Vue wrapper maps the model pair; `MnxModel` bridges Angular forms | 1.3 |
+| Vue's `v-model` needs `modelValue`/`update:modelValue`; Angular listens for `valueChange`, not `valuechange` | the Vue wrapper maps the model pair; `ZubraModel` bridges Angular forms | 1.3 |
 | React's `className`/`htmlFor` become `classname`/`htmlfor` attributes under React 18 | the React wrapper maps them | 1.0 |
 | htmx and html-minifier strip the hydration markers | the element restores them by structure | 2.10 |
-| Solid's `prop:` values never reach the server HTML | the plugin writes `mnx-props` in server builds | 2.10 |
+| Solid's `prop:` values never reach the server HTML | the plugin writes `zb-props` in server builds | 2.10 |
 
 Ten framework-specific behaviours; zero per-component work. The instructor's point that "the bug may still be Angular-specific" is right, and this is where such bugs live: in one file per framework.
 
@@ -61,7 +61,7 @@ Forty-seven differences in nine fresh ports, before anyone edited anything. Almo
 - **Event semantics** (React and Svelte ports): a callback instead of a bubbling DOM `CustomEvent`; the event fired only from the click handler rather than on every change of the two-way prop; fired from an inner `<div>` rather than the host.
 - **Host semantics**: a wrapper `<div>` or `<span>` standing in for the element, so `:host` styles, attributes and refs land on the wrong node; a controlled/uncontrolled split (`defaultValue`, `defaultChecked`) the original doesn't have.
 
-These are not the agent being careless. They are the parts of a web component that the framework doesn't give you and that an mnx file doesn't ask you to write: `form-associated`, `name:model`, `emit()`, the host tag. The compiler generates them; a port has to reconstruct them, and did so differently nine times.
+These are not the agent being careless. They are the parts of a web component that the framework doesn't give you and that a Zubra file doesn't ask you to write: `form-associated`, `name:model`, `emit()`, the host tag. The compiler generates them; a port has to reconstruct them, and did so differently nine times.
 
 **The fix.** Two changes to the sources, written as a maintainer would hand them to an agent: a `step` prop for the stepper, a `disabled` prop for the switch that also stops the form value. The agent applied each to its three ports in 6 to 8 seconds.
 

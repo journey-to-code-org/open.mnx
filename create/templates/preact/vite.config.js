@@ -1,4 +1,4 @@
 import preact from '@preact/preset-vite';
-import mnx from '@mnx/unplugin/vite';
+import zubra from '@zubra/unplugin/vite';
 
-export default { plugins: [mnx(), preact()] };
+export default { plugins: [zubra(), preact()] };

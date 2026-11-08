@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// create-mnx: write a working app that uses mnx components.
+// create-zubra: write a working app that uses zubra components.
 //
-//   npm create mnx                         asks for a directory and a framework
-//   npm create mnx my-app -- --framework react
+//   npm create zubra                         asks for a directory and a framework
+//   npm create zubra my-app -- --framework react
 //
-// The app has one component (src/components/hello-counter.mnx), the plugin wired up, typings,
+// The app has one component (src/components/hello-counter.zb), the plugin wired up, typings,
 // and a browser test (`npm test`). Nothing is installed: the last lines say what to run.
 import { cpSync, existsSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
@@ -28,15 +28,15 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 
 /** Write the app for `framework` into `dir` (which must be empty or missing); returns the files written. */
 export function create(dir, framework, { name = basename(resolve(dir)) } = {}) {
-  if (!(framework in FRAMEWORKS)) throw new Error(`create-mnx: unknown framework "${framework}"; one of ${Object.keys(FRAMEWORKS).join(', ')}`);
+  if (!(framework in FRAMEWORKS)) throw new Error(`create-zubra: unknown framework "${framework}"; one of ${Object.keys(FRAMEWORKS).join(', ')}`);
   const target = resolve(dir);
-  if (existsSync(target) && readdirSync(target).length) throw new Error(`create-mnx: ${dir} isn't empty`);
+  if (existsSync(target) && readdirSync(target).length) throw new Error(`create-zubra: ${dir} isn't empty`);
   cpSync(join(templates, 'shared'), target, { recursive: true });
   cpSync(join(templates, framework), target, { recursive: true });
   // npm drops .gitignore files from packages, so the template's is named _gitignore.
   renameSync(join(target, '_gitignore'), join(target, '.gitignore'));
   const files = walk(target);
-  const values = { name: packageName(name), title: name.replace(/[<>{}"'`&\\$]/g, '') || 'mnx app', version, framework: FRAMEWORKS[framework].replace(/ \(.*/, '') };
+  const values = { name: packageName(name), title: name.replace(/[<>{}"'`&\\$]/g, '') || 'Zubra app', version, framework: FRAMEWORKS[framework].replace(/ \(.*/, '') };
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
     const filled = text.replace(/\{\{(name|title|version|framework)\}\}/g, (_, key) => values[key]);
@@ -50,7 +50,7 @@ const walk = (dir) => readdirSync(dir).flatMap((entry) => {
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
 
-const packageName = (name) => name.toLowerCase().replace(/[^a-z0-9._~-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '') || 'mnx-app';
+const packageName = (name) => name.toLowerCase().replace(/[^a-z0-9._~-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '') || 'zb-app';
 
 /** `[dir] [--framework <name>] [--yes]` → `{ dir, framework, yes, help }`. */
 export function parse(argv) {
@@ -62,7 +62,7 @@ export function parse(argv) {
     else if (arg === '--yes' || arg === '-y') options.yes = true;
     else if (arg === '--help' || arg === '-h') options.help = true;
     else if (!arg.startsWith('-') && !options.dir) options.dir = arg;
-    else throw new Error(`create-mnx: unexpected argument ${arg}`);
+    else throw new Error(`create-zubra: unexpected argument ${arg}`);
   }
   return options;
 }
@@ -70,14 +70,14 @@ export function parse(argv) {
 async function main(argv) {
   const options = parse(argv);
   if (options.help) {
-    console.log(`usage: npm create mnx [directory] -- [--framework ${Object.keys(FRAMEWORKS).join('|')}] [--yes]`);
+    console.log(`usage: npm create zubra [directory] -- [--framework ${Object.keys(FRAMEWORKS).join('|')}] [--yes]`);
     return;
   }
   const ask = !options.yes && process.stdin.isTTY;
   const prompt = ask ? createInterface({ input: process.stdin, output: process.stdout }) : null;
   try {
     let { dir, framework } = options;
-    if (!dir) dir = ask ? (await prompt.question('Directory (mnx-app): ')).trim() || 'mnx-app' : 'mnx-app';
+    if (!dir) dir = ask ? (await prompt.question('Directory (zb-app): ')).trim() || 'zb-app' : 'zb-app';
     if (!framework) {
       const names = Object.keys(FRAMEWORKS);
       if (ask) {
@@ -90,7 +90,7 @@ async function main(argv) {
     }
     create(dir, framework);
     const cd = relative(process.cwd(), resolve(dir)) || '.';
-    console.log(`\nAn mnx app (${FRAMEWORKS[framework]}) is in ${cd}. Next:\n\n${cd === '.' ? '' : `  cd ${cd}\n`}  npm install\n  npm run dev     edit src/components/hello-counter.mnx: it updates in place\n  npm test        builds the app and clicks through it in Chromium\n`);
+    console.log(`\nA Zubra app (${FRAMEWORKS[framework]}) is in ${cd}. Next:\n\n${cd === '.' ? '' : `  cd ${cd}\n`}  npm install\n  npm run dev     edit src/components/hello-counter.zb: it updates in place\n  npm test        builds the app and clicks through it in Chromium\n`);
   } finally {
     prompt?.close();
   }

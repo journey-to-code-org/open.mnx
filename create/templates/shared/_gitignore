@@ -1,5 +1,5 @@
 node_modules
 dist
 .astro
-# Typings the mnx plugin writes next to each component (it rewrites them on every build).
-*.d.mnx.ts
+# Typings the zubra plugin writes next to each component (it rewrites them on every build).
+*.d.zb.ts

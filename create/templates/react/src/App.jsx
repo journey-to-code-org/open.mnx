@@ -1,6 +1,6 @@
 import { useState } from 'react';
 // Imported into React, a component is a React component (typed, with onCountChange).
-import HelloCounter from './components/hello-counter.mnx';
+import HelloCounter from './components/hello-counter.zb';
 
 export default function App() {
   const [count, setCount] = useState(0);

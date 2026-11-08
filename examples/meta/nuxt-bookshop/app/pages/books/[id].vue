@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// Editing a book: every field is an mnx element bound with v-model, saved through the API.
-import MoneyInput from '~~/mnx/money-input.mnx';
-import QuantityStepper from '~~/mnx/quantity-stepper.mnx';
-import TagInput from '~~/mnx/tag-input.mnx';
-import ToggleSwitch from '~~/mnx/toggle-switch.mnx';
-import StockMeter from '~~/mnx/stock-meter.mnx';
+// Editing a book: every field is a zubra element bound with v-model, saved through the API.
+import MoneyInput from '~~/zubra/money-input.zb';
+import QuantityStepper from '~~/zubra/quantity-stepper.zb';
+import TagInput from '~~/zubra/tag-input.zb';
+import ToggleSwitch from '~~/zubra/toggle-switch.zb';
+import StockMeter from '~~/zubra/stock-meter.zb';
 
 const route = useRoute();
 const { data: book, error } = await useFetch(`/api/books/${route.params.id}`);

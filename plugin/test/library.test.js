@@ -1,5 +1,5 @@
-// Library mode (`mnx build --lib`): the registry's components, built into a package and used the
-// way a consumer would, with no mnx tooling: from a React app and a Vue app (Vite with only the
+// Library mode (`zubra build --lib`): the registry's components, built into a package and used the
+// way a consumer would, with no zubra tooling: from a React app and a Vue app (Vite with only the
 // framework's own plugin), from a plain page, and from TypeScript.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +18,7 @@ const repo = join(here, '../..');
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const tsc = join(dirname(require.resolve('typescript/package.json')), 'bin', 'tsc');
-// Inside plugin/, so the apps resolve the plugin's React, Vue and @mnx/runtime.
+// Inside plugin/, so the apps resolve the plugin's React, Vue and @zubra/runtime.
 const work = join(here, '.tmp-lib');
 const lib = join(work, 'node_modules/@demo/ui');
 
@@ -26,7 +26,7 @@ let browser;
 const servers = [];
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
-  process.env.MNX_COMPILER ??= join(repo, 'target/debug/mnx');
+  process.env.ZUBRA_COMPILER ??= join(repo, 'target/debug/zubra');
   rmSync(work, { recursive: true, force: true });
   const { buildLibrary } = await import('../../compiler/library.js');
   const { standalone } = await import('../../registry/build-index.mjs');
@@ -65,7 +65,7 @@ async function app(name, files, plugins) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
   }
-  // (dedupe: @mnx/runtime is linked from this repository, which has its own React and Vue.)
+  // (dedupe: @zubra/runtime is linked from this repository, which has its own React and Vue.)
   await build({ root, configFile: false, logLevel: 'silent', plugins, resolve: { dedupe: ['react', 'react-dom', 'vue'] }, build: { outDir: join(root, 'dist') } });
   const page = await browser.newPage();
   const errors = [];
@@ -82,11 +82,11 @@ test('the package: an element module per component, React and Vue entries, typin
   assert.equal(pkg.customElements, './custom-elements.json');
   // The runtime this compiler's version targets (`^<major>.<minor>.0`).
   const [major, minor] = JSON.parse(readFileSync(new URL('../../compiler/package.json', import.meta.url), 'utf8')).version.split('.');
-  assert.equal(pkg.peerDependencies['@mnx/runtime'], `^${major}.${minor}.0`);
-  assert.deepEqual(Object.keys(pkg.peerDependencies), ['@mnx/runtime', 'react', 'vue']);
+  assert.equal(pkg.peerDependencies['@zubra/runtime'], `^${major}.${minor}.0`);
+  assert.deepEqual(Object.keys(pkg.peerDependencies), ['@zubra/runtime', 'react', 'vue']);
   // A component that imports npm packages makes them the package's peers.
   const full = JSON.parse(readFileSync(join(work, 'full/package.json'), 'utf8'));
-  assert.deepEqual(Object.keys(full.peerDependencies), ['@mnx/runtime', '@zag-js/combobox', '@zag-js/vanilla', 'react', 'vue']);
+  assert.deepEqual(Object.keys(full.peerDependencies), ['@zubra/runtime', '@zag-js/combobox', '@zag-js/vanilla', 'react', 'vue']);
   for (const target of Object.values(pkg.exports).flatMap((entry) => (typeof entry === 'string' ? [entry] : Object.values(entry)))) {
     assert.ok(existsSync(join(lib, target)), `${target} exists`);
   }
@@ -101,9 +101,9 @@ test('the package: an element module per component, React and Vue entries, typin
   assert.match(readFileSync(join(lib, 'react/index.js'), 'utf8'), /^'use client';\n/);
   assert.match(readFileSync(join(lib, 'react/quantity-stepper.js'), 'utf8'), /^'use client';\n/);
   assert.doesNotMatch(readFileSync(join(lib, 'vue/index.js'), 'utf8'), /use client/);
-  // The modules need no bundler: no .mnx imports, only @mnx/runtime and each other.
+  // The modules need no bundler: no .zb imports, only @zubra/runtime and each other.
   const code = readFileSync(join(lib, 'quantity-stepper.js'), 'utf8');
-  assert.doesNotMatch(code, /\.mnx['"]/);
+  assert.doesNotMatch(code, /\.zb['"]/);
   assert.match(code, /export \{ \$element as QuantityStepper \};/);
 });
 
@@ -171,7 +171,7 @@ test('a plain page imports the elements with an import map, no build step', asyn
   const pages = join(work, 'plain');
   mkdirSync(pages, { recursive: true });
   writeFileSync(join(pages, 'index.html'), `<!doctype html>
-<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js", "@mnx/runtime/spread": "/runtime/spread.js", "@mnx/runtime/primitives": "/runtime/primitives.js", "@demo/ui": "/ui/index.js" } }</script>
+<script type="importmap">{ "imports": { "@zubra/runtime": "/runtime/index.js", "@zubra/runtime/spread": "/runtime/spread.js", "@zubra/runtime/primitives": "/runtime/primitives.js", "@demo/ui": "/ui/index.js" } }</script>
 <star-rating label="Stars" value="3"></star-rating>
 <script type="module">import '@demo/ui'; await customElements.whenDefined('star-rating'); window.ready = true;</script>`);
   const url = await serve([['/runtime/', runtime], ['/ui/', lib], ['/', pages]]);

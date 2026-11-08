@@ -1,4 +1,4 @@
-# mnx on other people's pages
+# Zubra on other people's pages
 
 A widget that runs on pages you don't control (an embed, a browser extension's content script, a third-party script) meets rules your own pages don't have. `examples/extension/page-notes/` is a working example of each of these.
 
@@ -26,7 +26,7 @@ The host starts from `all: initial`, and each declaration in a top-level `:host`
 In a Chrome extension's content script (its isolated world), `customElements` is `null`. Run the part that defines and renders elements in the page's own world (`"world": "MAIN"` in the manifest). Keep a second content script in the isolated world for `chrome.*` APIs, and pass data between them as JSON text in DOM events.
 
 The page can see and send those events too, so treat what arrives as untrusted:
-- parse it, and display it as text (mnx escapes text and attributes);
+- parse it, and display it as text (Zubra escapes text and attributes);
 - never use it as markup;
 - let a "hide" or "delete" from the page do only what the page could do anyway.
 

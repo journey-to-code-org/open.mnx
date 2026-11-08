@@ -1,0 +1,22 @@
+<!--
+  A two-star rating.
+  @fires beforevaluechange - Cancelable: preventDefault() keeps the current value.
+  @fires valuechange - The value changed; `detail` is the new value.
+  @fires change - Committed, like a native control's change.
+-->
+<script>
+  import { emit, props } from '@zubra/runtime'
+
+  const p = props()
+  function rate(stars) {
+    if (!emit('beforevaluechange', stars)) return
+    p.value = stars
+    emit('valuechange', stars)
+    emit('change')
+  }
+  function one() { rate(1) }
+  function two() { rate(2) }
+</script>
+<zb-rating value={0}>
+  <button type="button" class="one" onclick={one}>1</button><button type="button" class="two" onclick={two}>2</button><output>{value}</output><input class="note">
+</zb-rating>

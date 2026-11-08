@@ -1,0 +1,18 @@
+<!-- A number stepper that submits with its form. -->
+<script>
+  import { state, formValue, validity, onFormReset, onFormRestore, onFormDisabled, signal } from '@zubra/runtime'
+
+  const count = state(0)
+  const disabled = state(false)
+  formValue(signal(count))
+  validity(() => (count.get() < 0 ? 'Must be zero or more' : ''))
+  onFormReset(() => count.set(0))
+  onFormRestore((saved) => count.set(Number(saved)))
+  onFormDisabled((value) => disabled.set(value))
+
+  function up() { count.set(count.get() + 1) }
+  function down() { count.set(count.get() - 1) }
+</script>
+<zb-stepper form-associated label="Quantity">
+  <div><span>{label}</span><button type="button" class="down" onclick={down} disabled={disabled}>-</button><output>{count}</output><button type="button" class="up" onclick={up} disabled={disabled}>+</button></div>
+</zb-stepper>

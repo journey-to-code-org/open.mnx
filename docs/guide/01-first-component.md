@@ -1,9 +1,9 @@
 # 1. Your first component
 
-An `.mnx` file is one component: a script, styles, and a template whose root is the element itself.
+An `.zb` file is one component: a script, styles, and a template whose root is the element itself.
 
 ```html
-<!-- src/components/like-button.mnx -->
+<!-- src/components/like-button.zb -->
 <script>
   let pressed = 0
   const label = pressed === 0 ? "Like" : `Liked ×${pressed}`
@@ -34,7 +34,7 @@ In a page, import the module and write the tag:
 <like-button></like-button>
 <like-button emoji="❤️"></like-button>
 <script type="module">
-  import './components/like-button.mnx';
+  import './components/like-button.zb';
 </script>
 ```
 
@@ -42,14 +42,14 @@ In React, Vue and other frameworks, importing the file gives you a component (Re
 
 ## The dev loop
 
-In an app made by `npm create mnx`, run `npm run dev` and edit the component. It updates in place: elements on the page keep their state (`pressed` keeps its count) and the content given to them. A compile error shows in the browser with the line and a suggested fix. If you change the element's interface (add a prop or event), the page reloads instead.
+In an app made by `npm create zubra`, run `npm run dev` and edit the component. It updates in place: elements on the page keep their state (`pressed` keeps its count) and the content given to them. A compile error shows in the browser with the line and a suggested fix. If you change the element's interface (add a prop or event), the page reloads instead.
 
 From the command line, without a bundler:
 
 ```sh
-mnx check src/components/like-button.mnx              # errors and warnings, with suggestions
-mnx compile src/components/like-button.mnx --emit js  # the module the browser runs
-mnx compile src/components/like-button.mnx            # the HTML a server sends
+zubra check src/components/like-button.zb              # errors and warnings, with suggestions
+zubra compile src/components/like-button.zb --emit js  # the module the browser runs
+zubra compile src/components/like-button.zb            # the HTML a server sends
 ```
 
 ## Props from the script's point of view

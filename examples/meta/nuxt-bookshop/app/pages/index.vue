@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// The inventory: filtered on the server (Nitro's /api/books), with the genre picked in an mnx
+// The inventory: filtered on the server (Nitro's /api/books), with the genre picked in a zubra
 // segmented control (v-model) and stock shown by the app's own stock-meter.
-import SegmentedControl from '~~/mnx/segmented-control.mnx';
-import StockMeter from '~~/mnx/stock-meter.mnx';
+import SegmentedControl from '~~/zubra/segmented-control.zb';
+import StockMeter from '~~/zubra/stock-meter.zb';
 
 const route = useRoute();
 const router = useRouter();

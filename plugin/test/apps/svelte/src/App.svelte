@@ -1,7 +1,7 @@
 <script>
-  import '../components/rating.mnx';
-  import '../components/card.mnx';
-  import '../components/badge.mnx';
+  import '../components/rating.zb';
+  import '../components/card.zb';
+  import '../components/badge.zb';
 
   let stars = $state(1);
   let items = $state(['a', 'b']);
@@ -15,11 +15,11 @@
   };
 </script>
 
-<mnx-rating value={stars} onvaluechange={(event) => (stars = event.detail)} onchange={() => log.push('change')}></mnx-rating>
+<zb-rating value={stars} onvaluechange={(event) => (stars = event.detail)} onchange={() => log.push('change')}></zb-rating>
 <p id="stars">{stars}</p>
-<mnx-card heading="Svelte">
+<zb-card heading="Svelte">
   {#if title}<h2 slot="title">Custom</h2>{/if}
   {#each items as item (item)}<p>{item}</p>{/each}
-</mnx-card>
-<mnx-badge label="x" info={info}></mnx-badge>
+</zb-card>
+<zb-badge label="x" info={info}></zb-badge>
 <p id="log">{log.join(',')}</p>

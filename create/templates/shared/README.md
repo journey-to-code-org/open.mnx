@@ -1,17 +1,17 @@
 # {{title}}
 
-A {{framework}} app using [mnx](https://github.com/journey-to-code-org/open.mnx) web components.
+A {{framework}} app using [Zubra](https://github.com/journey-to-code-org/zubra) web components.
 
 ```sh
 npm install
-npm run dev     # then edit src/components/hello-counter.mnx: it updates in place
+npm run dev     # then edit src/components/hello-counter.zb: it updates in place
 npm run build
 npm test        # builds the app and clicks through it in Chromium (run `npx playwright install chromium` once)
 ```
 
-- `src/components/` holds the components: one `.mnx` file each, with its script, styles and template.
-- The mnx plugin (`@mnx/unplugin`) compiles them when they're imported, and writes their typings next to them.
+- `src/components/` holds the components: one `.zb` file each, with its script, styles and template.
+- The Zubra plugin (`@zubra/unplugin`) compiles them when they're imported, and writes their typings next to them.
 - The elements are standard custom elements, so they also work in plain HTML, other frameworks and server-rendered pages.
-- `AGENTS.md` and `skills/` tell a coding agent how to write and use the components, so it doesn't have to learn mnx from the source.
+- `AGENTS.md` and `skills/` tell a coding agent how to write and use the components, so it doesn't have to learn Zubra from the source.
 
-The [tutorial](https://github.com/journey-to-code-org/open.mnx/blob/main/docs/guide/README.md) goes from here to forms, async data and server rendering.
+The [tutorial](https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/README.md) goes from here to forms, async data and server rendering.

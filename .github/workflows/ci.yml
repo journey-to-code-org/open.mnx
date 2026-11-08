@@ -48,7 +48,7 @@ jobs:
       - run: npm run test:browser
         working-directory: runtime
         env:
-          MNX_RUNTIME: production
+          ZUBRA_RUNTIME: production
       - run: npm run test:tools
         working-directory: runtime
       # The component registry: keyboard and screen-reader behaviour of each component, and its index.
@@ -63,7 +63,7 @@ jobs:
       matrix:
         browser: [firefox, webkit]
     env:
-      MNX_BROWSER: ${{ matrix.browser }}
+      ZUBRA_BROWSER: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -97,7 +97,7 @@ jobs:
         working-directory: examples/frameworks
 
   plugin:
-    name: Build plugin (Vite, React, Vue) and @mnx/server
+    name: Build plugin (Vite, React, Vue) and @zubra/server
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,7 +118,7 @@ jobs:
         working-directory: plugin
       - run: npm test
         working-directory: plugin
-      # @mnx/server (Express, Fastify, Hono, injectShadowRoots) and the compiler's checks of
+      # @zubra/server (Express, Fastify, Hono, injectShadowRoots) and the compiler's checks of
       # server-side evaluation against V8.
       - run: npm ci
         working-directory: server
@@ -128,6 +128,34 @@ jobs:
         working-directory: compiler
       - run: node --test test/server-evaluation.test.js
         working-directory: compiler
+
+  demos:
+    name: Demo gallery (every static example under a base path, as GitHub Pages serves it)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npm ci
+        working-directory: examples/frameworks
+      - name: Install the other static examples
+        run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done
+      - run: node demos/build.mjs --out _site --base /open.mnx/
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/frameworks
+      - run: node --test "demos/test/*.test.js"
+        env:
+          GALLERY: _site
+          GALLERY_BASE: /open.mnx/
 
   frameworks:
     name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular)
@@ -155,12 +183,12 @@ jobs:
         working-directory: examples/frameworks
       - run: npm test
         working-directory: examples/frameworks
-      # npm create mnx: its command line (the apps it writes ran in the step above).
+      # npm create zubra: its command line (the apps it writes ran in the step above).
       - run: npm test
         working-directory: create
       # The playground, compiling through the native CLI, with React and Vue previews.
       - run: node --test "playground/test/*.test.js"
-      # The first ten minutes, scripted: npm create mnx → mnx add → test → mnx build --lib → pack.
+      # The first ten minutes, scripted: npm create zubra → zubra add → test → zubra build --lib → pack.
       - run: node scripts/adoption-check.mjs --budget-minutes 10
 
   helpdesk:
@@ -240,7 +268,7 @@ jobs:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: examples/backends/flask-garden/requirements-test.txt
-      # The server side is Python and the mnx CLI only: no Node.js.
+      # The server side is Python and the zubra CLI only: no Node.js.
       - run: cargo build --locked
       - run: pip install -r requirements-test.txt
         working-directory: examples/backends/flask-garden
@@ -305,7 +333,7 @@ jobs:
     name: WebAssembly compiler
     runs-on: ubuntu-latest
     env:
-      MNX_REQUIRE_WASM: "1"
+      ZUBRA_REQUIRE_WASM: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -319,13 +347,13 @@ jobs:
       - run: cargo build --locked
       - run: npm run build
         working-directory: compiler
-      - run: ls -l mnx.wasm
+      - run: ls -l zubra.wasm
         working-directory: compiler
       # The built compiler, for running the examples without Rust: put it in compiler/.
       - uses: actions/upload-artifact@v4
         with:
-          name: mnx-wasm
-          path: compiler/mnx.wasm
+          name: zubra-wasm
+          path: compiler/zubra.wasm
           retention-days: 30
           overwrite: true
       - run: npm test
@@ -338,7 +366,7 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
-      # The playground compiling with mnx.wasm in the page.
+      # The playground compiling with zubra.wasm in the page.
       - run: node --test "playground/test/*.test.js"
 
   editors:
@@ -408,4 +436,4 @@ jobs:
       - if: env.ANTHROPIC_API_KEY != ''
         run: npm install -g @anthropic-ai/claude-code
       - if: env.ANTHROPIC_API_KEY != ''
-        run: MNX_AGENT="claude -p" node --test skills/test/agent.test.js
+        run: ZUBRA_AGENT="claude -p" node --test skills/test/agent.test.js

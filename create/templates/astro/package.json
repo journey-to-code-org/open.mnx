@@ -9,12 +9,12 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@mnx/runtime": "^{{version}}",
+    "@zubra/runtime": "^{{version}}",
     "astro": "^7.4.7"
   },
   "devDependencies": {
-    "@mnx/compiler": "^{{version}}",
-    "@mnx/unplugin": "^{{version}}",
+    "@zubra/compiler": "^{{version}}",
+    "@zubra/unplugin": "^{{version}}",
     "playwright": "^1.63.0"
   }
 }

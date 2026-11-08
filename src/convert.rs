@@ -1,7 +1,7 @@
-//! `mnx convert`: a React function component, rewritten as an mnx JSX component
-//! (`.mnx.jsx` / `.mnx.tsx`), which compiles to a custom element.
+//! `zubra convert`: a React function component, rewritten as a zubra JSX component
+//! (`.zb.jsx` / `.zb.tsx`), which compiles to a custom element.
 //!
-//! The function body of an mnx component runs once per element, so React's hooks become what
+//! The function body of a zubra component runs once per element, so React's hooks become what
 //! they stand for:
 //!
 //! ```jsx
@@ -13,7 +13,7 @@
 //! useEffect(() => …, [])                       →   onMount(() => …)
 //! useEffect(() => …, [count])                  →   onMount(() => effect(() => …))   (it tracks what it reads)
 //! const [s, dispatch] = useReducer(r, init)   →   let s = init; const dispatch = (action) => (s = r(s, action))
-//! const Ctx = createContext(x); useContext(Ctx) →   createContext(x) and inject(Ctx) from @mnx/runtime
+//! const Ctx = createContext(x); useContext(Ctx) →   createContext(x) and inject(Ctx) from @zubra/runtime
 //! <Child onClose={onClose}>                    →   onClose={(event) => onClose(event)} (a received event prop, passed on)
 //! ```
 //!
@@ -51,9 +51,9 @@ use crate::{
 /// What converting one component does.
 #[derive(Debug, Default)]
 pub struct Conversion {
-    /// The mnx JSX component.
+    /// The zubra JSX component.
     pub output: String,
-    /// Its tag (`<todo-item>`), and the file name to give it (`todo-item.mnx.jsx`).
+    /// Its tag (`<todo-item>`), and the file name to give it (`todo-item.zb.jsx`).
     pub tag: String,
     pub file_name: String,
     /// One line per kind of rewrite.
@@ -84,7 +84,7 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
 }
 
 /// As [`convert`], converting the exported component named `component` when a file exports
-/// several (`mnx convert Menu.tsx --component MenuItem`).
+/// several (`zubra convert Menu.tsx --component MenuItem`).
 pub fn convert_component(
     source: &str,
     path: &str,
@@ -275,7 +275,7 @@ pub fn convert_component(
                 return Err(Diagnostic::new(
                     Span::new(1, 1),
                     format!(
-                        "this file exports {} components; `mnx convert` converts one at a time",
+                        "this file exports {} components; `zubra convert` converts one at a time",
                         several.len()
                     ),
                 )
@@ -288,7 +288,7 @@ pub fn convert_component(
         }
     }
     let Some(function) = function else {
-        return Err(Diagnostic::new(Span::new(1, 1), "no component to convert: `mnx convert` takes a file whose default export is a function component")
+        return Err(Diagnostic::new(Span::new(1, 1), "no component to convert: `zubra convert` takes a file whose default export is a function component")
             .with_help("write it as `export default function TodoItem({ … }) { … }` (an arrow function or a class isn't converted)"));
     };
     let Some(id) = &function.id else {
@@ -472,7 +472,7 @@ pub fn convert_component(
                 _ => work.unsupported(
                     span.start,
                     "the rest of the props, used other than spread onto the returned element, aren't converted",
-                    "an mnx component's host carries the consumer's attributes itself; declare each prop the component reads",
+                    "a zubra component's host carries the consumer's attributes itself; declare each prop the component reads",
                 ),
             }
         }
@@ -558,7 +558,7 @@ pub fn convert_component(
                 work.unsupported(
                     statement.span().start,
                     "an exported context can't stay in a component file",
-                    "move `createContext` (from @mnx/runtime) to its own module and import the context here and in the providers",
+                    "move `createContext` (from @zubra/runtime) to its own module and import the context here and in the providers",
                 );
                 continue;
             }
@@ -668,7 +668,7 @@ pub fn convert_component(
                 _ => work.unsupported(
                     span.start,
                     "a ref used other than through `.current` or `ref={…}` isn't converted",
-                    "an mnx ref is the element itself: `let input = null` with `ref={input}`, then `input.focus()`",
+                    "a zubra ref is the element itself: `let input = null` with `ref={input}`, then `input.focus()`",
                 ),
             }
         }
@@ -690,10 +690,10 @@ pub fn convert_component(
     for (start, hook, converted) in leftovers.calls {
         if !converted || !work.covered(start) {
             if converted {
-                work.unsupported(start, format!("`{hook}` isn't converted here"), "call hooks at the top of the component, as React requires; `mnx convert` converts them there");
+                work.unsupported(start, format!("`{hook}` isn't converted here"), "call hooks at the top of the component, as React requires; `zubra convert` converts them there");
             } else {
                 work.unsupported(start, format!("`{hook}` isn't converted"), match hook.as_str() {
-                    "useContext" => "use `inject(context)` from @mnx/runtime with `createContext` and `provide` (README, Context)",
+                    "useContext" => "use `inject(context)` from @zubra/runtime with `createContext` and `provide` (README, Context)",
                     "useReducer" => "keep the state in a `let` and write the reducer's cases as functions that assign it",
                     _ => "a custom hook can stay a function: call it once in the body, and have it use `let` state or `state()` signals",
                 });
@@ -701,7 +701,7 @@ pub fn convert_component(
         }
     }
 
-    // JSX: `onChange` on text fields, a received event prop passed on, and what has no mnx
+    // JSX: `onChange` on text fields, a received event prop passed on, and what has no zubra
     // equivalent.
     let mut jsx = Jsx {
         work: &mut work,
@@ -712,12 +712,12 @@ pub fn convert_component(
     // Only the component being converted: a file's other components are left out of the result.
     jsx.visit_function(function, oxc_syntax::scope::ScopeFlags::empty());
 
-    // Imports: the converted hooks leave `react`; what's used comes from @mnx/runtime, in its
+    // Imports: the converted hooks leave `react`; what's used comes from @zubra/runtime, in its
     // place.
     let mut runtime: Vec<&str> = work.used.iter().copied().collect();
     runtime.sort_unstable();
     let runtime_line = (!runtime.is_empty())
-        .then(|| format!("import {{ {} }} from '@mnx/runtime';", runtime.join(", ")));
+        .then(|| format!("import {{ {} }} from '@zubra/runtime';", runtime.join(", ")));
     if let Some(import) = react_import {
         let specifiers = import
             .specifiers
@@ -782,9 +782,9 @@ pub fn convert_component(
     let output = work.apply();
     let extension = if typescript { "tsx" } else { "jsx" };
     let mut unsupported = work.unsupported;
-    // The proof: does it compile as an mnx component?
+    // The proof: does it compile as a zubra component?
     let compile_error = if unsupported.is_empty() {
-        crate::compile_js(&output, "@mnx/runtime", &format!("{tag}.mnx.{extension}")).err()
+        crate::compile_js(&output, "@zubra/runtime", &format!("{tag}.zb.{extension}")).err()
     } else {
         None
     };
@@ -797,7 +797,7 @@ pub fn convert_component(
     }
     Ok(Conversion {
         output,
-        file_name: format!("{tag}.mnx.{extension}"),
+        file_name: format!("{tag}.zb.{extension}"),
         tag,
         changes,
         unsupported,
@@ -1031,7 +1031,7 @@ fn convert_context_and_reducer<'a>(
                     work.unsupported(
                         call.span.start,
                         "`useContext` became `inject()`, but its context comes from elsewhere",
-                        "create that context with `createContext` from @mnx/runtime where it's exported, and have the providing component call `provide(context, value)`",
+                        "create that context with `createContext` from @zubra/runtime where it's exported, and have the providing component call `provide(context, value)`",
                     );
                 }
             }
@@ -1314,7 +1314,7 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
             JSXElementName::Identifier(identifier) => Some(identifier.name.as_str()),
             JSXElementName::IdentifierReference(identifier) => Some(identifier.name.as_str()),
             JSXElementName::MemberExpression(member) => {
-                // `<Ctx.Provider value={…}>`: providing is a call in mnx, not an element.
+                // `<Ctx.Provider value={…}>`: providing is a call in zubra, not an element.
                 if member.property.name == "Provider" {
                     let created_here = match &member.object {
                         oxc_ast::ast::JSXMemberExpressionObject::IdentifierReference(
@@ -1330,9 +1330,9 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
                         element.span.start,
                         "`<Context.Provider>` isn't converted",
                         if created_here {
-                            "call `provide(Context, value)` from @mnx/runtime in the script, and render the children directly; `inject(Context)` in a descendant follows it"
+                            "call `provide(Context, value)` from @zubra/runtime in the script, and render the children directly; `inject(Context)` in a descendant follows it"
                         } else {
-                            "create the context with `createContext` from @mnx/runtime, call `provide(Context, value)` in the script, and render the children directly"
+                            "create the context with `createContext` from @zubra/runtime, call `provide(Context, value)` in the script, and render the children directly"
                         },
                     );
                 }
@@ -1354,14 +1354,14 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
         };
         for item in &element.attributes {
             match item {
-                // A spread onto an element is an mnx spread now (3.5); onto a component, not.
+                // A spread onto an element is a zubra spread now (3.5); onto a component, not.
                 JSXAttributeItem::SpreadAttribute(spread)
                     if tag.is_some_and(|tag| tag.starts_with(char::is_uppercase)) =>
                 {
                     self.work.unsupported(
                         spread.span.start,
                         "spreading onto a component isn't converted",
-                        "pass each prop; an mnx component checks every one",
+                        "pass each prop; a zubra component checks every one",
                     )
                 }
                 JSXAttributeItem::SpreadAttribute(_) => {}
@@ -1369,7 +1369,7 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
                     let JSXAttributeName::Identifier(name) = &attribute.name else {
                         continue;
                     };
-                    // `onClose={onClose}` with a received event prop: an mnx event prop can only
+                    // `onClose={onClose}` with a received event prop: a zubra event prop can only
                     // be called, so pass it on as a call.
                     if let Some(oxc_ast::ast::JSXAttributeValue::ExpressionContainer(container)) =
                         &attribute.value
@@ -1473,5 +1473,5 @@ fn react_primitive(module: &str) -> Option<(&'static str, String)> {
         _ if module.starts_with("embla-carousel-react") => "Embla's React carousel",
         _ => return None,
     };
-    Some((library, "build it on the platform's element (<dialog>, popover, <details>, <input type=\"range\">, <select>), a registry component (`mnx add --list`), or a Zag.js machine through @mnx/runtime/zag (docs/guide/accessible-widgets.md)".to_owned()))
+    Some((library, "build it on the platform's element (<dialog>, popover, <details>, <input type=\"range\">, <select>), a registry component (`zubra add --list`), or a Zag.js machine through @zubra/runtime/zag (docs/guide/accessible-widgets.md)".to_owned()))
 }

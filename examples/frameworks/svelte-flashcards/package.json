@@ -1,5 +1,5 @@
 {
-  "name": "mnx-example-svelte-flashcards",
+  "name": "zubra-example-svelte-flashcards",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,12 +8,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime",
+    "@zubra/runtime": "file:../../../runtime",
     "svelte": "5.57.3"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "vite": "8.3.6"
   }

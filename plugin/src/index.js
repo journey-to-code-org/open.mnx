@@ -1,36 +1,36 @@
-// @mnx/unplugin: `.mnx` components in any bundler unplugin supports (Vite first).
+// @zubra/unplugin: `.zb` components in any bundler unplugin supports (Vite first).
 //
 //   // vite.config.js
-//   import mnx from '@mnx/unplugin/vite'
-//   export default { plugins: [mnx(), react()] }
+//   import zubra from '@zubra/unplugin/vite'
+//   export default { plugins: [zubra(), react()] }
 //
 //   // App.tsx — a React component, because this is a React file
-//   import Rating from './rating.mnx'
+//   import Rating from './rating.zb'
 //   <Rating value={stars} onValueChange={(event) => setStars(event.detail)} />
 //
-// What an import of a `.mnx` file gives depends on who imports it, so nobody writes glue code:
+// What an import of a `.zb` file gives depends on who imports it, so nobody writes glue code:
 //
-// - from a `.jsx`/`.tsx` file: a React component (`@mnx/runtime/react`);
-// - from a `.vue` file: a Vue component (`@mnx/runtime/vue`);
-// - from anything else (plain JS/TS, another `.mnx`): the custom element class. In a project
+// - from a `.jsx`/`.tsx` file: a React component (`@zubra/runtime/react`);
+// - from a `.vue` file: a Vue component (`@zubra/runtime/vue`);
+// - from anything else (plain JS/TS, another `.zb`): the custom element class. In a project
 //   using React or Vue, plain `.js`/`.ts` files get that framework's component.
 //
-// Every variant defines the element, so `<mnx-rating>` also works in HTML and in templates.
+// Every variant defines the element, so `<zb-rating>` also works in HTML and in templates.
 // `?element`, `?react` or `?vue` on the import picks one explicitly. Compile errors show the
-// source line (in Vite's overlay, too); editing a `.mnx` file reloads the page, because the
+// source line (in Vite's overlay, too); editing a `.zb` file reloads the page, because the
 // platform can't redefine a custom element. Next to each component the plugin writes typings
-// (`rating.d.mnx.ts`, used by TypeScript with `allowArbitraryExtensions`) for the project's
+// (`rating.d.zb.ts`, used by TypeScript with `allowArbitraryExtensions`) for the project's
 // framework.
 import { createUnplugin } from 'unplugin';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { addProps, mnxImports } from './props.js';
+import { addProps, zubraImports } from './props.js';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
 
 const VARIANTS = ['element', 'react', 'vue'];
-/** A component file: `.mnx`, or a JSX component (`.mnx.jsx` / `.mnx.tsx`). */
-const COMPONENT = /\.mnx(?:\.[jt]sx)?$/;
-const QUERY = '?mnx=';
+/** A component file: `.zb`, or a JSX component (`.zb.jsx` / `.zb.tsx`). */
+const COMPONENT = /\.zb(?:\.[jt]sx)?$/;
+const QUERY = '?zubra=';
 
 const split = (id) => {
   const at = id.indexOf('?');
@@ -43,7 +43,7 @@ export function variantFor(query, importer, project) {
   if (asked) return asked;
   if (!importer) return project;
   const [file] = split(importer);
-  if (COMPONENT.test(file)) return 'element'; // a component, or a wrapper (`x.mnx?mnx=react`)
+  if (COMPONENT.test(file)) return 'element'; // a component, or a wrapper (`x.zb?zubra=react`)
   if (file.endsWith('.vue')) return 'vue';
   // JSX is React's, or Vue's in a Vue project (vue-jsx); Solid and Preact use custom elements
   // directly.
@@ -51,15 +51,15 @@ export function variantFor(query, importer, project) {
   return project === 'react' || project === 'vue' ? project : 'element';
 }
 
-/** `.mnx` files a component imports, recursively, so changing one recompiles its importers. */
+/** `.zb` files a component imports, recursively, so changing one recompiles its importers. */
 function dependencies(path, seen = new Set()) {
   if (seen.has(path)) return seen;
   seen.add(path);
   let source = '';
   try { source = readFileSync(path, 'utf8'); } catch { return seen; }
-  // A JSX component's imports are the whole file's; an .mnx file's are its <script>'s.
+  // A JSX component's imports are the whole file's; an .zb file's are its <script>'s.
   const script = /\.[jt]sx$/.test(path) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
-  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.mnx(?:\.[jt]sx)?)['"]/g)) {
+  for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)['"]/g)) {
     if (specifier.startsWith('.')) dependencies(resolve(dirname(path), specifier), seen);
   }
   return seen;
@@ -72,7 +72,7 @@ function dependencies(path, seen = new Set()) {
  */
 function hot(code) {
   // On the first line, so line numbers in errors stay the compiler's.
-  return `globalThis.__MNX_HOT__ = true; ${code}
+  return `globalThis.__ZUBRA_HOT__ = true; ${code}
 if (import.meta.hot) {
   import.meta.hot.accept((next) => {
     // (A reload, not invalidate(): a framework wrapper above accepts its own updates.)
@@ -84,17 +84,17 @@ if (import.meta.hot) {
 
 /**
  * What a server build appends to a component: its renderer, registered by tag. It renders with
- * @mnx/compiler from the component's sources, embedded (keyed by path below their common
+ * @zubra/compiler from the component's sources, embedded (keyed by path below their common
  * directory), so the server bundle needs nothing from the build machine.
  */
 function serverRenderer(path, compilerModule, runtime) {
   const paths = [...dependencies(path)].filter((file) => existsSync(file));
   let common = dirname(path);
   while (!paths.every((file) => file.startsWith(common + sep))) common = dirname(common);
-  // Imports may go up (`../x/y.mnx`) before coming back down: keep the directories they pass.
+  // Imports may go up (`../x/y.zb`) before coming back down: keep the directories they pass.
   let up = 0;
   for (const file of paths) {
-    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/import\s+(?:[^'"]*?from\s+)?['"]((?:\.\.\/)+)[^'"]*\.mnx(?:\.[jt]sx)?['"]/g)) {
+    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(/import\s+(?:[^'"]*?from\s+)?['"]((?:\.\.\/)+)[^'"]*\.zb(?:\.[jt]sx)?['"]/g)) {
       up = Math.max(up, specifier.length / 3);
     }
   }
@@ -102,11 +102,11 @@ function serverRenderer(path, compilerModule, runtime) {
   const key = (file) => `/${relative(common, file).split(sep).join('/')}`;
   const files = Object.fromEntries(paths.map((file) => [key(file), readFileSync(file, 'utf8')]));
   return `
-import { registerRenderer as $mnxRegister } from ${JSON.stringify(`${runtime}/server`)};
-import { request as $mnxRequest } from ${JSON.stringify(compilerModule)};
-const $mnxFiles = ${JSON.stringify(files)};
-$mnxRegister(tag, (props, slots) => {
-  const response = $mnxRequest({ emit: 'html', path: ${JSON.stringify(key(path))}, files: $mnxFiles, props, slots, slotSource: 'html', partial: true });
+import { registerRenderer as $zubraRegister } from ${JSON.stringify(`${runtime}/server`)};
+import { request as $zubraRequest } from ${JSON.stringify(compilerModule)};
+const $zubraFiles = ${JSON.stringify(files)};
+$zubraRegister(tag, (props, slots) => {
+  const response = $zubraRequest({ emit: 'html', path: ${JSON.stringify(key(path))}, files: $zubraFiles, props, slots, slotSource: 'html', partial: true });
   if (!response.ok) throw new Error(response.error);
   return response.output;
 });
@@ -114,30 +114,30 @@ $mnxRegister(tag, (props, slots) => {
 }
 
 export const unplugin = createUnplugin((options = {}, meta = {}) => {
-  // The compiler: a CLI when one is given (option or $MNX_COMPILER); otherwise the WebAssembly
-  // build (@mnx/compiler) if it's installed, so no Rust toolchain is needed; else `mnx` on PATH.
-  const explicit = options.compiler ?? process.env.MNX_COMPILER;
-  const compiler = explicit ?? 'mnx';
+  // The compiler: a CLI when one is given (option or $ZUBRA_COMPILER); otherwise the WebAssembly
+  // build (@zubra/compiler) if it's installed, so no Rust toolchain is needed; else `zubra` on PATH.
+  const explicit = options.compiler ?? process.env.ZUBRA_COMPILER;
+  const compiler = explicit ?? 'zubra';
   let wasm = null;
   async function chooseBackend() {
     if (explicit || wasm) return;
     try {
-      const module = await import('@mnx/compiler');
+      const module = await import('@zubra/compiler');
       if (module.available()) wasm = module;
     } catch {
       // Not installed: use the CLI.
     }
   }
-  const runtime = options.runtime ?? '@mnx/runtime';
+  const runtime = options.runtime ?? '@zubra/runtime';
   let project = options.framework && options.framework !== 'auto' ? options.framework : null;
   const typings = options.dts ?? true;
-  // Server builds render components with @mnx/compiler at request time (`ssr: false` leaves
+  // Server builds render components with @zubra/compiler at request time (`ssr: false` leaves
   // that out: the elements then render on the client only).
   const serverRendering = options.ssr ?? true;
   let ssrFramework = null; // React Router, SvelteKit or Nuxt (Vite): see the light-DOM warning
   const warnedLight = new Set();
   const relativePath = (path) => path.startsWith(process.cwd()) ? path.slice(process.cwd().length + 1) : path;
-  const compilerModule = options.compilerModule ?? '@mnx/compiler';
+  const compilerModule = options.compilerModule ?? '@zubra/compiler';
   let dev = false; // Vite's dev server: components hot-reload
 
   /** CLI flags → a request for the WebAssembly compiler. */
@@ -149,7 +149,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       else if (flag === '--no-imports') request.noImports = true;
       else {
         const key = { '--emit': 'emit', '--framework': 'framework', '--runtime': 'runtime', '--css-import': 'cssImport', '--css-import-inline': 'cssImportInline' }[flag];
-        if (!key) throw new Error(`mnx: unexpected compiler flag ${flag}`);
+        if (!key) throw new Error(`zubra: unexpected compiler flag ${flag}`);
         request[key] = args[++i];
       }
     }
@@ -164,10 +164,10 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     }
     const result = spawnSync(compiler, ['compile', path, ...args], { encoding: 'utf8' });
     if (result.error) {
-      throw new Error(`mnx: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}). `
-        + 'Install @mnx/compiler (the WebAssembly build), install the CLI, or pass { compiler: "/path/to/mnx" }.');
+      throw new Error(`zubra: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}). `
+        + 'Install @zubra/compiler (the WebAssembly build), install the CLI, or pass { compiler: "/path/to/zubra" }.');
     }
-    if (result.status !== 0) throw new Error(result.stderr.trim() || `mnx: the compiler exited with ${result.status}`);
+    if (result.status !== 0) throw new Error(result.stderr.trim() || `zubra: the compiler exited with ${result.status}`);
     return { code: result.stdout, warnings: result.stderr.trim() };
   }
 
@@ -188,13 +188,13 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         id,
         loc: { file: at[1], line: Number(at[2]), column: Number(at[3]) },
         frame: text.split('\n').slice(1).join('\n'),
-        plugin: 'mnx',
+        plugin: 'zubra',
       });
     }
     throw new Error(text);
   }
 
-  // Each component's tag and prop names, for `mnx-props` (by path, while its file is unchanged).
+  // Each component's tag and prop names, for `zb-props` (by path, while its file is unchanged).
   const interfaces = new Map();
   function interfaceOf(path) {
     const stamp = statSync(path).mtimeMs;
@@ -208,14 +208,14 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
 
   function writeTypings(path) {
     const framework = ['react', 'vue', 'svelte', 'solid'].includes(project) ? project : 'none';
-    const target = resolve(dirname(path), `${basename(path, '.mnx')}.d.mnx.ts`);
+    const target = resolve(dirname(path), `${basename(path, '.zb')}.d.zb.ts`);
     const contents = compile(path, '--emit', 'dts', '--framework', framework).code;
     // Only when changed, so watchers don't loop.
     if (!existsSync(target) || readFileSync(target, 'utf8') !== contents) writeFileSync(target, contents);
   }
 
   return {
-    name: 'mnx',
+    name: 'zubra',
     enforce: 'pre',
 
     async buildStart() {
@@ -235,14 +235,14 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       }
       // A component's stylesheet keeps its whole query: Vite (and Tailwind) recognize CSS by its
       // `&lang.css` suffix, and inline CSS by `&inline`.
-      if (new URLSearchParams(query).get('mnx') === 'style') return `${path}?${query}`;
+      if (new URLSearchParams(query).get('zubra') === 'style') return `${path}?${query}`;
       // A variant already chosen (a wrapper's import of its element, a dev server URL) stays.
-      const variant = new URLSearchParams(query).get('mnx') ?? variantFor(query, importer, project ?? 'element');
+      const variant = new URLSearchParams(query).get('zubra') ?? variantFor(query, importer, project ?? 'element');
       return `${path}${QUERY}${variant}`;
     },
 
     loadInclude(id) {
-      return /\.mnx(?:\.[jt]sx)?\?mnx=/.test(id);
+      return /\.zb(?:\.[jt]sx)?\?zubra=/.test(id);
     },
 
     load(id, loadOptions) {
@@ -250,7 +250,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       // server renderer.
       const server = loadOptions?.ssr === true || this?.environment?.config?.consumer === 'server';
       const [path, query] = split(id);
-      const variant = new URLSearchParams(query).get('mnx');
+      const variant = new URLSearchParams(query).get('zubra');
       if (variant === 'style') {
         // This component's stylesheet, for the bundler's CSS pipeline (PostCSS, Tailwind,
         // preprocessors) to process.
@@ -268,7 +268,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
           + (dev && meta.framework === 'vite' ? 'if (import.meta.hot) import.meta.hot.accept(() => {});\n' : '');
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);
-      if (server && ssrFramework && path.endsWith('.mnx') && !warnedLight.has(path) && isLightDom(readFileSync(path, 'utf8'))) {
+      if (server && ssrFramework && path.endsWith('.zb') && !warnedLight.has(path) && isLightDom(readFileSync(path, 'utf8'))) {
         warnedLight.add(path);
         // Since 3.3 the React and Vue wrappers server-render a light-DOM element's content and
         // keep the framework out of the host while hydrating, so light DOM works there when the
@@ -283,12 +283,12 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         }
       }
       // (A JSX component is typed by its own source: TypeScript reads the function.)
-      if (typings && path.endsWith('.mnx')) writeTypings(path);
+      if (typings && path.endsWith('.zb')) writeTypings(path);
       // With Vite, a <style> goes through Vite's CSS pipeline; elsewhere it's inlined as written.
       const styles = [];
-      if (meta.framework === 'vite' && path.endsWith('.mnx') && /<style[\s>]/i.test(readFileSync(path, 'utf8'))) {
+      if (meta.framework === 'vite' && path.endsWith('.zb') && /<style[\s>]/i.test(readFileSync(path, 'utf8'))) {
         const lang = readFileSync(path, 'utf8').match(/<style[^>]*\slang=["']([a-z0-9]+)["']/i)?.[1] ?? 'css';
-        styles.push('--css-import', `${path}?mnx=style&lang.${lang}`, '--css-import-inline', `${path}?mnx=style&inline&lang.${lang}`);
+        styles.push('--css-import', `${path}?zubra=style&lang.${lang}`, '--css-import-inline', `${path}?zubra=style&inline&lang.${lang}`);
       }
       let output;
       try {
@@ -314,7 +314,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
 
     vite: {
       config() {
-        // One copy of each framework, even when @mnx/runtime is linked from elsewhere.
+        // One copy of each framework, even when @zubra/runtime is linked from elsewhere.
         return { resolve: { dedupe: ['react', 'react-dom', 'vue', '@angular/core', '@angular/common', '@angular/forms'] } };
       },
       configResolved(config) {
@@ -335,7 +335,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         dev = true;
       },
       // Svelte and Solid use the elements directly: in their server builds, the hosts get
-      // `mnx-props` (see props.js), for @mnx/server's injectShadowRoots().
+      // `zb-props` (see props.js), for @zubra/server's injectShadowRoots().
       async transform(code, id, transformOptions) {
         const dialect = project === 'svelte' ? 'svelte' : project === 'solid' ? 'solid' : null;
         if (!dialect) return null;
@@ -344,7 +344,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         if (!server || path.includes('/node_modules/') || COMPONENT.test(path)) return null;
         if (dialect === 'svelte' ? !path.endsWith('.svelte') : !/\.[jt]sx$/.test(path)) return null;
         const tags = new Map();
-        for (const specifier of mnxImports(code)) {
+        for (const specifier of zubraImports(code)) {
           const resolved = specifier.startsWith('.') ? resolve(dirname(path), specifier) : (await this.resolve(specifier, id, { skipSelf: true }))?.id;
           const file = resolved && split(resolved)[0];
           if (!file || !existsSync(file)) continue;
@@ -362,7 +362,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   };
 });
 
-/** Whether a `.mnx` component renders into light DOM (no `shadow` on its host tag). */
+/** Whether a `.zb` component renders into light DOM (no `shadow` on its host tag). */
 export function isLightDom(source) {
   const markup = source.replace(/<!--[^]*?-->/g, '').replace(/<(script|style)\b[^]*?<\/\1>/gi, '');
   const host = markup.match(/<([a-z][a-z0-9]*-[a-z0-9-]*)\b([^>]*)>/i);

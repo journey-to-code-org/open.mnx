@@ -1,8 +1,8 @@
-// The mnx playground: the WebAssembly compiler in the page, the component running in plain
+// The zubra playground: the WebAssembly compiler in the page, the component running in plain
 // HTML (and in React and Vue, when the site was built with them), and every compiler output.
 // No server: state lives in the URL (#…), so a link is the whole example.
 
-const PATH = '/playground/component.mnx';
+const PATH = '/playground/component.zb';
 
 const EXAMPLES = {
   counter: {
@@ -55,9 +55,9 @@ const EXAMPLES = {
     <button>Add</button>
   </form>
   <ul>
-    <mnx-each items={items} as="item" key={item.id}>
+    <zb-each items={items} as="item" key={item.id}>
       <li class:done={item.done} onclick={() => toggle(item.id)}>{item.text}</li>
-    </mnx-each>
+    </zb-each>
   </ul>
   <p>{left} left</p>
 </todo-list>
@@ -67,7 +67,7 @@ const EXAMPLES = {
     label: 'Slots',
     page: '<info-card heading="With a footer">\n  <p>Body text.</p>\n  <small slot="footer">Footer</small>\n</info-card>\n<info-card heading="Without one">\n  <p>No footer here.</p>\n</info-card>',
     source: `<script>
-  import { hasSlot } from '@mnx/runtime'
+  import { hasSlot } from '@zubra/runtime'
 
   const hasFooter = hasSlot('footer')
 </script>
@@ -77,8 +77,8 @@ const EXAMPLES = {
 </style>
 <info-card heading="Card">
   <h3>{heading}</h3>
-  <mnx-slot><p>Nothing here yet.</p></mnx-slot>
-  <mnx-if test={hasFooter}><footer><mnx-slot name="footer"></mnx-slot></footer></mnx-if>
+  <zb-slot><p>Nothing here yet.</p></zb-slot>
+  <footer zb-if={hasFooter}><zb-slot name="footer"></zb-slot></footer>
 </info-card>
 `,
   },
@@ -90,7 +90,7 @@ const EXAMPLES = {
   properties such as value. It's how a headless library hands out a widget's behaviour.
 -->
 <script>
-  import { id } from '@mnx/runtime'
+  import { id } from '@zubra/runtime'
 
   let open = false
   const panelId = id()
@@ -113,6 +113,33 @@ const EXAMPLES = {
 </disclosure-panel>
 `,
   },
+  conditions: {
+    label: 'Conditions',
+    page: '<cart-summary></cart-summary>',
+    source: `<!--
+  Conditions without wrappers: zb-if as an attribute on one element, and markup in braces in
+  the three forms that are directives (&&, ? : and a keyed .map).
+-->
+<script>
+  let items = []
+  let next = 1
+  const total = items.reduce((sum, item) => sum + item.price, 0)
+  function add() { items.push({ id: next, name: \`Item \${next}\`, price: next * 3 }); next++ }
+</script>
+<style>
+  :host { display: block; margin: 0.5rem; font: 15px system-ui; }
+  button { font: inherit; padding: 0.3rem 0.7rem; }
+</style>
+<cart-summary>
+  <p zb-if={items.length === 0}>Your cart is empty.</p>
+  <p zb-else-if={items.length < 3}>A few things so far.</p>
+  <p zb-else>That's a full cart.</p>
+  <ul>{items.map((item) => <li key={item.id}>{item.name}: \${item.price}</li>)}</ul>
+  {total > 10 && <strong>Free shipping!</strong>}
+  <button type="button" onclick={add}>Add an item</button>
+</cart-summary>
+`,
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -123,45 +150,45 @@ const status = $('#status');
 // ---- the compiler ---------------------------------------------------------------------------
 
 /**
- * The compiler: mnx.wasm (the same module as @mnx/compiler, the same output as the CLI), or,
- * when the site is served without it (`node playground/serve.mjs`), the server's `mnx request`.
+ * The compiler: zubra.wasm (the same module as @zubra/compiler, the same output as the CLI), or,
+ * when the site is served without it (`node playground/serve.mjs`), the server's `zubra request`.
  */
 async function loadCompiler() {
   try {
-    const response = await fetch('mnx.wasm');
+    const response = await fetch('zubra.wasm');
     if (!response.ok) throw new Error(String(response.status));
     const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {});
-    const { memory, mnx_alloc, mnx_request, mnx_free } = instance.exports;
+    const { memory, zubra_alloc, zubra_request, zubra_free } = instance.exports;
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     return {
       kind: 'WebAssembly',
       async request(body) {
         const bytes = encoder.encode(JSON.stringify(body));
-        const pointer = mnx_alloc(bytes.length);
+        const pointer = zubra_alloc(bytes.length);
         new Uint8Array(memory.buffer, pointer, bytes.length).set(bytes);
-        const packed = BigInt.asUintN(64, mnx_request(pointer, bytes.length));
+        const packed = BigInt.asUintN(64, zubra_request(pointer, bytes.length));
         const at = Number(packed >> 32n);
         const length = Number(packed & 0xffffffffn);
         const text = decoder.decode(new Uint8Array(memory.buffer, at, length).slice());
-        mnx_free(at, length);
+        zubra_free(at, length);
         return JSON.parse(text);
       },
     };
   } catch {
-    const probe = await fetch('__mnx/request', { method: 'POST', body: '{}' }).catch(() => null);
-    if (!probe || probe.status === 404) throw new Error('mnx.wasm is missing from this site');
+    const probe = await fetch('__zubra/request', { method: 'POST', body: '{}' }).catch(() => null);
+    if (!probe || probe.status === 404) throw new Error('zubra.wasm is missing from this site');
     return {
       kind: 'server',
       async request(body) {
-        return (await fetch('__mnx/request', { method: 'POST', body: JSON.stringify(body) })).json();
+        return (await fetch('__zubra/request', { method: 'POST', body: JSON.stringify(body) })).json();
       },
     };
   }
 }
 
 const compile = (compiler, text, emit, extra = {}) =>
-  compiler.request({ path: PATH, files: { [PATH]: text }, emit, runtime: '@mnx/runtime', ...extra });
+  compiler.request({ path: PATH, files: { [PATH]: text }, emit, runtime: '@zubra/runtime', ...extra });
 
 // ---- previews -------------------------------------------------------------------------------
 
@@ -171,12 +198,12 @@ let frameworks = []; // the framework previews this site was built with (vendor/
 
 const importMap = () => JSON.stringify({
   imports: {
-    '@mnx/runtime': `${runtimeUrl}index.js`,
-    '@mnx/runtime/spread': `${runtimeUrl}spread.js`,
-    '@mnx/runtime/primitives': `${runtimeUrl}primitives.js`,
-    '@mnx/runtime/': runtimeUrl,
-    '@mnx/runtime/react': `${runtimeUrl}react.js`,
-    '@mnx/runtime/vue': `${runtimeUrl}vue.js`,
+    '@zubra/runtime': `${runtimeUrl}index.js`,
+    '@zubra/runtime/spread': `${runtimeUrl}spread.js`,
+    '@zubra/runtime/primitives': `${runtimeUrl}primitives.js`,
+    '@zubra/runtime/': runtimeUrl,
+    '@zubra/runtime/react': `${runtimeUrl}react.js`,
+    '@zubra/runtime/vue': `${runtimeUrl}vue.js`,
     react: `${vendorUrl}react.js`,
     'react-dom/client': `${vendorUrl}react.js`,
     vue: `${vendorUrl}vue.js`,
@@ -191,7 +218,7 @@ const document_ = (body, script) => `<!doctype html><meta charset="utf-8">
 <script type="importmap">${importMap()}</script>
 <body>${body}</body>
 <script type="module">
-window.addEventListener('error', (event) => parent.postMessage({ mnxPreviewError: String(event.message) }, '*'));
+window.addEventListener('error', (event) => parent.postMessage({ zubraPreviewError: String(event.message) }, '*'));
 ${script}
 window.previewReady = true;
 </script>`;
@@ -203,7 +230,7 @@ const PREVIEWS = {
     doc: (code) => document_('<div id="root"></div>', `${inline(code)}
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { wrap } from '@mnx/runtime/react';
+import { wrap } from '@zubra/runtime/react';
 const Wrapped = wrap(Component);
 createRoot(document.getElementById('root')).render(createElement(Wrapped));`),
   },
@@ -211,7 +238,7 @@ createRoot(document.getElementById('root')).render(createElement(Wrapped));`),
     label: 'Vue',
     doc: (code) => document_('<div id="root"></div>', `${inline(code)}
 import { createApp, h } from 'vue';
-import { wrap } from '@mnx/runtime/vue';
+import { wrap } from '@zubra/runtime/vue';
 const Wrapped = wrap(Component);
 createApp({ render: () => h(Wrapped) }).mount('#root');`),
   },
@@ -351,10 +378,10 @@ async function main() {
     }
   });
   window.addEventListener('message', (event) => {
-    if (event.data?.mnxPreviewError) {
+    if (event.data?.zubraPreviewError) {
       const error = $('#error');
       error.hidden = false;
-      error.textContent = `In the preview: ${event.data.mnxPreviewError}`;
+      error.textContent = `In the preview: ${event.data.zubraPreviewError}`;
     }
   });
   await update();

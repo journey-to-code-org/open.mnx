@@ -1,0 +1,32 @@
+<!--
+  The notes for a site, newest first, each with its colour and when it was written.
+  `notes` is `[{ id, text, color, at }]` (`at` in milliseconds).
+  @fires remove - Delete was chosen; `detail` is the note's id.
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+
+  const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+</script>
+<style>
+  ol { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+  li { display: grid; grid-template-columns: 0.3rem 1fr auto; gap: 0.6rem; align-items: start; padding: 0.55rem 0.6rem 0.55rem 0; background: white; border: 1px solid #e3e5ec; border-radius: 0.5rem; overflow: hidden; }
+  .stripe { align-self: stretch; margin: -0.55rem 0; }
+  p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  time { display: block; margin-top: 0.2rem; color: #7a8091; font-size: 0.75rem; }
+  button { padding: 0.15rem 0.45rem; border: 0; border-radius: 0.3rem; background: none; color: #7a8091; font: inherit; cursor: pointer; }
+  button:hover, button:focus-visible { background: #fde2e1; color: #a1251f; }
+  .empty { color: #7a8091; text-align: center; padding: 1rem 0; }
+</style>
+<note-list notes={[]}>
+  <ol zb-if={notes.length > 0}>
+    <zb-each items={notes} as="note" key={note.id}>
+      <li data-id={note.id}>
+        <span class="stripe" style:background={note.color}></span>
+        <div><p>{note.text}</p><time datetime={new Date(note.at).toISOString()}>{when.format(note.at)}</time></div>
+        <button type="button" aria-label={"Delete note: " + note.text} onclick={() => emit('remove', note.id)}>✕</button>
+      </li>
+    </zb-each>
+  </ol>
+  <p zb-else class="empty">No notes for this site yet.</p>
+</note-list>

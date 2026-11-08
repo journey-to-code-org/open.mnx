@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const dist = join(dirname(fileURLToPath(import.meta.url)), '../dist');
 const SITE = `<!doctype html><html><head><title>A site</title><style>
@@ -62,6 +63,7 @@ test('the popup: add notes (Ctrl+Enter or the button, with a colour), newest fir
   assert.deepEqual(await page.locator('note-list p').allTextContents(), ['Ask about the API', 'Check the pricing page']);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('note-list li .stripe')).backgroundColor), 'rgb(219, 39, 119)');
   assert.equal(await page.inputValue('note-composer textarea'), '', 'the box empties after adding');
+  await shot(page, 'page-notes', { resize: false });
   await page.getByRole('button', { name: 'Delete note: Check the pricing page' }).click();
   assert.deepEqual(await page.locator('note-list p').allTextContents(), ['Ask about the API']);
   assert.deepEqual(page.errors, [], 'no CSP or other errors on an extension page');

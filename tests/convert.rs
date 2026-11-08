@@ -1,6 +1,6 @@
-//! `mnx convert`: React function components to mnx JSX components.
+//! `zubra convert`: React function components to zubra JSX components.
 
-use mnx_compiler::{compile_js, convert};
+use zubra::{compile_js, convert};
 
 const TODO_ITEM: &str = include_str!("fixtures/convert/TodoItem.jsx");
 
@@ -9,7 +9,7 @@ fn hooks_become_what_they_stand_for() {
     let conversion = convert(TODO_ITEM, "TodoItem.jsx", None).unwrap();
     let out = &conversion.output;
     assert_eq!(conversion.tag, "todo-item");
-    assert_eq!(conversion.file_name, "todo-item.mnx.jsx");
+    assert_eq!(conversion.file_name, "todo-item.zb.jsx");
     assert!(
         conversion.unsupported.is_empty(),
         "{:?}",
@@ -21,7 +21,7 @@ fn hooks_become_what_they_stand_for() {
         conversion.compile_error
     );
     for expected in [
-        "import { effect, onMount } from '@mnx/runtime';\n",
+        "import { effect, onMount } from '@zubra/runtime';\n",
         "  let editing = false;\n",
         "  let draft = text;\n", // a lazy initializer runs once anyway
         "  let input = null;\n",
@@ -42,7 +42,7 @@ fn hooks_become_what_they_stand_for() {
     );
     // A doc comment stays with the function.
     assert!(out.contains("/** One to-do, editable in place. */\nexport default function TodoItem("));
-    compile_js(out, "@mnx/runtime", "todo-item.mnx.jsx").unwrap();
+    compile_js(out, "@zubra/runtime", "todo-item.zb.jsx").unwrap();
 }
 
 #[test]
@@ -88,7 +88,7 @@ export function PriceTag({ amount = 0, currency = "USD" }: { amount?: number; cu
 "#;
     let conversion = convert(source, "PriceTag.tsx", None).unwrap();
     let out = &conversion.output;
-    assert_eq!(conversion.file_name, "price-tag.mnx.tsx");
+    assert_eq!(conversion.file_name, "price-tag.zb.tsx");
     assert!(
         out.starts_with("\nexport default function PriceTag(")
             || out.starts_with("export default function PriceTag("),
@@ -143,7 +143,7 @@ export default function UserMenu(props) {
     assert!(
         conversion
             .output
-            .starts_with("import { inject } from '@mnx/runtime';"),
+            .starts_with("import { inject } from '@zubra/runtime';"),
         "{}",
         conversion.output
     );
@@ -173,7 +173,7 @@ fn no_component_is_an_error() {
 #[test]
 fn context_reducer_and_passed_on_callbacks_are_converted() {
     let source = r#"import React, { useReducer, useContext, createContext } from 'react';
-import Dialog from './dialog.mnx';
+import Dialog from './dialog.zb';
 
 const Theme = createContext('light');
 
@@ -205,7 +205,7 @@ export default function ThemedCounter({ step = 1, onClose, onCountChange }) {
     );
     let output = &conversion.output;
     assert!(
-        output.starts_with("import { createContext, inject } from '@mnx/runtime';"),
+        output.starts_with("import { createContext, inject } from '@zubra/runtime';"),
         "{output}"
     );
     assert!(
@@ -228,7 +228,7 @@ export default function ThemedCounter({ step = 1, onClose, onCountChange }) {
         conversion
             .compile_error
             .as_ref()
-            .is_some_and(|error| error.message.contains("./dialog.mnx")),
+            .is_some_and(|error| error.message.contains("./dialog.zb")),
         "{:?}",
         conversion.compile_error
     );
@@ -258,7 +258,7 @@ export default function ThemeRoot({ children }) {
 }
 
 #[test]
-fn as_mnx_writes_a_readable_html_first_file() {
+fn as_zb_writes_a_readable_html_first_file() {
     let source = r#"import { useState, useEffect } from 'react';
 
 /** A toggle button. */
@@ -278,14 +278,14 @@ export default function AppToggle({ label = 'On', onToggle }) {
 "#;
     let mut conversion = convert(source, "Toggle.jsx", None).unwrap();
     assert!(conversion.unsupported.is_empty() && conversion.compile_error.is_none());
-    assert!(mnx_compiler::convert_as_mnx(&mut conversion).is_none());
-    assert_eq!(conversion.file_name, "app-toggle.mnx");
+    assert!(zubra::convert_as_zb(&mut conversion).is_none());
+    assert_eq!(conversion.file_name, "app-toggle.zb");
     assert_eq!(
         conversion.output,
-        "<!--\nA toggle button.\n-->\n<script>\nimport { emit } from '@mnx/runtime';\nimport { effect, onMount } from '@mnx/runtime';\nlet on = false;\nconst text = on ? `${label}: yes` : `${label}: no`;\nonMount(() => effect(() => { document.title = text; }));\n</script>\n<app-toggle label={'On'}>\n  <div class=\"toggle\">\n    <button aria-pressed={on} onclick={() => { on = !on; emit(\"toggle\", !on); }}>\n      {text}\n    </button>\n    <mnx-if test={on}><em>lit</em></mnx-if>\n  </div>\n</app-toggle>\n"
+        "<!--\nA toggle button.\n-->\n<script>\nimport { emit } from '@zubra/runtime';\nimport { effect, onMount } from '@zubra/runtime';\nlet on = false;\nconst text = on ? `${label}: yes` : `${label}: no`;\nonMount(() => effect(() => { document.title = text; }));\n</script>\n<app-toggle label={'On'}>\n  <div class=\"toggle\">\n    <button aria-pressed={on} onclick={() => { on = !on; emit(\"toggle\", !on); }}>\n      {text}\n    </button>\n    <zb-if test={on}><em>lit</em></zb-if>\n  </div>\n</app-toggle>\n"
     );
-    // And it compiles as an .mnx file.
-    mnx_compiler::compile_js(&conversion.output, "@mnx/runtime", "app-toggle.mnx").unwrap();
+    // And it compiles as an .zb file.
+    zubra::compile_js(&conversion.output, "@zubra/runtime", "app-toggle.zb").unwrap();
 }
 
 #[test]
@@ -304,7 +304,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
 export { Card, CardTitle }
 "#;
     let conversion =
-        mnx_compiler::convert_component(source, "card.tsx", Some("ui"), Some("CardTitle")).unwrap();
+        zubra::convert_component(source, "card.tsx", Some("ui"), Some("CardTitle")).unwrap();
     assert!(
         conversion.unsupported.is_empty(),
         "{:?}",
@@ -343,7 +343,7 @@ export { Card, CardTitle }
         .iter()
         .any(|change| change.contains("`className` became the host's own `class`")));
     // Several components and no choice: an error that lists them.
-    let error = mnx_compiler::convert(source, "card.tsx", Some("ui")).unwrap_err();
+    let error = zubra::convert(source, "card.tsx", Some("ui")).unwrap_err();
     assert!(
         error.message.contains("exports 2 components"),
         "{}",
@@ -404,7 +404,7 @@ fn a_component_built_on_a_react_primitive_is_refused_up_front() {
             .help
             .as_deref()
             .unwrap_or_default()
-            .contains("@mnx/runtime/zag"));
+            .contains("@zubra/runtime/zag"));
     }
     // A type-only import isn't the primitive.
     let typed = "import type { DialogProps } from \"@radix-ui/react-dialog\"\nexport default function UiThing() {\n  return <p />;\n}\n";

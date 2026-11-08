@@ -1,0 +1,10 @@
+<script>
+  let count = 0
+</script>
+<style>
+  p { color: rgb(255, 0, 0); }
+</style>
+<hot-shadow shadow label="A">
+  <button type="button" onclick={() => count++}>{label}: {count}</button>
+  <p><zb-slot></zb-slot></p>
+</hot-shadow>

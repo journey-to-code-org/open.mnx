@@ -1,5 +1,5 @@
-// mnx elements in a zoneless Angular app, compiled JIT and bundled with esbuild: property and event
-// bindings, @if/@for content in light-DOM slots, and the MnxModel form control (ngModel, reactive
+// zubra elements in a zoneless Angular app, compiled JIT and bundled with esbuild: property and event
+// bindings, @if/@for content in light-DOM slots, and the ZubraModel form control (ngModel, reactive
 // forms, disabled, touched). `npm run test:browser`.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,9 +9,9 @@ import { build } from 'esbuild';
 import { useBrowser, open, here, site } from './harness.js';
 
 useBrowser({
-  rating: join(here, 'fixtures/rating.mnx'),
-  card: join(here, 'fixtures/card.mnx'),
-  badge: join(here, 'fixtures/badge.mnx'),
+  rating: join(here, 'fixtures/rating.zb'),
+  card: join(here, 'fixtures/card.zb'),
+  badge: join(here, 'fixtures/badge.zb'),
 });
 
 const src = join(here, '../../src');
@@ -21,7 +21,7 @@ import '@angular/compiler';
 import { Component, CUSTOM_ELEMENTS_SCHEMA, signal, provideZonelessChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { FormsModule, ReactiveFormsModule, FormControl } from '@angular/forms';
-import { MnxModel } from '${src}/../fesm2022/mnx-runtime-angular.mjs';
+import { ZubraModel } from '${src}/../fesm2022/zubra-runtime-angular.mjs';
 import '/rating.js';
 import '/card.js';
 import '/badge.js';
@@ -41,18 +41,18 @@ class App {
 }
 Component({
   selector: 'app-root',
-  imports: [FormsModule, ReactiveFormsModule, MnxModel],
+  imports: [FormsModule, ReactiveFormsModule, ZubraModel],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: \`
-    <mnx-rating id="model" mnxModel [(ngModel)]="stars" (valuechange)="changed($event)" (change)="committed()"></mnx-rating>
+    <zb-rating id="model" zubraModel [(ngModel)]="stars" (valuechange)="changed($event)" (change)="committed()"></zb-rating>
     <p id="stars">{{ stars }}</p>
-    <mnx-rating id="reactive" mnxModel [formControl]="control"></mnx-rating>
+    <zb-rating id="reactive" zubraModel [formControl]="control"></zb-rating>
     <p id="control">{{ control.value }}</p>
-    <mnx-card [heading]="heading()">
+    <zb-card [heading]="heading()">
       @if (title()) { <h2 slot="title">Custom</h2> }
       @for (item of items(); track item) { <p>{{ item }}</p> }
-    </mnx-card>
-    <mnx-badge label="x" [info]="info()"></mnx-badge>
+    </zb-card>
+    <zb-badge label="x" [info]="info()"></zb-badge>
   \`,
 })(App);
 
@@ -78,12 +78,12 @@ before(async () => {
 
 const settle = (page) => page.evaluate(async () => {
   await window.tick();
-  await Promise.all([...document.querySelectorAll('mnx-rating, mnx-card, mnx-badge')].map((el) => el.updateComplete));
+  await Promise.all([...document.querySelectorAll('zb-rating, zb-card, zb-badge')].map((el) => el.updateComplete));
 });
 
 const read = (page) => page.evaluate(() => {
   const strip = (html) => html.replace(/<!--.*?-->/g, '').replace(/ _ng\w+(-\w+)*=""/g, '').trim();
-  const card = document.querySelector('mnx-card');
+  const card = document.querySelector('zb-card');
   return {
     model: document.querySelector('#model output').textContent,
     stars: document.getElementById('stars').textContent,
@@ -92,11 +92,11 @@ const read = (page) => page.evaluate(() => {
     header: strip(card.querySelector('header').innerHTML),
     section: strip(card.querySelector('section').innerHTML),
     footer: card.querySelector('footer').textContent,
-    color: document.querySelector('mnx-badge .badge').dataset.color,
+    color: document.querySelector('zb-badge .badge').dataset.color,
   };
 });
 
-test('angular: bindings, slots and the MnxModel form control', async () => {
+test('angular: bindings, slots and the ZubraModel form control', async () => {
   const { page, messages } = await open('<app-root></app-root>', { modules: ['angular'] });
   await page.waitForFunction(() => window.appRef);
   await settle(page);
@@ -141,7 +141,7 @@ test('angular: bindings, slots and the MnxModel form control', async () => {
   assert.deepEqual([after.header, after.section, after.color], ['<h2 slot="title">Custom</h2>', '<p>No content</p>', 'blue']);
 
   await page.evaluate(() => window.appRef.destroy());
-  assert.equal(await page.$('mnx-card'), null);
+  assert.equal(await page.$('zb-card'), null);
   assert.deepEqual(messages.filter((message) => !/development mode/i.test(message)), []);
   await page.close();
 });

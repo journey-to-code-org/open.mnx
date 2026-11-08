@@ -1,15 +1,19 @@
 # Trip budget: React Router 8
 
+![Trip budget](../../../demos/shots/react-router-trips.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A shared trip budget in React Router 8's framework mode: who paid for what, who's up and down,
 and a form to add an expense. It uses:
 - a server `loader` and `action`;
 - `<Form>` for adding, and `useFetcher` for deleting;
 - validation errors returned from the action.
 
-React Router builds with Vite, so its routes import `.mnx` files directly:
+React Router builds with Vite, so its routes import `.zb` files directly:
 
 ```jsx
-import MoneyInput from '../../mnx/money-input.mnx';
+import MoneyInput from '../../zubra/money-input.zb';
 <MoneyInput name="amount" label="Amount" required value={amount} onValueChange={(event) => setAmount(event.detail)} />
 ```
 
@@ -18,7 +22,7 @@ The components are `balance-list` (its own) and the registry's `money-input` and
 native inputs.
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @mnx/compiler is on npm)
+cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
 cd examples/meta/react-router-trips
 npm install
 npm run dev                 # or: npm run build && npm start
@@ -26,16 +30,16 @@ npm run dev                 # or: npm run build && npm start
 
 ## What it found
 
-- **mnx couldn't tell this was a React project** (fixed in 2.7). The plugin looked for
+- **Zubra couldn't tell this was a React project** (fixed in 2.7). The plugin looked for
   `@vitejs/plugin-react`, and React Router's Vite plugin is a different one, so the app needed
-  `mnx({ framework: 'react' })`. The plugin now recognises React Router. It also warns when a
+  `zubra({ framework: 'react' })`. The plugin now recognises React Router. It also warns when a
   light-DOM component is server-rendered here, since React would redo the page on hydration.
 - **The same three findings as Next.js** (`../README.md`):
   - the components are shadow DOM, because light DOM would make React redo the page on hydration;
   - the server HTML had the hosts only (2.8 fixes it: `app/entry.server.jsx` pipes React's
-    stream through `mnx.injectShadowRootsStream()`, so balances and the amount field are in the
+    stream through `zubra.injectShadowRootsStream()`, so balances and the amount field are in the
     page);
-  - without JavaScript, the form posted without the mnx controls' values. Now each named control
+  - without JavaScript, the form posted without the Zubra controls' values. Now each named control
     has a hidden input until it starts, so the action gets the payer and category; the amount
     is a text field, whose edits need JavaScript, so the test still sees "An amount above $0.".
 - **Form-associated controls work with React Router's `<Form>`.** `FormData` picks up their

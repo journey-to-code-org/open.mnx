@@ -1,0 +1,17 @@
+<!-- Everything that has to survive its comments being stripped: text anchors, an zb-if, an
+     zb-each whose rows have their own zb-if, an attribute, and a slot with a fallback. -->
+<script>
+  let count = 2
+  const items = [{ name: "tea", hot: true }, { name: "juice", hot: false }]
+</script>
+<zb-stripped heading="Drinks" open={true}>
+  <h2 title={heading}>Today: {heading}, <b>{count}</b> picks!</h2>
+  <zb-if test={open}><p class="open">Open</p><zb-else><p class="closed">Closed</p></zb-else></zb-if>
+  <ul>
+    <zb-each items={items} as="item">
+      <li>{item.name} <zb-if test={item.hot}><i>hot</i></zb-if></li>
+    </zb-each>
+  </ul>
+  <button onclick={() => count++}>more</button>
+  <footer><zb-slot><em>No notes</em></zb-slot></footer>
+</zb-stripped>

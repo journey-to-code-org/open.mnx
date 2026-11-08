@@ -1,10 +1,10 @@
 'use client';
 // The schedule: a track filter (the registry's segmented control) and a card per session (the
-// app's own component), both mnx elements used as React components from the library build in
+// app's own component), both zubra elements used as React components from the library build in
 // ui/. Starred sessions are remembered in localStorage.
 import { useEffect, useMemo, useState } from 'react';
-import SegmentedControl from '../components/segmented-control.mnx';
-import SessionCard from '../components/session-card.mnx';
+import SegmentedControl from '../components/segmented-control.zb';
+import SessionCard from '../components/session-card.zb';
 
 const KEY = 'webconf:starred';
 

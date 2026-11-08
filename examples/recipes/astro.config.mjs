@@ -1,3 +1,4 @@
-import mnx from '@mnx/unplugin/astro';
+import zubra from '@zubra/unplugin/astro';
 
-export default { integrations: [mnx()] };
+// DEMO_BASE: the path the site is served under (the demo gallery's /<repo>/demos/recipes/).
+export default { base: process.env.DEMO_BASE ?? '/', integrations: [zubra()] };

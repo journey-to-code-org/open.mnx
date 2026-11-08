@@ -2,9 +2,9 @@ import { LitElement, html, css } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import { ContextProvider } from '@lit/context';
 import { userContext } from './user.js';
-import './components/chat-message.mnx';
-import './components/message-composer.mnx';
-import './components/typing-dots.mnx';
+import './components/chat-message.zb';
+import './components/message-composer.zb';
+import './components/typing-dots.zb';
 
 const PEOPLE = ['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds'];
 const minutes = (n) => Date.now() - n * 60000;
@@ -29,7 +29,7 @@ export class TeamChat extends LitElement {
     typing: { state: true },
   };
 
-  // The user, provided to every element inside (the mnx messages read it with inject()).
+  // The user, provided to every element inside (the zubra messages read it with inject()).
   #provider = new ContextProvider(this, { context: userContext, initialValue: { name: PEOPLE[0] } });
 
   constructor() {

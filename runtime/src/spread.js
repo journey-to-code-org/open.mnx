@@ -1,10 +1,10 @@
 // {...spread} in compiled components: an object's entries as an element's attributes,
-// properties and listeners. Its own entry (`@mnx/runtime/spread`), which a compiled module imports
+// properties and listeners. Its own entry (`@zubra/runtime/spread`), which a compiled module imports
 // only when its template spreads, so components that don't, don't load it.
 import { $r, isSafeUrl } from './element.js';
 import { effect } from './effect.js';
 
-const see = (section) => ` (see https://github.com/journey-to-code-org/open.mnx#${section})`;
+const see = (section) => ` (see https://github.com/journey-to-code-org/zubra#${section})`;
 
 // ---- {...spread}: an object's entries as attributes, properties and listeners --------------
 
@@ -34,7 +34,7 @@ export function spread(part, node) {
     let given = $r(part.spread());
     if (given == null) given = {};
     if (typeof given !== 'object' || Array.isArray(given)) {
-      console.error('mnx: {...} spreads an object of attributes; got', given);
+      console.error('zubra: {...} spreads an object of attributes; got', given);
       given = {};
     }
     const next = new Map();
@@ -46,7 +46,7 @@ export function spread(part, node) {
       const lower = key.toLowerCase();
       if (lower.length > 2 && lower.startsWith('on') && (typeof value === 'function' || typeof value === 'string')) {
         if (typeof value === 'string') {
-          console.error(`mnx: a spread can't add a handler as text ("${key}"); pass a function${see('safety')}`);
+          console.error(`zubra: a spread can't add a handler as text ("${key}"); pass a function${see('safety')}`);
           continue;
         }
         const event = lower.slice(2);
@@ -63,7 +63,7 @@ export function spread(part, node) {
       }
       const name = SPREAD_NAMES[lower] ?? (lower.startsWith('aria-') || lower.startsWith('data-') || node.namespaceURI !== 'http://www.w3.org/1999/xhtml' ? key : lower);
       if (SPREAD_REFUSED.has(lower)) {
-        console.error(`mnx: a spread can't set "${key}"${see('safety')}`);
+        console.error(`zubra: a spread can't set "${key}"${see('safety')}`);
         continue;
       }
       if (name === 'class') {
@@ -73,7 +73,7 @@ export function spread(part, node) {
       if (name === 'style') {
         if (value === null || value === false) continue;
         if (typeof value !== 'object') {
-          console.error(`mnx: a spread's style must be an object of properties (set through the CSSOM), not text${see('safety')}:`, value);
+          console.error(`zubra: a spread's style must be an object of properties (set through the CSSOM), not text${see('safety')}:`, value);
           continue;
         }
         for (const [property, propertyValue] of Object.entries(value)) {
@@ -124,7 +124,7 @@ export function spread(part, node) {
         continue;
       }
       if (typeof value === 'object' || typeof value === 'function') {
-        console.error(`mnx: a spread can't write ${typeof value === 'function' ? 'a function' : 'an object'} to the "${name}" attribute`, value);
+        console.error(`zubra: a spread can't write ${typeof value === 'function' ? 'a function' : 'an object'} to the "${name}" attribute`, value);
         node.removeAttribute(name);
         continue;
       }
@@ -135,7 +135,7 @@ export function spread(part, node) {
           continue;
         }
         if (!isSafeUrl(text)) {
-          console.error(`mnx: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
+          console.error(`zubra: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
           node.removeAttribute(name);
           continue;
         }

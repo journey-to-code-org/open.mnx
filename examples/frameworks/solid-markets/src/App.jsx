@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show, onCleanup, createEffect } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
-import './components/price-tile.mnx';
-import './components/line-chart.mnx';
+import './components/price-tile.zb';
+import './components/line-chart.zb';
 import { HISTORY, SYMBOLS, initialQuotes, money, random, step } from './market.js';
 
 export function App() {

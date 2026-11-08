@@ -1,0 +1,3 @@
+<zb-await-known user={{ name: "Ada" }}>
+  <zb-await value={user}><p>…</p><zb-then as="u"><b>{u.name}</b></zb-then></zb-await>
+</zb-await-known>

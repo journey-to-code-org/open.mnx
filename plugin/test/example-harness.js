@@ -21,10 +21,10 @@ export function useExamples(name) {
   before(async () => {
     execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
     // The CLI, unless the WebAssembly build is there.
-    process.env.MNX_COMPILER ??= join(repo, 'target/debug/mnx');
+    process.env.ZUBRA_COMPILER ??= join(repo, 'target/debug/zubra');
     rmSync(work, { recursive: true, force: true });
-    mkdirSync(join(work, 'node_modules/@mnx'), { recursive: true });
-    symlinkSync(join(here, '..'), join(work, 'node_modules/@mnx/unplugin'), 'dir');
+    mkdirSync(join(work, 'node_modules/@zubra'), { recursive: true });
+    symlinkSync(join(here, '..'), join(work, 'node_modules/@zubra/unplugin'), 'dir');
     browser = await chromium.launch();
   });
   after(async () => {

@@ -1,7 +1,7 @@
 // Content script, in the page's own world (`"world": "MAIN"`), where custom elements exist. It
 // shows the notes the bridge sends. The page can see these events too, so the data is only ever
-// displayed as text (mnx escapes it), and a "hide" from the page only hides the widget.
-import './components/page-notes-widget.mnx';
+// displayed as text (zubra escapes it), and a "hide" from the page only hides the widget.
+import './components/page-notes-widget.zb';
 
 const widget = document.createElement('page-notes-widget');
 document.addEventListener('page-notes:data', (event) => {

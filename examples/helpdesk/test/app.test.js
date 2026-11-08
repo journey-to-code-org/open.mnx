@@ -1,5 +1,5 @@
 // The help desk in Chromium, twice over: with JavaScript off, where everything is server-rendered
-// HTML and native forms, and with it on, where the same markup is hydrated by the mnx elements,
+// HTML and native forms, and with it on, where the same markup is hydrated by the zubra elements,
 // which add keyboard navigation, live filters, a smarter reply box and running SLA timers.
 // Uses MongoDB when MONGODB_URI is set (CI), and the in-memory store otherwise.
 import { test, before, after, beforeEach } from 'node:test';
@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createApp } from '../src/app.js';
 import { createStore } from '../src/store/index.js';
+import { shot } from '../../../demos/shot.js';
 
 let store, server, base, browser;
 before(async () => {
@@ -57,7 +58,7 @@ test('without JavaScript: sign in, file a ticket (with validation), reply, filte
   assert.match(await page.textContent('.error >> nth=1'), /Describe the problem/);
 
   await page.fill('input[name=subject]', 'Reports page times out');
-  await page.check('priority-picker input[value=high]'); // a native radio inside the mnx element
+  await page.check('priority-picker input[value=high]'); // a native radio inside the zubra element
   await page.fill('textarea[name=body]', 'The monthly report never finishes loading.');
   await page.click('button:has-text("Create ticket")');
   await page.waitForURL(/\/tickets\/1013$/);
@@ -170,6 +171,7 @@ test('the dashboard: counts, and the registry charts hydrated with the server da
   const { page, messages, close } = await as('u-sam');
   await settle(page);
   assert.deepEqual(await text(page, '.card span'), ['Open', 'Pending', 'Solved', 'Overdue']);
+  await shot(page, 'helpdesk');
   assert.deepEqual(await text(page, 'donut-chart li button span:nth-child(2)'), ['Open', 'Pending', 'Solved']);
   assert.equal(await page.getByRole('img', { name: 'Tickets by status' }).count(), 1);
   assert.match(await page.getByRole('img', { name: /^New tickets per day: / }).getAttribute('aria-label'), /: (up|down|flat)$/);
@@ -188,9 +190,11 @@ test('the dashboard\'s charts are in the server\'s HTML: the registry components
   assert.match(await page.locator('donut-chart .pct').first().textContent(), /^\d+%$/);
   assert.match(await page.getByRole('img', { name: /^New tickets per day: / }).getAttribute('aria-label'), /: (up|down|flat)$/);
   assert.match(await page.locator('spark-line polyline').getAttribute('points'), /^[\d.]+,[\d.]+( [\d.]+,[\d.]+)+$/);
-  // The one pending region is the streamed activity list, whose swap needs JavaScript.
-  assert.equal(await page.evaluate(() => document.body.innerHTML.split('<!--[?-->').length - 1), 1, 'nothing else left for the browser');
-  assert.equal(await page.textContent('recent-activity .pending'), 'Loading recent activity…');
+  // Nothing is left for the browser: the one pending region, the streamed activity list, is put
+  // in place by the browser itself (out-of-order streaming, Chromium 150+), without JavaScript.
+  assert.equal(await page.evaluate(() => document.body.innerHTML.split('<?zb [??>').length - 1), 0, 'nothing left for the browser');
+  assert.equal(await page.locator('recent-activity .pending').count(), 0);
+  assert.ok((await page.locator('recent-activity li .who').count()) >= 3, 'the streamed list, without the swap script');
   await close();
 });
 
@@ -199,9 +203,9 @@ test('the dashboard streams its recent activity: the page first, the list as the
   const { page, messages, close } = await as('u-sam');
   const html = await page.evaluate(async () => (await fetch('/')).text());
   const shellEnd = html.indexOf('</html>');
-  const swap = html.indexOf('<template data-mnx-swap=');
+  const swap = html.indexOf('<template for=');
   assert.ok(shellEnd > 0 && swap > shellEnd, 'the shell, then the swap');
-  assert.match(html.slice(0, shellEnd), /<recent-activity data-mnx-stream="0"[^>]*>[^]*<!--\[\?-->[^]*Loading recent activity…/);
+  assert.match(html.slice(0, shellEnd), /<recent-activity data-zb-stream="0"[^>]*>[^]*<\?start name="zb-0-0"\?><\?zb \[\?\?>[^]*Loading recent activity…/);
   assert.match(html.slice(swap), /<li><span class="who">[^<]+<\/span><a href="\/tickets\/\d+">/);
   // In the browser: the list is there and hydrated, with no warnings.
   await settle(page);

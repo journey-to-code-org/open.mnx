@@ -5,7 +5,7 @@
       "category": "widget",
       "description": "A section that opens and closes, on the native <details>: the browser does the keyboard (Enter and Space on the heading), the find-in-page opening and the announcements. Panels with the same `group` form an accordion where one is open at a time (<details name>). `open` is two-way.",
       "files": [
-        "accordion-panel.mnx"
+        "accordion-panel.zb"
       ],
       "dependencies": []
     },
@@ -14,7 +14,7 @@
       "category": "app",
       "description": "One message: avatar, author, time, text (with @mentions and links picked out), the message it replies to, and reactions. `me` is the signed-in user's name: their messages, mentions of them and their reactions are marked.",
       "files": [
-        "chat-message.mnx"
+        "chat-message.zb"
       ],
       "dependencies": []
     },
@@ -23,7 +23,7 @@
       "category": "input",
       "description": "Pick one of several cards: a radio group. A form control; arrow keys move the choice. Each item is `{ id, title, detail, price, note }` (`note` and `price` optional).",
       "files": [
-        "choice-cards.mnx"
+        "choice-cards.zb"
       ],
       "dependencies": []
     },
@@ -32,16 +32,16 @@
       "category": "input",
       "description": "Pick a colour from `colors`. A form control (a radio group): arrow keys move the choice.",
       "files": [
-        "color-swatches.mnx"
+        "color-swatches.zb"
       ],
       "dependencies": []
     },
     {
       "name": "combo-box",
       "category": "widget",
-      "description": "A combobox: type to filter, arrow keys to move, Enter to pick, Escape to close. A form control. Its behaviour is Zag.js's combobox machine (through @mnx/runtime/zag); its markup and styles are this file's. It needs `npm install @zag-js/vanilla @zag-js/combobox`. `items` is `[{ value, label }]`; `value` is two-way.",
+      "description": "A combobox: type to filter, arrow keys to move, Enter to pick, Escape to close. A form control. Its behaviour is Zag.js's combobox machine (through @zubra/runtime/zag); its markup and styles are this file's. It needs `npm install @zag-js/vanilla @zag-js/combobox`. `items` is `[{ value, label }]`; `value` is two-way.",
       "files": [
-        "combo-box.mnx"
+        "combo-box.zb"
       ],
       "dependencies": [],
       "packages": [
@@ -54,7 +54,7 @@
       "category": "input",
       "description": "A check-in and check-out date, as one value `{ start, end }` (\"YYYY-MM-DD\" strings). A form control: invalid until both are set and `end` is after `start`.",
       "files": [
-        "date-range.mnx"
+        "date-range.zb"
       ],
       "dependencies": []
     },
@@ -63,7 +63,7 @@
       "category": "display",
       "description": "A donut chart of `segments` (`[{ label, value, tone }]`, `tone` 0–7), with the total in the middle and a legend. Choosing a segment (or its legend entry) selects it; again clears it.",
       "files": [
-        "donut-chart.mnx"
+        "donut-chart.zb"
       ],
       "dependencies": []
     },
@@ -72,7 +72,7 @@
       "category": "widget",
       "description": "A menu of actions behind a button, on the platform's `popover`: the browser puts it in the top layer and closes it on Escape or a click outside. Down or Up on the button opens it; arrow keys, Home, End and typing a letter move among the items; Enter or Space picks one, and focus goes back to the button. It's placed below the button by CSS anchor positioning, or by script where that isn't supported. `items` is `[{ value, label, disabled? }]`.",
       "files": [
-        "dropdown-menu.mnx"
+        "dropdown-menu.zb"
       ],
       "dependencies": []
     },
@@ -81,7 +81,7 @@
       "category": "display",
       "description": "A card with two faces that flips in 3D. Click, Space or Enter flips it. Shadow DOM: the faces are slotted, and the page's CSS styles them, not the card's.",
       "files": [
-        "flip-card.mnx"
+        "flip-card.zb"
       ],
       "dependencies": []
     },
@@ -90,7 +90,7 @@
       "category": "app",
       "description": "A board column: a heading with a count and an optional work-in-progress limit, its cards (the default slot) and a drop zone for cards dragged from anywhere on the board.",
       "files": [
-        "kanban-column.mnx"
+        "kanban-column.zb"
       ],
       "dependencies": []
     },
@@ -99,7 +99,7 @@
       "category": "display",
       "description": "A price chart: an area under a line, with the high, low and a crosshair that follows the pointer and shows the value under it.",
       "files": [
-        "line-chart.mnx"
+        "line-chart.zb"
       ],
       "dependencies": []
     },
@@ -108,7 +108,7 @@
       "category": "app",
       "description": "Writing a message: Enter sends, Shift+Enter adds a line, the box grows with the text, an emoji menu inserts at the caret, and a message being replied to shows above.",
       "files": [
-        "message-composer.mnx"
+        "message-composer.zb"
       ],
       "dependencies": []
     },
@@ -117,7 +117,7 @@
       "category": "app",
       "description": "A modal dialog on the native <dialog>: the page behind is inert, focus moves into the dialog and back to where it was, and Escape, the close button or a click on the backdrop closes it. `open` is two-way.",
       "files": [
-        "modal-dialog.mnx"
+        "modal-dialog.zb"
       ],
       "dependencies": []
     },
@@ -126,7 +126,7 @@
       "category": "input",
       "description": "An amount of money. Typing is free-form; on blur it's formatted (`1234.5` → `1,234.50`). The value is a number (or null when empty). A form control: `required` and `min` validate it.",
       "files": [
-        "money-input.mnx"
+        "money-input.zb"
       ],
       "dependencies": []
     },
@@ -135,7 +135,7 @@
       "category": "display",
       "description": "A ring that fills to `value` of `max`, with what's in the middle from the default slot (the percentage if empty).",
       "files": [
-        "progress-ring.mnx"
+        "progress-ring.zb"
       ],
       "dependencies": []
     },
@@ -144,7 +144,7 @@
       "category": "input",
       "description": "A number with − and + buttons, between `min` and `max`. A form control.",
       "files": [
-        "quantity-stepper.mnx"
+        "quantity-stepper.zb"
       ],
       "dependencies": []
     },
@@ -153,7 +153,7 @@
       "category": "input",
       "description": "A row of mutually exclusive options. `options` is `[{ value, label }]`.",
       "files": [
-        "segmented-control.mnx"
+        "segmented-control.zb"
       ],
       "dependencies": []
     },
@@ -162,7 +162,7 @@
       "category": "display",
       "description": "A small line of recent values, green when it ends higher than it started, red when lower.",
       "files": [
-        "spark-line.mnx"
+        "spark-line.zb"
       ],
       "dependencies": []
     },
@@ -171,7 +171,7 @@
       "category": "input",
       "description": "A star rating that is a form control: it submits its value under its `name`, is invalid while `required` and unset, and goes back to 0 when its form resets. `readonly` shows a rating.",
       "files": [
-        "star-rating.mnx"
+        "star-rating.zb"
       ],
       "dependencies": []
     },
@@ -180,7 +180,7 @@
       "category": "display",
       "description": "Where a multi-step flow is: steps done (which can be revisited), the current one, and those ahead.",
       "files": [
-        "step-indicator.mnx"
+        "step-indicator.zb"
       ],
       "dependencies": []
     },
@@ -189,7 +189,7 @@
       "category": "display",
       "description": "A habit's last weeks as a grid of days (a column per week, Monday at the top), shaded by how much of the goal was done. Choosing a day toggles it; arrow keys move between days. `log` maps \"YYYY-MM-DD\" to a count; `today` is \"YYYY-MM-DD\".",
       "files": [
-        "streak-grid.mnx"
+        "streak-grid.zb"
       ],
       "dependencies": []
     },
@@ -198,7 +198,7 @@
       "category": "widget",
       "description": "Tabs: a tab list and the panels it switches between. The panels are the slotted elements with a `data-tab` attribute matching a tab's value; they get role=tabpanel, are labelled by their tab, and are hidden unless chosen. Arrow keys, Home and End move between the tabs (one tab stop), and the focused tab is chosen as it moves, unless `manual`, where Enter or Space chooses it. `tabs` is `[{ value, label }]`; `value` is two-way and defaults to the first tab.",
       "files": [
-        "tab-list.mnx"
+        "tab-list.zb"
       ],
       "dependencies": []
     },
@@ -207,7 +207,7 @@
       "category": "input",
       "description": "A list of tags you type: Enter or comma adds one, Backspace in the empty field removes the last, × removes any. Suggestions come from `suggestions`. A form control.",
       "files": [
-        "tag-input.mnx"
+        "tag-input.zb"
       ],
       "dependencies": []
     },
@@ -216,7 +216,7 @@
       "category": "input",
       "description": "An on/off switch with a label and a description. A form control (submits \"on\" when checked).",
       "files": [
-        "toggle-switch.mnx"
+        "toggle-switch.zb"
       ],
       "dependencies": []
     },
@@ -225,7 +225,7 @@
       "category": "widget",
       "description": "A short description shown when its trigger is hovered or focused: the trigger is the slotted element, and the tip describes it (aria-describedby), so a screen reader reads it with the trigger's name. It shows after `delay` milliseconds, stays while the pointer is over it, and Escape hides it without moving focus (WCAG 1.4.13). It sits in the top layer (`popover`), placed above the trigger by CSS anchor positioning, or by script where that isn't supported.",
       "files": [
-        "tool-tip.mnx"
+        "tool-tip.zb"
       ],
       "dependencies": []
     }

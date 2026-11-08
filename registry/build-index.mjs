@@ -14,9 +14,9 @@ const CATEGORIES = {
 };
 
 export function catalogue() {
-  const files = readdirSync(join(here, 'components')).filter((file) => file.endsWith('.mnx')).sort();
+  const files = readdirSync(join(here, 'components')).filter((file) => file.endsWith('.zb')).sort();
   const components = files.map((file) => {
-    const name = file.replace(/\.mnx$/, '');
+    const name = file.replace(/\.zb$/, '');
     const source = readFileSync(join(here, 'components', file), 'utf8');
     const comment = source.match(/^<!--([\s\S]*?)-->/)?.[1] ?? '';
     const description = comment.split(/\n\s*@/)[0].split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
@@ -24,11 +24,11 @@ export function catalogue() {
     if (!category) throw new Error(`registry: ${name} has no category in build-index.mjs`);
     if (!description) throw new Error(`registry: ${name} has no description comment`);
     const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? '';
-    const dependencies = [...script.matchAll(/import\s+['"]\.\/([a-z0-9-]+)\.mnx['"]/g)].map((match) => match[1]);
-    // npm packages it imports, beyond the runtime: `mnx add` says to install them. The Zag adapter
+    const dependencies = [...script.matchAll(/import\s+['"]\.\/([a-z0-9-]+)\.zb['"]/g)].map((match) => match[1]);
+    // npm packages it imports, beyond the runtime: `zubra add` says to install them. The Zag adapter
     // needs @zag-js/vanilla, which it imports itself.
-    const packages = [...new Set([...script.matchAll(/from\s+['"]((?:@[a-z0-9-]+\/)?[a-z0-9-]+)[^'"]*['"]/g)].map((match) => match[1]).filter((name) => name !== '@mnx/runtime'))];
-    if (/from\s+['"]@mnx\/runtime\/zag['"]/.test(script)) packages.unshift('@zag-js/vanilla');
+    const packages = [...new Set([...script.matchAll(/from\s+['"]((?:@[a-z0-9-]+\/)?[a-z0-9-]+)[^'"]*['"]/g)].map((match) => match[1]).filter((name) => name !== '@zubra/runtime'))];
+    if (/from\s+['"]@zubra\/runtime\/zag['"]/.test(script)) packages.unshift('@zag-js/vanilla');
     return { name, category, description, files: [file], dependencies, ...(packages.length ? { packages } : {}) };
   });
   return { components };

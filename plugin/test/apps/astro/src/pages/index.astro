@@ -1,8 +1,8 @@
 ---
-import Rating from '../../components/rating.mnx';
-import Card from '../../components/card.mnx';
-import Inbox from '../../components/inbox.mnx';
-import Counter from '../../components/counter.mnx.tsx';
+import Rating from '../../components/rating.zb';
+import Card from '../../components/card.zb';
+import Inbox from '../../components/inbox.zb';
+import Counter from '../../components/counter.zb.tsx';
 ---
 <html>
   <head><meta charset="utf-8"><title>Astro</title></head>
@@ -15,8 +15,8 @@ import Counter from '../../components/counter.mnx.tsx';
     <Inbox />
     <Counter id="counter" count={4} client:load />
     <script>
-      await customElements.whenDefined('mnx-rating');
-      await customElements.whenDefined('mnx-counter');
+      await customElements.whenDefined('zb-rating');
+      await customElements.whenDefined('zb-counter');
       window.ready = true;
     </script>
   </body>

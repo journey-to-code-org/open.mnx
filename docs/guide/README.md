@@ -1,13 +1,13 @@
-# The mnx guide
+# The Zubra guide
 
-mnx compiles components written as HTML with a script and styles into standard web components: elements that work in plain HTML, in every major framework, and on the server.
+Zubra compiles components written as HTML with a script and styles into standard web components: elements that work in plain HTML, in every major framework, and on the server.
 
-**Try it first:** the [playground](https://journey-to-code-org.github.io/open.mnx/) compiles in your browser and runs your component in plain HTML, React and Vue side by side.
+**Try it first:** the [playground](https://journey-to-code-org.github.io/zubra/playground/) compiles in your browser and runs your component in plain HTML, React and Vue side by side.
 
 **Start an app:**
 
 ```sh
-npm create mnx@latest my-app
+npm create zubra@latest my-app
 ```
 
 It asks for a framework (none, React, Vue, Svelte, Solid, Preact, Lit, Angular or Astro) and writes a working app with one component, a dev server that updates components in place, and a browser test.
@@ -26,17 +26,17 @@ Each step builds on the last, in about ten minutes each.
 
 ## Coming from a framework
 
-- [mnx for React developers](for-react-developers.md)
-- [mnx for Vue developers](for-vue-developers.md)
-- [mnx for Svelte developers](for-svelte-developers.md)
+- [Zubra for React developers](for-react-developers.md)
+- [Zubra for Vue developers](for-vue-developers.md)
+- [Zubra for Svelte developers](for-svelte-developers.md)
 
 ## Topics
 
-- [Who mnx is for](../who-this-is-for.md): where a compiled web component earns its place, and where your framework is the right tool.
+- [Who Zubra is for](../who-this-is-for.md): where a compiled web component earns its place, and where your framework is the right tool.
 - [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms do; render props, framework context and Suspense don't.
 - [Server rendering, honestly](../server-rendering.md): what renders where, without JavaScript, and the gaps that remain.
-- [mnx on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
-- [Accessible widgets without a headless library](accessible-widgets.md): what Radix and shadcn/ui give React, from the platform, `@mnx/runtime/primitives` and Zag.js.
+- [Zubra on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
+- [Accessible widgets without a headless library](accessible-widgets.md): what Radix and shadcn/ui give React, from the platform, `@zubra/runtime/primitives` and Zag.js.
 
 ## Reference
 

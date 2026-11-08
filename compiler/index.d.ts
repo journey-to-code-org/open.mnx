@@ -31,7 +31,7 @@ export interface Options {
   modulePath?: string;
   props?: Record<string, unknown>;
   slots?: Record<string, string>;
-  /** What `slots` is written in: mnx template syntax (the default here) or rendered HTML. */
+  /** What `slots` is written in: zubra template syntax (the default here) or rendered HTML. */
   slotSource?: 'template' | 'html';
   /** For `emit: 'html'`: leave what only the browser can compute for the element. */
   partial?: boolean;
@@ -43,8 +43,8 @@ export interface Request extends Options {
   files: Record<string, string>;
 }
 
-/** The text of mnx's hydration-marker comments, for tools that remove comments: keep these. */
-export declare const MNX_MARKER_COMMENT: RegExp;
+/** The text of a 4.x server's hydration-marker comments, for tools that remove comments: keep these. (5.0 writes processing instructions, which they keep.) */
+export declare const ZUBRA_MARKER_COMMENT: RegExp;
 export declare function available(): boolean;
 export declare function request(request: Request): Response;
 export declare function sources(path: string, files?: Record<string, string>): Record<string, string>;
@@ -55,7 +55,7 @@ export interface RenderOptions {
   props?: Record<string, unknown>;
   /** Supplied content by slot name (`default` for unnamed content). */
   slots?: Record<string, string>;
-  /** What `slots` is written in: rendered HTML, kept as written (the default), or mnx template syntax. */
+  /** What `slots` is written in: rendered HTML, kept as written (the default), or zubra template syntax. */
   slotSource?: 'html' | 'template';
   /** Leave what only the browser can compute for the element (the default), instead of an error. */
   partial?: boolean;

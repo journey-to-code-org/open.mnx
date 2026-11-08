@@ -1,9 +1,9 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue';
-// Shared components come from a library (built with `mnx build --lib`, see ../ui), as Vue
-// components; the app's own are .mnx files next to it.
-import { MoneyInput, SegmentedControl, DonutChart } from '@mnx-examples/ui/vue';
-import BudgetBar from './components/budget-bar.mnx';
+// Shared components come from a library (built with `zubra build --lib`, see ../ui), as Vue
+// components; the app's own are .zb files next to it.
+import { MoneyInput, SegmentedControl, DonutChart } from '@zubra-examples/ui/vue';
+import BudgetBar from './components/budget-bar.zb';
 import { CATEGORIES, INCOME, load, save, monthOf, shiftMonth, money } from './data.js';
 
 const state = reactive(load());
@@ -24,7 +24,7 @@ const byCategory = computed(() =>
 );
 const segments = computed(() => byCategory.value.filter((c) => c.spent > 0).map((c) => ({ label: c.name, value: Math.round(c.spent * 100) / 100, tone: c.tone })));
 
-// Filters: the donut's selection and the kind, both v-model on mnx elements.
+// Filters: the donut's selection and the kind, both v-model on zubra elements.
 const selected = ref('');
 const kind = ref('all');
 const kinds = [{ value: 'all', label: 'All' }, { value: 'expense', label: 'Spending' }, { value: 'income', label: 'Income' }];

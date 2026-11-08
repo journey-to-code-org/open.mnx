@@ -1,0 +1,13 @@
+<script>
+  import './row-counter.zb'
+  let draft = ""
+  function add(event) {
+    event.preventDefault()
+    names = [...names, draft]
+    draft = ""
+  }
+</script>
+<row-list names={["a"]}>
+  <form onsubmit={add}><input value={draft} oninput={(event) => (draft = event.target.value)}></form>
+  <zb-each items={names} as="name" key={name}><row-counter label={name}></row-counter></zb-each>
+</row-list>

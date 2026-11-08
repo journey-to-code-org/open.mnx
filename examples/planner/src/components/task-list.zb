@@ -1,0 +1,52 @@
+<!--
+  An event's checklist.
+-->
+<script>
+  import { usePlanner } from '../store.js'
+
+  const { act } = usePlanner()
+  let title = ""
+  let hideDone = false
+
+  const done = event.tasks.filter((task) => task.done).length
+  const shown = hideDone ? event.tasks.filter((task) => !task.done) : event.tasks
+
+  function add() {
+    act('tasks.add', event.id, { title: title.trim(), done: false })
+    title = ""
+  }
+  function clearDone() {
+    for (const task of event.tasks) if (task.done) act('tasks.remove', event.id, task.id)
+  }
+</script>
+<style>
+  .bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; font-size: 0.875rem; }
+  .bar progress { flex: 1; height: 0.5rem; accent-color: var(--ok); }
+  ul { list-style: none; margin: 0 0 1rem; padding: 0; }
+  li { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
+  li label { flex: 1; display: flex; align-items: center; gap: 0.6rem; }
+  .done { text-decoration: line-through; color: var(--muted); }
+  form { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; }
+  .empty { color: var(--muted); }
+</style>
+<task-list event={{ id: "", tasks: [] }}>
+  <div class="bar">
+    <span class="progress-label">{done} of {event.tasks.length} done</span>
+    <progress max={event.tasks.length || 1} value={done} aria-label="Checklist progress"></progress>
+    <label><input type="checkbox" class="hide-done" checked={hideDone} onchange={(e) => (hideDone = e.target.checked)}> Hide done</label>
+    <button zb-if={done > 0} type="button" class="clear-done" onclick={clearDone}>Clear done</button>
+  </div>
+  <ul zb-if={shown.length > 0}>
+    <zb-each items={shown} as="task" key={task.id}>
+      <li>
+        <label><input type="checkbox" checked={task.done} onchange={(e) => act('tasks.update', event.id, task.id, { done: e.target.checked })}><span class:done={task.done}>{task.title}</span></label>
+        <button type="button" class="icon" aria-label={`Remove ${task.title}`} onclick={() => act('tasks.remove', event.id, task.id)}>✕</button>
+      </li>
+    </zb-each>
+  </ul>
+  <p zb-else class="empty">{event.tasks.length ? "Everything's done." : "Nothing to do yet."}</p>
+  <form onsubmit.prevent={add}>
+    <input required placeholder="Add a task" aria-label="Add a task" value={title} oninput={(e) => (title = e.target.value)}>
+    <button type="submit" class="primary">Add</button>
+  </form>
+</task-list>
