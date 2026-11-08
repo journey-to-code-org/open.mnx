@@ -166,7 +166,7 @@ pub fn parse_prefix(source: &str) -> Result<(Expression, usize), ParseError> {
 }
 
 /// Why a runtime expression can't be evaluated at build time.
-pub const RUNTIME_ONLY: &str = "this expression runs in the browser only (it calls or defines a function, or goes beyond the build-time subset), so it can't be rendered into static HTML";
+pub const RUNTIME_ONLY: &str = "this expression runs in the browser only (it uses something outside what the server can evaluate, such as a `function` declaration, `new`, `Date` or `Intl`), so it can't be rendered into static HTML";
 
 // ---- evaluation ----------------------------------------------------------------------------
 

@@ -12,10 +12,8 @@ mod emit_interface;
 mod emit_js;
 mod events;
 mod expression;
-mod future;
 mod ir;
 mod jsx;
-mod migrate;
 mod parser;
 mod pure;
 mod reactive;
@@ -31,18 +29,9 @@ mod validate;
 pub use components::component_extension;
 pub use components::{filesystem, Loader};
 pub use convert::{convert, convert_component, Conversion};
-/// `zubra migrate --to 3`: wrap 2.x code's bare uses of a signal `const` in `signal(…)`.
-pub fn prepare_for_3(source: &str) -> (String, usize) {
-    future::prepare(source)
-}
-/// Where `prepare_for_3` would wrap, as warnings.
-pub fn uses_for_3(source: &str) -> Vec<Diagnostic> {
-    future::uses(source)
-}
 pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
 pub use emit_js::StyleImports;
-pub use migrate::{migrate, Migration};
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {
     serde_json::from_str(text).map_err(|error| {
@@ -265,7 +254,7 @@ pub fn server_gaps(
                 Some(name) => format!("`{name}` is computed in the browser, so the server's HTML leaves it out"),
                 None => "this is computed in the browser, so the server's HTML leaves it empty".to_owned(),
             };
-            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic and ternaries; compute the rest before rendering and pass it as a prop (or render from Node.js)";
+            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic, ternaries, template literals, arrow functions from the script and deterministic built-ins; compute the rest before rendering and pass it as a prop";
             (Diagnostic::new(span, message).with_help(help), form)
         })
         .collect();
