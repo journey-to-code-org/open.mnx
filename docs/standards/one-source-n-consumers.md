@@ -1,6 +1,6 @@
 # One source, N consumers: the claim with numbers
 
-*3.4.0, 2026-11-07. `plan/roadmap-4.0.md` challenge 3. Written for the two people in the survey who said that agents make rewriting a component for another framework cheap, and the instructor who said that with ported tests, drift is a non-problem. They were largely right, and this page says what is left of the argument for one source once that is granted.*
+*Written in 3.4.0 (November 2026), counts re-checked for 5.0.3. Written for the two people in the survey who said that agents make rewriting a component for another framework cheap, and the instructor who said that with ported tests, drift is a non-problem. They were largely right, and this page says what is left of the argument for one source once that is granted.*
 
 ## The claim, stated as the weaker claim
 
@@ -10,16 +10,16 @@ The claim is: **N copies are N things to review, keep matching and keep correct,
 
 ## 1. What the compiler generates, counted
 
-The registry is 20 components, 847 lines of `.zb`. The matrix is eight consumers: React 18, React 19, Vue 3, Angular, Svelte 5, Solid, Lit and Preact (plus plain HTML, Astro and five server-rendering frameworks).
+The registry is 25 components, 1,131 lines of `.zb`. The matrix is eight consumers: React 18, React 19, Vue 3, Angular, Svelte 5, Solid, Lit and Preact (plus plain HTML, Astro and five server-rendering frameworks).
 
 | | Hand-written ports | Generated |
 |---|---|---|
-| Component files | 20 × 7 = **140** (one per framework that isn't plain HTML), each a rewrite | **20**, plus per component a React wrapper and a Vue wrapper of 4 lines each (`zubra build --lib`), typings, and one manifest |
-| Code that knows the frameworks | 140 files' worth, by the port's author | **367 lines**, once: `runtime/src/react.js` (124), `runtime/src/vue.js` (125), the Angular `ZubraModel` directive (118) |
-| Reviews | 140 | 20, plus the three adapters |
+| Component files | 25 × 7 = **175** (one per framework that isn't plain HTML), each a rewrite | **25**, plus per component a React wrapper and a Vue wrapper of 4 lines each (`zubra build --lib`), typings, and one manifest |
+| Code that knows the frameworks | 175 files' worth, by the port's author | **367 lines**, once: `runtime/src/react.js` (124), `runtime/src/vue.js` (125), the Angular `ZubraModel` directive (118) |
+| Reviews | 175 | 25, plus the three adapters |
 | Test suites | one per port, or one that covers one port | the registry's keyboard and accessibility tests, once; the matrix proves the adapters |
 
-A design system is where this matters: at 20 components the hand-written side is 140 files; at three it is 21 and duplication is the cheaper option, which `docs/who-this-is-for.md` says.
+A design system is where this matters: at 25 components the hand-written side is 175 files; at three it is 21 and duplication is the cheaper option, which `docs/who-this-is-for.md` says.
 
 ## 2. The framework bugs the adapters absorbed, each fixed once
 
