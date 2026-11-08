@@ -1,6 +1,6 @@
 // Serves a built gallery (demos/build.mjs) under its base path, as GitHub Pages would:
 //
-//   node demos/serve.mjs [--dir _site] [--base /open.mnx/] [--port 4173]
+//   node demos/serve.mjs [--dir _site] [--base /zubra/] [--port 4173]
 //
 // Also imported by the gallery's test and the screenshot script (`serve(dir, base)`).
 import { createReadStream, existsSync, statSync } from 'node:fs';

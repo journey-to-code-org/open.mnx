@@ -1,9 +1,9 @@
 // The built gallery, served under a base path the way GitHub Pages serves a project site: every
 // live demo loads with no failed requests or errors, and draws its Zubra elements.
 //
-//   node demos/build.mjs --out _site --base /open.mnx/ && node --test "demos/test/*.test.js"
+//   node demos/build.mjs --out _site --base /zubra/ && node --test "demos/test/*.test.js"
 //
-// GALLERY (default _site) and GALLERY_BASE (default /open.mnx/) say where the build is.
+// GALLERY (default _site) and GALLERY_BASE (default /zubra/) say where the build is.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -16,7 +16,7 @@ import { demos } from '../list.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../..');
 const dir = resolve(repo, process.env.GALLERY ?? '_site');
-const base = process.env.GALLERY_BASE ?? '/open.mnx/';
+const base = process.env.GALLERY_BASE ?? '/zubra/';
 // Playwright from the framework examples' install (`npm ci` in examples/frameworks).
 const { chromium } = createRequire(join(repo, 'examples/frameworks/package.json'))('playwright');
 

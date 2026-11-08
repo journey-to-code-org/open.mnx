@@ -1,6 +1,6 @@
 // Takes the screenshots in demos/shots/ (the gallery's cards and the examples' READMEs):
 //
-//   node demos/build.mjs --out _site --base /open.mnx/ && node demos/screenshots.mjs [--dir _site] [--base /open.mnx/] [--only id,id]
+//   node demos/build.mjs --out _site --base /zubra/ && node demos/screenshots.mjs [--dir _site] [--base /zubra/] [--only id,id]
 //
 // The static examples are shot from the built gallery. The ones that need a server are shot by
 // their own browser tests, when ZUBRA_SHOTS names this folder (each test's first page view):
@@ -20,7 +20,7 @@ const repo = join(here, '..');
 const args = process.argv.slice(2);
 const option = (name, fallback) => (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
 const dir = resolve(option('--dir', join(repo, '_site')));
-const base = option('--base', '/open.mnx/');
+const base = option('--base', '/zubra/');
 const only = option('--only', '')?.split(',').filter(Boolean);
 const shots = join(here, 'shots');
 mkdirSync(shots, { recursive: true });

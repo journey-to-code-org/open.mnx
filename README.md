@@ -676,7 +676,7 @@ cargo clippy --all-targets --locked -- -D warnings
 node --test "registry/test/*.test.js"    # the registry's components: keyboard and screen-reader behaviour
 (cd examples/frameworks && npm ci && npm test)  # the framework apps, and every starter's own browser test
 node --test "playground/test/*.test.js"  # the playground in Chromium
-node demos/build.mjs --base /open.mnx/ && node --test "demos/test/*.test.js"  # the demo gallery, served as Pages serves it
+node demos/build.mjs --base /zubra/ && node --test "demos/test/*.test.js"  # the demo gallery, served as Pages serves it
 ```
 
 The browser and plugin suites need Playwright's Chromium (`npx playwright install chromium`). `.github/workflows/ci.yml` runs every suite on each push. Behaviour is mutation-checked: each feature's code was deliberately broken in turn to confirm a test fails.
