@@ -662,10 +662,9 @@ Upgrading from 1.x: `zubra migrate` rewrites what 2.0 needs; see `docs/migrating
 - `editors/`: the language server and the VS Code extension.
 - `create/`: `create-zubra`, the starter (`npm create zubra`), with a template per framework.
 - `playground/`: the in-browser playground.
-- `demos/`: the demo gallery: `demos/build.mjs` builds the playground, the documentation site and every static example under one base path, `.github/workflows/pages.yml` publishes it to GitHub Pages, and `demos/shots/` holds every example's screenshot (`demos/screenshots.mjs` for the static ones; the others' tests take theirs with `ZUBRA_SHOTS`).
+- `demos/`: the demo gallery: `demos/build.mjs` builds the landing page, the documentation site, the playground and every static example under one base path, `.github/workflows/pages.yml` publishes it to GitHub Pages, and `demos/shots/` holds every example's screenshot (`demos/screenshots.mjs` for the static ones; the others' tests take theirs with `ZUBRA_SHOTS`).
 - `docs/guide/`: the tutorial.
-- `site/`: the landing page, built with Eleventy (`npm ci` there first): it compiles its sample component when it's built and reads the by-hand version out of this README, so the code it shows is the real output. `demos/build.mjs` runs it.
-- `docs/site/`: the documentation site: `build.mjs` renders the Markdown in `docs/`, this README and the CHANGELOG to HTML (`npm ci` there first; its navigation lists the pages, and a link to a file that doesn't exist fails the build).
+- `site/`: the landing page and the documentation site, built with Eleventy (`npm ci` there first). The page compiles its sample component and its own Copy button (a `.zb` file) when it's built and reads the by-hand version out of this README, so the code it shows is the real output. The docs render the Markdown in `docs/`, this README and the CHANGELOG (`site/src/_data/nav.js` lists the pages, and a link to a file that doesn't exist fails the build). `demos/build.mjs` runs it.
 - `docs/who-this-is-for.md`, `docs/what-crosses-the-boundary.md`, `docs/server-rendering.md`: where Zubra fits, which components fit through an element, and the server story with its gaps.
 - `registry/`: the components `zubra add` copies, with their accessibility tests.
 

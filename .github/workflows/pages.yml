@@ -1,5 +1,5 @@
 # The demo gallery on GitHub Pages (demos/build.mjs): the gallery page, the documentation
-# (docs/site), the playground (with the WebAssembly compiler) and every static example, built to be
+# (both from site/), the playground (with the WebAssembly compiler) and every static example, built to be
 # served from /<repository>/. It
 # deploys once Pages is enabled (Settings → Pages → Source: GitHub Actions); until then the site
 # is still built and checked, and the deploy is skipped.
@@ -51,8 +51,6 @@ jobs:
         working-directory: runtime
       - run: npm ci
         working-directory: plugin
-      - run: npm ci
-        working-directory: docs/site
       - run: npm ci
         working-directory: site
       - run: npm ci

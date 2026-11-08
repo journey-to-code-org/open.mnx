@@ -71,7 +71,7 @@ test('the brand files are the shapes the page and the docs draw', () => {
   const mark = shapes(brand('zubra-mark.svg'));
   assert.equal(mark.length, 3);
   assert.deepEqual(shapes(brand('zubra-mark-on-dark.svg')), mark, 'the on-dark mark has the same shapes');
-  for (const file of ['site/src/_includes/mark.njk', 'docs/site/build.mjs']) {
+  for (const file of ['site/src/_includes/mark.njk']) {
     const source = readFileSync(join(repo, file), 'utf8');
     for (const shape of mark) assert.ok(source.includes(shape), `${file} draws the brand mark`);
   }

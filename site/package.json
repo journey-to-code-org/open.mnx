@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "@11ty/eleventy": "3.1.8",
+    "markdown-it": "14.3.3",
     "prismjs": "1.30.0"
   }
 }
