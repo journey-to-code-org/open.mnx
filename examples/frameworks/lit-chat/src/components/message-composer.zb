@@ -69,16 +69,12 @@
   .hint { margin: 0.3rem 0.25rem 0; font-size: 0.7rem; color: var(--muted); }
 </style>
 <message-composer placeholder="Message" disabled={false} replyto={null}>
-  <zb-if test={replyto}>
-    <div class="reply"><span>Replying to <b>{replyto?.author}</b>: {replyto?.text}</span><button type="button" class="cancel-reply" aria-label="Cancel reply" onclick={() => emit('replycancel')}>×</button></div>
-  </zb-if>
+  <div zb-if={replyto} class="reply"><span>Replying to <b>{replyto?.author}</b>: {replyto?.text}</span><button type="button" class="cancel-reply" aria-label="Cancel reply" onclick={() => emit('replycancel')}>×</button></div>
   <div class="box">
     <textarea rows="1" aria-label={placeholder} placeholder={placeholder} disabled={disabled} value={text} ref={box} oninput={input} onkeydown.enter={enter} onkeydown.escape={() => replyto && emit('replycancel')}></textarea>
     <button type="button" class="icon emoji" aria-label="Insert emoji" aria-expanded={picking ? "true" : "false"} onclick={() => (picking = !picking)}>☺</button>
     <button type="button" class="send" aria-label="Send" disabled={empty || disabled} onclick={send}>➤</button>
-    <zb-if test={picking}>
-      <div class="picker" role="menu"><zb-each items={EMOJI} as="emoji" key={emoji}><button type="button" role="menuitem" onclick={() => insert(emoji)}>{emoji}</button></zb-each></div>
-    </zb-if>
+    <div zb-if={picking} class="picker" role="menu"><zb-each items={EMOJI} as="emoji" key={emoji}><button type="button" role="menuitem" onclick={() => insert(emoji)}>{emoji}</button></zb-each></div>
   </div>
   <p class="hint">Enter to send · Shift+Enter for a new line</p>
 </message-composer>

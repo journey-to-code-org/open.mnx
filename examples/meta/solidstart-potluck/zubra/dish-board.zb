@@ -21,7 +21,7 @@
         <ul>
           <zb-each items={course.people} as="person" key={person.name}><li>{person.name}{person.guests > 1 ? " +" + (person.guests - 1) : ""}</li></zb-each>
         </ul>
-        <zb-if test={course.people.length < course.need}><p class="open">{course.need - course.people.length} still needed</p></zb-if>
+        <p zb-if={course.people.length < course.need} class="open">{course.need - course.people.length} still needed</p>
       </li>
     </zb-each>
   </ol>

@@ -11,22 +11,18 @@ Templates are HTML with `{expressions}` and a few elements that start with `zb-`
   const shown = filter === "all" ? items : items.filter((item) => item.done === (filter === "done"))
 </script>
 <shopping-list>
-  <zb-if test={items.length === 0}>
-    <p>Nothing yet.</p>
-  <zb-else-if test={shown.length === 0}>
-    <p>Nothing {filter}.</p>
-  </zb-else-if>
-  <zb-else>
-    <ul>
-      <zb-each items={shown} as="item" key={item.id}>
-        <li>{item.text}</li>
-      </zb-each>
-    </ul>
-  </zb-else>
-  </zb-if>
+  <p zb-if={items.length === 0}>Nothing yet.</p>
+  <p zb-else-if={shown.length === 0}>Nothing {filter}.</p>
+  <ul zb-else>
+    <zb-each items={shown} as="item" key={item.id}>
+      <li>{item.text}</li>
+    </zb-each>
+  </ul>
 </shopping-list>
 ```
 
+- **One element, one condition:** `zb-if={…}` on the element, then `zb-else-if={…}` and `zb-else` on the siblings right after it (whitespace may come between). This keeps tables and lists valid HTML for editors and formatters (`<tr zb-if={…}>`).
+- **Several siblings, or text:** wrap them, `<zb-if test={…}>…<zb-else-if test={…}>…</zb-else-if><zb-else>…</zb-else></zb-if>`. Both forms compile to the same thing.
 - `zb-if` switches only when the chosen branch changes.
 - `zb-each` with a `key` moves rows when the list reorders, along with their DOM state (focus, a half-typed input). Changing one item updates only that row.
 - Mutate the list the ordinary way: `items.push({ … })`, `items.splice(i, 1)`, `item.done = !item.done`. State tracks each property, so a push adds one row and a write to one item updates one row. (Reassigning, `items = items.filter(…)`, works too.)
@@ -83,5 +79,15 @@ An attribute written on the element wins over the same key in the spread, and a 
 ## Expressions
 
 Any JavaScript expression works in `{…}`: calls, arrow functions, template strings, `new`. The compiler checks every name in every branch (a typo gets a "did you mean"), and evaluates the simple ones at build time for the server HTML.
+
+Coming from React? Markup works in braces too, in the three forms that are directives:
+
+```html
+{saved && <p class="ok">Saved</p>}
+{user ? <b>{user.name}</b> : <a href="/login">Sign in</a>}
+<ul>{items.map((item) => <li key={item.id}>{item.text}</li>)}</ul>
+```
+
+They compile to exactly `zb-if`, `zb-if` with `zb-else`, and a keyed `zb-each`. The markup inside is the template's own HTML (`class`, `onclick`), and each brace holds one element. Anything else with markup in it gets an error that names the directive to use.
 
 **Next:** [Two-way props and events](03-props-and-events.md)

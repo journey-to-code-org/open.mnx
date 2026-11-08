@@ -19,8 +19,7 @@
 <harvest-chart rows={[]} heading="Harvest">
   <figure>
     <figcaption>{heading} <small>({total} kg)</small></figcaption>
-    <zb-if test={rows.length > 0}>
-      <ol>
+    <ol zb-if={rows.length > 0}>
         <zb-each items={rows} as="row" key={row.crop}>
           <li data-crop={row.crop}>
             <span>{row.label}</span>
@@ -29,7 +28,6 @@
           </li>
         </zb-each>
       </ol>
-      <zb-else><p>Nothing harvested yet.</p></zb-else>
-    </zb-if>
+    <p zb-else>Nothing harvested yet.</p>
   </figure>
 </harvest-chart>

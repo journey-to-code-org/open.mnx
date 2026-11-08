@@ -38,7 +38,7 @@
         <button type="button" class="close" aria-label="Close" onclick={() => (open = false)}>×</button>
       </header>
       <div class="body"><zb-slot></zb-slot></div>
-      <zb-if test={hasActions}><footer><zb-slot name="actions"></zb-slot></footer></zb-if>
+      <footer zb-if={hasActions}><zb-slot name="actions"></zb-slot></footer>
     </div>
   </dialog>
 </modal-dialog>

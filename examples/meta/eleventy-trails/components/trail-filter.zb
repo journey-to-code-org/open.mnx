@@ -27,13 +27,11 @@
   output { min-width: 3.5rem; font-variant-numeric: tabular-nums; }
 </style>
 <trail-filter max={40} units="km">
-  <zb-if test={live}>
-    <fieldset>
+  <fieldset zb-if={live}>
       <legend>Filter</legend>
       <zb-each items={LEVELS} as="level" key={level}>
         <label><input type="checkbox" checked={levels.includes(level)} onchange={(event) => toggle(level, event.target.checked)}> {level}</label>
       </zb-each>
       <label>Up to <input type="range" min="1" max={max} value={longest} aria-label="Longest" oninput={(event) => setLongest(event.target.valueAsNumber)}> <output>{longest} km</output></label>
     </fieldset>
-  </zb-if>
 </trail-filter>

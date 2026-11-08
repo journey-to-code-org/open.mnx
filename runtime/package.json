@@ -1,6 +1,6 @@
 {
   "name": "@zubra/runtime",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "Browser runtime for Zubra compiled components, built on the TC39 Signals API",
   "license": "ISC",
   "repository": {

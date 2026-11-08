@@ -29,8 +29,7 @@
   .empty { color: var(--muted); }
 </style>
 <schedule-list event={{ id: "", start: "", end: "", schedule: [] }}>
-  <zb-if test={items.length > 0}>
-    <ol>
+  <ol zb-if={items.length > 0}>
       <zb-each items={items} as="item" key={item.id}>
         <li>
           <time>{item.time}</time>
@@ -39,8 +38,7 @@
         </li>
       </zb-each>
     </ol>
-    <zb-else><p class="empty">No schedule yet. Add the first item below.</p></zb-else>
-  </zb-if>
+  <p zb-else class="empty">No schedule yet. Add the first item below.</p>
   <form onsubmit.prevent={add}>
     <input type="time" required aria-label="Time" value={time} oninput={(e) => (time = e.target.value)}>
     <input required placeholder="What happens" aria-label="What happens" value={title} oninput={(e) => (title = e.target.value)}>

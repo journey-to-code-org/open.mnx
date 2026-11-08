@@ -33,7 +33,7 @@
     <svg viewBox="0 0 42 42" aria-hidden="true">
       <circle class="bg" cx="21" cy="21" r="16" stroke="none" fill="none"></circle>
       <circle class="track" cx="21" cy="21" r={R}></circle>
-      <zb-if test={percent > 0}><circle class="fill" cx="21" cy="21" r={R} stroke-dasharray={`${percent} ${100 - percent}`}></circle></zb-if>
+      <circle zb-if={percent > 0} class="fill" cx="21" cy="21" r={R} stroke-dasharray={`${percent} ${100 - percent}`}></circle>
     </svg>
     <span class="count">{goal === 1 ? (done ? "✓" : "") : value}</span>
   </button>

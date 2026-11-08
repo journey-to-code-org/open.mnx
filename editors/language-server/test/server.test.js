@@ -94,7 +94,7 @@ test('completion: directives and imported components, their props and events', a
   notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
   const labels = async (line, character) => (await call('textDocument/completion', { textDocument: { uri }, position: { line, character } })).map((item) => item.label);
   assert.deepEqual((await labels(4, 6)).sort(), ['zb-await', 'zb-badge', 'zb-catch', 'zb-each', 'zb-else', 'zb-if', 'zb-slot', 'zb-then']);
-  assert.deepEqual(await labels(5, 12), ['label', 'count', 'onpick']);
+  assert.deepEqual(await labels(5, 12), ['label', 'count', 'onpick', 'zb-if', 'zb-else-if', 'zb-else']);
   assert.deepEqual(await labels(6, 6), ['heading'], 'props in expressions');
   const items = await call('textDocument/completion', { textDocument: { uri }, position: { line: 5, character: 12 } });
   assert.equal(items[0].insertText, 'label={$1}');
@@ -120,5 +120,8 @@ test('the analysis knows where the cursor is', () => {
   assert.deepEqual(contextAt(text, text.indexOf('te</') + 2), { kind: 'attribute', tag: 'zb-if', prefix: 'te' });
   assert.deepEqual(hostOf(text).props, ['a', 'c']);
   assert.deepEqual(completions(text, text.indexOf('te</') + 2, []).map((item) => item.label), ['test']);
+  // Any other element can take a condition (4.1).
+  const plain = '<zb-x a="1"><p zb-</p></zb-x>';
+  assert.deepEqual(completions(plain, plain.indexOf('zb-</') + 3, []).map((item) => item.label), ['zb-if', 'zb-else-if', 'zb-else']);
   assert.deepEqual(tagAt(text, text.indexOf('zb-if') + 2), { name: 'zb-if', start: text.indexOf('zb-if'), end: text.indexOf('zb-if') + 5 });
 });

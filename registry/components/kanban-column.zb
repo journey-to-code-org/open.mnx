@@ -55,11 +55,11 @@
     <header>
       <h2>{heading}</h2>
       <span class="count">{count}</span>
-      <zb-if test={limit > 0}><span class="limit">{full ? `over the limit of ${limit}` : `limit ${limit}`}</span></zb-if>
+      <span zb-if={limit > 0} class="limit">{full ? `over the limit of ${limit}` : `limit ${limit}`}</span>
     </header>
     <div class="cards" ref={list}>
       <zb-slot><div class="empty">Drop cards here</div></zb-slot>
     </div>
-    <zb-if test={hasActions}><footer><zb-slot name="actions"></zb-slot></footer></zb-if>
+    <footer zb-if={hasActions}><zb-slot name="actions"></zb-slot></footer>
   </section>
 </kanban-column>

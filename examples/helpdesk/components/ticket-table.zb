@@ -52,7 +52,7 @@
         </zb-each>
       </tbody>
     </table>
-    <zb-if test={live}><p class="keys">J / K to move, Enter to open</p></zb-if>
+    <p zb-if={live} class="keys">J / K to move, Enter to open</p>
     <zb-else><p class="empty">No tickets match.</p></zb-else>
   </zb-if>
 </ticket-table>

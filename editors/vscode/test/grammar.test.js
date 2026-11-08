@@ -103,3 +103,11 @@ test('event modifiers, class:/style: directives and ref get their own scopes', a
   assert.ok(all.some((token) => token.text === '--tone' && token.scopes.includes('entity.other.attribute-name.directive.zb')));
   assert.ok(scopesOf(all, 'ref').includes('entity.other.attribute-name.ref.zb'));
 });
+
+test('conditions as attributes and markup in braces (4.1)', async () => {
+  const all = await tokens('<zb-x>\n  <p zb-if={a}>A</p><p zb-else>B</p>\n  {done && <b class="ok">Saved</b>}\n  {n < 3}\n</zb-x>');
+  assert.ok(all.some((token) => token.text === 'zb-if' && token.scopes.includes('keyword.control.directive.zb')));
+  assert.ok(all.some((token) => token.text === 'zb-else' && token.scopes.includes('keyword.control.directive.zb')));
+  assert.ok(all.some((token) => token.text === 'b' && token.scopes.includes('entity.name.tag.html') && token.scopes.includes('meta.embedded.expression.zb')), 'a tag in braces is a tag');
+  assert.ok(!all.some((token) => token.text.trim() === '3' && token.scopes.includes('entity.name.tag.html')), 'a comparison is not');
+});

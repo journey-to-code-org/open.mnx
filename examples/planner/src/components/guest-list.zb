@@ -48,8 +48,7 @@
     </zb-each>
     <span class="headcount">Headcount: {headcount}</span>
   </div>
-  <zb-if test={shown.length > 0}>
-    <table>
+  <table zb-if={shown.length > 0}>
       <thead><tr><th>Guest</th><th>RSVP</th><th>+1</th><th><span class="visually-hidden">Remove</span></th></tr></thead>
       <tbody>
         <zb-each items={shown} as="guest" key={guest.id}>
@@ -66,12 +65,11 @@
         </zb-each>
       </tbody>
     </table>
-    <zb-else><p class="empty">{event.guests.length ? "No one with that RSVP." : "No guests yet."}</p></zb-else>
-  </zb-if>
+  <p zb-else class="empty">{event.guests.length ? "No one with that RSVP." : "No guests yet."}</p>
   <form onsubmit.prevent={invite}>
     <input required placeholder="Name" aria-label="Guest name" value={name} oninput={(e) => (name = e.target.value)}>
     <input type="email" placeholder="Email (optional)" aria-label="Guest email" value={email} oninput={(e) => ((email = e.target.value), (problem = ""))}>
     <button type="submit" class="primary">Invite</button>
   </form>
-  <zb-if test={problem}><p class="problem" role="alert">{problem}</p></zb-if>
+  <p zb-if={problem} class="problem" role="alert">{problem}</p>
 </guest-list>

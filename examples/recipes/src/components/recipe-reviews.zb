@@ -40,14 +40,12 @@
   <zb-await value={loaded}>
     <p class="loading">Loading reviews…</p>
     <zb-then>
-      <zb-if test={all.length > 0}>
-        <ul>
+      <ul zb-if={all.length > 0}>
           <zb-each items={all} as="review" key={review.id}>
             <li><strong>{review.name}</strong> <star-rating value={review.stars} readonly={true} label="Their rating"></star-rating><p>{review.text}</p></li>
           </zb-each>
         </ul>
-        <zb-else><p class="empty">Be the first to review this.</p></zb-else>
-      </zb-if>
+      <p zb-else class="empty">Be the first to review this.</p>
     </zb-then>
     <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>
   </zb-await>

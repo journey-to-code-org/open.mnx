@@ -54,5 +54,5 @@
     </zb-if>
   </svg>
   <div class="labels" aria-hidden="true"><span class="high">{high.toFixed(2)}</span><span class="low">{low.toFixed(2)}</span></div>
-  <zb-if test={shown >= 0}><span class="tip">{points[shown].toFixed(2)}</span></zb-if>
+  <span zb-if={shown >= 0} class="tip">{points[shown].toFixed(2)}</span>
 </line-chart>

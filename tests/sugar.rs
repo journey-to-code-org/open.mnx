@@ -192,3 +192,148 @@ fn ref_global_listeners_and_else_if() {
         "{code}"
     );
 }
+
+#[test]
+fn conditions_as_attributes_compile_to_what_the_wrapper_does() {
+    let attributes = r#"<zb-x count={3} ok={true}>
+  <p zb-if={count === 0}>Nothing yet.</p>
+  <p zb-else-if={count < 5}>A few.</p>
+  <ul zb-else><li>Many</li></ul>
+  <table><tbody><tr zb-if={ok}><td>a</td></tr></tbody></table>
+</zb-x>"#;
+    let wrappers = r#"<zb-x count={3} ok={true}>
+  <zb-if test={count === 0}><p>Nothing yet.</p><zb-else-if test={count < 5}><p>A few.</p></zb-else-if><zb-else><ul><li>Many</li></ul></zb-else></zb-if>
+  <table><tbody><zb-if test={ok}><tr><td>a</td></tr></zb-if></tbody></table>
+</zb-x>"#;
+    assert_eq!(html(attributes), html(wrappers));
+    assert_eq!(js(attributes), js(wrappers));
+    // Nested, and inside a list.
+    let nested = r#"<zb-x a={true} items={[1, 2]}>
+  <p zb-if={a}>A<span zb-if={!a}>never</span></p>
+  <zb-each items={items} as="n"><b zb-if={n > 1}>{n}</b><i zb-else>{n}</i></zb-each>
+</zb-x>"#;
+    assert_eq!(
+        html(nested),
+        "<zb-x>\n  <!--[--><p>A<!--[--><!--]--></p><!--]-->\n  <!--[--><!--[--><!--[--><i>1</i><!--]--><!--]--><!--[--><!--[--><b>2</b><!--]--><!--]--><!--]-->\n</zb-x>"
+    );
+}
+
+#[test]
+fn condition_attributes_are_checked_and_other_zb_attributes_are_reserved() {
+    for (source, message) in [
+        (
+            "<zb-x a={1}>\n  <p zb-else>x</p>\n</zb-x>",
+            "`zb-else` needs an element with `zb-if` or `zb-else-if` just before it",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if={a}>x</p>\n  text\n  <p zb-else-if={a}>y</p>\n</zb-x>",
+            "`zb-else-if` needs an element with `zb-if`",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if={a}>x</p><p zb-else>y</p><p zb-else>z</p>\n</zb-x>",
+            "only one `zb-else`, and it comes last",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if={a}>x</p><p zb-else>y</p><p zb-else-if={a}>z</p>\n</zb-x>",
+            "`zb-else-if` must come before the chain's `zb-else`",
+        ),
+        (
+            "<zb-x a={1}>\n  <zb-each items={[1]} as=\"i\" zb-if={a}><p>{i}</p></zb-each>\n</zb-x>",
+            "can't go on <zb-each>, which is a directive",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if=\"a\">x</p>\n</zb-x>",
+            "`zb-if` is an expression: write zb-if={…}",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if>x</p>\n</zb-x>",
+            "`zb-if` needs a condition",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if={a}>x</p><p zb-else={a}>y</p>\n</zb-x>",
+            "`zb-else` takes no value",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-if={a} zb-else>x</p>\n</zb-x>",
+            "one of zb-if, zb-else-if and zb-else",
+        ),
+        (
+            "<zb-x zb-if={1}>\n  <p>x</p>\n</zb-x>",
+            "can't go on the host",
+        ),
+        (
+            "<zb-x zb-size={1}>\n  <p>x</p>\n</zb-x>",
+            "a prop can't start with it",
+        ),
+        (
+            "<zb-x a={1}>\n  <p zb-iff={a}>x</p>\n</zb-x>",
+            "unknown attribute `zb-iff`: the zb- prefix is reserved",
+        ),
+    ] {
+        let rendered = error(source);
+        assert!(rendered.contains(message), "{source}\n{rendered}");
+    }
+    assert!(error("<zb-x a={1}>\n  <p zb-iff={a}>x</p>\n</zb-x>").contains("did you mean `zb-if`?"));
+    // `data-zb-*` is the author's, like any data attribute.
+    assert_eq!(
+        html("<zb-x>\n  <p data-zb-note=\"1\">x</p>\n</zb-x>"),
+        "<zb-x>\n  <p data-zb-note=\"1\">x</p>\n</zb-x>"
+    );
+}
+
+#[test]
+fn markup_in_braces_compiles_to_the_directives() {
+    let braces = r#"<zb-x done={true} user={null} items={[{id: 1, label: "a"}, {id: 2, label: "b"}]}>
+  {done && <p class="ok">Saved</p>}
+  {user ? <b>{user.name}</b> : <a href="/login">Sign in</a>}
+  <ul>{items.map((item) => <li key={item.id}>{item.label}</li>)}</ul>
+</zb-x>"#;
+    let directives = r#"<zb-x done={true} user={null} items={[{id: 1, label: "a"}, {id: 2, label: "b"}]}>
+  <zb-if test={done}><p class="ok">Saved</p></zb-if>
+  <zb-if test={user}><b>{user.name}</b><zb-else><a href="/login">Sign in</a></zb-else></zb-if>
+  <ul><zb-each items={items} as="item" key={item.id}><li>{item.label}</li></zb-each></ul>
+</zb-x>"#;
+    assert_eq!(html(braces), html(directives));
+    assert_eq!(js(braces), js(directives));
+    // Parentheses, an index, text and null branches, nesting, and text that only looks like markup.
+    let mixed = r#"<zb-x a={true} n={2} list={["x"]}>
+  {a && (
+    <p>Don't {n > 1 ? `${n} items` : null}</p>
+  )}
+  {list.map((x, i) => <i>{i}{x}{a && <b>!</b>}</i>)}
+  {"<not markup>"}
+</zb-x>"#;
+    assert_eq!(
+        html(mixed),
+        "<zb-x>\n  <!--[--><p>Don't 2 items</p><!--]-->\n  <!--[--><!--[--><i><!---->0x<!--[--><b>!</b><!--]--></i><!--]--><!--]--><!---->\n  &lt;not markup&gt;\n</zb-x>"
+    );
+}
+
+#[test]
+fn markup_in_braces_outside_the_three_forms_says_what_to_write() {
+    for (source, message) in [
+        (
+            "<zb-x f={1}>\n  {f || <p>x</p>}\n</zb-x>",
+            "markup in braces takes three forms",
+        ),
+        (
+            "<zb-x a={1}>\n  {a && <p>x</p> && <p>y</p>}\n</zb-x>",
+            "the braces hold one element",
+        ),
+        (
+            "<zb-x items={[1]}>\n  {items.map(({ id }) => <p>{id}</p>)}\n</zb-x>",
+            "takes the item, and optionally its index",
+        ),
+        (
+            "<zb-x a={1}>\n  {a && <p zb-if={a}>x</p>}\n</zb-x>",
+            "the braces already decide",
+        ),
+        (
+            "<zb-x a={1}>\n  <p title={a && <b/>}>x</p>\n</zb-x>",
+            "markup can't go in an attribute's {…}",
+        ),
+    ] {
+        let rendered = error(source);
+        assert!(rendered.contains(message), "{source}\n{rendered}");
+    }
+}

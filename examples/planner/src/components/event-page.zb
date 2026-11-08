@@ -65,7 +65,7 @@
         <span class="pill tag">{event.category}</span>
         <h1>{event.title}</h1>
         <p class="meta">{formatDay(event.day)} ({relative(event.day)}) · {event.start}–{event.end}{event.location ? ` · ${event.location}` : ""}</p>
-        <zb-if test={event.notes}><p class="notes">{event.notes}</p></zb-if>
+        <p zb-if={event.notes} class="notes">{event.notes}</p>
       </div>
       <div class="actions">
         <button type="button" class="export" onclick={download}>Export .ics</button>
@@ -88,18 +88,10 @@
       </zb-each>
     </div>
     <section role="tabpanel" aria-label={tab}>
-      <zb-if test={tab === "schedule"}>
-        <schedule-list event={event}></schedule-list>
-      </zb-if>
-      <zb-if test={tab === "guests"}>
-        <guest-list event={event}></guest-list>
-      </zb-if>
-      <zb-if test={tab === "budget"}>
-        <budget-table event={event}></budget-table>
-      </zb-if>
-      <zb-if test={tab === "tasks"}>
-        <task-list event={event}></task-list>
-      </zb-if>
+      <schedule-list zb-if={tab === "schedule"} event={event}></schedule-list>
+      <guest-list zb-if={tab === "guests"} event={event}></guest-list>
+      <budget-table zb-if={tab === "budget"} event={event}></budget-table>
+      <task-list zb-if={tab === "tasks"} event={event}></task-list>
     </section>
     <zb-else>
       <div class="missing"><h1>Not found</h1><p>This event doesn't exist (any more). <a href="#/">Back to the calendar</a></p></div>

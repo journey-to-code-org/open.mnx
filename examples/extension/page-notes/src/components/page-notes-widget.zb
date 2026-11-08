@@ -24,12 +24,10 @@
 </style>
 <page-notes-widget shadow host-reset notes={[]}>
   <zb-if test={notes.length > 0}>
-    <zb-if test={open}>
-      <section class="card" style:border-color={latest.color} aria-label="Newest note">
+    <section zb-if={open} class="card" style:border-color={latest.color} aria-label="Newest note">
         <p>{latest.text}</p>
         <button type="button" onclick={() => emit('hide')}>Hide on this site</button>
       </section>
-    </zb-if>
     <button type="button" class="chip" aria-expanded={open ? "true" : "false"} onclick={() => (open = !open)}>
       <span class="dot" style:background={latest.color}></span>
       {notes.length === 1 ? "1 note" : notes.length + " notes"}

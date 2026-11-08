@@ -123,6 +123,16 @@ export function documentation(component) {
   return lines.join('\n');
 }
 
+/** The conditions an element can carry as attributes (4.1). */
+export const CONDITIONS = {
+  'zb-if': 'Render this element only when the condition is truthy: `zb-if={…}`.',
+  'zb-else-if': 'Render this element when the `zb-if` (or `zb-else-if`) sibling just before it didn\'t, and this condition is truthy.',
+  'zb-else': 'Render this element when none of the `zb-if` and `zb-else-if` siblings just before it did.',
+};
+const conditionItems = (prefix) => Object.entries(CONDITIONS)
+  .filter(([name]) => name.startsWith(prefix))
+  .map(([name, description]) => ({ label: name, kind: 'attribute', documentation: description, insertText: name === 'zb-else' ? name : `${name}={$1}`, snippet: name !== 'zb-else' }));
+
 /** Completion items (label, kind, detail, documentation, insertText) at `offset`. */
 export function completions(text, offset, components) {
   const context = contextAt(text, offset);
@@ -140,7 +150,7 @@ export function completions(text, offset, components) {
       }));
     }
     const component = components.find((candidate) => candidate.tag === context.tag);
-    if (!component) return [];
+    if (!component) return conditionItems(context.prefix);
     return [
       ...component.attributes.map((attribute) => ({
         label: attribute.name, kind: 'attribute', detail: attribute.type,
@@ -151,6 +161,7 @@ export function completions(text, offset, components) {
         label: `on${event.name}`, kind: 'event', detail: event.type, documentation: event.description,
         insertText: `on${event.name}={$1}`, snippet: true,
       })),
+      ...conditionItems(''),
     ].filter((item) => item.label.startsWith(context.prefix));
   }
   if (context.kind === 'expression') {

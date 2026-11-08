@@ -54,11 +54,14 @@ A Zubra component is one `.zb` file: a `<script>`, a `<style>`, and a template w
 
 | | |
 |---|---|
-| `<zb-if test={…}>…<zb-else-if test={…}>…</zb-else-if><zb-else>…</zb-else></zb-if>` | conditionals |
+| `<p zb-if={…}>`, then `<p zb-else-if={…}>` / `<p zb-else>` on the next siblings | a condition on one element (prefer this for one element) |
+| `<zb-if test={…}>…<zb-else-if test={…}>…</zb-else-if><zb-else>…</zb-else></zb-if>` | a condition over several siblings or text |
 | `<zb-each items={list} as="item" index="i" key={item.id}>` | lists; always give a `key` when rows can reorder or be removed from the middle |
 | `<zb-slot>` and `<zb-slot name="x">fallback</zb-slot>` | children; `hasSlot('x')` says whether content was given |
 | `<zb-await value={promiseOrResource}>pending<zb-then as="data">…</zb-then><zb-catch as="error">…</zb-catch></zb-await>` | async |
 | `<my-child value:bind={state}>` | two-way binding to a child's `:model` prop |
+
+Markup in braces (`{a && <p>…</p>}`, `{a ? <b>…</b> : <i>…</i>}`, `{list.map((x) => <li key={x.id}>…</li>)}`) compiles to the same directives and is accepted, but write the directives: they're the house style. Any other `zb-` attribute is an error.
 
 ## Script rules
 

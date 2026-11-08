@@ -23,8 +23,8 @@
 <reply-composer name="body" label="Reply" agent={false} max={4000}>
   <textarea name={name} aria-label={label} required maxlength={max} placeholder="Write a reply…" oninput={(event) => (text = event.target.value)} onkeydown.mod.enter.prevent.submit></textarea>
   <div class="row">
-    <zb-if test={agent}><label><input type="checkbox" name="internal" value="on"> Internal note</label></zb-if>
-    <zb-if test={live}><span class="count" class:over={text.length > max}>{text.length}/{max}</span></zb-if>
+    <label zb-if={agent}><input type="checkbox" name="internal" value="on"> Internal note</label>
+    <span zb-if={live} class="count" class:over={text.length > max}>{text.length}/{max}</span>
     <button disabled={live && text.trim() === ""}>Send</button>
   </div>
 </reply-composer>

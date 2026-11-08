@@ -34,10 +34,9 @@
     <span class="progress-label">{done} of {event.tasks.length} done</span>
     <progress max={event.tasks.length || 1} value={done} aria-label="Checklist progress"></progress>
     <label><input type="checkbox" class="hide-done" checked={hideDone} onchange={(e) => (hideDone = e.target.checked)}> Hide done</label>
-    <zb-if test={done > 0}><button type="button" class="clear-done" onclick={clearDone}>Clear done</button></zb-if>
+    <button zb-if={done > 0} type="button" class="clear-done" onclick={clearDone}>Clear done</button>
   </div>
-  <zb-if test={shown.length > 0}>
-    <ul>
+  <ul zb-if={shown.length > 0}>
       <zb-each items={shown} as="task" key={task.id}>
         <li>
           <label><input type="checkbox" checked={task.done} onchange={(e) => act('tasks.update', event.id, task.id, { done: e.target.checked })}><span class:done={task.done}>{task.title}</span></label>
@@ -45,8 +44,7 @@
         </li>
       </zb-each>
     </ul>
-    <zb-else><p class="empty">{event.tasks.length ? "Everything's done." : "Nothing to do yet."}</p></zb-else>
-  </zb-if>
+  <p zb-else class="empty">{event.tasks.length ? "Everything's done." : "Nothing to do yet."}</p>
   <form onsubmit.prevent={add}>
     <input required placeholder="Add a task" aria-label="Add a task" value={title} oninput={(e) => (title = e.target.value)}>
     <button type="submit" class="primary">Add</button>

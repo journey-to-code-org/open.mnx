@@ -23,12 +23,10 @@
   <div class="dots" aria-hidden="true">
     <zb-each items={sessions} as="session" key={session.id}><span class="dot" class:break={session.mode !== 'focus'}></span></zb-each>
   </div>
-  <zb-if test={focus.length > 0}>
-    <ol>
+  <ol zb-if={focus.length > 0}>
       <zb-each items={focus} as="session" key={session.id}>
         <li><time datetime={new Date(session.at).toISOString()}>{time.format(session.at)}</time><span>{session.task || "Focus"}</span></li>
       </zb-each>
     </ol>
-    <zb-else><p>Nothing yet. Start a session.</p></zb-else>
-  </zb-if>
+  <p zb-else>Nothing yet. Start a session.</p>
 </session-log>

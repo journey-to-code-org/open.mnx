@@ -19,8 +19,7 @@
   .empty { color: #7a8091; text-align: center; padding: 1rem 0; }
 </style>
 <note-list notes={[]}>
-  <zb-if test={notes.length > 0}>
-    <ol>
+  <ol zb-if={notes.length > 0}>
       <zb-each items={notes} as="note" key={note.id}>
         <li data-id={note.id}>
           <span class="stripe" style:background={note.color}></span>
@@ -29,6 +28,5 @@
         </li>
       </zb-each>
     </ol>
-    <zb-else><p class="empty">No notes for this site yet.</p></zb-else>
-  </zb-if>
+  <p zb-else class="empty">No notes for this site yet.</p>
 </note-list>

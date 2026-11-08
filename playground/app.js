@@ -78,7 +78,7 @@ const EXAMPLES = {
 <info-card heading="Card">
   <h3>{heading}</h3>
   <zb-slot><p>Nothing here yet.</p></zb-slot>
-  <zb-if test={hasFooter}><footer><zb-slot name="footer"></zb-slot></footer></zb-if>
+  <footer zb-if={hasFooter}><zb-slot name="footer"></zb-slot></footer>
 </info-card>
 `,
   },
@@ -111,6 +111,33 @@ const EXAMPLES = {
   <button type="button" {...trigger}>{heading}</button>
   <div {...panel}>An attribute written on the element wins over the spread, and a spread can't do anything an attribute couldn't.</div>
 </disclosure-panel>
+`,
+  },
+  conditions: {
+    label: 'Conditions',
+    page: '<cart-summary></cart-summary>',
+    source: `<!--
+  Conditions without wrappers: zb-if as an attribute on one element, and markup in braces in
+  the three forms that are directives (&&, ? : and a keyed .map).
+-->
+<script>
+  let items = []
+  let next = 1
+  const total = items.reduce((sum, item) => sum + item.price, 0)
+  function add() { items.push({ id: next, name: \`Item \${next}\`, price: next * 3 }); next++ }
+</script>
+<style>
+  :host { display: block; margin: 0.5rem; font: 15px system-ui; }
+  button { font: inherit; padding: 0.3rem 0.7rem; }
+</style>
+<cart-summary>
+  <p zb-if={items.length === 0}>Your cart is empty.</p>
+  <p zb-else-if={items.length < 3}>A few things so far.</p>
+  <p zb-else>That's a full cart.</p>
+  <ul>{items.map((item) => <li key={item.id}>{item.name}: \${item.price}</li>)}</ul>
+  {total > 10 && <strong>Free shipping!</strong>}
+  <button type="button" onclick={add}>Add an item</button>
+</cart-summary>
 `,
   },
 };

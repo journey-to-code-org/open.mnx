@@ -17,7 +17,7 @@
   button:disabled { opacity: 0.4; }
 </style>
 <qty-input name="count" value:model={0} min={0} max={999} label="Count">
-  <zb-if test={live}><button type="button" aria-label={"Fewer: " + label} disabled={value <= min} onclick={() => nudge(-1)}>−</button></zb-if>
+  <button zb-if={live} type="button" aria-label={"Fewer: " + label} disabled={value <= min} onclick={() => nudge(-1)}>−</button>
   <input type="number" name={name} aria-label={label} value={value} min={min} max={max} required oninput={(event) => (value = event.target.valueAsNumber)}>
-  <zb-if test={live}><button type="button" aria-label={"More: " + label} disabled={value >= max} onclick={() => nudge(1)}>+</button></zb-if>
+  <button zb-if={live} type="button" aria-label={"More: " + label} disabled={value >= max} onclick={() => nudge(1)}>+</button>
 </qty-input>

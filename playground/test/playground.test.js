@@ -101,7 +101,7 @@ test('an edit recompiles; an error shows with its location; the link keeps the e
   await shared.close();
 });
 
-test('the examples: slots with hasSlot, a list with directives, and a spread', async () => {
+test('the examples: slots with hasSlot, a list with directives, a spread, and conditions', async () => {
   const { page, errors } = await openPlayground();
   await page.selectOption('#example', 'slots');
   await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('info-card'));
@@ -126,6 +126,16 @@ test('the examples: slots with hasSlot, a list with directives, and a spread', a
   await panel.click('disclosure-panel button');
   await panel.waitForFunction(() => document.querySelector('disclosure-panel button').getAttribute('aria-expanded') === 'true');
   assert.equal(await panel.$eval('disclosure-panel [role=region]', (el) => el.hidden), false);
+
+  // Conditions as attributes, and markup in braces.
+  await page.selectOption('#example', 'conditions');
+  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('cart-summary'));
+  const cart = await frame(page, 'html');
+  await cart.waitForFunction(() => document.querySelector('cart-summary p')?.textContent === 'Your cart is empty.');
+  for (let i = 0; i < 3; i++) await cart.click('cart-summary button');
+  await cart.waitForFunction(() => document.querySelectorAll('cart-summary li').length === 3);
+  assert.equal(await cart.$eval('cart-summary p', (el) => el.textContent), "That's a full cart.");
+  assert.equal(await cart.$eval('cart-summary strong', (el) => el.textContent), 'Free shipping!');
   assert.deepEqual(errors, []);
   await page.close();
 });

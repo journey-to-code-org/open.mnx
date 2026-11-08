@@ -2,6 +2,41 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 4.1.0 — 2026-11-07
+
+Conditions without wrappers (`plan/roadmap-4.x.md`, 4.1). Additive: every 4.0 component compiles as before, unless it has a `zb-` attribute on an element, which 4.0 silently ignored.
+
+### Added
+
+- **`zb-if`, `zb-else-if` and `zb-else` as attributes:**
+
+  ```html
+  <p zb-if={count === 0}>Nothing yet.</p>
+  <p zb-else-if={count < 5}>A few.</p>
+  <ul zb-else>…</ul>
+  ```
+
+  - A condition goes on one element. `zb-else-if` and `zb-else` go on the siblings right after it (whitespace may come between).
+  - It compiles to the same thing as the `<zb-if>` wrapper, which stays, for conditions over several siblings or over text.
+  - It keeps tables and lists valid HTML for editors and formatters (`<tr zb-if={…}>`).
+  - Errors that say what to write: on a directive, on the host, without a sibling to follow, after the chain's `zb-else`, quoted, without a value, or two on one element.
+- **Markup in braces**, in the three forms that are directives:
+  - `{a && <p>…</p>}` is a `zb-if`;
+  - `{a ? <b>…</b> : <i>…</i>}` is a `zb-if` with a `zb-else` (either side may be text, an expression or `null`);
+  - `{list.map((item, i) => <li key={item.id}>…</li>)}` is a `zb-each`, keyed by the element's `key`.
+
+  The markup inside is the template's own HTML: directives, modifiers, `class:` and nested braces all work, and each brace holds one element. Anything else with markup in it is an error naming the form or directive to use. So is markup in an attribute's braces, which 4.0 reported as a parse error.
+- **Tools:**
+  - the language server completes `zb-if`, `zb-else-if` and `zb-else` on any element;
+  - the VS Code grammar highlights them as directives, and a tag inside braces as a tag;
+  - the guide's templates page, the README and the `zubra-component` skill describe both forms (the skill keeps directives as the house style for markup in braces);
+  - the playground has a Conditions example.
+
+### Changed
+
+- **The `zb-` attribute prefix is reserved.** An unknown `zb-…` attribute is an error with a suggestion (`zb-iff` → "did you mean `zb-if`?"), and a host attribute can't start with `zb-`. `data-zb-*` stays yours.
+- **The examples and the registry use the attribute form** where a `<zb-if>` wrapped one element on its own lines: 56 wrappers in 40 components, compiling to the same output apart from the whitespace that was inside the wrapper. `examples/stats.mjs` counts what's left (9 wrappers, around several siblings or inline).
+
 ## 4.0.0 — 2026-11-07
 
 **mnx is now Zubra.** The only change in this release is the name (`docs/migrating-to-4.0.md`). The npm scope `@mnx` belongs to someone else, so the packages could never have been published under it. Nothing had been published yet, so this was the cheapest time to choose a name the project can own everywhere. The format, the runtime's behaviour, the compiled code's ABI and every API are those of 3.6.0.

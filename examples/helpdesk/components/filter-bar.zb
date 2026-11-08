@@ -37,6 +37,6 @@
     <label>Search
       <input type="search" name="q" value={q} placeholder="Subject or message">
     </label>
-    <zb-if test={!live}><button class="apply">Apply</button></zb-if>
+    <button zb-if={!live} class="apply">Apply</button>
   </form>
 </filter-bar>

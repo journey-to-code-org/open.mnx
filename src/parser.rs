@@ -91,6 +91,19 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
     let mut form_associated = false;
     let mut host_reset = None;
     for attribute in host.attributes {
+        if attribute.name.to_ascii_lowercase().starts_with("zb-") {
+            return Err(Diagnostic::new(
+                attribute.span,
+                if CONDITIONS
+                    .iter()
+                    .any(|name| attribute.name.eq_ignore_ascii_case(name))
+                {
+                    format!("`{}` can't go on the host: the host is always rendered; put the condition on an element inside it", attribute.name)
+                } else {
+                    format!("`{}`: the zb- prefix is reserved for the format, so a prop can't start with it", attribute.name)
+                },
+            ));
+        }
         if attribute.name == "shadow" && attribute.value == AttributeValue::None {
             shadow = true;
             continue;
@@ -477,6 +490,8 @@ impl<'a> TemplateParser<'a> {
 
     fn parse_nodes(&mut self, closing: Option<&str>) -> Result<Vec<Node>, Diagnostic> {
         let mut nodes = Vec::new();
+        // An open `zb-if` attribute chain: the index of its node, and whether a `zb-else` ended it.
+        let mut chain: Option<(usize, bool)> = None;
         while !self.cursor.is_at_end() {
             if self.starts_with("</") {
                 let span = self.current_span();
@@ -517,12 +532,41 @@ impl<'a> TemplateParser<'a> {
                     .error("doctype and processing instructions are not supported in templates"));
             }
             if self.starts_with("<") {
-                let element = self.parse_raw_element()?;
-                nodes.push(if self.html {
-                    Node::Element(element)
-                } else {
-                    lower_directive(element)?
-                });
+                let mut element = self.parse_raw_element()?;
+                if self.html {
+                    nodes.push(Node::Element(element));
+                    chain = None;
+                    continue;
+                }
+                let condition = take_condition(&mut element)?;
+                reserved_attributes(&element)?;
+                let node = lower_directive(element)?;
+                match condition {
+                    None => {
+                        nodes.push(node);
+                        chain = None;
+                    }
+                    Some(Condition::If(test, test_span, span)) => {
+                        nodes.push(Node::If {
+                            test,
+                            test_span,
+                            consequent: vec![node],
+                            alternate: Vec::new(),
+                            span,
+                        });
+                        chain = Some((nodes.len() - 1, false));
+                    }
+                    Some(condition) => {
+                        attach_branch(&mut nodes, &mut chain, condition, node)?;
+                    }
+                }
+            } else if !self.html
+                && self.starts_with("{")
+                && markup_in_braces(self.cursor.source(), self.cursor.position()).is_some()
+            {
+                let node = self.parse_markup_braces()?;
+                nodes.push(node);
+                chain = None;
             } else {
                 let parts = self.parse_parts(None)?;
                 // A comment between two runs of text was stripped, so in the DOM they are one
@@ -531,6 +575,13 @@ impl<'a> TemplateParser<'a> {
                     previous.extend(parts);
                 } else {
                     nodes.push(Node::Text(parts));
+                }
+                // Text between two branches of an attribute chain ends it, unless it's only
+                // whitespace.
+                if let Some(Node::Text(text)) = nodes.last() {
+                    if !is_blank(text) {
+                        chain = None;
+                    }
                 }
             }
         }
@@ -693,6 +744,15 @@ impl<'a> TemplateParser<'a> {
 
     /// `{ expression }` at the cursor, parsed, with errors placed at their file position.
     fn parse_braced_expression(&mut self) -> Result<(Expression, Span), Diagnostic> {
+        if let Some(at) = markup_in_braces(self.cursor.source(), self.cursor.position()) {
+            let mut cursor = self.cursor.clone();
+            cursor.advance(at - self.cursor.position());
+            return Err(Diagnostic::new(
+                cursor.span(),
+                "markup can't go in an attribute's {…}; it works in text, as {cond && <p>…</p>}",
+            )
+            .with_help("pass the data instead, and let the element render it, or use a slot"));
+        }
         let braced = self.cursor.scan_braced()?;
         if braced.inner.trim().is_empty() {
             return Err(Diagnostic::new(braced.open_span, "empty {} expression"));
@@ -730,6 +790,9 @@ impl<'a> TemplateParser<'a> {
                 break;
             }
             if byte == b'{' && !self.html {
+                if quote.is_none() && markup_in_braces(source, self.cursor.position()).is_some() {
+                    break; // the caller parses it as nodes
+                }
                 if literal_start < self.cursor.position() {
                     parts.push(Part::Literal(
                         source[literal_start..self.cursor.position()].to_owned(),
@@ -767,6 +830,225 @@ impl<'a> TemplateParser<'a> {
 
     fn skip_whitespace(&mut self) {
         self.cursor.skip_whitespace();
+    }
+
+    /// Markup in a text `{…}` (`.zb` grammar inside), in the three forms that are directives:
+    /// `{a && <p>…</p>}` is a zb-if, `{a ? <b>…</b> : <i>…</i>}` a zb-if with a zb-else (either
+    /// side may be text, an expression or `null`), and `{list.map((item, i) => <li key={…}>…</li>)}`
+    /// a zb-each.
+    fn parse_markup_braces(&mut self) -> Result<Node, Diagnostic> {
+        let source = self.cursor.source();
+        let open = self.cursor.position();
+        let start = self.cursor.clone();
+        let span = self.current_span();
+        let at = markup_in_braces(source, open).expect("checked by the caller");
+        let span_of = |offset: usize| {
+            let mut cursor = start.clone();
+            cursor.advance(offset - open);
+            cursor.span()
+        };
+        let expression = |from: usize, to: usize| -> Result<(Expression, Span), Diagnostic> {
+            let inner = &source[from..to];
+            if inner.trim().is_empty() {
+                return Err(Diagnostic::new(
+                    span_of(from),
+                    "expected an expression here",
+                ));
+            }
+            let lead = inner.len() - inner.trim_start().len();
+            let (expression, _) = expression_text(inner, span_of(from + lead), span_of(from))?;
+            Ok((expression, span_of(from + lead)))
+        };
+        let tops = TopLevel::scan(source, open + 1, at);
+        let forms = "markup in braces takes three forms: {cond && <p>…</p>}, {cond ? <a>…</a> : <b>…</b>} and {list.map((item) => <li key={item.id}>…</li>)}";
+
+        // `a ? x : y`
+        if let Some(question) = tops.question {
+            let (test, test_span) = expression(open + 1, question)?;
+            self.cursor = start.clone();
+            self.cursor.advance(question + 1 - open);
+            let consequent = self.braced_branch(b':')?;
+            if !self.starts_with(":") {
+                return Err(self.error("expected : and the other branch of the ? :"));
+            }
+            self.advance(1);
+            let alternate = self.braced_branch(b'}')?;
+            self.close_brace()?;
+            return Ok(Node::If {
+                test,
+                test_span,
+                consequent,
+                alternate,
+                span,
+            });
+        }
+        let before = source[open + 1..at].trim_end();
+        let (before, parenthesized) = match before.strip_suffix('(') {
+            Some(rest) => (rest.trim_end(), true),
+            None => (before, false),
+        };
+        // `a && <x/>`
+        if before.ends_with("&&") {
+            let and = open + 1 + before.len() - 2;
+            if tops.ands.last() != Some(&and) {
+                return Err(Diagnostic::new(span_of(at), forms));
+            }
+            let (test, test_span) = expression(open + 1, and)?;
+            self.cursor = start.clone();
+            self.cursor.advance(at - open);
+            let node = self.braced_element(None)?;
+            self.close_parenthesis(parenthesized)?;
+            self.close_brace()?;
+            return Ok(Node::If {
+                test,
+                test_span,
+                consequent: vec![node],
+                alternate: Vec::new(),
+                span,
+            });
+        }
+        // `list.map((item, i) => <x/>)`
+        if before.ends_with("=>") {
+            if let Some(&map) = tops.maps.last() {
+                let call = map + ".map(".len();
+                let arrow = open + 1 + before.len() - 2;
+                let parameters = source[call..arrow].trim();
+                let parameters = parameters
+                    .strip_prefix('(')
+                    .and_then(|rest| rest.strip_suffix(')'))
+                    .unwrap_or(parameters);
+                let names: Vec<&str> = parameters.split(',').map(str::trim).collect();
+                let (item, index) = match names.as_slice() {
+                    [item] if is_identifier(item) => (item.to_string(), None),
+                    [item, index] if is_identifier(item) && is_identifier(index) && item != index => {
+                        (item.to_string(), Some(index.to_string()))
+                    }
+                    _ => {
+                        return Err(Diagnostic::new(
+                            span_of(call),
+                            "the .map() callback takes the item, and optionally its index: (item) or (item, i); for anything else use <zb-each>",
+                        ))
+                    }
+                };
+                let (items, items_span) = expression(open + 1, map)?;
+                self.cursor = start.clone();
+                self.cursor.advance(at - open);
+                let mut key = None;
+                let node = self.braced_element(Some(&mut key))?;
+                self.close_parenthesis(parenthesized)?;
+                self.skip_whitespace();
+                if !self.starts_with(")") {
+                    return Err(
+                        self.error("expected ) to close .map(…); the callback returns one element")
+                    );
+                }
+                self.advance(1);
+                self.close_brace()?;
+                return Ok(Node::Each {
+                    items,
+                    items_span,
+                    item,
+                    index,
+                    key,
+                    children: vec![node],
+                    span,
+                });
+            }
+        }
+        Err(Diagnostic::new(span_of(at), forms)
+            .with_help("for anything else, use <zb-if test={…}> or <zb-each items={…} as=\"…\"> around the markup"))
+    }
+
+    /// One element of markup inside braces, lowered (its `key`, for a list, taken out).
+    fn braced_element(
+        &mut self,
+        key: Option<&mut Option<(Expression, Span)>>,
+    ) -> Result<Node, Diagnostic> {
+        let mut element = self.parse_raw_element()?;
+        if take_condition(&mut element)?.is_some() {
+            return Err(Diagnostic::new(
+                element.span,
+                "the braces already decide whether this element renders; drop its zb-if/zb-else",
+            ));
+        }
+        if let Some(key) = key {
+            if let Some(at) = element
+                .attributes
+                .iter()
+                .position(|attribute| attribute.name == "key")
+            {
+                let attribute = element.attributes.remove(at);
+                match attribute.value {
+                    AttributeValue::Expression(expression, span) => *key = Some((expression, span)),
+                    _ => {
+                        return Err(Diagnostic::new(
+                            attribute.span,
+                            "key is an expression: key={item.id}",
+                        ))
+                    }
+                }
+            }
+        }
+        reserved_attributes(&element)?;
+        lower_directive(element)
+    }
+
+    /// One side of `? :` inside braces: an element, `null`, or an expression (as text).
+    fn braced_branch(&mut self, stop: u8) -> Result<Vec<Node>, Diagnostic> {
+        self.skip_whitespace();
+        if self.starts_with("<") {
+            let node = self.braced_element(None)?;
+            self.skip_whitespace();
+            return Ok(vec![node]);
+        }
+        if self.starts_with("(") && self.cursor.rest()[1..].trim_start().starts_with('<') {
+            self.advance(1);
+            self.skip_whitespace();
+            let node = self.braced_element(None)?;
+            self.close_parenthesis(true)?;
+            self.skip_whitespace();
+            return Ok(vec![node]);
+        }
+        let source = self.cursor.source();
+        let from = self.cursor.position();
+        let Some(to) = TopLevel::find(source, from, stop) else {
+            return Err(self.error(if stop == b':' {
+                "expected : in the ? :"
+            } else {
+                "expected } to close the expression"
+            }));
+        };
+        let inner = source[from..to].trim_end();
+        let span = self.current_span();
+        self.advance(to - from);
+        if inner == "null" || inner == "undefined" || inner == "false" {
+            return Ok(Vec::new());
+        }
+        let (expression, span) = expression_text(inner, span, span)?;
+        Ok(vec![Node::Text(vec![Part::Expression {
+            expression,
+            span,
+        }])])
+    }
+
+    fn close_parenthesis(&mut self, open: bool) -> Result<(), Diagnostic> {
+        if open {
+            self.skip_whitespace();
+            if !self.starts_with(")") {
+                return Err(self.error("expected ) after the markup"));
+            }
+            self.advance(1);
+        }
+        Ok(())
+    }
+
+    fn close_brace(&mut self) -> Result<(), Diagnostic> {
+        self.skip_whitespace();
+        if !self.starts_with("}") {
+            return Err(self.error("expected } after the markup: the braces hold one element"));
+        }
+        self.advance(1);
+        Ok(())
     }
 
     fn starts_with(&self, value: &str) -> bool {
@@ -1136,6 +1418,301 @@ fn expand_directives(
 
 /// One branch of an `zb-if` chain: its test (none for `zb-else`), content and position.
 type Branch = (Option<(Expression, Span)>, Vec<Node>, Span);
+
+/// Where markup starts inside the `{…}` at `open`, if it does: a `<` and a letter, right after
+/// an operator that can be followed by an operand (`&&`, `?`, `:`, `(`, `=>`, …). Strings and
+/// template literals are skipped, and the scan stops at the closing brace.
+fn markup_in_braces(source: &str, open: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut i = open + 1;
+    let mut depth = 0i32;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' | b'"' | b'`' => {
+                i = skip_quoted(bytes, i)?;
+                continue;
+            }
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b'}' => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+            }
+            b'<' if bytes.get(i + 1).is_some_and(u8::is_ascii_alphabetic) => {
+                let before = source[open + 1..i].trim_end();
+                if ["&&", "||", "??", "?", ":", "(", "=>", ",", "["]
+                    .iter()
+                    .any(|operator| before.ends_with(operator))
+                    || before.is_empty()
+                {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Past a quoted string or template literal starting at `at` (escapes honoured).
+fn skip_quoted(bytes: &[u8], at: usize) -> Option<usize> {
+    let quote = bytes[at];
+    let mut i = at + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            byte if byte == quote => return Some(i + 1),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// The operators at the top level of `source[from..to]` (outside brackets and strings).
+struct TopLevel {
+    question: Option<usize>,
+    ands: Vec<usize>,
+    /// Where each `.map(` starts (its `.`).
+    maps: Vec<usize>,
+}
+
+impl TopLevel {
+    fn scan(source: &str, from: usize, to: usize) -> TopLevel {
+        let bytes = source.as_bytes();
+        let mut tops = TopLevel {
+            question: None,
+            ands: Vec::new(),
+            maps: Vec::new(),
+        };
+        let mut depth = 0i32;
+        let mut i = from;
+        while i < to {
+            match bytes[i] {
+                b'\'' | b'"' | b'`' => {
+                    i = skip_quoted(bytes, i).unwrap_or(to);
+                    continue;
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth -= 1,
+                b'?' if depth == 0 => {
+                    let next = bytes.get(i + 1).copied();
+                    let previous = i.checked_sub(1).map(|j| bytes[j]);
+                    if next != Some(b'.')
+                        && next != Some(b'?')
+                        && previous != Some(b'?')
+                        && tops.question.is_none()
+                    {
+                        tops.question = Some(i);
+                    }
+                }
+                b'&' if depth == 0 && bytes.get(i + 1) == Some(&b'&') => {
+                    tops.ands.push(i);
+                    i += 2;
+                    continue;
+                }
+                b'.' if depth == 0 && source[i..to].starts_with(".map(") => tops.maps.push(i),
+                _ => {}
+            }
+            i += 1;
+        }
+        tops
+    }
+
+    /// The first `stop` byte at the top level from `from` (a `}` ends the scan when `stop` is `:`).
+    fn find(source: &str, from: usize, stop: u8) -> Option<usize> {
+        let bytes = source.as_bytes();
+        let mut depth = 0i32;
+        let mut i = from;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\'' | b'"' | b'`' => {
+                    i = skip_quoted(bytes, i)?;
+                    continue;
+                }
+                byte if depth == 0 && byte == stop => return Some(i),
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' => depth -= 1,
+                b'}' => {
+                    if depth == 0 {
+                        return None;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        None
+    }
+}
+
+const CONDITIONS: [&str; 3] = ["zb-if", "zb-else-if", "zb-else"];
+
+/// A condition written as an attribute: `<p zb-if={…}>`, `<p zb-else-if={…}>`, `<p zb-else>`.
+enum Condition {
+    If(Expression, Span, Span),
+    ElseIf(Expression, Span, Span),
+    Else(Span),
+}
+
+fn is_blank(parts: &[Part]) -> bool {
+    parts
+        .iter()
+        .all(|part| matches!(part, Part::Literal(text) if text.trim().is_empty()))
+}
+
+/// Takes `zb-if`, `zb-else-if` or `zb-else` off an element, checking where it may go.
+fn take_condition(element: &mut Element) -> Result<Option<Condition>, Diagnostic> {
+    let mut found = element.attributes.iter().filter(|attribute| {
+        CONDITIONS
+            .iter()
+            .any(|name| attribute.name.eq_ignore_ascii_case(name))
+    });
+    let Some(first) = found.next() else {
+        return Ok(None);
+    };
+    if let Some(second) = found.next() {
+        return Err(Diagnostic::new(
+            second.span,
+            format!(
+                "an element takes one of zb-if, zb-else-if and zb-else, not both `{}` and `{}`",
+                first.name, second.name
+            ),
+        ));
+    }
+    let name = first.name.to_ascii_lowercase();
+    if element.name.to_ascii_lowercase().starts_with("zb-") {
+        let wrap = if name == "zb-if" {
+            format!(
+                "wrap it: <zb-if test={{…}}><{}>…</{}></zb-if>",
+                element.name, element.name
+            )
+        } else {
+            format!("use the element form, <{name}>, around it")
+        };
+        return Err(Diagnostic::new(
+            first.span,
+            format!(
+                "`{name}` can't go on <{}>, which is a directive; {wrap}",
+                element.name
+            ),
+        ));
+    }
+    let at = element
+        .attributes
+        .iter()
+        .position(|attribute| attribute.name.eq_ignore_ascii_case(&name))
+        .expect("found above");
+    let attribute = element.attributes.remove(at);
+    let span = element.span;
+    match (name.as_str(), attribute.value) {
+        ("zb-else", AttributeValue::None) => Ok(Some(Condition::Else(span))),
+        ("zb-else", _) => Err(Diagnostic::new(
+            attribute.span,
+            "`zb-else` takes no value; the condition is the branches before it",
+        )),
+        (_, AttributeValue::Expression(test, test_span)) => Ok(Some(if name == "zb-if" {
+            Condition::If(test, test_span, span)
+        } else {
+            Condition::ElseIf(test, test_span, span)
+        })),
+        (_, AttributeValue::Text(_)) => Err(Diagnostic::new(
+            attribute.span,
+            format!("`{name}` is an expression: write {name}={{…}}"),
+        )),
+        (_, AttributeValue::None) => Err(Diagnostic::new(
+            attribute.span,
+            format!("`{name}` needs a condition: {name}={{…}}"),
+        )),
+    }
+}
+
+/// Attaches a `zb-else-if` or `zb-else` element to the chain its previous sibling started.
+fn attach_branch(
+    nodes: &mut Vec<Node>,
+    chain: &mut Option<(usize, bool)>,
+    condition: Condition,
+    node: Node,
+) -> Result<(), Diagnostic> {
+    let (name, span) = match &condition {
+        Condition::ElseIf(_, _, span) => ("zb-else-if", *span),
+        Condition::Else(span) => ("zb-else", *span),
+        Condition::If(..) => unreachable!("an zb-if starts a chain"),
+    };
+    let Some((at, closed)) = *chain else {
+        return Err(Diagnostic::new(
+            span,
+            format!("`{name}` needs an element with `zb-if` or `zb-else-if` just before it (whitespace may come between); inside a <zb-if>, write <{name}> instead"),
+        ));
+    };
+    if closed {
+        return Err(Diagnostic::new(
+            span,
+            if name == "zb-else" {
+                "a zb-if chain takes only one `zb-else`, and it comes last"
+            } else {
+                "`zb-else-if` must come before the chain's `zb-else`"
+            },
+        ));
+    }
+    // Whitespace between the branches isn't content.
+    nodes.truncate(at + 1);
+    let alternate = last_alternate(&mut nodes[at]);
+    match condition {
+        Condition::ElseIf(test, test_span, span) => {
+            *alternate = vec![Node::If {
+                test,
+                test_span,
+                consequent: vec![node],
+                alternate: Vec::new(),
+                span,
+            }];
+        }
+        Condition::Else(_) => {
+            *alternate = vec![node];
+            *chain = Some((at, true));
+        }
+        Condition::If(..) => unreachable!(),
+    }
+    Ok(())
+}
+
+/// The `alternate` of the last `If` in a chain (each `zb-else-if` is an `If` in the previous
+/// one's alternate).
+fn last_alternate(node: &mut Node) -> &mut Vec<Node> {
+    let Node::If { alternate, .. } = node else {
+        unreachable!("a chain is built of If nodes")
+    };
+    if alternate.len() == 1 && matches!(alternate[0], Node::If { .. }) {
+        return last_alternate(&mut alternate[0]);
+    }
+    alternate
+}
+
+/// The `zb-` attribute prefix belongs to the format: an unknown one is a mistake, not an
+/// attribute to pass through (`data-zb-*` is fine: `data-` attributes are yours).
+fn reserved_attributes(element: &Element) -> Result<(), Diagnostic> {
+    if element.name.to_ascii_lowercase().starts_with("zb-") {
+        return Ok(()); // directives check their own attributes
+    }
+    for attribute in &element.attributes {
+        let lower = attribute.name.to_ascii_lowercase();
+        if lower.starts_with("zb-") {
+            let error = Diagnostic::new(
+                attribute.span,
+                format!(
+                    "unknown attribute `{}`: the zb- prefix is reserved for the format",
+                    attribute.name
+                ),
+            );
+            return Err(crate::validate::with_suggestion(error, &lower, &CONDITIONS));
+        }
+    }
+    Ok(())
+}
 
 fn lower_directive(element: Element) -> Result<Node, Diagnostic> {
     let lower = element.name.to_ascii_lowercase();

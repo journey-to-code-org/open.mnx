@@ -12,8 +12,6 @@
 <stock-gauge count={0} reorder={3} capacity={20}>
   <meter min="0" max={capacity} low={reorder + 1} optimum={capacity} value={count} aria-label="Stock"></meter>
   <span>{count}</span>
-  <zb-if test={count === 0}>
-    <small data-level="out">Out</small>
-    <zb-else-if test={count <= reorder}><small data-level="low">Low</small></zb-else-if>
-  </zb-if>
+  <small zb-if={count === 0} data-level="out">Out</small>
+  <small zb-else-if={count <= reorder} data-level="low">Low</small>
 </stock-gauge>

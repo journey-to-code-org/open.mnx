@@ -22,7 +22,7 @@
         <header>
           <span class="author">{message.author}</span>
           <span class="role">{message.role}</span>
-          <zb-if test={message.internal}><span class="note">Internal note</span></zb-if>
+          <span zb-if={message.internal} class="note">Internal note</span>
           <time>{message.at}</time>
         </header>
         <p>{message.body}</p>

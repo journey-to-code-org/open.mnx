@@ -14,5 +14,5 @@
   @media (prefers-reduced-motion: reduce) { .dots i { animation: none; } }
 </style>
 <typing-dots names={[]}>
-  <zb-if test={text}><span aria-live="polite"><span class="who">{text}</span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></span></zb-if>
+  <span zb-if={text} aria-live="polite"><span class="who">{text}</span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
 </typing-dots>
