@@ -3,7 +3,7 @@
   "displayName": "Zubra",
   "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
   "version": "5.0.2",
-  "publisher": "journey-to-code",
+  "publisher": "JourneytoCode",
   "license": "ISC",
   "repository": {
     "type": "git",
