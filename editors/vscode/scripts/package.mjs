@@ -5,7 +5,7 @@
 // So this packs a copy whose dependency is the published version (the packages are released together),
 // installs only the runtime dependencies there, and checks the server made it into the package.
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,7 @@ try {
   const vsix = `zubra-${manifest.version}.vsix`;
   step('packaging…');
   run('npx', ['@vscode/vsce', 'package', '--out', vsix]);
-  renameSync(join(work, vsix), join(here, vsix));
+  copyFileSync(join(work, vsix), join(here, vsix)); // not renamed: the temp folder can be on another drive
   console.log(`vscode: ${join(here, vsix)}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
