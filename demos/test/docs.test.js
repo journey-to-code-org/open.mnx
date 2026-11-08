@@ -49,7 +49,9 @@ test('every page lists every other page in its sidebar and marks its own', () =>
 test('every internal link and anchor resolves', () => {
   let checked = 0;
   for (const page of pages) {
-    for (const [, href] of html(page.path).matchAll(/\s(?:href|src)="([^"]+)"/g)) {
+    // Code samples show markup (`<a href="/">`); they aren't links on the page.
+    const links = html(page.path).replace(/<pre>[\s\S]*?<\/pre>/g, '');
+    for (const [, href] of links.matchAll(/\s(?:href|src)="([^"]+)"/g)) {
       const url = href.replace(/&amp;/g, '&');
       if (/^(https?:|mailto:)/.test(url)) continue;
       assert.doesNotMatch(url, /\.md(#|$)/, `${page.file}: "${url}" is a link to a Markdown file`);
