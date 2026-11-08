@@ -1005,8 +1005,7 @@ impl Context<'_> {
         scopes: &mut [Vec<String>],
     ) -> Result<(), Diagnostic> {
         for binding in lets {
-            let mut nested = scopes.to_vec();
-            self.resolve_expression(&binding.value, binding.span, &mut nested)?;
+            self.resolve_expression(&binding.value, binding.span, scopes)?;
             if let Some(scope) = scopes.last_mut() {
                 scope.push(binding.name.clone());
             }
