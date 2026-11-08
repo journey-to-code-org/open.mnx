@@ -20,7 +20,7 @@ const out = resolve(args[args.indexOf('--out') + 1] && args.includes('--out') ? 
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'vendor'), { recursive: true });
-for (const file of ['index.html', 'app.js', 'style.css']) cpSync(join(here, file), join(out, file));
+for (const file of ['index.html', 'app.js', 'highlight.js', 'style.css']) cpSync(join(here, file), join(out, file));
 cpSync(join(repo, 'runtime/src'), join(out, 'runtime'), { recursive: true });
 
 const wasm = join(repo, 'compiler/zubra.wasm');

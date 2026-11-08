@@ -1,10 +1,11 @@
 :root {
   --bg: #f6f7fb; --surface: #ffffff; --ink: #1c2030; --muted: #61677a; --line: #dfe2ea;
   --accent: #4f5df5; --danger: #c62f3f; --code: #f1f3f8;
+  --tok-c: #6b7186; --tok-s: #0a7d4b; --tok-k: #7a3cc2; --tok-n: #b45309; --tok-t: #b42350; --tok-a: #8a5a00;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #12141b; --surface: #1a1d27; --ink: #e8eaf2; --muted: #9aa0b4; --line: #2c3040; --accent: #8b95ff; --danger: #ff7a87; --code: #151821; color-scheme: dark; }
+  :root { --bg: #12141b; --surface: #1a1d27; --ink: #e8eaf2; --muted: #9aa0b4; --line: #2c3040; --accent: #8b95ff; --danger: #ff7a87; --code: #151821; --tok-c: #8b91a8; --tok-s: #7fd6a5; --tok-k: #c8a2ff; --tok-n: #f0b36b; --tok-t: #ff8aa8; --tok-a: #e6c07b; color-scheme: dark; }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -21,8 +22,14 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-
 .source { border-right: 1px solid var(--line); }
 .label { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.35rem 1rem; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 0.8rem; font-family: ui-monospace, monospace; }
 .label small { font-family: system-ui, sans-serif; }
-textarea { flex: 1; width: 100%; min-height: 10rem; margin: 0; padding: 0.75rem 1rem; border: 0; outline: 0; resize: none; background: var(--surface); color: var(--ink); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; overflow: auto; }
-textarea.short { flex: 0 0 7rem; min-height: 0; border-bottom: 1px solid var(--line); }
+.editor { position: relative; flex: 1; min-height: 10rem; background: var(--surface); }
+.editor.short { flex: 0 0 7rem; min-height: 0; border-bottom: 1px solid var(--line); }
+.editor pre, .editor textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0.75rem 1rem; border: 0; outline: 0; resize: none; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; overflow: auto; }
+/* The coloured text sits behind; the textarea above it keeps the caret and selection and paints no text. */
+.editor pre { overflow: hidden; color: var(--ink); pointer-events: none; }
+.editor textarea { background: transparent; color: transparent; caret-color: var(--ink); }
+.editor textarea::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.tok-c { color: var(--tok-c); } .tok-s { color: var(--tok-s); } .tok-k { color: var(--tok-k); } .tok-n { color: var(--tok-n); } .tok-t { color: var(--tok-t); } .tok-a { color: var(--tok-a); } .tok-p { color: var(--tok-a); }
 [role=tablist] { display: flex; gap: 0.25rem; padding: 0.4rem 0.75rem 0; border-bottom: 1px solid var(--line); background: var(--surface); }
 [role=tab] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 0.35rem 0.6rem; background: none; color: var(--muted); }
 [role=tab][aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
@@ -36,5 +43,5 @@ textarea.short { flex: 0 0 7rem; min-height: 0; border-bottom: 1px solid var(--l
 @media (max-width: 760px) {
   main { grid-template-columns: 1fr; }
   .source { border-right: 0; border-bottom: 1px solid var(--line); }
-  textarea { min-height: 14rem; }
+  .editor { min-height: 14rem; }
 }

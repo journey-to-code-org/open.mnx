@@ -49,7 +49,9 @@ test('every page lists every other page in its sidebar and marks its own', () =>
 test('every internal link and anchor resolves', () => {
   let checked = 0;
   for (const page of pages) {
-    for (const [, href] of html(page.path).matchAll(/\s(?:href|src)="([^"]+)"/g)) {
+    // Code samples show markup (`<a href="/">`); they aren't links on the page.
+    const links = html(page.path).replace(/<pre>[\s\S]*?<\/pre>/g, '');
+    for (const [, href] of links.matchAll(/\s(?:href|src)="([^"]+)"/g)) {
       const url = href.replace(/&amp;/g, '&');
       if (/^(https?:|mailto:)/.test(url)) continue;
       assert.doesNotMatch(url, /\.md(#|$)/, `${page.file}: "${url}" is a link to a Markdown file`);
@@ -62,4 +64,13 @@ test('every internal link and anchor resolves', () => {
     }
   }
   assert.ok(checked > 500, `${checked} links checked: fewer than expected`);
+});
+
+test('code in the docs is coloured, not plain text', () => {
+  const first = html(join(dir, 'docs/guide/01-first-component/index.html'));
+  const block = first.match(/<pre><code class="language-html">[\s\S]*?<\/code><\/pre>/)?.[0];
+  assert.ok(block, 'the first component page has an HTML example');
+  assert.match(block, /class="token tag"/, 'tags are coloured');
+  assert.match(block, /class="token string"/, 'strings are coloured');
+  assert.ok(html(join(dir, 'docs/assets/site.css')).includes('.token.tag'), 'the stylesheet has the colours');
 });

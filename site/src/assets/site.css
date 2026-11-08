@@ -11,7 +11,7 @@
   }
 }
 * { box-sizing: border-box; }
-html { scroll-padding-top: 4.5rem; }
+html { --header: 3.5rem; scroll-padding-top: calc(var(--header) + 26px + 1rem); }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
 a { color: var(--accent); }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -22,7 +22,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospac
 h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
 
 /* Header */
-.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; background: #14161f; color: #f2f3f8; border-bottom: 1px solid #2c3040; }
+.top { position: sticky; top: 0; z-index: 10; box-sizing: border-box; height: var(--header); display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; background: #14161f; color: #f2f3f8; border-bottom: 1px solid #2c3040; }
 .brand { display: flex; align-items: center; gap: 0.6rem; color: inherit; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.03em; text-decoration: none; }
 .brand .mark { width: 1.9rem; height: 1.9rem; --accent: #8b95ff; }
 .top nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; font-size: 0.95rem; }
@@ -52,7 +52,8 @@ copy-button:not(:state(hydrated)) .copy { display: none; }
 .hero-code .code { margin: 0; border: 0; border-radius: 0; font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* The zebra band */
-.stripes { height: 26px; background: repeating-linear-gradient(-45deg, #14161f 0 13px, #8b95ff 13px 26px); }
+/* Scrolls with the page until it meets the header, then stays under it as part of the header. */
+.stripes { position: sticky; top: var(--header); z-index: 9; height: 26px; background: repeating-linear-gradient(-45deg, #14161f 0 13px, #8b95ff 13px 26px); }
 
 /* Sections */
 section { padding: 4.5rem 0; }
@@ -91,6 +92,8 @@ section h2 { margin: 0 0 0.75rem; font-size: clamp(1.7rem, 3.6vw, 2.5rem); font-
 .versus .count { margin: 0 0 0.6rem; color: var(--muted); }
 .versus .count strong { color: var(--ink); font-size: 2rem; letter-spacing: -0.03em; }
 .versus .code { max-height: 36rem; }
+/* The Zubra source is short and its comments run long: wrap them like the hero does rather than make a reader scroll sideways to finish a sentence. */
+.versus .side:last-child .code { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Anywhere and start */
 .uses { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }

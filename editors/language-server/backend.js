@@ -1,16 +1,33 @@
 // How the language server reaches the compiler: the WebAssembly build (@zubra/compiler) when it's
-// installed, otherwise the `zubra` CLI (or the one in `compiler`). Both give the same diagnostics.
+// installed in the workspace (or beside the server), otherwise the `zubra` CLI (or the one in `compiler`). Both give the same diagnostics.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-export async function createBackend({ compiler } = {}) {
+/**
+ * Where @zubra/compiler is installed for a workspace: the nearest node_modules above `root` that has it.
+ * The server can't rely on its own location for this: in the VS Code extension it sits inside the
+ * extension's folder, and the compiler is in the project being edited.
+ */
+export function compilerEntries(root) {
+  const found = [];
+  for (let dir = root && resolve(root); dir; dir = dirname(dir) === dir ? null : dirname(dir)) {
+    const entry = join(dir, 'node_modules/@zubra/compiler/index.js');
+    if (existsSync(entry)) found.push(entry);
+  }
+  return found;
+}
+
+export async function createBackend({ compiler, root } = {}) {
   if (!compiler) {
-    try {
-      const wasm = await import('@zubra/compiler');
-      if (wasm.available()) return wasmBackend(wasm);
-    } catch {
-      // Not installed.
+    for (const specifier of [...compilerEntries(root).map((entry) => pathToFileURL(entry).href), '@zubra/compiler']) {
+      try {
+        const wasm = await import(specifier);
+        if (wasm.available()) return wasmBackend(wasm);
+      } catch {
+        // Not installed there, or its WebAssembly isn't built.
+      }
     }
   }
   const chosen = compiler ?? process.env.ZUBRA_COMPILER;

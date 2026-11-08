@@ -3,7 +3,7 @@
   "displayName": "Zubra",
   "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
   "version": "5.0.2",
-  "publisher": "journey-to-code",
+  "publisher": "JourneytoCode",
   "license": "ISC",
   "repository": {
     "type": "git",
@@ -28,7 +28,11 @@
         "extensions": [
           ".zb"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/zb-light.svg",
+          "dark": "./icons/zb-dark.svg"
+        }
       }
     ],
     "grammars": [
@@ -57,7 +61,8 @@
     }
   },
   "scripts": {
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "@zubra/language-server": "file:../language-server",
@@ -69,5 +74,21 @@
   },
   "overrides": {
     "minimatch": "11.0.5"
+  },
+  "icon": "icon.png",
+  "keywords": [
+    "zubra",
+    "web components",
+    "custom elements",
+    "zb",
+    "language server"
+  ],
+  "galleryBanner": {
+    "color": "#14161F",
+    "theme": "dark"
+  },
+  "homepage": "https://journey-to-code-org.github.io/zubra/",
+  "bugs": {
+    "url": "https://github.com/journey-to-code-org/zubra/issues"
   }
 }

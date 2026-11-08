@@ -9,7 +9,17 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
+import Prism from 'prismjs';
+import loadLanguages from 'prismjs/components/index.js';
 import nav from './nav.js';
+
+loadLanguages(['markup', 'css', 'javascript', 'jsx', 'typescript', 'tsx', 'bash', 'diff']);
+// A fence's language, as Prism names it. `.zb` is HTML with braces, which Prism's markup grammar colours well enough.
+const GRAMMAR = { html: 'markup', zb: 'markup', vue: 'markup', svelte: 'markup', sh: 'bash', js: 'javascript', ts: 'typescript' };
+const colour = (code, language) => {
+  const name = GRAMMAR[language] ?? language;
+  return Prism.languages[name] ? Prism.highlight(code, Prism.languages[name], name) : '';
+};
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const base = process.env.BASE ?? '/';
@@ -51,7 +61,7 @@ function imageUrl(from, href) {
 
 /** Markdown to HTML for one page: heading ids and anchors, and every relative link and image rewritten. */
 function render(page) {
-  const md = new MarkdownIt({ html: true, linkify: true });
+  const md = new MarkdownIt({ html: true, linkify: true, highlight: colour });
   md.core.ruler.push('zubra-docs', (state) => {
     const seen = new Map();
     state.tokens.forEach((token, at) => {

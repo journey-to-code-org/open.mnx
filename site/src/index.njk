@@ -59,12 +59,12 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
   <p class="section-lede">This is the same component as a hand-written custom element. It needs shadow DOM to scope one style rule, has no server HTML, and has the two bugs most hand-written elements have: a forgotten <code>#render()</code> and a listener removed with a different reference.</p>
   <div class="versus">
     <div class="side">
-      <p class="count"><strong>{{ samples.sourceLines }}</strong> lines with Zubra</p>
-      {{ samples.source | highlight("markup") | safe }}
-    </div>
-    <div class="side">
       <p class="count"><strong>{{ samples.byHandLines }}</strong> lines by hand</p>
       {{ samples.byHand | highlight("javascript") | safe }}
+    </div>
+    <div class="side">
+      <p class="count"><strong>{{ samples.sourceLines }}</strong> lines with Zubra</p>
+      {{ samples.source | tighten | highlight("markup") | safe }}
     </div>
   </div>
 </section>
@@ -98,6 +98,7 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
   <ol class="start-steps">
     <li><code>npm create zubra@latest my-app</code><span>Pick a framework, or none. You get a working app with one component, a dev server that updates components in place, and a browser test.</span></li>
     <li><a href="{{ '/docs/' | url }}">Follow the guide</a><span>Eight short pages: props and state, templates, events, slots, forms, async data, the server, and reading the output.</span></li>
+    <li><a href="{{ site.marketplace }}">Install the VS Code extension</a><span>Highlighting for <code>.zb</code> files, the compiler's errors as you type, and completion and hover for your components. <a href="{{ '/docs/editor-support/' | url }}">Other editors work through the language server.</a></span></li>
     <li><a href="{{ '/playground/' | url }}">Or try it in the browser</a><span>The playground compiles in the page and runs your component in plain HTML, React and Vue side by side.</span></li>
   </ol>
 </section>

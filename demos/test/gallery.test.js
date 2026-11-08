@@ -109,3 +109,29 @@ test('the landing page runs its own Zubra component: Copy puts the install comma
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('the landing page\'s stripe bar stops under the header when scrolled to, as part of it', async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await page.goto(new URL('', site.url).href);
+  const rects = () => page.evaluate(() => ({
+    header: document.querySelector('.top').getBoundingClientRect().bottom,
+    stripes: document.querySelector('.stripes').getBoundingClientRect().top,
+  }));
+  const before = await rects();
+  assert.ok(before.stripes > before.header, 'it starts further down the page');
+  await page.evaluate(() => scrollTo(0, 2000));
+  const after = await rects();
+  assert.equal(after.stripes, after.header, 'it sits right under the header once scrolled');
+  await page.close();
+});
+
+test('the landing page\'s Zubra source wraps its comments instead of scrolling sideways, on a phone', async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+  await page.goto(new URL('', site.url).href);
+  const [scroll, client] = await page.evaluate(() => {
+    const code = document.querySelector('.versus .side:last-child .code');
+    return [code.scrollWidth, code.clientWidth];
+  });
+  assert.equal(scroll, client, 'nothing to scroll to');
+  await page.close();
+});

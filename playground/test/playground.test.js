@@ -139,3 +139,21 @@ test('the examples: slots with hasSlot, a list with directives, a spread, and co
   assert.deepEqual(errors, []);
   await page.close();
 });
+
+test('the source and the output are coloured, and the docs link goes to the docs site', async () => {
+  const { page, errors } = await openPlayground();
+  // The editor's text is drawn by a <pre> behind the textarea; it has the same text, in coloured spans.
+  const behind = page.locator('.editor pre').first();
+  assert.ok((await behind.locator('.tok-k').count()) > 0, 'keywords in the script');
+  assert.ok((await behind.locator('.tok-t').count()) > 0, 'tags in the template');
+  assert.equal((await behind.innerText()).trimEnd(), (await page.inputValue('#source')).trimEnd(), 'the same text as the textarea');
+  // Typing redraws it.
+  await page.fill('#source', '<script>\n  const answer = 42\n</script>\n<x-y></x-y>');
+  await page.waitForFunction(() => document.querySelector('.editor pre .tok-n')?.textContent === '42');
+  // The compiled output is coloured too.
+  await page.click('[data-tab=js]');
+  await page.waitForFunction(() => document.querySelector('#out-js .tok-k'));
+  assert.equal(await page.getAttribute('#docs-link', 'href'), '../docs/');
+  assert.deepEqual(errors, []);
+  await page.close();
+});

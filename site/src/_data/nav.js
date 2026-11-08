@@ -25,6 +25,7 @@ export default [
     { file: 'docs/guide/other-peoples-pages.md', label: 'On other people’s pages' },
     { file: 'docs/guide/accessible-widgets.md', label: 'Accessible widgets' },
     { file: 'docs/guide/styling-libraries.md', label: 'Styling libraries' },
+    { file: 'docs/editor-support.md', label: 'Editor support' },
   ] },
   { group: 'Reference', pages: [
     { file: 'README.md', slug: 'reference', label: 'Reference (the README)' },
