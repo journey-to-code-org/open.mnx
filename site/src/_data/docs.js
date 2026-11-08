@@ -61,7 +61,7 @@ function imageUrl(from, href) {
 
 /** Markdown to HTML for one page: heading ids and anchors, and every relative link and image rewritten. */
 function render(page) {
-  const md = new MarkdownIt({ html: true, linkify: true, });
+  const md = new MarkdownIt({ html: true, linkify: true, highlight: colour });
   md.core.ruler.push('zubra-docs', (state) => {
     const seen = new Map();
     state.tokens.forEach((token, at) => {
