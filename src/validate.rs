@@ -835,6 +835,17 @@ impl Context<'_> {
                     .any(|binding| binding.mutable && binding.name == name);
             let looped = scopes.iter().flatten().any(|scope| scope == name);
             if looped || !prop {
+                // A name that exists nowhere is a typo, not a name that can't be assigned: say
+                // that, with the closest name (a browser global exists, so it falls through).
+                let global = runtime && (RUNTIME_GLOBALS.contains(&name) || name == "undefined");
+                let names = self.names_in_scope(scopes);
+                if !looped && !global && !names.contains(&name) {
+                    return Err(with_suggestion(
+                        Diagnostic::new(span, format!("unknown reference `{name}`")),
+                        name,
+                        &names,
+                    ));
+                }
                 return Err(Diagnostic::new(
                     span,
                     format!("`{name}` can't be assigned here: a template can assign props and state (a `let`) only"),
@@ -842,7 +853,7 @@ impl Context<'_> {
                 .with_help(if looped {
                     "a list item is read-only; change the list instead".to_owned()
                 } else {
-                    format!("call a function from <script> that updates `{name}` (e.g. `{name}.set(…)` on a state())")
+                    format!("declare `{name}` with `let` in <script> to make it state, or call a function from <script> that updates it")
                 }));
             }
         }
