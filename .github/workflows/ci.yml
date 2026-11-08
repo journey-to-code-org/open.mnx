@@ -326,8 +326,25 @@ jobs:
           cache: npm
           cache-dependency-path: examples/${{ matrix.app }}/package-lock.json
       - run: cargo build --locked
+      # Electron's binary comes from GitHub releases, which sometimes answer 504: cache it, and
+      # retry the download, rather than fail the job.
+      - if: matrix.app == 'desktop/focus-timer'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ hashFiles('examples/desktop/focus-timer/package-lock.json') }}
       - run: npm ci
         working-directory: examples/${{ matrix.app }}
+      - if: matrix.app == 'desktop/focus-timer'
+        name: Make sure Electron's binary is installed (retrying the download)
+        working-directory: examples/${{ matrix.app }}
+        run: |
+          for attempt in 1 2 3 4; do
+            node -e "require('electron')" 2>/dev/null && [ -e "$(node -p "require('electron')")" ] && exit 0
+            echo "Electron's binary is missing (attempt $attempt): downloading it again"
+            node node_modules/electron/install.js || sleep $((attempt * 15))
+          done
+          [ -e "$(node -p "require('electron')")" ]
       - run: npx playwright install --with-deps chromium
         working-directory: examples/${{ matrix.app }}
       # (Electron needs a display; the extension test is headless either way.)
