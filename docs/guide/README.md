@@ -37,6 +37,7 @@ Each step builds on the last, in about ten minutes each.
 - [Server rendering, honestly](../server-rendering.md): what renders where, without JavaScript, and the gaps that remain.
 - [Zubra on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
 - [Accessible widgets without a headless library](accessible-widgets.md): what Radix and shadcn/ui give React, from the platform, `@zubra/runtime/primitives` and Zag.js.
+- [Zubra with Tailwind, shadcn/ui, MUI and Bootstrap](styling-libraries.md): how components get the app's styles, light DOM and shadow DOM, with an example app for each.
 
 ## Reference
 

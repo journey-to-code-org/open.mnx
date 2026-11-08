@@ -11,7 +11,9 @@ Every app runs live in the [demo gallery](https://journey-to-code-org.github.io/
 | [![Sprint board](../../demos/shots/react-board.jpg)](https://journey-to-code-org.github.io/zubra/demos/react-board/)<br>[Sprint board](https://journey-to-code-org.github.io/zubra/demos/react-board/) (React) | [![Budget tracker](../../demos/shots/vue-budget.jpg)](https://journey-to-code-org.github.io/zubra/demos/vue-budget/)<br>[Budget tracker](https://journey-to-code-org.github.io/zubra/demos/vue-budget/) (Vue) |
 | [![Flashcards](../../demos/shots/svelte-flashcards.jpg)](https://journey-to-code-org.github.io/zubra/demos/svelte-flashcards/)<br>[Flashcards](https://journey-to-code-org.github.io/zubra/demos/svelte-flashcards/) (Svelte) | [![Market dashboard](../../demos/shots/solid-markets.jpg)](https://journey-to-code-org.github.io/zubra/demos/solid-markets/)<br>[Market dashboard](https://journey-to-code-org.github.io/zubra/demos/solid-markets/) (Solid) |
 | [![Team chat](../../demos/shots/lit-chat.jpg)](https://journey-to-code-org.github.io/zubra/demos/lit-chat/)<br>[Team chat](https://journey-to-code-org.github.io/zubra/demos/lit-chat/) (Lit) | [![Habit tracker](../../demos/shots/preact-habits.jpg)](https://journey-to-code-org.github.io/zubra/demos/preact-habits/)<br>[Habit tracker](https://journey-to-code-org.github.io/zubra/demos/preact-habits/) (Preact) |
-| [![Booking wizard](../../demos/shots/angular-booking.jpg)](https://journey-to-code-org.github.io/zubra/demos/angular-booking/)<br>[Booking wizard](https://journey-to-code-org.github.io/zubra/demos/angular-booking/) (Angular) |  |
+| [![Booking wizard](../../demos/shots/angular-booking.jpg)](https://journey-to-code-org.github.io/zubra/demos/angular-booking/)<br>[Booking wizard](https://journey-to-code-org.github.io/zubra/demos/angular-booking/) (Angular) | | [![Café order builder](../../demos/shots/tailwind-cafe.jpg)](https://journey-to-code-org.github.io/zubra/demos/tailwind-cafe/)<br>[Café order builder](https://journey-to-code-org.github.io/zubra/demos/tailwind-cafe/) (Tailwind) |
+| [![Invoicing dashboard](../../demos/shots/shadcn-invoices.jpg)](https://journey-to-code-org.github.io/zubra/demos/shadcn-invoices/)<br>[Invoicing dashboard](https://journey-to-code-org.github.io/zubra/demos/shadcn-invoices/) (shadcn/ui) | [![Appointment booking](../../demos/shots/mui-clinic.jpg)](https://journey-to-code-org.github.io/zubra/demos/mui-clinic/)<br>[Appointment booking](https://journey-to-code-org.github.io/zubra/demos/mui-clinic/) (MUI) |
+| [![Conference registration](../../demos/shots/bootstrap-devday.jpg)](https://journey-to-code-org.github.io/zubra/demos/bootstrap-devday/)<br>[Conference registration](https://journey-to-code-org.github.io/zubra/demos/bootstrap-devday/) (Bootstrap) |  |
 
 | App | Framework | What it is | What it shows |
 | --- | --- | --- | --- |
@@ -22,12 +24,17 @@ Every app runs live in the [demo gallery](https://journey-to-code-org.github.io/
 | [`lit-chat/`](lit-chat/) | Lit 3 | A team chat | Light-DOM Zubra elements inside a LitElement's shadow root, with their styles adopted there; the signed-in user provided by `@lit/context` and read by Zubra's `inject()` (the context protocol) |
 | [`preact-habits/`](preact-habits/) | Preact 10 | A habit tracker | Objects as props; a colour from Preact's `style` prop reaching into elements as a custom property; a contribution-style grid with keyboard navigation; a Zubra form control in a Preact form |
 | [`angular-booking/`](angular-booking/) | Angular 22 | A booking wizard | Reactive forms whose controls are Zubra elements (`zubraModel` with `formControlName`), validation, a step indicator; compiled ahead of time in Vite with Analog's plugin |
+| [`tailwind-cafe/`](tailwind-cafe/) | Tailwind CSS 4 (no framework) | A café's order builder | Utilities in `.zb` templates, found by Tailwind's scanner; light-DOM components styled by the page's Tailwind; a shadow-DOM component given the same CSS with `adoptStyles()`; `aria-pressed:`, `data-active:` and `dark:` variants |
+| [`shadcn-invoices/`](shadcn-invoices/) | React 19 + shadcn/ui (Radix) | An invoicing dashboard | Zubra components on shadcn's theme tokens next to shadcn's own; a shadow-DOM chart on shadcn's CSS variables; a Zubra form control inside a Radix Dialog; shadcn's theme menu restyling both |
+| [`mui-clinic/`](mui-clinic/) | React 19 + MUI 9 | An appointment booking form | MUI's theme as CSS variables (`cssVariables`) styling a light-DOM and a shadow-DOM Zubra component; the brand colour and dark mode switched at runtime; a Zubra control in MUI's form, with MUI's error state |
+| [`bootstrap-devday/`](bootstrap-devday/) | Bootstrap 5 + Sass (no framework) | A conference registration form | Bootstrap's classes in a component's template; the Sass theme reaching a shadow-DOM form control as `--bs-*` variables; Bootstrap's validation (`:invalid`, `.invalid-feedback`) and Modal with a Zubra control; `data-bs-theme` |
 
 [`ui/`](ui/) is a component library built from the registry with `zubra build --lib`, which the
 React and Vue apps import like any package from npm.
 
 Astro is covered by [`../recipes/`](../recipes/), and plain HTML by [`../todo/`](../todo/) and
-[`../planner/`](../planner/).
+[`../planner/`](../planner/). The last four apps are about styling: Zubra components with Tailwind,
+shadcn/ui, MUI and Bootstrap ([`docs/guide/styling-libraries.md`](../../docs/guide/styling-libraries.md)).
 
 ## Running one
 

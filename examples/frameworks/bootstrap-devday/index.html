@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DevDay registration · Bootstrap and Zubra</title>
+  </head>
+  <body class="bg-body-tertiary">
+    <nav class="navbar navbar-expand bg-body border-bottom">
+      <div class="container">
+        <span class="navbar-brand fw-semibold">DevDay <span class="text-primary">2026</span></span>
+        <span class="navbar-text small d-none d-sm-inline">Bootstrap 5 · Zubra components</span>
+        <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" id="mode" aria-pressed="false">Dark mode</button>
+      </div>
+    </nav>
+    <main class="container py-4">
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <h1 class="h3 mb-1">Register</h1>
+          <p class="text-body-secondary mb-4">One day of talks and workshops, 4 December, Lisbon.</p>
+          <form id="register" class="card shadow-sm needs-validation" novalidate>
+            <div class="card-body p-4">
+              <h2 class="h5 mb-3">Ticket</h2>
+              <ticket-picker name="ticket" label="Ticket" class="mb-1"></ticket-picker>
+              <div class="invalid-feedback mb-2">Choose a ticket.</div>
+
+              <h2 class="h5 mt-4 mb-3">Workshops <small class="text-body-secondary fw-normal">(up to two)</small></h2>
+              <session-list id="sessions" max="2"></session-list>
+
+              <h2 class="h5 mt-4 mb-3">You</h2>
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label for="name" class="form-label">Name</label>
+                  <input id="name" name="name" class="form-control" required value="Inês Costa" />
+                  <div class="invalid-feedback">Your name, please.</div>
+                </div>
+                <div class="col-sm-6">
+                  <label for="email" class="form-label">Email</label>
+                  <input id="email" name="email" type="email" class="form-control" required />
+                  <div class="invalid-feedback">An email address, please.</div>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer bg-body d-flex align-items-center justify-content-between p-3">
+              <span class="text-body-secondary">Total <strong class="text-body" id="total">€0</strong></span>
+              <button type="submit" class="btn btn-primary">Register</button>
+            </div>
+          </form>
+        </div>
+        <div class="col-lg-4">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h2 class="h6 text-uppercase text-body-secondary">Why these tools</h2>
+              <p class="small mb-2">The page is Bootstrap: its grid, cards, forms, validation and modal. The ticket picker and the workshop list are Zubra components.</p>
+              <p class="small mb-0">The workshop list uses Bootstrap's classes in its template. The ticket picker has a shadow root and reads Bootstrap's CSS variables, so the Sass theme and dark mode reach it.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div class="modal fade" id="done" tabindex="-1" aria-labelledby="done-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title h5" id="done-title">You're registered</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="done-body"></div>
+          <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

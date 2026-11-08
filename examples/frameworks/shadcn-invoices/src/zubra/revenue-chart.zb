@@ -1,0 +1,34 @@
+<!--
+  Paid and outstanding amounts by month, as bars. A shadow-DOM component: Tailwind's classes
+  don't reach it, but shadcn's theme does, because CSS custom properties inherit into shadow
+  roots: `var(--chart-1)`, `var(--muted-foreground)`, `var(--radius)`. Switch the theme and the
+  bars follow. `months` is [{ label, paid, outstanding }].
+-->
+<script>
+  const most = Math.max(1, ...months.map((month) => month.paid + month.outstanding))
+  const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+</script>
+<style>
+  :host { display: block; color: var(--foreground); font: inherit; }
+  .bars { display: flex; align-items: flex-end; gap: 0.75rem; height: 11rem; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
+  .month { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; height: 100%; gap: 2px; }
+  .paid, .outstanding { border-radius: calc(var(--radius) - 6px); min-height: 2px; }
+  .paid { background: var(--chart-1); }
+  .outstanding { background: var(--chart-2); opacity: 0.85; }
+  .labels { display: flex; gap: 0.75rem; margin-top: 0.4rem; }
+  .labels span { flex: 1; color: var(--muted-foreground); font-size: 0.75rem; text-align: center; }
+  .legend { display: flex; gap: 1rem; margin-top: 0.75rem; color: var(--muted-foreground); font-size: 0.75rem; }
+  .legend i { display: inline-block; width: 0.6rem; height: 0.6rem; margin-right: 0.35rem; border-radius: 2px; vertical-align: -1px; }
+</style>
+<revenue-chart shadow months={[]}>
+  <div class="bars" role="img" aria-label={months.map((month) => `${month.label}: ${money.format(month.paid)} paid, ${money.format(month.outstanding)} outstanding`).join("; ")}>
+    <zb-each items={months} as="month" key={month.label}>
+      <div class="month">
+        <div class="outstanding" style:height={`${(month.outstanding / most) * 100}%`}></div>
+        <div class="paid" style:height={`${(month.paid / most) * 100}%`}></div>
+      </div>
+    </zb-each>
+  </div>
+  <div class="labels" aria-hidden="true"><zb-each items={months} as="month" key={month.label}><span>{month.label}</span></zb-each></div>
+  <div class="legend" aria-hidden="true"><span><i style="background: var(--chart-1)"></i>Paid</span><span><i style="background: var(--chart-2)"></i>Outstanding</span></div>
+</revenue-chart>

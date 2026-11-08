@@ -1,0 +1,24 @@
+{
+  "name": "zubra-example-mui-clinic",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@mui/material": "9.5.0",
+    "@zubra/runtime": "file:../../../runtime",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.2.1",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
+    "vite": "8.3.6"
+  }
+}

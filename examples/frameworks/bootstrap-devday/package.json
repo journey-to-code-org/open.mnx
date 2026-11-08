@@ -1,0 +1,20 @@
+{
+  "name": "zubra-example-bootstrap-devday",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@zubra/runtime": "file:../../../runtime",
+    "bootstrap": "5.3.8"
+  },
+  "devDependencies": {
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
+    "sass": "1.108.1",
+    "vite": "8.3.6"
+  }
+}

@@ -1,0 +1,35 @@
+<!--
+  A doctor to book with. Light DOM, inside MUI's Grid; styled with MUI's theme variables, so it
+  sits with MUI's Cards in either colour scheme and with either brand colour.
+  `doctor` is { id, name, specialty, next, rating }.
+  @fires choose - This doctor was chosen; `detail` is the doctor's id.
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+  const initials = (doctor.name ?? "").split(" ").filter((word) => /^[A-Z]/.test(word) && word !== "Dr.").map((word) => word[0]).join("")
+</script>
+<style>
+  :host { display: block; height: 100%; }
+  button {
+    display: flex; align-items: center; gap: 0.9rem; width: 100%; height: 100%; padding: 1rem; text-align: left;
+    border: 1px solid var(--mui-palette-divider); border-radius: calc(var(--mui-shape-borderRadius) * 2);
+    background: var(--mui-palette-background-paper); color: var(--mui-palette-text-primary);
+    font: var(--mui-font-body1); cursor: pointer; transition: border-color 150ms, box-shadow 150ms;
+  }
+  button:hover { box-shadow: var(--mui-shadows-2); }
+  button[aria-pressed=true] { border-color: var(--mui-palette-primary-main); box-shadow: 0 0 0 1px var(--mui-palette-primary-main); }
+  button:focus-visible { outline: 2px solid var(--mui-palette-primary-main); outline-offset: 2px; }
+  .avatar { display: grid; flex: none; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 50%; background: var(--mui-palette-primary-main); color: var(--mui-palette-primary-contrastText); font-weight: 600; }
+  .name { display: block; font-weight: 600; }
+  .meta { display: block; color: var(--mui-palette-text-secondary); font-size: 0.875rem; }
+</style>
+<doctor-card doctor={{}} selected={false}>
+  <button type="button" aria-pressed={selected ? "true" : "false"} onclick={() => emit("choose", doctor.id)}>
+    <span class="avatar" aria-hidden="true">{initials}</span>
+    <span>
+      <span class="name">{doctor.name}</span>
+      <span class="meta">{doctor.specialty} · ★ {doctor.rating}</span>
+      <span class="meta">Next free: {doctor.next}</span>
+    </span>
+  </button>
+</doctor-card>
