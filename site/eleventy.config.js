@@ -18,6 +18,8 @@ export default function (eleventyConfig) {
     return `<pre class="code" tabindex="0"><code class="language-${language}">${grammar ? Prism.highlight(code, grammar, language) : escape(code)}</code></pre>`;
   });
   // Compiled output keeps trailing spaces where the template had indentation; they aren't worth showing.
+  // The README aligns trailing comments in a column; on a narrow pane that column wastes the room.
+  eleventyConfig.addFilter('tighten', (code) => code.replace(/ {2,}(\/\/|\/\*|<!--)/g, '  $1'));
   eleventyConfig.addFilter('tidy', (code) => code.replace(/[ \t]+$/gm, ''));
   eleventyConfig.addPassthroughCopy({ 'src/assets': 'landing' });
   eleventyConfig.addPassthroughCopy({ 'src/favicon.svg': 'favicon.svg' });

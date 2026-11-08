@@ -20,7 +20,7 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
     </div>
     <figure class="hero-code" aria-label="A Zubra component">
       <figcaption>copy-button.zb <span>{{ samples.sourceLines }} lines</span></figcaption>
-      {{ samples.source | highlight("markup") | safe }}
+      {{ samples.source | tighten | highlight("markup") | safe }}
     </figure>
   </div>
 </section>
