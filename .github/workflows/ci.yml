@@ -129,6 +129,34 @@ jobs:
       - run: node --test test/server-evaluation.test.js
         working-directory: compiler
 
+  demos:
+    name: Demo gallery (every static example under a base path, as GitHub Pages serves it)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npm ci
+        working-directory: examples/frameworks
+      - name: Install the other static examples
+        run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done
+      - run: node demos/build.mjs --out _site --base /open.mnx/
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/frameworks
+      - run: node --test "demos/test/*.test.js"
+        env:
+          GALLERY: _site
+          GALLERY_BASE: /open.mnx/
+
   frameworks:
     name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular)
     runs-on: ubuntu-latest

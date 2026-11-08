@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
@@ -45,6 +46,7 @@ test('the schedule: server-rendered hosts, the track filter, and stars that surv
   const { page, messages } = await open('/');
   await page.waitForSelector('session-card article');
   assert.equal(await page.locator('session-card').count(), 12);
+  await shot(page, 'next-conference');
   await page.click('segmented-control button[data-value=Design]');
   await page.waitForFunction(() => document.querySelectorAll('session-card').length === 3);
   assert.deepEqual(await page.locator('session-card').evaluateAll((cards) => [...new Set(cards.map((card) => card.track))]), ['Design']);

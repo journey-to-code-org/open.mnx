@@ -2,7 +2,7 @@
 
 Zubra compiles components written as HTML with a script and styles into standard web components: elements that work in plain HTML, in every major framework, and on the server.
 
-**Try it first:** the [playground](https://journey-to-code-org.github.io/zubra/) compiles in your browser and runs your component in plain HTML, React and Vue side by side.
+**Try it first:** the [playground](https://journey-to-code-org.github.io/zubra/playground/) compiles in your browser and runs your component in plain HTML, React and Vue side by side.
 
 **Start an app:**
 

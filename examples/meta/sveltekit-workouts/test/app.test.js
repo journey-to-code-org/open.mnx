@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
@@ -46,6 +47,7 @@ test('the stats and the list: zubra elements with Svelte props, including an obj
   const { page, messages } = await open('/');
   await page.waitForSelector('workout-row .row');
   assert.equal(await page.locator('workout-row').count(), 8);
+  await shot(page, 'sveltekit-workouts');
   assert.equal(await page.getByRole('img', { name: 'Effort 4 of 5' }).count() >= 1, true);
   // The streak grid's `log` is an object: Svelte's server HTML says "[object Object]", so the zubra
   // plugin adds zb-props to the host in the server build, which the element starts with. No

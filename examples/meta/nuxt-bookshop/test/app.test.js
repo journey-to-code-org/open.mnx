@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
@@ -44,6 +45,7 @@ test('the list: server-rendered, filtered by genre through v-model on a zubra el
   const { page, messages } = await open('/');
   await page.waitForSelector('stock-meter [role=meter]');
   assert.equal(await page.locator('.books li').count(), 7);
+  await shot(page, 'nuxt-bookshop');
   assert.equal(await page.textContent('li[data-id=b4] stock-meter span'), 'Out of stock');
   assert.equal(await page.textContent('li[data-id=b2] stock-meter span'), '2 left: reorder');
 

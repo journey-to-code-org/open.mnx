@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const data = mkdtempSync(join(tmpdir(), 'focus-'));
@@ -57,6 +58,7 @@ test('a focus session: start, pause, run out; it\'s logged, saved by the main pr
   assert.equal(await title('Focus (running)'), 'Focus (running)');
   await window.clock.runFor('10:00');
   assert.equal(await time(), '15:00');
+  await shot(window, 'focus-timer', { resize: false });
   await window.getByRole('button', { name: 'Pause' }).click();
   await window.clock.runFor('05:00');
   assert.equal(await time(), '15:00', 'paused, it stays');

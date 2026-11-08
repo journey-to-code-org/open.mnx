@@ -1,5 +1,9 @@
 # Trip budget: React Router 8
 
+![Trip budget](../../../demos/shots/react-router-trips.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A shared trip budget in React Router 8's framework mode: who paid for what, who's up and down,
 and a form to add an expense. It uses:
 - a server `loader` and `action`;

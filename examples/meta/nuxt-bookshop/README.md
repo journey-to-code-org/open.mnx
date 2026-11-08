@@ -1,5 +1,9 @@
 # Shelfwise: Nuxt with Zubra components
 
+![Bookshop inventory](../../../demos/shots/nuxt-bookshop.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A bookshop's inventory. Filter books by genre (filtered on the server, with the URL kept in sync), see stock against each book's reorder point, and edit a book's price, stock, tags and front-page flag, saved through a Nitro API route that validates them.
 
 Nuxt builds with Vite, so the Zubra plugin goes straight into `nuxt.config.ts`:

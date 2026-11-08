@@ -8,7 +8,7 @@
 //
 // MINIFY=1 minifies the HTML. zubra's hydration markers are processing instructions (`<?zb [?>`),
 // which minifiers keep: nothing to configure.
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createZubra } from '@zubra/server';
 
@@ -43,7 +43,17 @@ export default function (eleventyConfig) {
     });
   }
 
-  eleventyConfig.on('eleventy.after', ({ dir }) => zubra.writeAssets(join(here, dir.output)));
+  // DEMO_BASE: the path the site is served under (the demo gallery's /<repo>/demos/eleventy-trails/).
+  // Root-relative URLs, the components' modules and the import map are moved under it.
+  const demoBase = process.env.DEMO_BASE;
+  if (demoBase) {
+    eleventyConfig.addTransform('demo-base', function (html) {
+      if (!this.page.outputPath?.endsWith('.html')) return html;
+      return html.replace(/(href|src)="\/(?!\/)/g, `$1="${demoBase}`).replace(/(["'])\/_zubra\//g, `$1${demoBase}_zubra/`);
+    });
+  }
+
+  eleventyConfig.on('eleventy.after', ({ dir }) => zubra.writeAssets(resolve(here, dir.output)));
 
   eleventyConfig.addPassthroughCopy({ public: '/' });
   return { dir: { input: '.', includes: '_includes', data: '_data', output: process.env.OUT ?? '_site' }, templateFormats: ['njk'] };

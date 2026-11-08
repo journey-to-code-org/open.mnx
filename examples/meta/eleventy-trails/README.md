@@ -1,5 +1,9 @@
 # Mountain trails: Eleventy
 
+[![Mountain trails](../../../demos/shots/eleventy-trails.jpg)](https://journey-to-code-org.github.io/zubra/demos/eleventy-trails/)
+
+**[Open the live demo](https://journey-to-code-org.github.io/zubra/demos/eleventy-trails/)**, or browse [every example](https://journey-to-code-org.github.io/zubra/).
+
 A static trail guide built with [Eleventy](https://www.11ty.dev). Its Zubra components are
 rendered to HTML **at build time** by a shortcode:
 

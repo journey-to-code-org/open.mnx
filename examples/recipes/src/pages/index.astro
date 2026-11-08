@@ -7,7 +7,7 @@ import { recipes } from '../data/recipes.js';
   <h1>Recipes</h1>
   <div class="grid">
     {recipes.map((recipe) => (
-      <RecipeCard heading={recipe.title} href={`/recipes/${recipe.id}/`} summary={recipe.summary} minutes={recipe.minutes} servings={recipe.servings}>
+      <RecipeCard heading={recipe.title} href={`${import.meta.env.BASE_URL}recipes/${recipe.id}/`} summary={recipe.summary} minutes={recipe.minutes} servings={recipe.servings}>
         <span class="tags">{recipe.tags.map((tag) => <span class="tag">{tag}</span>)}</span>
       </RecipeCard>
     ))}

@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const bun = spawnSync('bun', ['--version']).status === 0;
@@ -79,6 +80,7 @@ for (const runtime of ['node', 'bun']) {
 
     test('htmx: search swaps in rows whose elements hydrate', async () => {
       const { page, errors, close } = await open();
+      await shot(page, 'hono-bikes');
       await page.fill('input[name=q]', 'brakes');
       await page.waitForFunction(() => document.querySelectorAll('#rows tr[id^=item-]').length === 2);
       assert.deepEqual(await page.locator('#rows strong').allTextContents(), ['Brake pads (resin)', 'Rotor 180 mm']);

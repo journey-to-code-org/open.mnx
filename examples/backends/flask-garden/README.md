@@ -1,5 +1,9 @@
 # Garden plots: Flask, Jinja and SQLite
 
+![Garden plots](../../../demos/shots/flask-garden.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A community garden's plot sign-up, in Python: Flask routes, Jinja templates and SQLite (the
 standard library's `sqlite3`). Its Zubra components are rendered to HTML by the **Rust compiler**,
 so there is **no Node.js on the server**, and no bundler. The browser hydrates that markup in

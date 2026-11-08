@@ -1,5 +1,9 @@
 # Spoke & Chain: Hono and htmx
 
+![Bike shop](../../../demos/shots/hono-bikes.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A bike shop's inventory with search, paging, quick sales and inline editing. It's built with
 [Hono](https://hono.dev) and [htmx](https://htmx.org), and runs on **Node.js or Bun**:
 

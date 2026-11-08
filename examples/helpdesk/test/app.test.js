@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createApp } from '../src/app.js';
 import { createStore } from '../src/store/index.js';
+import { shot } from '../../../demos/shot.js';
 
 let store, server, base, browser;
 before(async () => {
@@ -170,6 +171,7 @@ test('the dashboard: counts, and the registry charts hydrated with the server da
   const { page, messages, close } = await as('u-sam');
   await settle(page);
   assert.deepEqual(await text(page, '.card span'), ['Open', 'Pending', 'Solved', 'Overdue']);
+  await shot(page, 'helpdesk');
   assert.deepEqual(await text(page, 'donut-chart li button span:nth-child(2)'), ['Open', 'Pending', 'Solved']);
   assert.equal(await page.getByRole('img', { name: 'Tickets by status' }).count(), 1);
   assert.match(await page.getByRole('img', { name: /^New tickets per day: / }).getAttribute('aria-label'), /: (up|down|flat)$/);

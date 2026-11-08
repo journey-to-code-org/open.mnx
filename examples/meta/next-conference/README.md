@@ -1,5 +1,9 @@
 # WebConf: Next.js with Zubra components
 
+![Conference schedule](../../../demos/shots/next-conference.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A conference schedule. Filter the talks by track, star the ones you want (kept in `localStorage`), and rate a talk afterwards through a form handled by a **Server Action**.
 
 Next.js 16 builds with Turbopack, which takes webpack-style loaders but not bundler plugins. `next.config.mjs` gives `.zb` files Zubra's loader (`@zubra/unplugin/loader`, since 2.8), and the app imports components directly, as React (client) components:

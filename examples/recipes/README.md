@@ -1,5 +1,9 @@
 # Recipes (Astro)
 
+[![Recipes](../../demos/shots/recipes.jpg)](https://journey-to-code-org.github.io/zubra/demos/recipes/)
+
+**[Open the live demo](https://journey-to-code-org.github.io/zubra/demos/recipes/)**, or browse [every example](https://journey-to-code-org.github.io/zubra/).
+
 The complex example: a small recipe site built with Astro, where Zubra components are the
 page's building blocks and only the interactive ones ship JavaScript.
 

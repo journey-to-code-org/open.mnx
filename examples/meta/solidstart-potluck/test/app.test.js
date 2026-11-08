@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let server, url, browser;
@@ -49,6 +50,7 @@ const meter = (page, course) => page.locator('dish-board').getByRole('meter', { 
 test('the page hydrates without errors; the board gets its data from Solid (prop:)', async () => {
   const page = await open();
   assert.equal(await meter(page, 'Mains'), 'Mains: 1 of 3');
+  await shot(page, 'solidstart-potluck');
   assert.equal(await meter(page, 'Desserts'), 'Desserts: 1 of 2');
   assert.equal((await page.locator('dish-board li[data-course=dessert] ul li').textContent()).trim(), 'Ines +2');
   assert.equal((await page.textContent('.lede')).trim(), '3 households, 6 people so far.');

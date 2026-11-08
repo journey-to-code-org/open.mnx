@@ -1,7 +1,8 @@
-# The playground on GitHub Pages: the WebAssembly compiler, the runtime, and React and Vue for
-# the framework previews. It deploys once Pages is enabled (Settings → Pages → Source: GitHub
-# Actions); until then the site is still built (and checked), and the deploy is skipped.
-name: Playground
+# The demo gallery on GitHub Pages (demos/build.mjs): the gallery page, the playground (with the
+# WebAssembly compiler) and every static example, built to be served from /<repository>/. It
+# deploys once Pages is enabled (Settings → Pages → Source: GitHub Actions); until then the site
+# is still built and checked, and the deploy is skipped.
+name: Pages
 
 on:
   push:
@@ -32,7 +33,7 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Playground not deployed::GitHub Pages isn't enabled for this repository. Turn it on in Settings → Pages (Source: GitHub Actions) to publish the playground."
+            echo "::notice title=Demos not deployed::GitHub Pages isn't enabled for this repository. Turn it on in Settings → Pages (Source: GitHub Actions) to publish the demo gallery and the playground."
           fi
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -46,8 +47,18 @@ jobs:
       - run: npm run build
         working-directory: compiler
       - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npm ci
         working-directory: examples/frameworks
-      - run: node playground/build.mjs --require-wasm --out _site
+      - name: Install the other static examples
+        run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done
+      - run: node demos/build.mjs --require-wasm --out _site
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/frameworks
+      - name: Every demo loads under the base path
+        run: GALLERY=_site GALLERY_BASE="/${GITHUB_REPOSITORY#*/}/" node --test "demos/test/*.test.js"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

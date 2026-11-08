@@ -1,5 +1,9 @@
 # Page Notes: a Chrome extension
 
+![Page notes](../../../demos/shots/page-notes.jpg)
+
+This one is a browser extension, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below load it.
+
 Notes for each site, as a Manifest V3 extension. Zubra components appear in three very different
 places:
 

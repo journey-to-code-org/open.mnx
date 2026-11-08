@@ -1,5 +1,9 @@
 # Reps: SvelteKit with Zubra components
 
+![Workout log](../../../demos/shots/sveltekit-workouts.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A workout log. Log an exercise with its sets, reps and effort through a **form action**, enhanced with `use:enhance`. The page shows this week's training days against a goal and the last eight weeks as a grid.
 
 SvelteKit builds with Vite, so the Zubra plugin goes in `vite.config.js`. Svelte uses the elements directly: properties in, events out, and form controls in forms.

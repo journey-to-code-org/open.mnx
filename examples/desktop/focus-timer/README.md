@@ -1,5 +1,9 @@
 # Focus: an Electron app
 
+![Focus timer](../../../demos/shots/focus-timer.jpg)
+
+This one is a desktop app, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A desktop focus timer (25-minute sessions and breaks) in Electron. The window shows:
 - the mode (the registry's `segmented-control`);
 - the timer (`focus-timer`, built on the registry's `progress-ring`);

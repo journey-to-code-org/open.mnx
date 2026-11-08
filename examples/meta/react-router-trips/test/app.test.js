@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let server, url, browser;
@@ -52,6 +53,7 @@ const balance = (page, name) => page.locator('balance-list').getByRole('img', { 
 test('the page hydrates without errors, and the elements get their props from React', async () => {
   const page = await open();
   assert.equal(await balance(page, 'Ana'), 'Ana: $294.87');
+  await shot(page, 'react-router-trips');
   assert.equal(await balance(page, 'Chloé'), 'Chloé: −$153.12');
   assert.equal(await page.locator('segmented-control').getByRole('button', { name: 'food' }).getAttribute('aria-pressed'), 'true');
   assert.deepEqual(page.errors, []);

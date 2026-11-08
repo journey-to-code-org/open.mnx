@@ -4,7 +4,7 @@ Zubra is a compiler for Web Components. You write a component as HTML with `{exp
 
 The runtime is built on what the web platform is standardizing: the TC39 Signals API, template parts in the shape of DOM Parts, the Context Protocol, form-associated custom elements and declarative shadow DOM. The aim is for the platform to absorb what Zubra proves, so the runtime shrinks as native features ship. See `runtime/README.md`.
 
-**Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/) runs Zubra in your browser, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. This README is the reference.
+**Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/playground/) runs Zubra in your browser, the [demo gallery](https://journey-to-code-org.github.io/zubra/) has a live app for every framework, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. This README is the reference.
 
 **Status: 5.x.** The `.zb` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 6.0. 5.0 changed only the server markup's hydration markers (`docs/migrating-to-5.0.md`: update the packages together, no component changes). Zubra was called mnx until 4.0; `docs/migrating-to-4.0.md` renames a project in one command. See `CHANGELOG.md`, `docs/migrating-to-3.0.md` for components written for 2.x, `docs/migrating-to-2.0.md` for 1.x, and `docs/migrating-from-0.2.md` for 0.2.
 
@@ -655,7 +655,8 @@ Upgrading from 1.x: `zubra migrate` rewrites what 2.0 needs; see `docs/migrating
 - `compiler/`: `@zubra/compiler`, the compiler as WebAssembly; `wasm/` is its Rust shim.
 - `editors/`: the language server and the VS Code extension.
 - `create/`: `create-zubra`, the starter (`npm create zubra`), with a template per framework.
-- `playground/`: the in-browser playground, published to GitHub Pages by `.github/workflows/pages.yml`.
+- `playground/`: the in-browser playground.
+- `demos/`: the demo gallery: `demos/build.mjs` builds the playground and every static example under one base path, `.github/workflows/pages.yml` publishes it to GitHub Pages, and `demos/shots/` holds every example's screenshot (`demos/screenshots.mjs` for the static ones; the others' tests take theirs with `ZUBRA_SHOTS`).
 - `docs/guide/`: the tutorial.
 - `docs/who-this-is-for.md`, `docs/what-crosses-the-boundary.md`, `docs/server-rendering.md`: where Zubra fits, which components fit through an element, and the server story with its gaps.
 - `registry/`: the components `zubra add` copies, with their accessibility tests.
@@ -675,6 +676,7 @@ cargo clippy --all-targets --locked -- -D warnings
 node --test "registry/test/*.test.js"    # the registry's components: keyboard and screen-reader behaviour
 (cd examples/frameworks && npm ci && npm test)  # the framework apps, and every starter's own browser test
 node --test "playground/test/*.test.js"  # the playground in Chromium
+node demos/build.mjs --base /open.mnx/ && node --test "demos/test/*.test.js"  # the demo gallery, served as Pages serves it
 ```
 
 The browser and plugin suites need Playwright's Chromium (`npx playwright install chromium`). `.github/workflows/ci.yml` runs every suite on each push. Behaviour is mutation-checked: each feature's code was deliberately broken in turn to confirm a test fails.

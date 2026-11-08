@@ -4,6 +4,15 @@ One app per framework Zubra supports, each a complete idea rather than a demo of
 UI is a mix of the framework's own components and Zubra elements, used the way that framework uses
 any element: no wrappers written by hand, no glue code.
 
+Every app runs live in the [demo gallery](https://journey-to-code-org.github.io/zubra/):
+
+| | |
+|---|---|
+| [![Sprint board](../../demos/shots/react-board.jpg)](https://journey-to-code-org.github.io/zubra/demos/react-board/)<br>[Sprint board](https://journey-to-code-org.github.io/zubra/demos/react-board/) (React) | [![Budget tracker](../../demos/shots/vue-budget.jpg)](https://journey-to-code-org.github.io/zubra/demos/vue-budget/)<br>[Budget tracker](https://journey-to-code-org.github.io/zubra/demos/vue-budget/) (Vue) |
+| [![Flashcards](../../demos/shots/svelte-flashcards.jpg)](https://journey-to-code-org.github.io/zubra/demos/svelte-flashcards/)<br>[Flashcards](https://journey-to-code-org.github.io/zubra/demos/svelte-flashcards/) (Svelte) | [![Market dashboard](../../demos/shots/solid-markets.jpg)](https://journey-to-code-org.github.io/zubra/demos/solid-markets/)<br>[Market dashboard](https://journey-to-code-org.github.io/zubra/demos/solid-markets/) (Solid) |
+| [![Team chat](../../demos/shots/lit-chat.jpg)](https://journey-to-code-org.github.io/zubra/demos/lit-chat/)<br>[Team chat](https://journey-to-code-org.github.io/zubra/demos/lit-chat/) (Lit) | [![Habit tracker](../../demos/shots/preact-habits.jpg)](https://journey-to-code-org.github.io/zubra/demos/preact-habits/)<br>[Habit tracker](https://journey-to-code-org.github.io/zubra/demos/preact-habits/) (Preact) |
+| [![Booking wizard](../../demos/shots/angular-booking.jpg)](https://journey-to-code-org.github.io/zubra/demos/angular-booking/)<br>[Booking wizard](https://journey-to-code-org.github.io/zubra/demos/angular-booking/) (Angular) |  |
+
 | App | Framework | What it is | What it shows |
 | --- | --- | --- | --- |
 | [`react-board/`](react-board/) | React 19 | A sprint board | `.zb` imports as React components; React-managed children in an element's slots (reordered, filtered, added); drag and drop; a column from a component library (`zubra build --lib`); a card editor converted from React with `zubra convert` ([how](react-board/CONVERTED.md)); undo |

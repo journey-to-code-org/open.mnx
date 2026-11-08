@@ -1,5 +1,9 @@
 # Saturday potluck: SolidStart 2
 
+![Potluck sign-up](../../../demos/shots/solidstart-potluck.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
+
 A potluck sign-up in SolidStart 2 (on Vite and Nitro). The page shows who's bringing what, and
 has a form that posts to a server `action`. It works without JavaScript and submits in place
 with it. The components:
