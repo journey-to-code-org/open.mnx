@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <meta name="description" content="{{ description }}">
+  <link rel="icon" href="{{ '/favicon.svg' | url }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ '/apple-touch-icon.png' | url }}">
+  <link rel="stylesheet" href="{{ '/landing/site.css' | url }}">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <header class="top">
+    <a class="brand" href="{{ '/' | url }}">{% include "mark.njk" %}<span>zubra</span></a>
+    <nav aria-label="Site">
+      <a href="{{ '/docs/' | url }}">Docs</a>
+      <a href="{{ '/playground/' | url }}">Playground</a>
+      <a href="#demos">Demos</a>
+      <a href="{{ site.github }}">GitHub</a>
+    </nav>
+  </header>
+  <main id="main">
+{{ content | safe }}
+  </main>
+  <footer class="foot">
+    <div class="wrap">
+      <p>Zubra {{ site.version }} · ISC licence · <a href="{{ site.github }}">Source on GitHub</a> · <a href="{{ '/docs/changelog/' | url }}">Changelog</a></p>
+    </div>
+  </footer>
+  <script src="{{ '/landing/site.js' | url }}" defer></script>
+</body>
+</html>

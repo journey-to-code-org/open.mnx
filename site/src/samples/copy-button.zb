@@ -1,0 +1,17 @@
+<script>
+  let copied = false                               // state: assigning it updates the DOM
+
+  async function copy() {
+    await navigator.clipboard.writeText(text)      // `text` is a prop, by name
+    copied = true
+    setTimeout(() => (copied = false), 1500)
+  }
+</script>
+<style>
+  button.done { color: green; }                    /* scoped to this component, in light DOM */
+</style>
+<copy-button text label="Copy">                    <!-- the host tag: the element and its props -->
+  <button type="button" onclick={copy} class:done={copied}>
+    {copied ? "Copied!" : label}
+  </button>
+</copy-button>

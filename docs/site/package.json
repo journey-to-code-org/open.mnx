@@ -1,0 +1,10 @@
+{
+  "name": "zubra-docs-site",
+  "private": true,
+  "type": "module",
+  "description": "Renders the Markdown in docs/ (and the README and CHANGELOG) to the documentation site on GitHub Pages: node docs/site/build.mjs",
+  "license": "ISC",
+  "dependencies": {
+    "marked": "18.1.3"
+  }
+}
