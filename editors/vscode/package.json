@@ -28,7 +28,11 @@
         "extensions": [
           ".zb"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/zb-light.svg",
+          "dark": "./icons/zb-dark.svg"
+        }
       }
     ],
     "grammars": [

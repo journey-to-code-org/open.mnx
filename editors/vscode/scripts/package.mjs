@@ -17,7 +17,7 @@ const work = mkdtempSync(join(tmpdir(), 'zubra-vsix-'));
 const run = (command, args, { show = true } = {}) => execFileSync(command, args, { cwd: work, stdio: ['ignore', show ? 'inherit' : 'pipe', 'inherit'], shell: true })?.toString() ?? '';
 const step = (message) => console.log(`vscode: ${message}`);
 try {
-  for (const name of ['LICENSE', 'README.md', 'icon.png', 'extension.js', 'language-configuration.json', 'syntaxes', '.vscodeignore']) cpSync(join(here, name), join(work, name), { recursive: true });
+  for (const name of ['LICENSE', 'README.md', 'icon.png', 'extension.js', 'language-configuration.json', 'syntaxes', 'icons', '.vscodeignore']) cpSync(join(here, name), join(work, name), { recursive: true });
   manifest.dependencies['@zubra/language-server'] = manifest.version;
   delete manifest.devDependencies;
   writeFileSync(join(work, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -25,7 +25,7 @@ try {
   run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock']);
   step('checking what would go in the package (npx fetches @vscode/vsce the first time)…');
   const files = run('npx', ['--yes', '@vscode/vsce', 'ls'], { show: false });
-  for (const needed of ['node_modules/@zubra/language-server/server.js', 'node_modules/vscode-languageclient/package.json', 'icon.png', 'README.md']) {
+  for (const needed of ['node_modules/@zubra/language-server/server.js', 'node_modules/vscode-languageclient/package.json', 'icon.png', 'README.md', 'icons/zb-light.svg', 'icons/zb-dark.svg']) {
     if (!files.includes(needed)) throw new Error(`the package would be missing ${needed}`);
   }
   const vsix = `zubra-${manifest.version}.vsix`;

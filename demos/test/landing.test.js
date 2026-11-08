@@ -75,6 +75,12 @@ test('the brand files are the shapes the page and the docs draw', () => {
     const source = readFileSync(join(repo, file), 'utf8');
     for (const shape of mark) assert.ok(source.includes(shape), `${file} draws the brand mark`);
   }
+  // The extension's file icons for .zb (light and dark themes) are the marks.
+  const icon = (name) => readFileSync(join(repo, 'editors/vscode/icons', name), 'utf8');
+  assert.deepEqual(shapes(icon('zb-light.svg')), mark, 'the light-theme file icon is the mark');
+  assert.deepEqual(shapes(icon('zb-dark.svg')), mark, 'the dark-theme file icon has the same shapes');
+  const manifest = JSON.parse(readFileSync(join(repo, 'editors/vscode/package.json'), 'utf8'));
+  assert.deepEqual(manifest.contributes.languages[0].icon, { light: './icons/zb-light.svg', dark: './icons/zb-dark.svg' }, 'the language uses them');
   const tile = shapes(brand('zubra-tile.svg'));
   assert.deepEqual(shapes(readFileSync(join(repo, 'site/src/favicon.svg'), 'utf8')), tile, 'the favicon is the tile');
   assert.ok(existsSync(join(dir, 'favicon.svg')) && existsSync(join(dir, 'apple-touch-icon.png')), 'the build has the favicon and the apple-touch icon');
