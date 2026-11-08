@@ -5,7 +5,7 @@ Every component also compiles to HTML: the same markup the element would render,
 ## In a framework
 
 - **Astro**: add `@zubra/unplugin/astro` to the integrations (`npm create zubra -- --framework astro` does). Components render on the server, and a client directive (`client:load`, `client:visible`, …) hydrates one in the browser.
-- **SvelteKit, Nuxt, React Router, SolidStart**: the framework renders the element's tag, and `@zubra/server` adds its shadow root to the page. Use `shadow` components there.
+- **SvelteKit, Nuxt, React Router, SolidStart**: the framework renders the element's tag, and `@zubra/server` adds its content to the page. Under Nuxt and React Router, the Vue and React wrappers render a light-DOM element's content themselves. Use `shadow` components under SvelteKit, and for any element given React or Vue children. Under SolidStart, pass `{ lightDom: true }` to `injectShadowRoots` to fill light-DOM elements too.
 
   ```js
   // SvelteKit: src/hooks.server.js
@@ -28,7 +28,7 @@ const zubra = createZubra({ components: 'src/components' });
 // per request
 if (zubra.handle(req, res)) return;               // the browser modules and @zubra/runtime
 const page = zubra.page();
-const card = page.render('user-card', { user }); // HTML, inside your template
+const card = page.render('info-card', { heading: 'Plans' }); // HTML, inside your template
 res.end(page.finish(myLayout(card)));            // + the components' CSS and module scripts
 ```
 

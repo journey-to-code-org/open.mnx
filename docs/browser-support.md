@@ -1,8 +1,8 @@
 # Browser support
 
-Zubra 3.0 targets browsers with **Baseline 2026** features: everything Baseline Widely available, plus the features below. (2.x targeted Baseline 2025.) When a newer feature is used, it's used only where the browser has it.
+Zubra targets browsers with **Baseline 2026** features: everything Baseline Widely available, plus the features below. When a newer feature is used, it's used only where the browser has it.
 
-Moving the target dropped no fallback. Each one is still for a feature that isn't Widely available, so the policy below keeps it:
+The runtime keeps a fallback for each feature that isn't Widely available:
 - `moveBefore()` isn't in Safari (Limited availability);
 - `ElementInternals.states` (for `:state(hydrated)`) became Baseline in 2024, so it isn't Widely available yet: where it's missing, the host just doesn't get the state;
 - no browser ships TC39 Signals.
@@ -16,11 +16,12 @@ Moving the target dropped no fallback. Each one is still for a feature that isn'
 | CSS `@scope` (Baseline since December 2025) | Light-DOM component styles stopping at slotted content | A light-DOM component's `<style>` doesn't apply; shadow components are unaffected |
 | CSS cascade layers | Putting component styles under utilities and page CSS | Not supported |
 | `Element.moveBefore()` (Chromium, Firefox; not Safari) | Keyed list moves that keep focus and iframe state | Used where present; otherwise rows move with `insertBefore` |
+| Processing instructions and `<template for>` (Chrome, Edge 150+) | Hydration markers; streamed regions placed without JavaScript | Parsed as comments, which the runtime reads the same way; an inline script places streamed regions |
 | TC39 Signals (not shipped anywhere yet) | Reactivity | The runtime's own implementation (`runtime/src/signal-impl.js`) |
 
-The policy for 3.0 and later: a major version moves the target to the Baseline year before its release, and drops fallbacks for features that are Widely available by then.
+The policy: a major version targets the Baseline year of its release, and drops fallbacks for features that are Widely available by then.
 
-The browser suites run in Chromium. Since 2.9, CI also runs the runtime's browser suite and the React and Vue example apps in Firefox and WebKit (Safari's engine), through Playwright. The counting of live objects in the leak suite needs Chromium's DevTools protocol, so it runs in Chromium only.
+The browser suites run in Chromium. CI also runs the runtime's browser suite and the React and Vue example apps in Firefox and WebKit (Safari's engine), through Playwright. The counting of live objects in the leak suite needs Chromium's DevTools protocol, so it runs in Chromium only.
 
 Known engine issues:
 - **Firefox before 159** can apply a light-DOM component's `<style>` to content slotted into it, when that content sits beside the component's own elements of the same kind. Firefox shares styles between siblings that differ only in an attribute an `@scope` rule depends on ([bug 2075194](https://bugzilla.mozilla.org/show_bug.cgi?id=2075194), fixed in 159). Shadow components are unaffected.

@@ -19,7 +19,8 @@ The registry has components built each way (`npx zubra add <name>`). Each is tes
 | Tabs | `tab-list` | `rovingFocus`, automatic or `manual` activation |
 | DropdownMenu | `dropdown-menu` | `popover`, `rovingFocus`, `typeahead` |
 | Switch | `toggle-switch` | `role=switch` on a button |
-| RadioGroup, ToggleGroup | `choice-cards`, `segmented-control` | one tab stop, arrow keys |
+| RadioGroup | `choice-cards` | one tab stop, arrow keys |
+| ToggleGroup | `segmented-control` | toggle buttons with `aria-pressed` |
 | Combobox (shadcn's Command + Popover) | `combo-box` | Zag's combobox machine |
 | Select | `<select>`, or Zag's select | `appearance: base-select` styles the native one where it's supported |
 | Slider | `<input type=range>`, or Zag's slider | |
@@ -32,7 +33,7 @@ The platform elements are used as they are in any page. The registry components 
 
 ```html
 <button popovertarget={menuId} aria-haspopup="menu" style:anchor-name={`--${menuId}`}>{label}</button>
-<div popover id={menuId} role="menu" style:position-anchor={`--${menuId}`} ontoggle={toggled}>
+<div popover id={menuId} role="menu" ref={menu} style:position-anchor={`--${menuId}`} ontoggle={toggled}>
   <zb-each items={items} as="item" key={item.value}>
     <button role="menuitem" tabindex="-1" onclick={() => choose(item)}>{item.label}</button>
   </zb-each>
@@ -42,6 +43,7 @@ The platform elements are used as they are in any page. The registry components 
 The browser opens and closes the menu and handles Escape and clicks outside it. The script does the rest:
 
 ```js
+import { onMount } from '@zubra/runtime'
 import { rovingFocus, typeahead } from '@zubra/runtime/primitives'
 
 onMount(() => {
@@ -55,7 +57,7 @@ onMount(() => {
 
 Without a bundler, a page's import map needs an `@zubra/runtime/primitives` entry, as it does for `@zubra/runtime/spread`. `@zubra/server` adds both.
 
-Anchor positioning isn't in every browser yet. Without it, `tool-tip` and `dropdown-menu` place themselves with a few lines of script. They check with `CSS.supports("position-area: top")`.
+Anchor positioning isn't in every browser yet. Without it, `tool-tip` and `dropdown-menu` place themselves with a few lines of script. They check with `CSS.supports("position-area: …")`.
 
 ## The Zag path
 

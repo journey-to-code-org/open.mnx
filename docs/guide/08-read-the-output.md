@@ -34,6 +34,8 @@ What a server sends:
 </click-counter>
 ```
 
+It's the component's template with the first value filled in. No marker is needed, because nothing in this component is a conditional or a list. When the element upgrades in the browser, it finds the button by the same path and binds to it where it stands.
+
 What the browser runs (`--emit js`):
 
 ```js
@@ -71,8 +73,6 @@ function __zubraUpdate(signal, delta, prefix) { const old = signal.get(); signal
 - **`setup`** is your `<script>`, run once per element, not once per update. `let count = 0` became a `Signal.State`, and `count++` became a call that sets it.
 - **The array `setup` returns is the list of parts**: the places in the template that change. `path: [0]` is the route from the element's root to a node, counting elements (and hydration markers), not whitespace. `on: "click"` adds a listener. `text:` is a function that reads `count` (`$r` reads a signal, `$t` turns a value into text), so it re-runs, and rewrites that one text node, only when `count` changes. Nothing re-renders.
 - **That shape, a template plus a list of parts, is the one the DOM Parts proposal describes.** [Parts in production](../standards/dom-parts.md) is what building it taught.
-
-In the HTML, the same template with the first value filled in. No marker is needed, because nothing in this component is a conditional or a list. When the element upgrades in the browser, it finds the button by the same path and binds to it where it stands.
 
 ## The rules, and where each one lives
 
@@ -179,7 +179,7 @@ So moving an element is cheap, and reconnecting it re-runs only the parts whose 
 
 **The rule.** A `CustomEvent` doesn't bubble unless you ask, and an event fired inside a shadow root doesn't leave it unless it's `composed`. And a native event with the same name as yours (a `change` from an inner `<input>`) reaches listeners on the host too.
 
-**In Zubra.** An `emit('countchange', count)` in the script adds the name to the module's `events`:
+**In Zubra.** Importing `emit` from `@zubra/runtime` and calling `emit('countchange', count)` in the script adds the name to the module's `events`:
 
 ```js
   events: ["countchange"],
@@ -207,7 +207,7 @@ for (const name of events) {
 }
 ```
 
-An inner event with the same name stops at the host, so listeners outside see only the component's own, as with a built-in element. The typings pick the event up too (`--emit dts`), which is what lets Vue's `@countchange`, React's `onCountChange` and Svelte's `oncountchange` all work from the one DOM event.
+An inner event with the same name stops at the host, so listeners outside see only the component's own, as with a built-in element. The typings pick the event up too (`--emit dts`), which is what lets Vue's `@countchange`, React's `onCountchange` and Svelte's `oncountchange` all work from the one DOM event.
 
 ### 7. Shadow DOM is a choice
 
@@ -283,7 +283,7 @@ The class does the rest: `formAssociated` is set from that flag, the form callba
 </copy-button>
 ```
 
-When the element upgrades, `#boot` checks whether its content has the template's shape. If it does, it finds each part's node by its path and binds in place: nothing is rebuilt. If it doesn't, it renders fresh and logs a console warning that says so. Conditionals and lists carry markers (`<?zb [?>` and `<?zb ]?>`, processing instructions since 5.0) so the element can find where a region starts and ends. [Server rendering](07-server-rendering.md) and [Server rendering, honestly](../server-rendering.md) cover what renders where.
+When the element upgrades, `#boot` checks whether its content has the template's shape. If it does, it finds each part's node by its path and binds in place: nothing is rebuilt. If it doesn't, it renders fresh. A light-DOM component with slots takes the mismatched children as slot content; any other component logs a console warning that says so. Conditionals and lists carry markers (`<?zb [?>` and `<?zb ]?>`, processing instructions) so the element can find where a region starts and ends. [Server rendering](07-server-rendering.md) and [Server rendering, honestly](../server-rendering.md) cover what renders where.
 
 ## Change one line, read the diff
 
@@ -300,13 +300,13 @@ zubra compile click-counter.zb --emit js | diff before.js -
 | Add `shadow` to the host tag | `shadow: true`; the HTML wraps its content in `<template shadowrootmode="open">` |
 | Add `form-associated` | `form: true`; `--emit dts` gains `form`, `validity`, `checkValidity()` |
 | Add `step={1}` and use it | A new entry in `props`; reads become `$p.step` |
-| Call `emit('countchange', count)` | `events: ["countchange"]` |
+| Import `emit` and call `emit('countchange', count)` | `events: ["countchange"]` |
 | Rename the host tag to `counter` | A compile error about the hyphen |
 | Add `<style>` | `styled: true` and a `styles` string wrapped in `@scope` (light DOM) or not (shadow) |
 
 ## Where to go next
 
-- **The runtime's class.** In [`runtime/src/element.js`](../../runtime/src/element.js), read `defineElement` in this order: `parseAttribute`, then the class (`constructor`, `attributeChangedCallback`, `connectedCallback`, `disconnectedCallback`, `#emit`), then `#boot`. The class is about 300 lines. The rest of the file is the machinery that binds parts: text, attributes, events, conditionals, lists and slots.
+- **The runtime's class.** In [`runtime/src/element.js`](../../runtime/src/element.js), read `parseAttribute`, then `defineElement`: the class (`constructor`, `attributeChangedCallback`, `connectedCallback`, `disconnectedCallback`, `#emit`), then `#boot`. The class is about 300 lines. The rest of the file is the machinery that binds parts: text, attributes, events, conditionals, lists and slots.
 - **The proposals the runtime is shaped like.** [Signals](../standards/signals.md), [DOM Parts](../standards/dom-parts.md) and [declarative custom elements](../standards/declarative-custom-elements.md). The aim is for the platform to absorb what Zubra proves, so the runtime shrinks as native features ship.
 - **The platform's own documentation.** [Using custom elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements) on MDN, and the [custom elements section](https://html.spec.whatwg.org/multipage/custom-elements.html) of the HTML Standard.
 

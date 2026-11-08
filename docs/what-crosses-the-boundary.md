@@ -15,8 +15,8 @@ A leaf takes data in and sends events out: a date picker, a chart, a rating, a t
 | Through the boundary | How | In the frameworks |
 |---|---|---|
 | **Props**, including objects, arrays and functions | Set as properties on the element; attributes are a typed fallback (JSON for arrays and objects) | The generated React and Vue wrappers set properties; React 19, Svelte, Solid, Angular and Lit set properties on their own; typings check them |
-| **Events** | `CustomEvent` from the host, data in `detail`, bubbling (and `composed` in shadow DOM), lowercase names like the DOM's own | React `onValueChange`, Vue `@valuechange`, Angular `(valueChange)`, Svelte `onvaluechange`, Solid `on:valuechange`, all from the one DOM event |
-| **Two-way binding** | A `:model` prop and its `<prop>change` event | Vue `v-model`, Svelte `bind:value`, Angular `[(value)]` via `ZubraModel`, React's controlled pattern, Zubra `value:bind` |
+| **Events** | `CustomEvent` from the host, data in `detail`, bubbling (and `composed` in shadow DOM), lowercase names like the DOM's own | React `onValueChange`, Vue `@valuechange`, Angular `(valuechange)`, Svelte `onvaluechange`, Solid `on:valuechange`, all from the one DOM event |
+| **Two-way binding** | A `:model` prop and its `<prop>change` event | Vue `v-model`, Svelte `bind:value`, Angular forms (`ngModel`, `formControlName`) via the `ZubraModel` directive, React's controlled pattern, Zubra `value:bind` |
 | **Children and named slots** | Light-DOM children placed into `zb-slot` regions (native `<slot>` with `shadow`); the framework keeps managing them through the host | React and Vue children, Svelte and Solid children, plain HTML; content stays the consumer's, styled and updated by the consumer |
 | **Form participation** | `form-associated`: the element is a form control with a name, a value, validation and reset | Works with every server form API tried: Next.js Server Actions, SvelteKit actions, React Router `<Form>`, SolidStart actions, htmx |
 | **Context, between custom elements** | The Context Protocol (`context-request` event) | Shared with Lit (`@lit/context`) and any other implementer, in any framework's page |

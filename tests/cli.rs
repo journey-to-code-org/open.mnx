@@ -193,34 +193,6 @@ fn slots_html_takes_server_rendered_content() {
 }
 
 #[test]
-fn migrate_rewrites_in_place_and_check_reports() {
-    let dir = temp_dir("migrate");
-    let file = dir.join("x.zb");
-    let jsx = dir.join("y.zb.jsx");
-    fs::write(
-        &file,
-        "<script>const name = \"a\"</script>\n<zb-x name={name}><p>{name}</p></zb-x>\n",
-    )
-    .unwrap();
-    fs::write(&jsx, "export default function ZbY() { return <p /> }\n").unwrap();
-    let (ok, _, stderr) = zubra(&["migrate", file.to_str().unwrap(), "--check"]);
-    assert!(!ok);
-    assert!(stderr.contains("1 file would change"), "{stderr}");
-    let (ok, _, stderr) = zubra(&["migrate", file.to_str().unwrap(), jsx.to_str().unwrap()]);
-    assert!(ok, "{stderr}");
-    assert!(
-        stderr.contains("renamed the script's `name` to `nameDefault`"),
-        "{stderr}"
-    );
-    assert!(stderr.contains("y.zb.jsx: skipped"), "{stderr}");
-    assert!(fs::read_to_string(&file)
-        .unwrap()
-        .contains("name={nameDefault}"));
-    let (ok, _, _) = zubra(&["migrate", file.to_str().unwrap(), "--check"]);
-    assert!(ok, "nothing left to migrate");
-}
-
-#[test]
 fn serve_answers_a_request_per_line_and_batches() {
     use std::io::{BufRead, BufReader, Write};
     let mut child = Command::new(env!("CARGO_BIN_EXE_zubra"))

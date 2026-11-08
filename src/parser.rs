@@ -31,15 +31,6 @@ const VOID_ELEMENTS: &[&str] = &[
 ];
 
 pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
-    parse_with(source, true)
-}
-
-/// Parse a 1.x file that may declare script names that are also props (for `zubra migrate`).
-pub(crate) fn parse_for_migration(source: &str) -> Result<ComponentAst, Diagnostic> {
-    parse_with(source, false)
-}
-
-fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnostic> {
     let normalized = normalize(source);
     let mut parser = TemplateParser::new(Cursor::new(&normalized));
     let leading_comment = parser.skip_whitespace_and_comments()?;
@@ -151,7 +142,7 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
     }
 
     // A prop's name is the prop in the script too (2.0), so the script can't declare it.
-    for prop in props.iter().filter(|_| check_names) {
+    for prop in props.iter() {
         let declared = script
             .bindings
             .iter()
@@ -172,7 +163,7 @@ fn parse_with(source: &str, check_names: bool) -> Result<ComponentAst, Diagnosti
                 ),
             )
             .with_help(format!(
-                "rename the script's `{}` (e.g. `{}Default`, and `{}={{{}Default}}` on the host); `zubra migrate` does it",
+                "rename the script's `{}` (e.g. `{}Default`, and `{}={{{}Default}}` on the host)",
                 prop.name, prop.name, kebab_attribute(&prop.name), prop.name
             )));
         }

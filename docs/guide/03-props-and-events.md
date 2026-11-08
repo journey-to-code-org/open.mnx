@@ -20,7 +20,7 @@ Components talk to the outside the way built-in elements do: **properties in, DO
 ```
 
 - `emit(name, detail)` fires a `CustomEvent` from the element. It bubbles, and `detail` carries the value.
-- Calling `emit` declares the event: it appears in the typings (`colorpick: CustomEvent<string>`) and the docs. There's nothing to register.
+- Calling `emit` declares the event: it appears in the typings and the docs. Here it's `colorpick: CustomEvent<unknown>`, because `color` is a variable; in a `<script lang="ts">`, `emit<string>('colorpick', color)` makes it `CustomEvent<string>`. There's nothing to register.
 - Names are lowercase, like the platform's own (`colorpick`, not `colorPick`): every framework can listen to those declaratively. A camelCase name is an error that suggests the right one.
 - `before…` events are cancelable: `if (!emit('beforeclose')) return` stops when a listener called `preventDefault()`.
 
@@ -30,7 +30,7 @@ Listening, in each place the element is used:
 |---|---|
 | Plain HTML | `el.addEventListener('colorpick', (event) => …)` |
 | Another Zubra component | `<color-picker oncolorpick={(event) => …}>` |
-| React (through the plugin) | `<ColorPicker onColorPick={(event) => …} />` |
+| React (through the plugin) | `<ColorPicker onColorpick={(event) => …} />` |
 | Vue | `<ColorPicker @colorpick="…" />` |
 | Svelte, Preact | `oncolorpick={(event) => …}` |
 | Solid | `on:colorpick={(event) => …}` |
@@ -108,6 +108,6 @@ For state shared between components, or anything outside one element, `state()` 
 </user-badge>
 ```
 
-`user.email` means `user.get().email`. To change a `state()`, call `.set(…)`. To pass the signal itself to something that takes one (`watch()`, `formValue()`, `provide()`), write `signal(user)`. (Before 3.0, a script read it with `.get()`; that still works.)
+`user.email` means `user.get().email`. To change a `state()`, call `.set(…)`. To pass the signal itself to something that takes one (`watch()`, `formValue()`, `provide()`), write `signal(user)`.
 
 **Next:** [Composition and slots](04-composition.md)

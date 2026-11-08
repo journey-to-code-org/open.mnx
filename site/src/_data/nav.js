@@ -35,13 +35,6 @@ export default [
     { file: 'docs/convert-measured.md', label: '`zubra convert`, measured' },
     { file: 'CHANGELOG.md', slug: 'changelog', label: 'Changelog' },
   ] },
-  { group: 'Migrating', pages: [
-    { file: 'docs/migrating-to-5.0.md', label: 'To 5.0' },
-    { file: 'docs/migrating-to-4.0.md', label: 'To 4.0 (mnx is now Zubra)' },
-    { file: 'docs/migrating-to-3.0.md', label: 'To 3.0' },
-    { file: 'docs/migrating-to-2.0.md', label: 'To 2.0' },
-    { file: 'docs/migrating-from-0.2.md', label: 'From 0.2' },
-  ] },
   { group: 'Standards reports', pages: [
     { file: 'docs/standards/declarative-custom-elements.md', label: 'Declarative custom elements' },
     { file: 'docs/standards/dom-parts.md', label: 'DOM Parts' },

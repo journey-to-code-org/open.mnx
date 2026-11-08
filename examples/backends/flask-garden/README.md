@@ -62,25 +62,24 @@ With JavaScript, the same markup becomes interactive:
 
 ## What it found
 
-The server renders with the compiler's build-time expression subset: literals, member access,
-arithmetic, comparisons, logic and ternaries. That subset is the whole story on a non-JS server,
-so its gaps show up here first. `plan/roadmap-server.md` has the details and the plan.
+The server renders with the compiler alone: the template's expressions, and the script's
+deterministic JavaScript (string, array and number methods, `Math` without `random`, arrow
+functions), but never `Intl` or `Date`. That's the whole story on a non-JS server, so its gaps
+show up here first. `plan/roadmap-server.md` has the details and the plan.
 
-- **`value.includes(x)` and template literals weren't evaluated on the server** (fixed in 2.8).
-  The region was left for the browser: an attribute omitted, text left empty. For a checkbox,
-  that meant *unchecked* in the server's HTML, so a form re-rendered after an error lost its
-  choices without JavaScript. The app used to pass each option's `chosen` flag and each bar's
-  `pct` from Python. Now the server evaluates the script's deterministic JavaScript, and the
-  components use `value.includes(…)` and `Math.max(…)` themselves.
-- **It was silent** (2.7 reports it). Nothing said that `checked={value.includes(o.value)}` won't
-  render on the server. In a form, that's a bug you only find with JavaScript off. Now
-  `zubra check --server` reports it, as an error for form state (`checked`, `selected`, `value`,
-  `disabled`).
+- **Form state has to render on the server.** What the server can't evaluate is left for the
+  browser: an attribute omitted, text left empty. For a checkbox, that means *unchecked* in the
+  server's HTML, so a form re-rendered after an error would lose its choices without JavaScript.
+  The components compute their own state (`value.includes(…)`, `Math.max(…)`), and the server
+  evaluates it.
+- **`zubra check --server` reports what's left for the browser.** A gap like that is a bug you
+  only find with JavaScript off, so it reports one as an error for form state (`checked`,
+  `selected`, `value`, `disabled`).
 - **A prop's default sets its type.** `max="3"` is a string, so `value.length >= max` is an
   error ("comparison requires two numbers or two strings"). It has to be `max={3}`. The error is
   right, but it's met on the server first, as a 500.
-- **One process per render** (fixed in 2.7). Each render used to start the CLI: about 5 ms with
-  a debug build, or about 15 ms for a page with three components. `zubra serve` keeps one
-  process, which cut pages by about 40%.
+- **One process for every render.** Starting the CLI for each render costs about 5 ms with a
+  debug build, or about 15 ms for a page with three components. `zubra serve` keeps one process,
+  which cuts pages by about 40%.
 - **`name` is a common prop and a common Python argument.** `zubra('crop-picker', name='crops')`
   works because `render`'s own argument is positional-only.

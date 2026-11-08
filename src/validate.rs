@@ -1157,7 +1157,7 @@ impl Context<'_> {
                 span,
                 format!("`{name}` only exists at runtime, so it can't be rendered into static HTML"),
             )
-            .with_help("render this component with the JavaScript output (v0.4+), or compute the value as a build-time const"));
+            .with_help("pass the value as a prop, leave it to the element with `--partial`, or compute it with what the server evaluates (an arrow function, not a `function` declaration)"));
         }
         let lookup = |name: &str| match self.binding(name, state) {
             Some(Binding::Value(value)) => Some(value.clone()),

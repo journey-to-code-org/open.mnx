@@ -42,4 +42,4 @@ Each step builds on the last, in about ten minutes each.
 
 ## Reference
 
-The [README](../../README.md) is the reference: every feature, option and rule. `docs/` has the rest (security, browser support, migrations).
+The [README](../../README.md) is the reference: every feature, option and rule. `docs/` has the rest (security, browser support).

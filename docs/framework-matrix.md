@@ -38,7 +38,7 @@ Each framework's app in `examples/frameworks/` (or `examples/meta/` for the serv
 | SvelteKit 3 | `sveltekit-workouts/` | `meta` | form actions with Zubra controls, with and without JavaScript; `injectShadowRoots` in `hooks.server.js` |
 | React Router 8 | `react-router-trips/` | `meta` | loaders, actions and `<Form>`; a light-DOM balance list and shadow-DOM controls in the server HTML; no hydration errors |
 | SolidStart 2 | `solidstart-potluck/` | `meta` | `prop:`/`on:` elements as form controls posting to an action; a light-DOM board through `injectShadowRoots(…, { lightDom: true })` |
-| Eleventy 3 | `eleventy-trails/` | `meta` | a static site through `@zubra/server`'s `writeAssets`; markers restored after naive minification |
+| Eleventy 3 | `eleventy-trails/` | `meta` | a static site through `@zubra/server`'s `writeAssets`; markers kept through minification with `removeComments: true` |
 | Plain HTML | `todo/`, `planner/` | `plugin` | elements used from a page with an import map |
 | Express, Hono, Flask, htmx, Electron, a Chrome extension | `helpdesk/`, `hypermedia/`, `backends/`, `desktop/`, `extension/` | `helpdesk`, `hypermedia`, `backends`, `clients` | server rendering from Node and from Python through `zubra serve`; streaming; a strict CSP; another site's page |
 

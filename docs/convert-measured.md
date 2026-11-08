@@ -1,6 +1,6 @@
 # `zubra convert`, measured
 
-*Updated for 3.5.0, 2026-11-07 (first measured in 3.2.0). `plan/roadmap-4.0.md` challenge 9 and `plan/roadmap-3.5.md` challenge 2: the one objection everyone in the first survey shared was "every library is React-first", and `zubra convert` is the answer to it. This page says how far it gets on a real React component library.*
+*The one objection every developer we asked shared was "every library is React-first", and `zubra convert` is the answer to it. This page says how far it gets on a real React component library.*
 
 ## The corpus
 
@@ -10,19 +10,18 @@ The run: `zubra convert <file> --prefix ui`, with `--component <Name>` for each 
 
 ## The result
 
-| | 3.2.0 | 3.5.0 |
-|---|---|---|
-| Files built on a React primitive (Radix, cmdk, vaul, Recharts, …) | reported line by line | **46 files refused up front**, with one message naming the library and pointing at the platform, the registry or Zag |
-| Components in the other 15 files | 68 | 68 |
-| …that convert and compile with nothing left to finish | **0** | **50** (74%) |
+| | |
+|---|---|
+| Files built on a React primitive (Radix, cmdk, vaul, Recharts, …) | **46 files refused up front**, with one message naming the library and pointing at the platform, the registry or Zag |
+| Components in the other 15 files | 68 |
+| …that convert and compile with nothing left to finish | **50** (74%) |
 
-What changed in 3.5:
-- **Spread onto an element compiles** (`{...expr}` is a Zubra feature now), so it isn't reported.
+How it gets there:
+- **Spread onto an element compiles** (`{...expr}` is a Zubra feature), so it isn't reported.
 - **`...props` spread onto the returned element is dropped**, with a note: in Zubra the host *is* the element the consumer sees, and it carries their `id`, `aria-*`, `data-*` and listeners itself.
 - **`className` becomes the host's own `class`**: the parameter goes and its uses become `undefined`, so `cn("base", className)` keeps the component's own classes, and the consumer's style the host.
 - **The props' React type (`React.ComponentProps<"div">`) goes.**
-- **A component built on a React primitive is refused up front.** It was reported before as a dozen unrelated problems; it's one problem: the behaviour is the primitive's, and there's no HTML to convert to.
-- Three conversion bugs fixed along the way: an insertion at the edge of a removed span was dropped (so `useMemo(() => { … }, deps)` lost its closing `)()`); a file's other components were checked as if they were being converted; and TypeScript in a template expression (`(e.target as HTMLElement)`) wasn't stripped.
+- **A component built on a React primitive is refused up front.** Reported line by line it would be a dozen unrelated problems; it's one problem: the behaviour is the primitive's, and there's no HTML to convert to.
 
 ## What's left in the 18
 
@@ -34,7 +33,7 @@ All are reported with advice, none silently wrong:
 
 ## What the numbers say
 
-The plain-markup end of a React library converts now: cards, alerts, inputs, tables, kbd, skeletons, empty states. The behaviour end doesn't, and shouldn't pretend to. A Radix dialog has no markup of its own to convert; its Zubra equivalent is the platform's `<dialog>`, a registry component, or a Zag machine through `@zubra/runtime/zag` (3.6).
+The plain-markup end of a React library converts: cards, alerts, inputs, tables, kbd, skeletons, empty states. The behaviour end doesn't, and shouldn't pretend to. A Radix dialog has no markup of its own to convert; its Zubra equivalent is the platform's `<dialog>`, a registry component, or a Zag machine through `@zubra/runtime/zag`.
 
 ## Per file
 

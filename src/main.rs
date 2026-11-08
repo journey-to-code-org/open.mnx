@@ -24,9 +24,6 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("check") {
         return check(arguments.collect());
     }
-    if command.as_deref() == Some("migrate") {
-        return migrate(arguments.collect());
-    }
     if command.as_deref() == Some("convert") {
         return convert(arguments.collect());
     }
@@ -64,7 +61,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json]\n       zubra migrate <component.zb>... [--check] [--to 3]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -575,116 +572,4 @@ fn rebase_imports(text: &str, from: &std::path::Path, to: &std::path::Path) -> (
     }
     out.push_str(rest);
     (out, moved)
-}
-
-/// `zubra migrate`: rewrite `.zb` files for 2.0 in place (`--check`: only report, and fail if
-/// anything would change).
-fn migrate(arguments: Vec<String>) -> Result<(), String> {
-    let usage = "usage: zubra migrate <component.zb>... [--check] [--to 3]";
-    let check = arguments.iter().any(|argument| argument == "--check");
-    // `--to 3`: prepare 2.x code for 3.0 (`plan/decisions/3.0-scope.md`).
-    let to = arguments
-        .iter()
-        .position(|argument| argument == "--to")
-        .map(|at| arguments.get(at + 1).cloned().ok_or(usage))
-        .transpose()?;
-    if to.as_deref().is_some_and(|version| version != "3") {
-        return Err(format!(
-            "`--to {}`: the only target is 3",
-            to.unwrap_or_default()
-        ));
-    }
-    let files: Vec<&String> = arguments
-        .iter()
-        .enumerate()
-        .filter(|(at, argument)| {
-            !argument.starts_with("--") && (*at == 0 || arguments[at - 1] != "--to")
-        })
-        .map(|(_, argument)| argument)
-        .collect();
-    if let Some(unknown) = arguments.iter().find(|argument| {
-        argument.starts_with("--") && *argument != "--check" && *argument != "--to"
-    }) {
-        return Err(format!("unexpected argument `{unknown}`"));
-    }
-    if files.is_empty() {
-        return Err(usage.into());
-    }
-    if to.is_some() {
-        let mut pending = 0;
-        for path in files {
-            if zubra::component_extension(path) != Some(".zb") {
-                eprintln!("{path}: skipped (only .zb scripts have signal `const`s to prepare)");
-                continue;
-            }
-            let source = fs::read_to_string(path)
-                .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-            let (output, wrapped) = zubra::prepare_for_3(&source);
-            if wrapped > 0 {
-                pending += 1;
-                if check {
-                    for found in zubra::uses_for_3(&source) {
-                        eprint!("{}", found.render_warning(&source, path));
-                    }
-                }
-                eprintln!(
-                    "{path}: {} the signal{} passed as {} in `signal(…)`, which 3.0 needs",
-                    if check { "would wrap" } else { "wrapped" },
-                    if wrapped == 1 { "" } else { "s" },
-                    if wrapped == 1 { "itself" } else { "themselves" }
-                );
-                if !check {
-                    write_atomically(path, output.as_bytes())?;
-                }
-            }
-        }
-        if check && pending > 0 {
-            return Err(format!(
-                "{pending} file{} would change; run `zubra migrate --to 3` without --check",
-                if pending == 1 { "" } else { "s" }
-            ));
-        }
-        eprintln!(
-            "ready for 3.0: {pending} file{} {}",
-            if pending == 1 { "" } else { "s" },
-            if check { "to change" } else { "changed" }
-        );
-        return Ok(());
-    }
-    let mut pending = 0;
-    for path in files {
-        if zubra::component_extension(path) != Some(".zb") {
-            eprintln!("{path}: skipped (JSX components already have 2.0's semantics)");
-            continue;
-        }
-        let source = fs::read_to_string(path)
-            .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-        let migration =
-            zubra::migrate(&source).map_err(|diagnostic| diagnostic.render_in(&source, path))?;
-        for change in &migration.changes {
-            eprintln!("{path}: {change}");
-        }
-        for note in &migration.notes {
-            eprint!("{}", note.render_warning(&source, path));
-        }
-        if migration.output != source {
-            pending += 1;
-            if !check {
-                write_atomically(path, migration.output.as_bytes())?;
-            }
-        }
-    }
-    if check && pending > 0 {
-        return Err(format!(
-            "{pending} file{} would change; run `zubra migrate` without --check",
-            if pending == 1 { "" } else { "s" }
-        ));
-    }
-    if !check {
-        eprintln!(
-            "migrated: {pending} file{} changed",
-            if pending == 1 { "" } else { "s" }
-        );
-    }
-    Ok(())
 }

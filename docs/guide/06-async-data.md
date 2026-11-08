@@ -20,9 +20,9 @@
 
 - **It refetches by itself** when something it read changes: here the `userId` prop. The previous request is aborted (through `signal`), and so is the request in flight when the element is removed. An answer that arrives after a newer request started is dropped.
 - **`<zb-await>`** shows `<zb-pending>` while pending, `<zb-then>` with the value, and `<zb-catch>` with the error. `<zb-await {user}>` is short for `value={user}`. It also takes a plain promise, or an array of promises and resources, which it waits for together.
+- **No flashing.** `delay={200}` shows the pending content only if the answer takes longer than 200 ms. `keep` holds the old content while a refetch runs, instead of showing the pending content again, and the element matches `:state(loading)` meanwhile: `user-card:state(loading) { opacity: 0.6 }`.
 - **`as` can destructure:** `as="{ name, email }"`, or `as="[user, posts]"` for an array.
 - **`retry()`** in `<zb-catch>` fetches again.
-- **No flashing.** `delay={200}` shows the pending content only if the answer takes longer than 200 ms. `keep` holds the old content while a refetch runs, instead of showing the pending content again, and the element matches `:state(loading)` meanwhile: `user-card:state(loading) { opacity: 0.6 }`.
 
 There are no effects to write and no dependency arrays: what the fetcher reads before its first `await` is what it depends on.
 

@@ -90,7 +90,7 @@ fn a_prop_default_from_the_script_and_no_script_name_shared_with_a_prop() {
         clash.message,
         "the script declares `title`, which is also a prop: a prop's name is the prop in the script too"
     );
-    assert_eq!(clash.help.as_deref(), Some("rename the script's `title` (e.g. `titleDefault`, and `title={titleDefault}` on the host); `zubra migrate` does it"));
+    assert_eq!(clash.help.as_deref(), Some("rename the script's `title` (e.g. `titleDefault`, and `title={titleDefault}` on the host)"));
 }
 
 #[test]

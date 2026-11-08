@@ -1,5 +1,5 @@
 // The trails. (The elevation profile works out its own SVG points: components' JavaScript runs
-// at build time too, since 2.8.)
+// at build time too.)
 const TRAILS = [
   ['Laurel Run Loop', 'easy', 4.2, [520, 540, 575, 560, 590, 610, 585, 540, 520], 'A shaded loop along the run, with three footbridges and a picnic meadow at the halfway point.'],
   ['Spruce Knob Summit', 'moderate', 7.8, [1180, 1230, 1290, 1340, 1410, 1460, 1482, 1440, 1360, 1250], 'Up through red spruce to the highest point in the state, with an observation tower at the top.'],
