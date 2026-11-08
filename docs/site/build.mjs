@@ -9,7 +9,7 @@
 // A relative link in a page is rewritten to the page it names. A link to a file that isn't part of
 // the site (source code, an example's folder) goes to that file on GitHub, and a link to something
 // that doesn't exist fails the build, so a moved file can't leave a dead link behind.
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -97,6 +97,18 @@ export function buildDocs({ out, base, repository = 'journey-to-code-org/zubra' 
     return `${github}/${statSync(absolute).isDirectory() ? 'tree' : 'blob'}/main/${resolved.replace(/\/$/, '')}${hash}`;
   }
 
+  const absoluteUrl = (href) => /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(href);
+  /**
+   * Where an image written in `from` is served. brand/ is copied into the site (so the README's logo
+   * works before a branch is merged, and offline); any other image is read from the repository on GitHub.
+   */
+  function imageUrl(from, href) {
+    if (absoluteUrl(href) || href.startsWith('data:')) return href;
+    const resolved = posix.normalize(posix.join(posix.dirname(from), decodeURI(href)));
+    if (!existsSync(join(repo, resolved))) throw new Error(`docs: ${from}: the image "${href}" points to ${resolved}, which doesn't exist`);
+    return resolved.startsWith('brand/') ? `${base}docs/assets/${resolved}` : `https://raw.githubusercontent.com/${repository}/main/${resolved}`;
+  }
+
   function render(page) {
     const seen = new Map();
     const marked = new Marked({
@@ -115,10 +127,13 @@ export function buildDocs({ out, base, repository = 'journey-to-code-org/zubra' 
           return `<a href="${escape(target(page.file, href))}"${title ? ` title="${escape(title)}"` : ''}>${inner}</a>`;
         },
         image({ href, title, text }) {
-          const src = /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(href)
-            ? href
-            : `https://raw.githubusercontent.com/${repository}/main/${posix.normalize(posix.join(posix.dirname(page.file), href))}`;
-          return `<img src="${escape(src)}" alt="${escape(text)}"${title ? ` title="${escape(title)}"` : ''} loading="lazy">`;
+          return `<img src="${escape(imageUrl(page.file, href))}" alt="${escape(text)}"${title ? ` title="${escape(title)}"` : ''} loading="lazy">`;
+        },
+        // Markup written in the Markdown (the README's logo, its <details>): relative images and links get the same treatment.
+        html({ text }) {
+          return text
+            .replace(/(<img\b[^>]*?\ssrc=")([^"]+)(")/g, (_, open, src, close) => open + escape(imageUrl(page.file, src)) + close)
+            .replace(/(<a\b[^>]*?\shref=")([^"]+)(")/g, (_, open, href, close) => open + escape(target(page.file, href)) + close);
         },
       },
     });
@@ -183,6 +198,7 @@ ${body}
   const root = join(out, 'docs');
   mkdirSync(join(root, 'assets'), { recursive: true });
   writeFileSync(join(root, 'assets/site.css'), readFileSync(join(here, 'site.css')));
+  cpSync(join(repo, 'brand'), join(root, 'assets/brand'), { recursive: true });
   for (const page of pages) {
     const dir = join(root, page.slug);
     mkdirSync(dir, { recursive: true });
