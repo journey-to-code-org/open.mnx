@@ -151,8 +151,6 @@ jobs:
       - run: npm ci
         working-directory: plugin
       - run: npm ci
-        working-directory: docs/site
-      - run: npm ci
         working-directory: site
       - run: npm ci
         working-directory: examples/frameworks

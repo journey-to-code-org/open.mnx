@@ -11,7 +11,7 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
       <p class="lede">A Zubra file is a script, some styles and a template. The compiler turns it into a standard custom element, the HTML a server sends, and typings. The element works in plain HTML, in React, Vue, Svelte and the rest, and on the server. Nothing is hidden: you can read every line it writes.</p>
       <div class="install">
         <code id="install-command">npm create zubra@latest</code>
-        <button type="button" class="copy" data-copy="npm create zubra@latest" hidden>Copy</button>
+        {{ components.copyButton.html | safe }}
       </div>
       <p class="actions">
         <a class="button primary" href="{{ '/docs/guide/01-first-component/' | url }}">Start the guide</a>

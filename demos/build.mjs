@@ -4,14 +4,14 @@
 //
 //   <base>                 the landing page (site/, built with Eleventy): the idea, the compiler's real
 //                          output, and the gallery of every example, with a screenshot
+//   <base>docs/            the documentation (also site/: Eleventy renders the Markdown in docs/)
 //   <base>playground/      the playground (playground/build.mjs)
-//   <base>docs/            the documentation (docs/site/build.mjs; `npm ci` in docs/site)
 //   <base>demos/<id>/      each static example, built to be served from there
 //
 // --base defaults to /<repository>/ on GitHub Actions (Pages serves a project site there), and
 // to / elsewhere. The static examples need their dependencies installed: `npm ci` in
 // examples/frameworks (all seven framework apps), examples/todo, examples/planner,
-// examples/recipes and examples/meta/eleventy-trails, and in site/ (the landing page). Without compiler/zubra.wasm the examples
+// examples/recipes and examples/meta/eleventy-trails, and in site/ (the landing page and the docs). Without compiler/zubra.wasm the examples
 // are compiled with the CLI (`cargo build` at the root).
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -48,12 +48,6 @@ if (!only?.length || only.includes('playground')) {
   run(process.execPath, [join(repo, 'playground/build.mjs'), '--out', join(out, 'playground'), ...(args.includes('--require-wasm') ? ['--require-wasm'] : [])], repo);
 }
 
-// The documentation: the guide, topics, reference and migration notes, as pages.
-if (!only?.length || only.includes('docs')) {
-  const { buildDocs } = await import(pathToFileURL(join(repo, 'docs/site/build.mjs')).href);
-  console.log(`demos: docs → ${base}docs/ (${buildDocs({ out, base, repository })} pages)`);
-}
-
 // The static examples.
 const built = [];
 let ui = false;
@@ -88,8 +82,11 @@ for (const demo of demos.filter((demo) => demo.build && (!only?.length || only.i
 const shots = join(here, 'shots');
 if (existsSync(shots)) cpSync(shots, join(out, 'shots'), { recursive: true });
 const present = demos.filter((demo) => existsSync(join(out, 'demos', demo.id, 'index.html'))).map((demo) => demo.id);
-// The landing page. It compiles its sample with the compiler found above and links the examples
-// that are in this build.
-run(local('site', 'eleventy'), ['--quiet'], join(repo, 'site'), { OUT: out, BASE: base, LANDING_OUT: out });
+// The landing page and the documentation (the guide, topics, reference and migration notes), both
+// from site/. The page compiles its component and sample with the compiler found above and links the
+// examples that are in this build; a link in the docs to a file that doesn't exist fails this step.
+if (!only?.length || only.some((id) => ['site', 'landing', 'docs'].includes(id))) {
+  run(local('site', 'eleventy'), ['--quiet'], join(repo, 'site'), { OUT: out, BASE: base, LANDING_OUT: out });
+}
 writeFileSync(join(out, '.nojekyll'), '');
 console.log(`demos: ${out} (${present.length} live examples, served from ${base})`);

@@ -1,8 +1,9 @@
-// The landing page: node demos/build.mjs runs this over the whole Pages build, or `npm run build`
+// The landing page and the documentation: node demos/build.mjs runs this over the whole Pages build, or `npm run build`
 // here for the page alone (set ZUBRA_COMPILER to a native `zubra` if compiler/zubra.wasm isn't built).
 //
 //   OUT         where to write it (default _site)
 //   BASE        the path the site is served from, like /zubra/ (default /)
+//   GITHUB_REPOSITORY  who the links to the source point at (default journey-to-code-org/zubra)
 //   LANDING_OUT the finished Pages build, so the page links the examples that are in it
 import Prism from 'prismjs';
 import loadLanguages from 'prismjs/components/index.js';
@@ -22,6 +23,13 @@ export default function (eleventyConfig) {
   eleventyConfig.addFilter('tighten', (code) => code.replace(/ {2,}(\/\/|\/\*|<!--)/g, '  $1'));
   eleventyConfig.addFilter('tidy', (code) => code.replace(/[ \t]+$/gm, ''));
   eleventyConfig.addPassthroughCopy({ 'src/assets': 'landing' });
+  // The runtime the page's own component imports, as the playground serves it (no bundler).
+  eleventyConfig.addPassthroughCopy({ '../runtime/src': 'landing/runtime' });
+  // The docs' stylesheet and the brand files its pages show (the README's logo).
+  eleventyConfig.addPassthroughCopy({ 'src/docs-assets': 'docs/assets' });
+  eleventyConfig.addPassthroughCopy({ '../brand': 'docs/assets/brand' });
+  // A page label may carry `code`.
+  eleventyConfig.addFilter('code', (text) => escape(text).replace(/`([^`]+)`/g, '<code>$1</code>'));
   eleventyConfig.addPassthroughCopy({ 'src/favicon.svg': 'favicon.svg' });
   eleventyConfig.addPassthroughCopy({ 'src/apple-touch-icon.png': 'apple-touch-icon.png' });
 

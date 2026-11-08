@@ -1,0 +1,18 @@
+<script>
+  let status = 'idle'                              // 'idle', 'copied' or 'failed'
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      status = 'copied'
+    } catch {
+      status = 'failed'                            // no clipboard access: the command is still there to select
+    }
+    setTimeout(() => (status = 'idle'), 1500)
+  }
+</script>
+<copy-button text label="Copy">
+  <button type="button" class="copy" onclick={copy}>
+    {status === 'copied' ? 'Copied!' : status === 'failed' ? 'Select it instead' : label}
+  </button>
+</copy-button>

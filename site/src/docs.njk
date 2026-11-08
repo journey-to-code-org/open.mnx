@@ -1,0 +1,10 @@
+---
+pagination:
+  data: docs.pages
+  size: 1
+  alias: doc
+permalink: "docs/{% if doc.slug %}{{ doc.slug }}/{% endif %}index.html"
+layout: docs-layout.njk
+eleventyExcludeFromCollections: true
+---
+{{ doc.html | safe }}

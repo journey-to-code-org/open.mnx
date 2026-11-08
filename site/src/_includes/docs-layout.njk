@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ doc.title }} · Zubra docs</title>
+  <meta name="description" content="Zubra compiles HTML-first components into standard web components. Documentation: the guide, topics, reference and migration notes.">
+  <link rel="icon" href="{{ '/favicon.svg' | url }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ '/apple-touch-icon.png' | url }}">
+  <link rel="stylesheet" href="{{ '/docs/assets/site.css' | url }}">
+</head>
+<body>
+  <a class="skip" href="#content">Skip to the content</a>
+  <header class="top">
+    <a class="brand" href="{{ '/docs/' | url }}">{% include "mark.njk" %}Zubra <span>docs</span></a>
+    <nav aria-label="Site">
+      <a class="all-pages" href="#docs-nav">All pages</a>
+      <a href="{{ '/playground/' | url }}">Playground</a>
+      <a href="{{ '/' | url }}">Demos</a>
+      <a href="{{ docs.github }}">GitHub</a>
+    </nav>
+  </header>
+  <div class="layout">
+    <nav class="side" id="docs-nav" aria-label="Documentation">
+{%- for group in docs.nav %}
+      <h2>{{ group.group }}</h2>
+      <ul>
+{%- for entry in group.pages %}
+        <li><a href="{{ entry.url }}"{% if entry.file == doc.file %} aria-current="page"{% endif %}>{{ entry.label | code | safe }}</a></li>
+{%- endfor %}
+      </ul>
+{%- endfor %}
+    </nav>
+    <main id="content">
+      <article class="doc">
+{{ content | safe }}
+      </article>
+{%- if doc.prev or doc.next %}
+      <nav class="pager" aria-label="Guide pages">
+        {%- if doc.prev %}<a rel="prev" href="{{ doc.prev.url }}"><span>Previous</span>{{ doc.prev.label }}</a>{% else %}<span></span>{% endif %}
+        {%- if doc.next %}<a rel="next" href="{{ doc.next.url }}"><span>Next</span>{{ doc.next.label }}</a>{% else %}<span></span>{% endif %}
+      </nav>
+{%- endif %}
+      <p class="edit"><a href="{{ docs.github }}/blob/main/{{ doc.file }}">Edit this page on GitHub</a> · Zubra {{ docs.version }}</p>
+    </main>
+  </div>
+</body>
+</html>

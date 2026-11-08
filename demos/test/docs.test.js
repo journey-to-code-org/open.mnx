@@ -1,4 +1,4 @@
-// The documentation site in the built gallery (docs/site/build.mjs), read as files, with no browser:
+// The documentation site in the built gallery (site/src/docs.njk and _data/docs.js), read as files, with no browser:
 // every page of the navigation is built, every link on every page lands on a page or an anchor
 // that exists under the base path, and Markdown links didn't survive as links to `.md` files.
 //
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { nav } from '../../docs/site/build.mjs';
+import nav from '../../site/src/_data/nav.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dir = resolve(here, '../..', process.env.GALLERY ?? '_site');

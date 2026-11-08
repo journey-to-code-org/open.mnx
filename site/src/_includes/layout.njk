@@ -28,6 +28,7 @@
       <p>Zubra {{ site.version }} · ISC licence · <a href="{{ site.github }}">Source on GitHub</a> · <a href="{{ '/docs/changelog/' | url }}">Changelog</a></p>
     </div>
   </footer>
-  <script src="{{ '/landing/site.js' | url }}" defer></script>
+  <script type="importmap">{ "imports": { "@zubra/runtime": "{{ '/landing/runtime/index.js' | url }}" } }</script>
+  <script type="module" src="{{ '/landing/copy-button.js' | url }}"></script>
 </body>
 </html>
