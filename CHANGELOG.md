@@ -2,9 +2,9 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.0.3 — 2026-11-08
 
-A documentation site, a landing page, a logo, and the VS Code extension on the Marketplace. Two diagnostics say more.
+A documentation site, a landing page, a logo, and the VS Code extension on the Marketplace. Two diagnostics say more, and the language server finds the compiler in your project. No API changes.
 
 ### Changed
 
@@ -12,7 +12,7 @@ A documentation site, a landing page, a logo, and the VS Code extension on the M
 
 ### Fixed
 
-- **The language server finds `@zubra/compiler` in the project you're editing.** It looked only beside itself, so in the VS Code extension (where the server lives in the extension's folder) it never saw a workspace's `@zubra/compiler` and needed the `zubra` command on the `PATH` for diagnostics, completion and hover. It now looks in the nearest `node_modules` above the workspace folder first, then beside itself, then falls back to the CLI. Ships when the packages are next released and the extension repackaged.
+- **The language server finds `@zubra/compiler` in the project you're editing.** It looked only beside itself, so in the VS Code extension (where the server lives in the extension's folder) it never saw a workspace's `@zubra/compiler` and needed the `zubra` command on the `PATH` for diagnostics, completion and hover. It now looks in the nearest `node_modules` above the workspace folder first, then beside itself, then falls back to the CLI.
 
 ### Added
 
@@ -20,7 +20,7 @@ A documentation site, a landing page, a logo, and the VS Code extension on the M
 - **A landing page** at `<base>`, built with Eleventy with the docs. It shows the real compiler output for one component (compiled when the page is built), the same component written by hand, and the demo gallery. Its own Copy button is a Zubra component.
 - **A logo** (`brand/`): the mark, an on-dark mark and a tile, used for the favicon and the docs.
 - **`docs/guide/08-read-the-output.md`**: reads one component's real output through nine rules of the platform's custom elements, and ends with "change one line, read the diff".
-- **`docs/editor-support.md`**, and the VS Code extension as a package: `npm run package` in `editors/vscode` builds a `.vsix` with the published language server in it. It is on the Marketplace as `JourneytoCode.zubra`.
+- **`docs/editor-support.md`**, a file icon for `.zb` files in the VS Code extension, and the extension as a package: `npm run package` in `editors/vscode` builds a `.vsix` with the published language server in it. It is on the Marketplace as `JourneytoCode.zubra`.
 - **The playground colours** the `.zb` source, the page HTML and the compiled output, and its header links the docs site.
 
 ### Tests
