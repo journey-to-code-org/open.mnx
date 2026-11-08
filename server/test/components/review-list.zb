@@ -1,0 +1,11 @@
+<!-- Reviews that a streaming server sends after the page. -->
+<review-list reviews={[]} heading="Reviews">
+  <h2>{heading}</h2>
+  <zb-await value={reviews}>
+    <p class="loading">Loading…</p>
+    <zb-then as="list">
+      <ul><zb-each items={list} as="r" key={r.id}><li>{r.name}: {r.stars}</li></zb-each></ul>
+    </zb-then>
+    <zb-catch as="error"><p class="error">{error.message}</p></zb-catch>
+  </zb-await>
+</review-list>

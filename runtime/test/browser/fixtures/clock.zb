@@ -1,0 +1,7 @@
+<script>
+  const started = window.clockStart ?? 1000
+  const zoneDefault = { name: "UTC" }
+</script>
+<zb-clock since={started} zone={zoneDefault} label="Clock">
+  <p>{label}: {since} {zone.name}</p>
+</zb-clock>

@@ -1,5 +1,5 @@
 // The scoreboard from plan/roadmap-adoption.md: how much the example components say.
-// `node examples/stats.mjs` prints the line count of every .mnx component in the examples and
+// `node examples/stats.mjs` prints the line count of every .zb component in the examples and
 // how often each workaround the 2.x sugar replaces still appears.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -12,7 +12,7 @@ const all = [];
     if (['node_modules', 'dist', 'build', 'ui', '_site'].includes(name) || name.startsWith('.')) continue;
     const path = join(dir, name);
     if (statSync(path).isDirectory()) walk(path);
-    else if (name.endsWith('.mnx')) all.push(path);
+    else if (name.endsWith('.zb')) all.push(path);
   }
 })(root);
 // The browser apps' components (under src/), and the server and client apps' (2.6.2 on:
@@ -47,7 +47,15 @@ const server = [
   ['a child\'s model bound by hand', counted(/on\w+change=\{\(event\) => \(\w+ = event\.detail\)\}/g)],
   ['ref={…}', counted(/ref=\{/g)],
 ];
-const width = Math.max(...[...rows, ...server].map(([name]) => name.length));
+// 4.1: a <zb-if> wrapped around one element, which the zb-if attribute replaces.
+const everything = countIn([...files, ...later]);
+const conditions = [
+  ['<zb-if> wrappers', everything(/<zb-if[\s>]/g)],
+  ['zb-if attributes', everything(/\szb-if=\{/g)],
+];
+const width = Math.max(...[...rows, ...server, ...conditions].map(([name]) => name.length));
 for (const [name, value] of rows) console.log(`${name.padEnd(width)}  ${value}`);
 console.log('\nServer and client apps (helpdesk, backends, hypermedia, meta, extension, desktop):');
 for (const [name, value] of server) console.log(`${name.padEnd(width)}  ${value}`);
+console.log('\nConditions, in all of them (4.1):');
+for (const [name, value] of conditions) console.log(`${name.padEnd(width)}  ${value}`);

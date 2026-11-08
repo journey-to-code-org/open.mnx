@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const data = mkdtempSync(join(tmpdir(), 'focus-'));
@@ -43,7 +44,7 @@ test('the renderer is sandboxed: no Node.js, only the preload\'s API, under a st
   assert.deepEqual(await window.evaluate(() => Object.keys(window.focusTimer).sort()), ['finished', 'load', 'running']);
   assert.match(await window.getAttribute('meta[http-equiv=Content-Security-Policy]', 'content'), /style-src 'self'/);
   assert.equal(await time(), '25:00');
-  // The components' own CSS applies anyway: mnx adopts it as constructed stylesheets, which a
+  // The components' own CSS applies anyway: zubra adopts it as constructed stylesheets, which a
   // CSP's style-src doesn't block (it only blocks inline <style> and style="").
   assert.equal(await window.evaluate(() => getComputedStyle(document.querySelector('focus-timer button.primary')).color), 'rgb(255, 255, 255)');
   assert.equal(await window.evaluate(() => getComputedStyle(document.querySelector('focus-timer time')).fontWeight), '700');
@@ -57,6 +58,7 @@ test('a focus session: start, pause, run out; it\'s logged, saved by the main pr
   assert.equal(await title('Focus (running)'), 'Focus (running)');
   await window.clock.runFor('10:00');
   assert.equal(await time(), '15:00');
+  await shot(window, 'focus-timer', { resize: false });
   await window.getByRole('button', { name: 'Pause' }).click();
   await window.clock.runFor('05:00');
   assert.equal(await time(), '15:00', 'paused, it stays');

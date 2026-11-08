@@ -1,5 +1,5 @@
 {
-  "name": "mnx-example-solid-markets",
+  "name": "zubra-example-solid-markets",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,12 +8,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime",
+    "@zubra/runtime": "file:../../../runtime",
     "solid-js": "1.9.18"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "vite": "8.3.6",
     "vite-plugin-solid": "2.11.15"
   }

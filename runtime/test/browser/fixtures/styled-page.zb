@@ -1,0 +1,9 @@
+<script>
+  import './styled-card.zb'
+</script>
+<style>
+  .mine { color: rgb(0, 0, 255) }
+</style>
+<zb-styled-page show={false}>
+  <zb-styled-card><p class="mine">parent's</p><zb-if test={show}><p class="later">later</p></zb-if></zb-styled-card>
+</zb-styled-page>

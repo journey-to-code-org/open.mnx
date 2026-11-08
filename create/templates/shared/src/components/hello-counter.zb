@@ -1,0 +1,25 @@
+<!--
+  A counter: your first zubra component. While `npm run dev` runs, edit it here and it updates
+  in place, keeping its count.
+
+  - The host tag (`<hello-counter …>`) declares the props and their defaults.
+  - `count:model` makes `count` two-way: assigning it fires `countchange`, which frameworks
+    bind to (`v-model:count`, `onCountChange`, …).
+  - `let` in the script is state; `const` derived from props or state stays in sync.
+  @fires countchange - The count changed; `detail` is the new count.
+-->
+<script>
+  const atMin = count <= min
+</script>
+<style>
+  :host { display: inline-flex; align-items: center; gap: 0.75rem; font: 1rem system-ui, sans-serif; }
+  button { width: 2.25rem; height: 2.25rem; border: 1px solid #c9cdd6; border-radius: 50%; background: white; font: inherit; font-size: 1.2rem; cursor: pointer; }
+  button:hover { border-color: #5b6cff; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  output { min-width: 6ch; text-align: center; font-variant-numeric: tabular-nums; }
+</style>
+<hello-counter count:model={0} min={0} label="Clicks">
+  <button type="button" class="less" aria-label="Fewer" disabled={atMin} onclick={() => count--}>−</button>
+  <output aria-live="polite">{label}: {count}</output>
+  <button type="button" class="more" aria-label="More" onclick={() => count++}>+</button>
+</hello-counter>

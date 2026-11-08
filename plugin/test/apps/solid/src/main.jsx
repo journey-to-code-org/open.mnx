@@ -1,8 +1,8 @@
 import { render } from 'solid-js/web';
 import { createSignal, For, Show } from 'solid-js';
-import '../components/rating.mnx';
-import '../components/card.mnx';
-import '../components/badge.mnx';
+import '../components/rating.zb';
+import '../components/card.zb';
+import '../components/badge.zb';
 
 function App() {
   const [stars, setStars] = createSignal(1);
@@ -13,13 +13,13 @@ function App() {
   Object.assign(window, { app: { setItems, setTitle, setInfo } });
   return (
     <>
-      <mnx-rating prop:value={stars()} on:valuechange={(event) => setStars(event.detail)} on:change={() => setLog([...log(), 'change'])} />
+      <zb-rating prop:value={stars()} on:valuechange={(event) => setStars(event.detail)} on:change={() => setLog([...log(), 'change'])} />
       <p id="stars">{stars()}</p>
-      <mnx-card heading="Solid">
+      <zb-card heading="Solid">
         <Show when={title()}><h2 slot="title">Custom</h2></Show>
         <For each={items()}>{(item) => <p>{item}</p>}</For>
-      </mnx-card>
-      <mnx-badge label="x" prop:info={info()} />
+      </zb-card>
+      <zb-badge label="x" prop:info={info()} />
       <p id="log">{log().join(',')}</p>
     </>
   );

@@ -1,1 +1,1 @@
-import './components/planner-app.mnx';
+import './components/planner-app.zb';

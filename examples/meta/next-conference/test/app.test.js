@@ -1,4 +1,4 @@
-// The conference app in Chromium: `npm run build` (Next's, with mnx's Turbopack loader),
+// The conference app in Chromium: `npm run build` (Next's, with zubra's Turbopack loader),
 // `next start`, and the schedule, filter, stars and feedback form, with no hydration errors.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,11 +7,12 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Inside this repository: the CLI from `cargo build`, unless mnx.wasm is built (see README).
-const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'mnx.exe' : 'mnx');
-if (!process.env.MNX_COMPILER && existsSync(cli)) process.env.MNX_COMPILER = cli;
+// Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
+const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'zubra.exe' : 'zubra');
+if (!process.env.ZUBRA_COMPILER && existsSync(cli)) process.env.ZUBRA_COMPILER = cli;
 const port = 4700 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
 let server, browser;
@@ -45,6 +46,7 @@ test('the schedule: server-rendered hosts, the track filter, and stars that surv
   const { page, messages } = await open('/');
   await page.waitForSelector('session-card article');
   assert.equal(await page.locator('session-card').count(), 12);
+  await shot(page, 'next-conference');
   await page.click('segmented-control button[data-value=Design]');
   await page.waitForFunction(() => document.querySelectorAll('session-card').length === 3);
   assert.deepEqual(await page.locator('session-card').evaluateAll((cards) => [...new Set(cards.map((card) => card.track))]), ['Design']);
@@ -96,7 +98,7 @@ test('without JavaScript: the cards (light DOM) are in the server HTML, and hydr
   await live.close();
 });
 
-test('feedback through a Server Action: mnx form controls submit like native inputs, and validate', async () => {
+test('feedback through a Server Action: zubra form controls submit like native inputs, and validate', async () => {
   const { page, messages } = await open('/sessions/s6');
   await page.waitForSelector('star-rating button');
   assert.match(await page.textContent('[data-testid=ratings]'), /No ratings yet/);

@@ -48,7 +48,7 @@ export function graded(card, grade, day = today()) {
 
 export function load() {
   try {
-    const saved = JSON.parse(localStorage.getItem('mnx-flashcards'));
+    const saved = JSON.parse(localStorage.getItem('zb-flashcards'));
     if (Array.isArray(saved) && saved.length) return saved;
   } catch {}
   return seed();
@@ -56,6 +56,6 @@ export function load() {
 
 export function save(decks) {
   try {
-    localStorage.setItem('mnx-flashcards', JSON.stringify(decks));
+    localStorage.setItem('zb-flashcards', JSON.stringify(decks));
   } catch {}
 }

@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit';
 // In a Lit template, .count sets the property and @countchange listens.
-import './components/hello-counter.mnx';
+import './components/hello-counter.zb';
 
 class MyApp extends LitElement {
   static properties = { count: { state: true } };

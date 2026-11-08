@@ -1,6 +1,6 @@
 //! Character-level scanning shared by the template, script, and expression parsers.
 //!
-//! The compiler reads three "languages" out of one `.mnx` file: HTML-shaped markup, a small
+//! The compiler reads three "languages" out of one `.zb` file: HTML-shaped markup, a small
 //! JavaScript statement subset inside `<script>`, and JS-subset expressions inside `{ … }`.
 //! Each has its own parser, but they all walk the same source with the same bookkeeping:
 //! a byte position plus the line/column that position corresponds to, so every diagnostic

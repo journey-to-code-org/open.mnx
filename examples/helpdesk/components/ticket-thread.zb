@@ -1,0 +1,32 @@
+<!--
+  A ticket's conversation. Internal notes (agents only) are marked; the server leaves them out
+  for customers.
+  `messages` is `[{ id, author, role, body, at, internal }]`.
+-->
+<style>
+  ol { display: grid; gap: 0.8rem; margin: 0; padding: 0; list-style: none; }
+  li { padding: 0.8rem 1rem; border: 1px solid #e3e6ee; border-radius: 0.75rem; background: white; }
+  li[data-role=agent] { border-left: 3px solid #4f5df5; }
+  li.internal { background: #fff8e6; border-color: #f2d9a4; }
+  header { display: flex; gap: 0.5rem; align-items: baseline; margin-bottom: 0.35rem; }
+  .author { font-weight: 700; }
+  .role, .note { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #61677a; }
+  .note { color: #9a5b00; }
+  time { margin-left: auto; color: #8a90a0; font-size: 0.8rem; }
+  p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+</style>
+<ticket-thread messages={[]}>
+  <ol>
+    <zb-each items={messages} as="message" key={message.id}>
+      <li class:internal={message.internal} data-role={message.role}>
+        <header>
+          <span class="author">{message.author}</span>
+          <span class="role">{message.role}</span>
+          <span zb-if={message.internal} class="note">Internal note</span>
+          <time>{message.at}</time>
+        </header>
+        <p>{message.body}</p>
+      </li>
+    </zb-each>
+  </ol>
+</ticket-thread>

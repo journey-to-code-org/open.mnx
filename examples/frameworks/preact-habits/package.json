@@ -1,5 +1,5 @@
 {
-  "name": "mnx-example-preact-habits",
+  "name": "zubra-example-preact-habits",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,13 +8,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime",
+    "@zubra/runtime": "file:../../../runtime",
     "preact": "10.29.8"
   },
   "devDependencies": {
     "@babel/core": "7.29.13",
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "@preact/preset-vite": "2.10.6",
     "vite": "8.3.6"
   }

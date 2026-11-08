@@ -1,11 +1,11 @@
-// React 19: mnx elements imported as React components. Props (objects included), on<Event>
+// React 19: zubra elements imported as React components. Props (objects included), on<Event>
 // handlers, React-managed children in an element's slots (reordered, filtered, added and
-// removed by React), drag and drop, and an mnx form control used as a controlled input.
+// removed by React), drag and drop, and a zubra form control used as a controlled input.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts, engineNoise } from './harness.js';
 
-test('react-board: a sprint board built from mnx elements', async () => {
+test('react-board: a sprint board built from zubra elements', async () => {
   const { page, messages } = await launch('react-board');
   await page.waitForSelector('task-card article');
   await settle(page);
@@ -58,7 +58,7 @@ test('react-board: a sprint board built from mnx elements', async () => {
   await page.fill('input[aria-label="Filter cards"]', '');
   await settle(page);
 
-  // Edit a card: the tag input is an mnx element controlled by React state.
+  // Edit a card: the tag input is a zubra element controlled by React state.
   await go('task-card[data-id=c5] article');
   const editor = page.locator('dialog.editor');
   assert.equal(await editor.locator('h2').textContent(), 'Edit card');

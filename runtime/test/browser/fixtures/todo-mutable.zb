@@ -1,0 +1,23 @@
+<script>
+  let items = [{ id: 1, text: "Write", done: false }]
+  let draft = ""
+  let next = 2
+  const left = items.filter((item) => !item.done).length
+  function add() {
+    items.push({ id: next++, text: draft, done: false })
+    draft = ""
+  }
+  function toggle(item) { item.done = !item.done }
+  function clear() { items = items.filter((item) => !item.done) }
+</script>
+<todo-list>
+  <form onsubmit.prevent={add}><input value={draft} oninput={(event) => (draft = event.target.value)}><button>Add</button></form>
+  <ul>
+    <zb-each items={items} as="item" key={item.id}>
+      <li class:done={item.done} onclick={() => toggle(item)}>{item.text}</li>
+    </zb-each>
+  </ul>
+  <p>{left} left</p>
+  <button type="button" onclick={() => items.splice(0, 1)}>Drop first</button>
+  <button type="button" onclick={clear}>Clear done</button>
+</todo-list>

@@ -6,16 +6,16 @@ Components talk to the outside the way built-in elements do: **properties in, DO
 
 ```html
 <script>
-  import { emit } from '@mnx/runtime'
+  import { emit } from '@zubra/runtime'
 
   function pick(color) {
     emit('colorpick', color)
   }
 </script>
 <color-picker colors={["red", "green", "blue"]}>
-  <mnx-each items={colors} as="color" key={color}>
+  <zb-each items={colors} as="color" key={color}>
     <button type="button" style:background={color} aria-label={color} onclick={() => pick(color)}></button>
-  </mnx-each>
+  </zb-each>
 </color-picker>
 ```
 
@@ -29,7 +29,7 @@ Listening, in each place the element is used:
 | Where | |
 |---|---|
 | Plain HTML | `el.addEventListener('colorpick', (event) => …)` |
-| Another mnx component | `<color-picker oncolorpick={(event) => …}>` |
+| Another Zubra component | `<color-picker oncolorpick={(event) => …}>` |
 | React (through the plugin) | `<ColorPicker onColorPick={(event) => …} />` |
 | Vue | `<ColorPicker @colorpick="…" />` |
 | Svelte, Preact | `oncolorpick={(event) => …}` |
@@ -56,7 +56,7 @@ Now, whenever the component assigns `checked`, the element fires `checkedchange`
 | Vue | `<ToggleSwitch v-model:checked="enabled" />` (and `v-model` for a `value` prop) |
 | React | `<ToggleSwitch checked={enabled} onCheckedChange={(event) => setEnabled(event.detail)} />` |
 | Svelte | `<toggle-switch checked={enabled} oncheckedchange={(event) => (enabled = event.detail)}>` |
-| Angular | `<toggle-switch mnxModel="checked" [(ngModel)]="enabled">` with `MnxModel` |
+| Angular | `<toggle-switch zubraModel="checked" [(ngModel)]="enabled">` with `ZubraModel` |
 
 ## State that starts from a prop
 
@@ -64,7 +64,7 @@ Now, whenever the component assigns `checked`, the element fires `checkedchange`
 
 ```html
 <script>
-  import { from } from '@mnx/runtime'
+  import { from } from '@zubra/runtime'
   let left = from(seconds)            // follows `seconds`, until the timer counts down
   let running = from(seconds, false)  // `false`, and `false` again on a new length
 </script>
@@ -93,11 +93,11 @@ The declaration only types the prop (the default still comes from the host tag),
 
 ## Signals that read like values
 
-For state shared between components, or anything outside one element, `state()` and `computed()` from `@mnx/runtime` make explicit signals. A `const` holding one reads like a value, in the script and the template:
+For state shared between components, or anything outside one element, `state()` and `computed()` from `@zubra/runtime` make explicit signals. A `const` holding one reads like a value, in the script and the template:
 
 ```html
 <script>
-  import { inject } from '@mnx/runtime'
+  import { inject } from '@zubra/runtime'
   import { session } from '../session.js'
 
   const user = inject(session)                 // a signal that follows the nearest provider

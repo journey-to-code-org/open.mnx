@@ -1,0 +1,3 @@
+<zb-link href="/" label="Home" hidden-link={false}>
+  <a href={href} hidden={hiddenLink} class="link {label}">{label}</a>
+</zb-link>

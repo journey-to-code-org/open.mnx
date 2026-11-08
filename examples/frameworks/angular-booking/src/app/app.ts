@@ -2,13 +2,13 @@ import { Component, CUSTOM_ELEMENTS_SCHEMA, computed, signal } from '@angular/co
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { inject } from '@angular/core';
-import { MnxModel } from '@mnx/runtime/angular';
+import { ZubraModel } from '@zubra/runtime/angular';
 import { EXTRAS, PLACES, usd } from './data';
-import '../components/step-indicator.mnx';
-import '../components/choice-cards.mnx';
-import '../components/date-range.mnx';
-import '../components/quantity-stepper.mnx';
-import '../components/toggle-switch.mnx';
+import '../components/step-indicator.zb';
+import '../components/choice-cards.zb';
+import '../components/date-range.zb';
+import '../components/quantity-stepper.zb';
+import '../components/toggle-switch.zb';
 
 interface Dates {
   start: string;
@@ -22,7 +22,7 @@ const stayValid = (control: AbstractControl): ValidationErrors | null => (nights
 
 @Component({
   selector: 'booking-app',
-  imports: [ReactiveFormsModule, MnxModel],
+  imports: [ReactiveFormsModule, ZubraModel],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   templateUrl: './app.html',
   styleUrl: './app.css',
@@ -127,7 +127,7 @@ export class App {
   }
 
   book() {
-    this.booked.set(`MNX-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
+    this.booked.set(`ZB-${Math.random().toString(36).slice(2, 8).toUpperCase()}`);
   }
 
   restart() {

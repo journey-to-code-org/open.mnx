@@ -1,6 +1,6 @@
-//! mnx: a compiler for Web Components written as HTML-first single-file components.
+//! zubra: a compiler for Web Components written as HTML-first single-file components.
 //!
-//! Every entry point comes in two forms: one taking a source string (no `.mnx` imports
+//! Every entry point comes in two forms: one taking a source string (no `.zb` imports
 //! allowed, since there is nowhere to find them), and a `_file` / `_with` form that resolves
 //! imported components — from the filesystem, or through a caller-supplied [`Loader`].
 
@@ -31,7 +31,7 @@ mod validate;
 pub use components::component_extension;
 pub use components::{filesystem, Loader};
 pub use convert::{convert, convert_component, Conversion};
-/// `mnx migrate --to 3`: wrap 2.x code's bare uses of a signal `const` in `signal(…)`.
+/// `zubra migrate --to 3`: wrap 2.x code's bare uses of a signal `const` in `signal(…)`.
 pub fn prepare_for_3(source: &str) -> (String, usize) {
     future::prepare(source)
 }
@@ -63,7 +63,7 @@ fn load(
     Ok(component)
 }
 
-/// Run `compile` on the component's `.mnx` text: the source itself, or what a JSX component
+/// Run `compile` on the component's `.zb` text: the source itself, or what a JSX component
 /// (by its path, or by its content when there's no path) lowers to, with errors placed in the
 /// JSX.
 fn front<T>(
@@ -79,32 +79,32 @@ fn front<T>(
     if !jsx {
         return compile(source).map_err(|diagnostic| jsx::remap(diagnostic, None));
     }
-    let path = path.unwrap_or("component.mnx.tsx");
+    let path = path.unwrap_or("component.zb.tsx");
     let lowered = jsx::lower(source, path, loader)?;
     compile(&lowered.text).map_err(|diagnostic| jsx::remap(diagnostic, Some((source, &lowered))))
 }
 
-/// A JSX component as `.mnx` text: the same lowering the compiler runs before compiling one.
-/// (`mnx convert --as mnx` writes it as the converted file.)
+/// A JSX component as `.zb` text: the same lowering the compiler runs before compiling one.
+/// (`zubra convert --as zubra` writes it as the converted file.)
 pub fn lower_jsx(source: &str, path: &str) -> Result<String, Diagnostic> {
     jsx::lower_readable(source, path)
 }
 
-/// `mnx convert --as mnx`: the conversion's JSX component as a readable `.mnx` file. The
+/// `zubra convert --as zubra`: the conversion's JSX component as a readable `.zb` file. The
 /// conversion's `output` and `file_name` are replaced, or, when the JSX can't be lowered yet
 /// (something is still to finish by hand), a diagnostic says so and the JSX stays.
-pub fn convert_as_mnx(conversion: &mut convert::Conversion) -> Option<Diagnostic> {
+pub fn convert_as_zb(conversion: &mut convert::Conversion) -> Option<Diagnostic> {
     match jsx::lower_readable(&conversion.output, &conversion.file_name) {
         Ok(text) => {
             conversion.output = text;
-            conversion.file_name = format!("{}.mnx", conversion.tag);
+            conversion.file_name = format!("{}.zb", conversion.tag);
             conversion
                 .changes
-                .push("written as an .mnx file (HTML-first)".to_owned());
+                .push("written as an .zb file (HTML-first)".to_owned());
             None
         }
         Err(error) => Some(error.with_help(
-            "finish the JSX component first; `--as mnx` writes the .mnx file once it compiles",
+            "finish the JSX component first; `--as zubra` writes the .zb file once it compiles",
         )),
     }
 }
@@ -147,7 +147,7 @@ pub fn compile_value_with_slots(
 ) -> Result<String, Diagnostic> {
     front(source, None, None, |source| {
         html(
-            load(source, "component.mnx", None)?,
+            load(source, "component.zb", None)?,
             props,
             slots,
             SlotSource::Template,
@@ -155,7 +155,7 @@ pub fn compile_value_with_slots(
     })
 }
 
-/// Static HTML for the component at `path`, resolving its `.mnx` imports from the filesystem.
+/// Static HTML for the component at `path`, resolving its `.zb` imports from the filesystem.
 pub fn compile_file(path: &str, props_json: &str, slots_json: &str) -> Result<String, Diagnostic> {
     compile_html_with(
         &read(path)?,
@@ -166,7 +166,7 @@ pub fn compile_file(path: &str, props_json: &str, slots_json: &str) -> Result<St
     )
 }
 
-/// Static HTML, resolving `.mnx` imports with `loader`.
+/// Static HTML, resolving `.zb` imports with `loader`.
 pub fn compile_html_with(
     source: &str,
     path: &str,
@@ -187,7 +187,7 @@ pub fn compile_html_with(
 /// What slot content is written in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SlotSource {
-    /// mnx template syntax (`{…}` is an expression; it has no scope, so only literals work).
+    /// zubra template syntax (`{…}` is an expression; it has no scope, so only literals work).
     Template,
     /// HTML a server already rendered: kept as written (braces, comments, scripts and all).
     Html,
@@ -327,7 +327,7 @@ fn html(
         let source = source.as_str().ok_or_else(|| {
             Diagnostic::new(
                 Span::new(1, 1),
-                format!("slot `{name}` must contain an mnx template string"),
+                format!("slot `{name}` must contain a zubra template string"),
             )
         })?;
         slot_nodes.insert(
@@ -348,7 +348,7 @@ fn html(
 /// Compile a component to a JavaScript module that defines its custom element.
 ///
 /// `runtime` is the module specifier the output imports the runtime from (usually
-/// `"@mnx/runtime"`); `source_name` appears in the generated header.
+/// `"@zubra/runtime"`); `source_name` appears in the generated header.
 pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<String, Diagnostic> {
     front(source, Some(source_name), None, |source| {
         let component = load(source, source_name, None)?;
@@ -364,7 +364,7 @@ pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<Stri
     })
 }
 
-/// The JavaScript module for the component at `path`; `.mnx` imports become `.js` imports.
+/// The JavaScript module for the component at `path`; `.zb` imports become `.js` imports.
 pub fn compile_js_file(path: &str, runtime: &str) -> Result<String, Diagnostic> {
     compile_js_with(
         &read(path)?,
@@ -375,9 +375,9 @@ pub fn compile_js_file(path: &str, runtime: &str) -> Result<String, Diagnostic> 
     )
 }
 
-/// The JavaScript module, resolving `.mnx` imports with `loader`. `component_extension`
-/// rewrites `.mnx` import specifiers (`Some(".js")`), or keeps them (`None`) for bundlers that
-/// load `.mnx` files themselves.
+/// The JavaScript module, resolving `.zb` imports with `loader`. `component_extension`
+/// rewrites `.zb` import specifiers (`Some(".js")`), or keeps them (`None`) for bundlers that
+/// load `.zb` files themselves.
 pub fn compile_js_with(
     source: &str,
     path: &str,
@@ -403,7 +403,7 @@ pub fn compile_js_with(
     })
 }
 
-/// The JavaScript module for a bundler plugin: `.mnx` imports are kept, and the `<style>` is
+/// The JavaScript module for a bundler plugin: `.zb` imports are kept, and the `<style>` is
 /// imported through the bundler (see [`StyleImports`]) instead of inlined.
 pub fn compile_js_for_bundler(
     source: &str,
@@ -463,7 +463,7 @@ pub fn handle_request(request: &str) -> String {
     request::handle(request)
 }
 
-/// The scoped stylesheet of a component with no `.mnx` imports.
+/// The scoped stylesheet of a component with no `.zb` imports.
 pub fn compile_css(source: &str) -> Result<String, Diagnostic> {
     front(source, None, None, |source| {
         Ok(stylesheets(&parser::parse(source)?))
@@ -502,7 +502,7 @@ fn collect_stylesheets(
 pub fn warnings(source: &str) -> Vec<Diagnostic> {
     let parsed = if jsx::looks_like_jsx(source) {
         // A JSX component's props are its parameters; their names are checked the same way.
-        jsx::lower(source, "component.mnx.tsx", None)
+        jsx::lower(source, "component.zb.tsx", None)
             .ok()
             .and_then(|lowered| {
                 parser::parse(&lowered.text)

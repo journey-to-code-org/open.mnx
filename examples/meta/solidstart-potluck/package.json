@@ -1,8 +1,8 @@
 {
-  "name": "mnx-example-solidstart-potluck",
+  "name": "zubra-example-solidstart-potluck",
   "private": true,
   "type": "module",
-  "description": "A potluck sign-up in SolidStart 2: a server action behind a plain <form>, with mnx form controls from the registry and a board of who's bringing what.",
+  "description": "A potluck sign-up in SolidStart 2: a server action behind a plain <form>, with Zubra form controls from the registry and a board of who's bringing what.",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
@@ -11,8 +11,8 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@mnx/runtime": "file:../../../runtime",
-    "@mnx/server": "file:../../../server",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/server": "file:../../../server",
     "@solidjs/meta": "0.29.4",
     "@solidjs/router": "1.0.1",
     "@solidjs/start": "2.2.2",
@@ -21,8 +21,8 @@
     "vite": "8.3.6"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "playwright": "1.63.0"
   }
 }

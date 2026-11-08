@@ -1,5 +1,5 @@
 // The built site in Chromium: with JavaScript off (the build's HTML alone) and on, and built
-// again with an HTML minifier, configured to keep mnx's markers and not.
+// again with an HTML minifier that removes every comment.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -11,14 +11,13 @@ import { chromium } from 'playwright';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
-const builds = { plain: '_site', min: '_site-min', naive: '_site-naive' };
+const builds = { plain: '_site', min: '_site-min' };
 let browser;
 const servers = {};
 
 before(async () => {
   const eleventy = join(root, 'node_modules/.bin/eleventy');
   execFileSync(eleventy, ['--quiet'], { cwd: root, env: { ...process.env, MINIFY: '1', OUT: builds.min } });
-  execFileSync(eleventy, ['--quiet'], { cwd: root, env: { ...process.env, MINIFY: 'naive', OUT: builds.naive } });
   for (const [name, dir] of Object.entries(builds)) {
     const server = createServer((request, response) => {
       let file = join(root, dir, decodeURIComponent(new URL(request.url, 'http://x').pathname));
@@ -34,7 +33,7 @@ before(async () => {
 after(async () => {
   await browser?.close();
   for (const { server } of Object.values(servers)) server.close();
-  for (const dir of [builds.min, builds.naive]) rmSync(join(root, dir), { recursive: true, force: true });
+  rmSync(join(root, builds.min), { recursive: true, force: true });
 });
 
 async function open(build, path, { javascript = true } = {}) {
@@ -80,23 +79,17 @@ test('with JavaScript: the elements hydrate the build\'s markup; the filter and 
   await page.done();
 });
 
-test('minified, keeping the markers (ignoreCustomComments): the elements still hydrate', async () => {
+test('minified with removeComments: the markers are processing instructions, so they stay, and the elements hydrate in place (5.0)', async () => {
   const html = readFileSync(join(root, builds.min, 'index.html'), 'utf8');
-  assert.ok(html.length < readFileSync(join(root, builds.plain, 'index.html'), 'utf8').length * 0.85, 'it is minified');
-  assert.match(html, /<!--\[-->/);
+  // Minified: whitespace between tags collapsed (a size ratio drifts as names change length).
+  const plain = readFileSync(join(root, builds.plain, 'index.html'), 'utf8');
+  assert.ok(html.length < plain.length, 'it is smaller');
+  assert.ok(plain.split('\n').length > 50 && html.split('\n').length < 5, 'its line breaks and indentation are gone');
+  assert.doesNotMatch(html, /<!--/, 'every comment is gone');
+  assert.match(html, /<\?zb \[\?>/, 'the markers are kept');
   const page = await open('min', '/');
   await page.getByRole('button', { name: 'miles' }).click();
   assert.equal((await texts(page, 'trail-card .length'))[0], '2.6 mi');
-  assert.deepEqual(page.errors, []);
-  await page.done();
-});
-
-test('minified naively (every comment removed): the elements put their markers back and hydrate in place (2.10)', async () => {
-  const html = readFileSync(join(root, builds.naive, 'index.html'), 'utf8');
-  assert.doesNotMatch(html, /<!--/);
-  const page = await open('naive', '/');
-  await page.getByRole('button', { name: 'miles' }).click();
-  assert.equal((await texts(page, 'trail-card .length'))[0], '2.6 mi', 'still right');
   assert.deepEqual(page.errors, [], 'no "markers are missing" warnings: nothing rendered fresh');
   await page.done();
 });

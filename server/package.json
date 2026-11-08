@@ -1,7 +1,7 @@
 {
-  "name": "@mnx/server",
-  "version": "3.6.0",
-  "description": "mnx on the server: render components into any template engine's pages, serve their browser modules, and give frameworks' HTML its components' shadow roots.",
+  "name": "@zubra/server",
+  "version": "5.0.0",
+  "description": "Zubra on the server: render components into any template engine's pages, serve their browser modules, and give frameworks' HTML its components' shadow roots.",
   "type": "module",
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
@@ -27,12 +27,12 @@
     "test": "node --test \"test/*.test.js\""
   },
   "peerDependencies": {
-    "@mnx/compiler": "^3.0.0",
-    "@mnx/runtime": "^3.0.0"
+    "@zubra/compiler": "^5.0.0",
+    "@zubra/runtime": "^5.0.0"
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../compiler",
-    "@mnx/runtime": "file:../runtime",
+    "@zubra/compiler": "file:../compiler",
+    "@zubra/runtime": "file:../runtime",
     "express": "5.3.0",
     "fastify": "5.12.8",
     "hono": "4.13.17",
@@ -47,7 +47,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
     "directory": "server"
   }
 }

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// mnx language server: diagnostics from the compiler as you type, completion of directives,
+// zubra language server: diagnostics from the compiler as you type, completion of directives,
 // imported components, their props and events, hover documentation from their manifests, and
 // go to definition for imported components. Speaks LSP over stdio (`--stdio`).
 //
-// initializationOptions: { compiler?: "/path/to/mnx" } — otherwise @mnx/compiler (WebAssembly)
-// when installed, else `mnx` on PATH.
+// initializationOptions: { compiler?: "/path/to/zubra" } — otherwise @zubra/compiler (WebAssembly)
+// when installed, else `zubra` on PATH.
 import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -27,7 +27,7 @@ connection.onInitialize(async (params) => {
       hoverProvider: true,
       definitionProvider: true,
     },
-    serverInfo: { name: 'mnx-language-server', version: '1.2.0' },
+    serverInfo: { name: 'zubra-language-server', version: '1.2.0' },
   };
 });
 
@@ -67,7 +67,7 @@ function validate(document) {
         return {
           range: { start: { line, character }, end: { line, character: character + Math.max(word.length, 1) } },
           severity: diagnostic.severity === 'warning' ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
-          source: 'mnx',
+          source: 'zubra',
           message: diagnostic.help ? `${diagnostic.message}\n${diagnostic.help}` : diagnostic.message,
         };
       });

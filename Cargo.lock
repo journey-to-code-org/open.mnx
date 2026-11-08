@@ -230,28 +230,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "mnx-compiler"
-version = "3.6.0"
-dependencies = [
- "html-escape",
- "oxc_allocator",
- "oxc_ast",
- "oxc_ast_visit",
- "oxc_parser",
- "oxc_semantic",
- "oxc_span",
- "oxc_syntax",
- "serde_json",
-]
-
-[[package]]
-name = "mnx-wasm"
-version = "2.0.0"
-dependencies = [
- "mnx-compiler",
-]
-
-[[package]]
 name = "nonmax"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -876,3 +854,25 @@ name = "zmij_ecma"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "458b3e7a977f14499066b6bdb63d69da30ce337d6c160f077e6c575c82a44db9"
+
+[[package]]
+name = "zubra"
+version = "5.0.0"
+dependencies = [
+ "html-escape",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_parser",
+ "oxc_semantic",
+ "oxc_span",
+ "oxc_syntax",
+ "serde_json",
+]
+
+[[package]]
+name = "zubra-wasm"
+version = "2.0.0"
+dependencies = [
+ "zubra",
+]

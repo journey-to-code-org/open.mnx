@@ -1,0 +1,8 @@
+<!-- An zb-await can't be placed without its markers: it renders fresh, with the warning. -->
+<script>
+  const data = Promise.resolve("done")
+</script>
+<zb-stripped-await>
+  <p>Data</p>
+  <zb-await value={data}><span>waiting</span><zb-then as="value"><span>{value}</span></zb-then></zb-await>
+</zb-stripped-await>

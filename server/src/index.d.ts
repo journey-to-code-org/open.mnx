@@ -14,7 +14,7 @@ export interface Page {
   finish(html: string): string;
   /**
    * Whether a rendered component was given a promise as a prop. Such a prop renders as pending
-   * (its `mnx-await` shows its pending content); `stream()` sends the resolved region with the
+   * (its `zb-await` shows its pending content); `stream()` sends the resolved region with the
    * value after the page.
    */
   readonly pending: boolean;
@@ -24,7 +24,7 @@ export interface Page {
   streamResponse(html: string, init?: ResponseInit): Response;
 }
 
-export interface Mnx {
+export interface Zubra {
   /** The components found, by file name (without the extension). */
   readonly names: string[];
   describe(name: string): ComponentInfo;
@@ -48,14 +48,14 @@ export interface Mnx {
   injectShadowRootsStream(options?: { forms?: boolean; lightDom?: boolean }): import('node:stream').Transform;
   /** A component's browser module (JavaScript). */
   module(name: string): string;
-  /** Static sites: write the browser modules and @mnx/runtime under `dir` (at `<dir>/_mnx/…`). */
+  /** Static sites: write the browser modules and @zubra/runtime under `dir` (at `<dir>/_zubra/…`). */
   writeAssets(dir: string): void;
 }
 
-export interface MnxOptions {
+export interface ZubraOptions {
   /** The folder of components (default `components`). */
   components?: string;
-  /** Where the browser modules are served (default `/_mnx`). */
+  /** Where the browser modules are served (default `/_zubra`). */
   prefix?: string;
   /** Keep compiled output (default true); false recompiles on every request, for development. */
   cache?: boolean;
@@ -63,8 +63,8 @@ export interface MnxOptions {
   production?: boolean;
 }
 
-export declare function createMnx(options?: MnxOptions): Mnx;
+export declare function createZubra(options?: ZubraOptions): Zubra;
 export declare function parseAttributes(text: string): Record<string, string>;
 export declare function propsFrom(attributeText: string, info: ComponentInfo): Record<string, unknown>;
-/** The compiler @mnx/compiler will use (`{ kind: 'WebAssembly' | 'CLI', path }`), or null. */
+/** The compiler @zubra/compiler will use (`{ kind: 'WebAssembly' | 'CLI', path }`), or null. */
 export declare function findCompiler(): { kind: 'WebAssembly' | 'CLI'; path: string } | null;

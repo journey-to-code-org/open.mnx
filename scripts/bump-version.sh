@@ -11,5 +11,10 @@ for f in compiler/package-lock.json plugin/package-lock.json runtime/package-loc
   # the root package appears twice at the top of a lockfile (lines 3 and 9)
   sed -i -E "1,12s/\"version\": \"[0-9.]+\"/\"version\": \"$v\"/" "$f"
 done
-sed -i -E "/^name = \"mnx-compiler\"$/{n;s/^version = \"[0-9.]+\"/version = \"$v\"/}" Cargo.lock
+sed -i -E "/^name = \"zubra\"$/{n;s/^version = \"[0-9.]+\"/version = \"$v\"/}" Cargo.lock
+# The packages that need the compiler and runtime ask for this release or later in its major.
+range="^$(echo "$v" | sed -E 's/^([0-9]+\.[0-9]+)\..*/\1.0/')"
+for f in plugin/package.json plugin/package-lock.json server/package.json server/package-lock.json; do
+  sed -i -E "s#(\"@zubra/(compiler|runtime)\": \")\^[0-9.]+\"#\1$range\"#g" "$f"
+done
 echo "version $v"

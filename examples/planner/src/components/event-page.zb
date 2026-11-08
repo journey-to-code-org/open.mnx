@@ -1,0 +1,102 @@
+<!--
+  One event: its details, a summary, and tabs for the schedule, guests, budget and checklist.
+  @fires edit - The user asked to edit the event.
+  @fires remove - The user confirmed deleting the event.
+-->
+<script>
+  import { computed, emit } from '@zubra/runtime'
+  import { usePlanner, toIcs } from '../store.js'
+  import { formatDay, relative, money } from '../dates.js'
+  import './schedule-list.zb'
+  import './guest-list.zb'
+  import './budget-table.zb'
+  import './task-list.zb'
+
+  const { events } = usePlanner()
+  const event = computed(() => events.get().find((item) => item.id === eventId) ?? null)
+  const TABS = ["schedule", "guests", "budget", "tasks"]
+  let tab = "schedule"
+  let confirming = false
+
+  const summary = computed(() => {
+    const e = event
+    if (!e) return null
+    const yes = e.guests.filter((guest) => guest.rsvp === "yes")
+    return {
+      going: yes.length + yes.filter((guest) => guest.plusOne).length,
+      invited: e.guests.length,
+      spent: e.expenses.reduce((sum, item) => sum + item.amount, 0),
+      done: e.tasks.filter((task) => task.done).length,
+      tasks: e.tasks.length,
+    }
+  })
+
+  function download() {
+    const e = event
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(new Blob([toIcs(e)], { type: 'text/calendar' }))
+    link.download = `${e.title.replace(/[^\w]+/g, '-').toLowerCase() || 'event'}.ics`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+  }
+</script>
+<style>
+  :host { display: block; }
+  .missing { padding: 2rem; border-radius: 1rem; background: var(--surface); }
+  .head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem; margin-bottom: 1.25rem; }
+  .head > div { flex: 1 1 20rem; }
+  h1 { margin: 0.25rem 0; font-size: 2rem; letter-spacing: -0.02em; }
+  .meta { margin: 0; color: var(--muted); }
+  .notes { margin: 0.5rem 0 0; }
+  .head > .actions { flex: 0 0 auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+  .stats div { padding: 0.75rem 1rem; border-radius: 0.75rem; background: var(--surface); box-shadow: var(--shadow); }
+  .stats b { display: block; font-size: 1.375rem; }
+  .stats span { font-size: 0.8125rem; color: var(--muted); }
+  [role=tablist] { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; border-bottom: 1px solid var(--line); }
+  [role=tab] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 0.5rem 0.85rem; font-weight: 600; color: var(--muted); text-transform: capitalize; }
+  [role=tab][aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); }
+  [role=tabpanel] { padding: 1rem; border-radius: 1rem; background: var(--surface); box-shadow: var(--shadow); }
+</style>
+<event-page event-id="">
+  <zb-if test={event}>
+    <div class="head">
+      <div>
+        <span class="pill tag">{event.category}</span>
+        <h1>{event.title}</h1>
+        <p class="meta">{formatDay(event.day)} ({relative(event.day)}) · {event.start}–{event.end}{event.location ? ` · ${event.location}` : ""}</p>
+        <p zb-if={event.notes} class="notes">{event.notes}</p>
+      </div>
+      <div class="actions">
+        <button type="button" class="export" onclick={download}>Export .ics</button>
+        <button type="button" class="edit" onclick={() => emit('edit')}>Edit</button>
+        <zb-if test={confirming}>
+          <button type="button" class="danger confirm-delete" onclick={() => emit('remove')}>Really delete?</button>
+          <button type="button" onclick={() => (confirming = false)}>Keep</button>
+          <zb-else><button type="button" class="delete" onclick={() => (confirming = true)}>Delete</button></zb-else>
+        </zb-if>
+      </div>
+    </div>
+    <div class="stats">
+      <div><b class="going">{summary.going}</b><span>going of {summary.invited} invited</span></div>
+      <div><b class="spent">{money.format(summary.spent)}</b><span>{event.budget ? `of ${money.format(event.budget)} budget` : "spent, no budget set"}</span></div>
+      <div><b class="done">{summary.done}/{summary.tasks}</b><span>tasks done</span></div>
+    </div>
+    <div role="tablist" aria-label="Plan">
+      <zb-each items={TABS} as="name" key={name}>
+        <button type="button" role="tab" aria-selected={tab === name ? "true" : "false"} data-tab={name} onclick={() => (tab = name)}>{name}</button>
+      </zb-each>
+    </div>
+    <section role="tabpanel" aria-label={tab}>
+      <zb-switch value={tab}>
+        <zb-case is="schedule"><schedule-list event={event}></schedule-list></zb-case>
+        <zb-case is="guests"><guest-list event={event}></guest-list></zb-case>
+        <zb-case is="budget"><budget-table event={event}></budget-table></zb-case>
+        <zb-case is="tasks"><task-list event={event}></task-list></zb-case>
+      </zb-switch>
+    </section>
+    <zb-else>
+      <div class="missing"><h1>Not found</h1><p>This event doesn't exist (any more). <a href="#/">Back to the calendar</a></p></div>
+    </zb-else>
+  </zb-if>
+</event-page>

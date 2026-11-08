@@ -1,0 +1,25 @@
+<!--
+  The latest messages across every ticket. The dashboard streams them: the page arrives with
+  this panel pending, and the list follows as soon as the store answers (`page.stream()`).
+-->
+<style>
+  :host { display: block; }
+  ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem; }
+  li { display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem; align-items: baseline; font-size: 0.92rem; }
+  .who { font-weight: 600; }
+  .when { color: var(--muted, #667085); font-variant-numeric: tabular-nums; }
+  .pending, .empty { color: var(--muted, #667085); margin: 0; }
+</style>
+<recent-activity events={[]} label="Recent activity">
+  <zb-await value={events}>
+    <zb-pending><p class="pending">Loading {label.toLowerCase()}…</p></zb-pending>
+    <zb-then as="list">
+      <p zb-if={list.length === 0} class="empty">Nothing yet.</p>
+      <ol zb-else aria-label={label}>
+        <zb-each items={list} as="event" key={event.id}>
+          <li><span class="who">{event.who}</span><a href={event.href}>{event.subject}</a><span class="when">{event.ago}</span></li>
+        </zb-each>
+      </ol>
+    </zb-then>
+  </zb-await>
+</recent-activity>

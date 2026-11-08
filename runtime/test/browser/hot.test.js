@@ -8,16 +8,16 @@ import { useBrowser, open, here, production } from './harness.js';
 const skip = production && 'the production build has no hot reloading';
 
 useBrowser({
-  'hot-v1': join(here, 'fixtures/hot/v1.mnx'),
-  'hot-v2': join(here, 'fixtures/hot/v2.mnx'),
-  'hot-v3': join(here, 'fixtures/hot/v3.mnx'),
-  'hot-shadow-v1': join(here, 'fixtures/hot/shadow-v1.mnx'),
-  'hot-shadow-v2': join(here, 'fixtures/hot/shadow-v2.mnx'),
+  'hot-v1': join(here, 'fixtures/hot/v1.zb'),
+  'hot-v2': join(here, 'fixtures/hot/v2.zb'),
+  'hot-v3': join(here, 'fixtures/hot/v3.zb'),
+  'hot-shadow-v1': join(here, 'fixtures/hot/shadow-v1.zb'),
+  'hot-shadow-v2': join(here, 'fixtures/hot/shadow-v2.zb'),
 });
 
 test('a new version of a component keeps its state, props and slotted content', { skip }, async () => {
   const { page, messages } = await open('<hot-box label="B"><b>given</b></hot-box>', {
-    beforeModules: 'globalThis.__MNX_HOT__ = true;',
+    beforeModules: 'globalThis.__ZUBRA_HOT__ = true;',
     modules: ['hot-v1'],
   });
   const read = () => page.evaluate(async () => {
@@ -49,7 +49,7 @@ test('a new version of a component keeps its state, props and slotted content', 
 
 test('a shadow-DOM component reloads in its shadow root', { skip }, async () => {
   const { page, messages } = await open('<hot-shadow label="S"><b>given</b></hot-shadow>', {
-    beforeModules: 'globalThis.__MNX_HOT__ = true;',
+    beforeModules: 'globalThis.__ZUBRA_HOT__ = true;',
     modules: ['hot-shadow-v1'],
   });
   const read = () => page.evaluate(async () => {

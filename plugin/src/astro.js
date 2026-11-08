@@ -1,12 +1,12 @@
-// Astro integration: `.mnx` components in Astro pages, server-rendered, hydrated with a client
+// Astro integration: `.zb` components in Astro pages, server-rendered, hydrated with a client
 // directive.
 //
 //   // astro.config.mjs
-//   import mnx from '@mnx/unplugin/astro'
-//   export default { integrations: [mnx()] }
+//   import zubra from '@zubra/unplugin/astro'
+//   export default { integrations: [zubra()] }
 //
 //   ---
-//   import Rating from '../components/rating.mnx'
+//   import Rating from '../components/rating.zb'
 //   ---
 //   <Rating value={3} client:load />      <!-- server-rendered, then hydrated in the browser -->
 //   <Rating value={3} />                  <!-- server-rendered HTML only -->
@@ -15,15 +15,15 @@
 // Children are slot content (`slot="name"` for a named slot). Options are the plugin's.
 import vite from './vite.js';
 
-export default function mnx(options = {}) {
+export default function zubra(options = {}) {
   return {
-    name: '@mnx/astro',
+    name: '@zubra/astro',
     hooks: {
       'astro:config:setup': ({ addRenderer, updateConfig }) => {
         addRenderer({
-          name: '@mnx/astro',
-          serverEntrypoint: '@mnx/unplugin/astro/server',
-          clientEntrypoint: '@mnx/unplugin/astro/client',
+          name: '@zubra/astro',
+          serverEntrypoint: '@zubra/unplugin/astro/server',
+          clientEntrypoint: '@zubra/unplugin/astro/client',
         });
         updateConfig({ vite: { plugins: [vite({ framework: 'element', ...options })] } });
       },

@@ -1,5 +1,5 @@
-// How the language server reaches the compiler: the WebAssembly build (@mnx/compiler) when it's
-// installed, otherwise the `mnx` CLI (or the one in `compiler`). Both give the same diagnostics.
+// How the language server reaches the compiler: the WebAssembly build (@zubra/compiler) when it's
+// installed, otherwise the `zubra` CLI (or the one in `compiler`). Both give the same diagnostics.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -7,15 +7,15 @@ import { dirname, resolve } from 'node:path';
 export async function createBackend({ compiler } = {}) {
   if (!compiler) {
     try {
-      const wasm = await import('@mnx/compiler');
+      const wasm = await import('@zubra/compiler');
       if (wasm.available()) return wasmBackend(wasm);
     } catch {
       // Not installed.
     }
   }
-  const chosen = compiler ?? process.env.MNX_COMPILER;
+  const chosen = compiler ?? process.env.ZUBRA_COMPILER;
   if (chosen) return cliBackend(chosen);
-  return cliBackend('mnx');
+  return cliBackend('zubra');
 }
 
 function wasmBackend(wasm) {
@@ -41,7 +41,7 @@ function cliBackend(compiler) {
     name: 'cli',
     check(path, text) {
       const result = run(['check', path, '--stdin', '--format', 'json'], text);
-      if (result.error) return [{ file: path, line: 1, column: 1, severity: 'error', message: `mnx: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}); install @mnx/compiler or the mnx CLI`, help: null }];
+      if (result.error) return [{ file: path, line: 1, column: 1, severity: 'error', message: `zubra: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}); install @zubra/compiler or the zubra CLI`, help: null }];
       try { return JSON.parse(result.stdout); } catch { return []; }
     },
     manifest(path) {
@@ -52,10 +52,10 @@ function cliBackend(compiler) {
   };
 }
 
-/** `.mnx` files a component's script imports (relative specifiers). */
+/** `.zb` files a component's script imports (relative specifiers). */
 export function importsOf(text) {
   const script = text.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
-  return [...script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"](\.{1,2}\/[^'"]+\.mnx)['"]/g)].map((match) => match[1]);
+  return [...script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"](\.{1,2}\/[^'"]+\.zb)['"]/g)].map((match) => match[1]);
 }
 
 export const readText = (path) => {

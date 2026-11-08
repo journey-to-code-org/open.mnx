@@ -1,12 +1,12 @@
 <script>
-  // A workout log: a form action (enhanced with use:enhance), whose inputs are mnx form controls,
-  // and the week's progress and recent days drawn by mnx elements from the registry.
+  // A workout log: a form action (enhanced with use:enhance), whose inputs are zubra form controls,
+  // and the week's progress and recent days drawn by zubra elements from the registry.
   import { enhance } from '$app/forms';
-  import '../../mnx/quantity-stepper.mnx';
-  import '../../mnx/star-rating.mnx';
-  import '../../mnx/streak-grid.mnx';
-  import '../../mnx/progress-ring.mnx';
-  import '../../mnx/workout-row.mnx';
+  import '../../zubra/quantity-stepper.zb';
+  import '../../zubra/star-rating.zb';
+  import '../../zubra/streak-grid.zb';
+  import '../../zubra/progress-ring.zb';
+  import '../../zubra/workout-row.zb';
 
   let { data, form } = $props();
 </script>

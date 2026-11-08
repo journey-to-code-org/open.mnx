@@ -1,5 +1,5 @@
 {
-  "name": "mnx-example-angular-booking",
+  "name": "zubra-example-angular-booking",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
     "@angular/core": "22.2.5",
     "@angular/forms": "22.2.5",
     "@angular/platform-browser": "22.2.5",
-    "@mnx/runtime": "file:../../../runtime",
+    "@zubra/runtime": "file:../../../runtime",
     "rxjs": "7.8.2",
     "tslib": "2.8.1"
   },
@@ -21,8 +21,8 @@
     "@angular/build": "22.2.6",
     "@angular/compiler": "22.2.5",
     "@angular/compiler-cli": "22.2.5",
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/unplugin": "file:../../../plugin",
     "typescript": "6.0.3",
     "vite": "8.3.6"
   }

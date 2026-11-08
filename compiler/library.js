@@ -1,12 +1,12 @@
 // Library mode: compile a folder of components into a package anyone can install and use, with
-// no bundler or mnx tooling on their side.
+// no bundler or zubra tooling on their side.
 //
-//   import { buildLibrary } from '@mnx/compiler/library';
+//   import { buildLibrary } from '@zubra/compiler/library';
 //   buildLibrary('src/components', { out: 'dist', name: '@acme/ui', version: '1.0.0' });
 //
-// (or `npx mnx build --lib src/components`). The output:
+// (or `npx zubra build --lib src/components`). The output:
 //
-//   <name>.js, <name>.d.ts        each element: an ES module importing @mnx/runtime
+//   <name>.js, <name>.d.ts        each element: an ES module importing @zubra/runtime
 //   index.js, index.d.ts          every element, by its class name
 //   react/…, vue/…                each element as a React or Vue component, typed
 //   custom-elements.json          the Custom Elements Manifest (Storybook, IDEs, docs tools)
@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, s
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { compileFile } from './index.js';
 
-const SOURCE = /\.mnx(?:\.[jt]sx)?$/;
+const SOURCE = /\.zb(?:\.[jt]sx)?$/;
 const { version: compilerVersion } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 const walk = (dir) => readdirSync(dir).sort().flatMap((entry) => {
@@ -38,10 +38,10 @@ export function buildLibrary(dir, options = {}) {
   // Built next to the target and swapped in at the end, so a compile error leaves the last good
   // build in place (`--watch`).
   const out = `${target}.building`;
-  const runtime = options.runtime ?? '@mnx/runtime';
+  const runtime = options.runtime ?? '@zubra/runtime';
   const sources = walk(root);
-  if (!sources.length) throw new Error(`mnx build --lib: no components (.mnx, .mnx.jsx, .mnx.tsx) in ${dir}`);
-  if (target === root || root.startsWith(target + sep)) throw new Error('mnx build --lib: the output directory must not contain the components');
+  if (!sources.length) throw new Error(`zubra build --lib: no components (.zb, .zb.jsx, .zb.tsx) in ${dir}`);
+  if (target === root || root.startsWith(target + sep)) throw new Error('zubra build --lib: the output directory must not contain the components');
   rmSync(out, { recursive: true, force: true });
   try {
     return finish(build());
@@ -103,7 +103,7 @@ export default wrap(Element);
   }
   const tags = new Map();
   for (const component of components) {
-    if (tags.has(component.tag)) throw new Error(`mnx build --lib: <${component.tag}> is defined by both ${tags.get(component.tag)} and ${component.module}`);
+    if (tags.has(component.tag)) throw new Error(`zubra build --lib: <${component.tag}> is defined by both ${tags.get(component.tag)} and ${component.module}`);
     tags.set(component.tag, component.module);
   }
 
@@ -127,7 +127,7 @@ export default wrap(Element);
     .filter((name) => name !== runtime && !name.startsWith('.')).sort();
   if (imported.some((name) => name.startsWith('@zag-js/')) && !imported.includes('@zag-js/vanilla')) imported.push('@zag-js/vanilla');
   const pkg = {
-    name: options.name ?? project.name ?? 'mnx-components',
+    name: options.name ?? project.name ?? 'zubra-components',
     version: options.version ?? project.version ?? '0.1.0',
     ...(project.description ? { description: project.description } : {}),
     ...(project.license ? { license: project.license } : {}),
@@ -188,7 +188,7 @@ function skill(name, components) {
     }
     if (slots.length) lines.push(`Slots: ${slots.map((slot) => code(slot)).join(', ')}.`, '');
     if (face.form) lines.push('A form control: give it a `name` and it submits with the form, validates, and resets.', '');
-    if (model.length) lines.push(`Two-way binding: ${model.map((prop) => `${code(prop)} with ${code(`${prop}change`)}`).join(', ')} (Vue ${code('v-model')}, Svelte ${code('bind:')}, React controlled, Angular ${code('mnxModel')}).`, '');
+    if (model.length) lines.push(`Two-way binding: ${model.map((prop) => `${code(prop)} with ${code(`${prop}change`)}`).join(', ')} (Vue ${code('v-model')}, Svelte ${code('bind:')}, React controlled, Angular ${code('zubraModel')}).`, '');
     return lines.join('\n');
   });
   return `---
@@ -196,7 +196,7 @@ name: ${skillName(name)}
 description: Use the ${name} web components (${components.map((c) => `<${c.tag}>`).join(', ')}) from React, Vue, Svelte, Solid, Angular, plain HTML or a server-rendered page. Covers each component's props, events, slots and two-way binding.
 ---
 
-${name} is a library of mnx web components. Each is a standard custom element: **properties in, DOM events out, children as slots.** It works in every framework without integration code, and ${code(`${name}/react`)} and ${code(`${name}/vue`)} export ready-made wrappers.
+${name} is a library of zubra web components. Each is a standard custom element: **properties in, DOM events out, children as slots.** It works in every framework without integration code, and ${code(`${name}/react`)} and ${code(`${name}/vue`)} export ready-made wrappers.
 
 ## Steps
 
@@ -210,10 +210,10 @@ ${name} is a library of mnx web components. Each is a standard custom element: *
 | Vue | ${code(':items="list"')} | ${code('@valuechange="…"')} | ${code('v-model')} / ${code('v-model:prop')} |
 | Svelte | ${code('{value} items={list}')} | ${code('onvaluechange={…}')} | ${code('bind:value')} |
 | Solid | ${code('prop:items={list}')} | ${code('on:valuechange={…}')} | ${code('prop:value')} + ${code('on:valuechange')} |
-| Angular (${code('CUSTOM_ELEMENTS_SCHEMA')}) | ${code('[items]="list"')} | ${code('(valuechange)="…"')} | ${code('mnxModel [(ngModel)]')} from ${code('@mnx/runtime/angular')} |
+| Angular (${code('CUSTOM_ELEMENTS_SCHEMA')}) | ${code('[items]="list"')} | ${code('(valuechange)="…"')} | ${code('zubraModel [(ngModel)]')} from ${code('@zubra/runtime/angular')} |
 | Plain HTML | ${code('el.items = list')} or a JSON attribute | ${code("addEventListener('valuechange', …)")} | the pair by hand |
 
-Server rendering: the elements hydrate server HTML in place; inside Nuxt, SvelteKit, React Router, SolidStart or Next.js, use ${code('@mnx/server')}'s ${code('injectShadowRoots()')} (see https://github.com/journey-to-code-org/open.mnx/blob/main/docs/server-rendering.md).
+Server rendering: the elements hydrate server HTML in place; inside Nuxt, SvelteKit, React Router, SolidStart or Next.js, use ${code('@zubra/server')}'s ${code('injectShadowRoots()')} (see https://github.com/journey-to-code-org/zubra/blob/main/docs/server-rendering.md).
 
 ## Components
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// `mnx` from npm (@mnx/compiler): the WebAssembly compiler on the command line, with no Rust.
+// `zubra` from npm (@zubra/compiler): the WebAssembly compiler on the command line, with no Rust.
 //
-//   mnx build --lib <dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]
-//   mnx add <component>... [--dir src/components] [--force]     copy registry components in
-//   mnx add --list
-//   mnx compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
-//   mnx check <file>... [--server]          --server: what a server without JavaScript leaves out
-//   mnx convert <Component.jsx> [--prefix <word>] [--as jsx|mnx] [--out <file> | --stdout]   React → mnx JSX, or .mnx
+//   zubra build --lib <dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]
+//   zubra add <component>... [--dir src/components] [--force]     copy registry components in
+//   zubra add --list
+//   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
+//   zubra check <file>... [--server]          --server: what a server without JavaScript leaves out
+//   zubra convert <Component.jsx> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]   React → zubra JSX, or .zb
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,7 @@ export function registryDir() {
   for (const dir of [join(here, 'registry'), join(here, '../registry')]) {
     if (existsSync(join(dir, 'index.json'))) return dir;
   }
-  throw new Error('mnx add: the component registry is missing from this install');
+  throw new Error('zubra add: the component registry is missing from this install');
 }
 
 export function readRegistry(dir = registryDir()) {
@@ -39,7 +39,7 @@ export function add(names, { target = 'src/components', force = false, registry 
     const component = byName.get(name);
     if (!component) {
       const near = [...byName.keys()].filter((candidate) => candidate.startsWith(name.slice(0, 3)) || distance(candidate, name) <= 2);
-      throw new Error(`mnx add: no component "${name}" in the registry${near.length ? `; did you mean ${near.join(', ')}?` : ''} (mnx add --list)`);
+      throw new Error(`zubra add: no component "${name}" in the registry${near.length ? `; did you mean ${near.join(', ')}?` : ''} (zubra add --list)`);
     }
     if (wanted.has(name)) return;
     wanted.add(name);
@@ -49,7 +49,7 @@ export function add(names, { target = 'src/components', force = false, registry 
   const files = [...wanted].flatMap((name) => byName.get(name).files);
   mkdirSync(target, { recursive: true });
   const clashes = files.filter((file) => existsSync(join(target, file)));
-  if (clashes.length && !force) throw new Error(`mnx add: ${clashes.map((file) => join(target, file)).join(', ')} already exists (--force replaces it)`);
+  if (clashes.length && !force) throw new Error(`zubra add: ${clashes.map((file) => join(target, file)).join(', ')} already exists (--force replaces it)`);
   for (const file of files) copyFileSync(join(registry, 'components', file), join(target, file));
   return files.map((file) => join(target, file));
 }
@@ -88,12 +88,12 @@ function main(argv) {
   const [command, ...args] = argv;
   const { flags, rest } = options(args);
   if (command === 'build') {
-    if (!flags.lib || rest.length !== 1) throw new Error('usage: mnx build --lib <components dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]');
+    if (!flags.lib || rest.length !== 1) throw new Error('usage: zubra build --lib <components dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]');
     const out = flags.out ?? 'dist';
     const build = () => {
       const { components, warnings } = buildLibrary(rest[0], { out, name: flags.name, version: flags.version });
       for (const warning of warnings) process.stderr.write(warning);
-      console.log(`mnx: built ${components.length} component${components.length === 1 ? '' : 's'} into ${relative(process.cwd(), resolve(out)) || '.'}: ${components.map(({ tag }) => `<${tag}>`).join(' ')}`);
+      console.log(`zubra: built ${components.length} component${components.length === 1 ? '' : 's'} into ${relative(process.cwd(), resolve(out)) || '.'}: ${components.map(({ tag }) => `<${tag}>`).join(' ')}`);
     };
     if (!flags.watch) return build();
     // --watch: build, then again after each change to the components (a compile error is
@@ -108,23 +108,23 @@ function main(argv) {
     attempt();
     let timer = null;
     watch(rest[0], { recursive: true }, (_event, file) => {
-      if (file && !/\.mnx(\.[jt]sx)?$/.test(file)) return;
+      if (file && !/\.zb(\.[jt]sx)?$/.test(file)) return;
       clearTimeout(timer);
       timer = setTimeout(attempt, 50);
     });
-    console.log(`mnx: watching ${rest[0]} (Ctrl+C to stop)`);
+    console.log(`zubra: watching ${rest[0]} (Ctrl+C to stop)`);
   } else if (command === 'add') {
     if (flags.list) {
       for (const component of readRegistry().components) console.log(`${component.name.padEnd(20)} ${component.description}`);
       return;
     }
-    if (!rest.length) throw new Error('usage: mnx add <component>... [--dir src/components] [--force]   (mnx add --list)');
+    if (!rest.length) throw new Error('usage: zubra add <component>... [--dir src/components] [--force]   (zubra add --list)');
     const files = add(rest, { target: flags.dir ?? 'src/components', force: flags.force });
-    console.log(`mnx: added ${files.join(', ')}. They're yours now: edit them as you like.`);
+    console.log(`zubra: added ${files.join(', ')}. They're yours now: edit them as you like.`);
     const packages = packagesFor(files);
-    if (packages.length) console.log(`mnx: they import ${packages.join(', ')}: npm install ${packages.join(' ')}`);
+    if (packages.length) console.log(`zubra: they import ${packages.join(', ')}: npm install ${packages.join(' ')}`);
   } else if (command === 'convert') {
-    if (rest.length !== 1) throw new Error('usage: mnx convert <Component.jsx> [--prefix <word>] [--as jsx|mnx] [--out <file> | --stdout]');
+    if (rest.length !== 1) throw new Error('usage: zubra convert <Component.jsx> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]');
     const path = resolve(rest[0]);
     const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix, as: flags.as });
     if (!response.ok) throw new Error(response.error);
@@ -141,7 +141,7 @@ function main(argv) {
       process.exitCode = 1;
     }
   } else if (command === 'compile' || command === 'check') {
-    if (!rest.length) throw new Error(`usage: mnx ${command} <file>${command === 'check' ? '...' : ''}`);
+    if (!rest.length) throw new Error(`usage: zubra ${command} <file>${command === 'check' ? '...' : ''}`);
     let failed = false;
     for (const file of command === 'check' ? rest : rest.slice(0, 1)) {
       const response = compileFile(file, {

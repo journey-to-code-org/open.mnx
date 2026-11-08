@@ -1,16 +1,16 @@
 {
-  "name": "create-mnx",
-  "version": "3.6.0",
-  "description": "Start an app with mnx web components: `npm create mnx`",
+  "name": "create-zubra",
+  "version": "5.0.0",
+  "description": "Start an app with Zubra web components: `npm create zubra`",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
     "directory": "create"
   },
   "type": "module",
   "bin": {
-    "create-mnx": "./index.js"
+    "create-zubra": "./index.js"
   },
   "files": [
     "index.js",

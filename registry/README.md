@@ -1,21 +1,21 @@
-# The mnx component registry
+# The Zubra component registry
 
 Twenty-five accessible components to copy into your project:
 
 ```sh
-npx mnx add tag-input modal-dialog         # into src/components/ (--dir elsewhere)
-npx mnx add --list
+npx zubra add tag-input modal-dialog         # into src/components/ (--dir elsewhere)
+npx zubra add --list
 ```
 
-`mnx` comes with `@mnx/compiler`. The files are copied, not installed: they're yours to edit, and `mnx add` never overwrites a file you have (`--force` does).
+`zubra` comes with `@zubra/compiler`. The files are copied, not installed: they're yours to edit, and `zubra add` never overwrites a file you have (`--force` does).
 
 | Inputs | Display | App pieces | Widgets |
 |---|---|---|---|
 | `tag-input`, `date-range`, `money-input`, `star-rating`, `toggle-switch`, `choice-cards`, `color-swatches`, `quantity-stepper`, `segmented-control` | `donut-chart`, `spark-line`, `line-chart`, `progress-ring`, `streak-grid`, `flip-card`, `step-indicator` | `kanban-column`, `chat-message`, `message-composer`, `modal-dialog` | `accordion-panel`, `tool-tip`, `tab-list`, `dropdown-menu`, `combo-box` |
 
-The widgets are the pieces Radix and shadcn/ui give React apps, built on the platform (`<details>`, `popover`, anchor positioning) and `@mnx/runtime/primitives`. `combo-box` uses Zag.js through `@mnx/runtime/zag`. It imports `@zag-js/vanilla` and `@zag-js/combobox`, and `mnx add` says to install them (`index.json` lists them under `packages`). [Accessible widgets without a headless library](../docs/guide/accessible-widgets.md) maps the rest.
+The widgets are the pieces Radix and shadcn/ui give React apps, built on the platform (`<details>`, `popover`, anchor positioning) and `@zubra/runtime/primitives`. `combo-box` uses Zag.js through `@zubra/runtime/zag`. It imports `@zag-js/vanilla` and `@zag-js/combobox`, and `zubra add` says to install them (`index.json` lists them under `packages`). [Accessible widgets without a headless library](../docs/guide/accessible-widgets.md) maps the rest.
 
-Each component's comment says what it does, its props, slots and events (`index.json` collects them). The inputs are form controls with a two-way `value` (or `checked`), so `v-model`, React's controlled pattern and Angular's `MnxModel` work with them as they are.
+Each component's comment says what it does, its props, slots and events (`index.json` collects them). The inputs are form controls with a two-way `value` (or `checked`), so `v-model`, React's controlled pattern and Angular's `ZubraModel` work with them as they are.
 
 ## Accessibility
 
@@ -38,4 +38,4 @@ Colours come from CSS custom properties, each with a default, so the components 
 
 ## Adding one
 
-Put the `.mnx` file in `components/`, give it a description comment, add it to a category in `build-index.mjs`, run `node registry/build-index.mjs`, and add its keyboard and screen-reader test.
+Put the `.zb` file in `components/`, give it a description comment, add it to a category in `build-index.mjs`, run `node registry/build-index.mjs`, and add its keyboard and screen-reader test.

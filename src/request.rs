@@ -2,12 +2,12 @@
 //!
 //! This is what the WebAssembly build exposes (and what anything embedding the compiler can
 //! use): no filesystem, no process. The request carries every source the compilation needs, so
-//! `.mnx` imports resolve against `files` the way the CLI resolves them against the disk.
+//! `.zb` imports resolve against `files` the way the CLI resolves them against the disk.
 //!
 //! ```json
-//! { "command": "compile", "emit": "js", "path": "/app/inbox.mnx",
-//!   "files": { "/app/inbox.mnx": "…", "/app/badge.mnx": "…" },
-//!   "runtime": "@mnx/runtime", "keepImports": true,
+//! { "command": "compile", "emit": "js", "path": "/app/inbox.zb",
+//!   "files": { "/app/inbox.zb": "…", "/app/badge.zb": "…" },
+//!   "runtime": "@zubra/runtime", "keepImports": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
 //!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true,
 //!   "pending": ["reviews"] }
@@ -19,7 +19,7 @@
 //! runs every check without producing output.
 //!
 //! `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. The CLI's
-//! `mnx serve` answers one request (or batch) per line, for a long-lived process.
+//! `zubra serve` answers one request (or batch) per line, for a long-lived process.
 
 use std::collections::HashMap;
 
@@ -100,16 +100,16 @@ fn respond(request: &Map<String, Value>) -> Value {
             .ok_or_else(|| format!("{resolved}: not among the request's files"))
     };
 
-    // `convert`: a React component → an mnx JSX component (`prefix` names a one-word one).
+    // `convert`: a React component → a zubra JSX component (`prefix` names a one-word one).
     if text("command") == Some("convert") {
         return match crate::convert_component(source, &path, text("prefix"), text("component")) {
             Ok(mut conversion) => {
-                // `"as": "mnx"`: the readable .mnx file, once nothing is left to finish.
-                if text("as") == Some("mnx")
+                // `"as": "zubra"`: the readable .zb file, once nothing is left to finish.
+                if text("as") == Some("zubra")
                     && conversion.unsupported.is_empty()
                     && conversion.compile_error.is_none()
                 {
-                    if let Some(error) = crate::convert_as_mnx(&mut conversion) {
+                    if let Some(error) = crate::convert_as_zb(&mut conversion) {
                         conversion.unsupported.push(error);
                     }
                 }
@@ -162,7 +162,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         .iter()
         .map(|warning| warning.render_warning(source, &path))
         .collect();
-    let runtime = text("runtime").unwrap_or("@mnx/runtime");
+    let runtime = text("runtime").unwrap_or("@zubra/runtime");
     let command = text("command").unwrap_or("compile");
     let result = match (command, text("emit").unwrap_or("html")) {
         ("check", _) => crate::compile_js_with(source, &path, runtime, Some(".js"), &loader)
@@ -348,7 +348,7 @@ fn file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
-/// `/app/./x/../badge.mnx` → `/app/badge.mnx` (lexically; the request has no filesystem).
+/// `/app/./x/../badge.zb` → `/app/badge.zb` (lexically; the request has no filesystem).
 fn normalize(path: &str) -> String {
     let path = path.replace('\\', "/");
     let absolute = path.starts_with('/');
@@ -382,26 +382,26 @@ mod tests {
         serde_json::from_str(&handle(&request.to_string())).unwrap()
     }
 
-    const BADGE: &str = "<mnx-badge label=\"x\"><b>{label}</b></mnx-badge>";
-    const INBOX: &str = "<script>import './parts/../badge.mnx'</script>\n<mnx-inbox><mnx-badge label=\"Ada\"></mnx-badge></mnx-inbox>";
+    const BADGE: &str = "<zb-badge label=\"x\"><b>{label}</b></zb-badge>";
+    const INBOX: &str = "<script>import './parts/../badge.zb'</script>\n<zb-inbox><zb-badge label=\"Ada\"></zb-badge></zb-inbox>";
 
     #[test]
     fn compiles_every_output_from_the_files_it_is_given() {
-        let files = json!({ "/app/inbox.mnx": INBOX, "/app/badge.mnx": BADGE });
-        let html = call(json!({ "path": "/app/inbox.mnx", "files": files, "emit": "html" }));
+        let files = json!({ "/app/inbox.zb": INBOX, "/app/badge.zb": BADGE });
+        let html = call(json!({ "path": "/app/inbox.zb", "files": files, "emit": "html" }));
         assert_eq!(html["ok"], true, "{html}");
         assert!(html["output"].as_str().unwrap().contains("<b>Ada</b>"));
         let js = call(
-            json!({ "path": "/app/inbox.mnx", "files": files, "emit": "js", "keepImports": true }),
+            json!({ "path": "/app/inbox.zb", "files": files, "emit": "js", "keepImports": true }),
         );
         assert!(
             js["output"]
                 .as_str()
                 .unwrap()
-                .contains("import './parts/../badge.mnx'"),
+                .contains("import './parts/../badge.zb'"),
             "{js}"
         );
-        let js = call(json!({ "path": "/app/inbox.mnx", "files": files, "emit": "js" }));
+        let js = call(json!({ "path": "/app/inbox.zb", "files": files, "emit": "js" }));
         assert!(
             js["output"]
                 .as_str()
@@ -410,25 +410,24 @@ mod tests {
             "{js}"
         );
         for emit in ["css", "dts", "manifest"] {
-            let response = call(json!({ "path": "/app/badge.mnx", "files": files, "emit": emit }));
+            let response = call(json!({ "path": "/app/badge.zb", "files": files, "emit": emit }));
             assert_eq!(response["ok"], true, "{emit}: {response}");
         }
-        let manifest =
-            call(json!({ "path": "/app/badge.mnx", "files": files, "emit": "manifest" }));
+        let manifest = call(json!({ "path": "/app/badge.zb", "files": files, "emit": "manifest" }));
         assert!(manifest["output"]
             .as_str()
             .unwrap()
             .contains("\"path\": \"badge.js\""));
         let react = call(
-            json!({ "path": "/app/badge.mnx", "files": files, "emit": "dts", "framework": "react" }),
+            json!({ "path": "/app/badge.zb", "files": files, "emit": "dts", "framework": "react" }),
         );
-        assert!(react["output"].as_str().unwrap().contains("MnxBadgeReact"));
+        assert!(react["output"].as_str().unwrap().contains("ZbBadgeReact"));
     }
 
     #[test]
     fn reports_errors_and_warnings_for_terminals_and_editors() {
-        let files = json!({ "/app/x.mnx": "<mnx-x hidden={false}>\n  <p>{hiden}</p>\n</mnx-x>" });
-        let response = call(json!({ "command": "check", "path": "/app/x.mnx", "files": files }));
+        let files = json!({ "/app/x.zb": "<zb-x hidden={false}>\n  <p>{hiden}</p>\n</zb-x>" });
+        let response = call(json!({ "command": "check", "path": "/app/x.zb", "files": files }));
         assert_eq!(response["ok"], false);
         assert!(response["error"]
             .as_str()
@@ -449,17 +448,16 @@ mod tests {
         );
         assert_eq!(response["diagnostics"][1]["help"], "did you mean `hidden`?");
 
-        let missing =
-            call(json!({ "path": "/app/inbox.mnx", "files": { "/app/inbox.mnx": INBOX } }));
+        let missing = call(json!({ "path": "/app/inbox.zb", "files": { "/app/inbox.zb": INBOX } }));
         assert!(
             missing["error"]
                 .as_str()
                 .unwrap()
-                .contains("/app/badge.mnx: not among the request's files"),
+                .contains("/app/badge.zb: not among the request's files"),
             "{missing}"
         );
         let ok = call(
-            json!({ "command": "check", "path": "/app/badge.mnx", "files": { "/app/badge.mnx": BADGE } }),
+            json!({ "command": "check", "path": "/app/badge.zb", "files": { "/app/badge.zb": BADGE } }),
         );
         assert_eq!(ok["ok"], true);
         assert_eq!(ok["output"], Value::Null);
@@ -471,11 +469,11 @@ mod tests {
             ("[]", "JSON object"),
             ("{", "isn't JSON"),
             ("{\"files\": {}}", "`path` is required"),
-            ("{\"path\": \"/a.mnx\"}", "`files` must map"),
-            ("{\"path\": \"/a.mnx\", \"files\": {}}", "no source for `/a.mnx`"),
-            ("{\"path\": \"/a.mnx\", \"files\": {\"/a.mnx\": \"<mnx-a></mnx-a>\"}, \"emit\": \"pdf\"}", "unknown emit"),
-            ("{\"path\": \"/a.mnx\", \"files\": {\"/a.mnx\": \"<mnx-a></mnx-a>\"}, \"command\": \"run\"}", "unknown command"),
-            ("{\"path\": \"/a.mnx\", \"files\": {\"/a.mnx\": \"<mnx-a></mnx-a>\"}, \"emit\": \"js\", \"cssImport\": \"x\"}", "go together"),
+            ("{\"path\": \"/a.zb\"}", "`files` must map"),
+            ("{\"path\": \"/a.zb\", \"files\": {}}", "no source for `/a.zb`"),
+            ("{\"path\": \"/a.zb\", \"files\": {\"/a.zb\": \"<zb-a></zb-a>\"}, \"emit\": \"pdf\"}", "unknown emit"),
+            ("{\"path\": \"/a.zb\", \"files\": {\"/a.zb\": \"<zb-a></zb-a>\"}, \"command\": \"run\"}", "unknown command"),
+            ("{\"path\": \"/a.zb\", \"files\": {\"/a.zb\": \"<zb-a></zb-a>\"}, \"emit\": \"js\", \"cssImport\": \"x\"}", "go together"),
         ] {
             let response: Value = serde_json::from_str(&handle(request)).unwrap();
             assert_eq!(response["ok"], false);
@@ -485,9 +483,9 @@ mod tests {
 
     #[test]
     fn paths_normalize_like_the_filesystem() {
-        assert_eq!(normalize("/app/./x/../badge.mnx"), "/app/badge.mnx");
-        assert_eq!(normalize("C:\\app\\x.mnx"), "C:/app/x.mnx");
-        assert_eq!(normalize("/../a.mnx"), "/a.mnx");
-        assert_eq!(normalize("../a/./b.mnx"), "../a/b.mnx");
+        assert_eq!(normalize("/app/./x/../badge.zb"), "/app/badge.zb");
+        assert_eq!(normalize("C:\\app\\x.zb"), "C:/app/x.zb");
+        assert_eq!(normalize("/../a.zb"), "/a.zb");
+        assert_eq!(normalize("../a/./b.zb"), "../a/b.zb");
     }
 }

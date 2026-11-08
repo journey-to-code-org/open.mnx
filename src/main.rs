@@ -30,7 +30,7 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("convert") {
         return convert(arguments.collect());
     }
-    // `mnx request`: one JSON request on stdin, the JSON response on stdout (what the
+    // `zubra request`: one JSON request on stdin, the JSON response on stdout (what the
     // WebAssembly build exposes, for anything embedding the native compiler instead).
     if command.as_deref() == Some("request") {
         if let Some(argument) = arguments.next() {
@@ -38,10 +38,10 @@ fn run() -> Result<(), String> {
         }
         let request = std::io::read_to_string(std::io::stdin())
             .map_err(|error| format!("unable to read standard input: {error}"))?;
-        println!("{}", mnx_compiler::handle_request(&request));
+        println!("{}", zubra::handle_request(&request));
         return Ok(());
     }
-    // `mnx serve`: one JSON request (or batch) per line on stdin, one JSON response per line on
+    // `zubra serve`: one JSON request (or batch) per line on stdin, one JSON response per line on
     // stdout, until stdin closes. For servers in other languages: one process, no start-up cost
     // per render.
     if command.as_deref() == Some("serve") {
@@ -56,7 +56,7 @@ fn run() -> Result<(), String> {
                 continue;
             }
             let mut out = stdout.lock();
-            writeln!(out, "{}", mnx_compiler::handle_request(&line))
+            writeln!(out, "{}", zubra::handle_request(&line))
                 .and_then(|()| out.flush())
                 .map_err(|error| format!("unable to write the response: {error}"))?;
         }
@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: mnx check <component.mnx>... [--format human|json]\n       mnx migrate <component.mnx>... [--check] [--to 3]\n       mnx convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|mnx] [--out <file> | --stdout]\n       mnx request < request.json\n       mnx serve   (JSON lines: a request per line in, a response per line out)\n       mnx compile <component.mnx> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json]\n       zubra migrate <component.zb>... [--check] [--to 3]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -76,19 +76,19 @@ fn run() -> Result<(), String> {
     let mut partial = false;
     let mut output_path = None;
     let mut emit = "html".to_owned();
-    let mut runtime = "@mnx/runtime".to_owned();
+    let mut runtime = "@zubra/runtime".to_owned();
     let mut module_path = None;
     let mut keep_imports = false;
     let mut no_imports = false;
     let mut css_import = None;
     let mut css_import_inline = None;
-    let mut framework = mnx_compiler::Framework::None;
+    let mut framework = zubra::Framework::None;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--emit" => emit = arguments.next().unwrap_or_default(),
             "--runtime" => runtime = arguments.next().unwrap_or_default(),
             "--module-path" => module_path = arguments.next(),
-            // For bundler plugins: leave `./x.mnx` imports for the bundler to resolve.
+            // For bundler plugins: leave `./x.zb` imports for the bundler to resolve.
             "--keep-imports" => keep_imports = true,
             // For --emit css: this component's stylesheet only (a bundler loads the others).
             "--no-imports" => no_imports = true,
@@ -98,11 +98,11 @@ fn run() -> Result<(), String> {
             // For --emit dts: type the default export as that framework's wrapper.
             "--framework" => {
                 framework = match arguments.next().as_deref() {
-                    Some("react") => mnx_compiler::Framework::React,
-                    Some("vue") => mnx_compiler::Framework::Vue,
-                    Some("svelte") => mnx_compiler::Framework::Svelte,
-                    Some("solid") => mnx_compiler::Framework::Solid,
-                    Some("none") => mnx_compiler::Framework::None,
+                    Some("react") => zubra::Framework::React,
+                    Some("vue") => zubra::Framework::Vue,
+                    Some("svelte") => zubra::Framework::Svelte,
+                    Some("solid") => zubra::Framework::Solid,
+                    Some("none") => zubra::Framework::None,
                     other => {
                         return Err(format!(
                             "unknown --framework `{}`; expected react, vue, svelte, solid or none",
@@ -123,7 +123,7 @@ fn run() -> Result<(), String> {
     }
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
-    for warning in mnx_compiler::warnings(&source) {
+    for warning in zubra::warnings(&source) {
         eprint!("{}", warning.render_warning(&source, &source_path));
     }
     if emit != "html" {
@@ -137,41 +137,40 @@ fn run() -> Result<(), String> {
             .map_or(source_path.clone(), |name| {
                 name.to_string_lossy().into_owned()
             });
-        // The JavaScript module the manifest describes: header.mnx → header.js by default.
+        // The JavaScript module the manifest describes: header.zb → header.js by default.
         let module_path = module_path.unwrap_or_else(|| {
-            let stem = mnx_compiler::component_extension(&name)
-                .map_or(name.as_str(), |extension| {
-                    &name[..name.len() - extension.len()]
-                });
+            let stem = zubra::component_extension(&name).map_or(name.as_str(), |extension| {
+                &name[..name.len() - extension.len()]
+            });
             format!("{stem}.js")
         });
         let output = match emit.as_str() {
             "js" if css_import.is_some() || css_import_inline.is_some() => {
                 match (&css_import, &css_import_inline) {
-                    (Some(stylesheet), Some(inline)) => mnx_compiler::compile_js_for_bundler(
+                    (Some(stylesheet), Some(inline)) => zubra::compile_js_for_bundler(
                         &source,
                         &source_path,
                         &runtime,
-                        mnx_compiler::StyleImports { stylesheet, inline },
-                        &mnx_compiler::filesystem,
+                        zubra::StyleImports { stylesheet, inline },
+                        &zubra::filesystem,
                     ),
                     _ => return Err("--css-import and --css-import-inline go together".into()),
                 }
             }
-            "css" if no_imports => mnx_compiler::compile_css(&source),
-            "css" => mnx_compiler::compile_css_file(&source_path),
-            "js" if keep_imports => mnx_compiler::compile_js_with(
+            "css" if no_imports => zubra::compile_css(&source),
+            "css" => zubra::compile_css_file(&source_path),
+            "js" if keep_imports => zubra::compile_js_with(
                 &source,
                 &source_path,
                 &runtime,
                 None,
-                &mnx_compiler::filesystem,
+                &zubra::filesystem,
             ),
-            "js" => mnx_compiler::compile_js_file(&source_path, &runtime),
-            "dts" => mnx_compiler::compile_declarations_for(&source, &name, framework),
-            "manifest" => mnx_compiler::compile_manifest(&source, &module_path),
-            "html-data" => mnx_compiler::compile_html_data(&source),
-            "interface" => mnx_compiler::compile_interface(&source),
+            "js" => zubra::compile_js_file(&source_path, &runtime),
+            "dts" => zubra::compile_declarations_for(&source, &name, framework),
+            "manifest" => zubra::compile_manifest(&source, &module_path),
+            "html-data" => zubra::compile_html_data(&source),
+            "interface" => zubra::compile_interface(&source),
             _ => {
                 return Err(format!(
                     "unknown --emit `{emit}`; expected html, js, css, dts, manifest, html-data or interface"
@@ -200,21 +199,21 @@ fn run() -> Result<(), String> {
         None => "{}".to_owned(),
     };
     let slot_source = if slots_html {
-        mnx_compiler::SlotSource::Html
+        zubra::SlotSource::Html
     } else {
-        mnx_compiler::SlotSource::Template
+        zubra::SlotSource::Template
     };
-    let html = mnx_compiler::compile_html_with_options(
+    let html = zubra::compile_html_with_options(
         &source,
         &source_path,
         &props,
         &slots,
-        mnx_compiler::HtmlOptions {
+        zubra::HtmlOptions {
             slot_source,
             partial,
             pending: Vec::new(),
         },
-        &mnx_compiler::filesystem,
+        &zubra::filesystem,
     )
     .map_err(|diagnostic| diagnostic.render_in(&source, &source_path))?;
     if let Some(output_path) = output_path {
@@ -237,7 +236,7 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
         .file_name()
         .ok_or_else(|| format!("{output_path}: output path must name a file"))?;
     let temporary = parent.join(format!(
-        ".{}.mnx-tmp-{}",
+        ".{}.zb-tmp-{}",
         name.to_string_lossy(),
         std::process::id()
     ));
@@ -273,7 +272,7 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
     result
 }
 
-/// `mnx check`: every error and warning, for CI and editors; exits non-zero on errors.
+/// `zubra check`: every error and warning, for CI and editors; exits non-zero on errors.
 fn check(arguments: Vec<String>) -> Result<(), String> {
     let mut files = Vec::new();
     let mut json = false;
@@ -303,7 +302,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
         }
     }
     if files.is_empty() || (stdin && files.len() != 1) {
-        return Err("usage: mnx check <component.mnx>... [--format human|json] [--server] [--stdin (one path; source from standard input)]".into());
+        return Err("usage: zubra check <component.zb>... [--format human|json] [--server] [--stdin (one path; source from standard input)]".into());
     }
     let mut report = Vec::new();
     let mut errors = 0;
@@ -316,23 +315,23 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             fs::read_to_string(path)
                 .map_err(|error| format!("{path}: unable to read source: {error}"))?
         };
-        for warning in mnx_compiler::warnings(&source) {
+        for warning in zubra::warnings(&source) {
             human.push_str(&warning.render_warning(&source, path));
             report.push(entry(path, &source, &warning, "warning"));
         }
         // The JavaScript output runs every check that doesn't need prop values.
-        if let Err(error) = mnx_compiler::compile_js_with(
+        if let Err(error) = zubra::compile_js_with(
             &source,
             path,
-            "@mnx/runtime",
+            "@zubra/runtime",
             Some(".js"),
-            &mnx_compiler::filesystem,
+            &zubra::filesystem,
         ) {
             errors += 1;
             human.push_str(&error.render_in(&source, path));
             report.push(entry(path, &source, &error, "error"));
         } else if server {
-            match mnx_compiler::server_gaps(&source, path, &mnx_compiler::filesystem) {
+            match zubra::server_gaps(&source, path, &zubra::filesystem) {
                 Ok(gaps) => {
                     for (gap, error) in gaps {
                         if error {
@@ -388,7 +387,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
 fn entry(
     path: &str,
     _source: &str,
-    diagnostic: &mnx_compiler::Diagnostic,
+    diagnostic: &zubra::Diagnostic,
     severity: &str,
 ) -> serde_json::Value {
     let file = diagnostic
@@ -405,16 +404,16 @@ fn entry(
     })
 }
 
-/// `mnx convert`: a React function component, written out as an mnx JSX component next to it
+/// `zubra convert`: a React function component, written out as a zubra JSX component next to it
 /// (`--out` elsewhere, `--stdout` to print it). What wasn't converted is reported, and the exit
 /// status is 1 then, so a script can tell.
 fn convert(arguments: Vec<String>) -> Result<(), String> {
-    let usage = "usage: mnx convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|mnx] [--out <file> | --stdout]";
+    let usage = "usage: zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]";
     let mut path = None;
     let mut prefix = None;
     let mut out = None;
     let mut stdout = false;
-    let mut as_mnx = false;
+    let mut as_zb = false;
     let mut component = None;
     let mut iterator = arguments.into_iter();
     while let Some(argument) = iterator.next() {
@@ -422,11 +421,11 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
             "--prefix" => prefix = Some(iterator.next().ok_or(usage)?),
             "--component" => component = Some(iterator.next().ok_or(usage)?),
             "--as" => match iterator.next().as_deref() {
-                Some("mnx") => as_mnx = true,
-                Some("jsx") => as_mnx = false,
+                Some("zubra") => as_zb = true,
+                Some("jsx") => as_zb = false,
                 other => {
                     return Err(format!(
-                        "unknown --as `{}`; expected jsx or mnx",
+                        "unknown --as `{}`; expected jsx or zubra",
                         other.unwrap_or_default()
                     ))
                 }
@@ -444,14 +443,14 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
     let source = fs::read_to_string(&path)
         .map_err(|error| format!("{path}: unable to read source: {error}"))?;
     let mut conversion =
-        mnx_compiler::convert_component(&source, &path, prefix.as_deref(), component.as_deref())
+        zubra::convert_component(&source, &path, prefix.as_deref(), component.as_deref())
             .map_err(|diagnostic| diagnostic.render_in(&source, &path))?;
     let mut lowering_error = None;
-    if as_mnx {
+    if as_zb {
         if conversion.unsupported.is_empty() && conversion.compile_error.is_none() {
-            lowering_error = mnx_compiler::convert_as_mnx(&mut conversion);
+            lowering_error = zubra::convert_as_zb(&mut conversion);
         } else {
-            conversion.changes.push("left as JSX: `--as mnx` writes the .mnx file once nothing is left to finish by hand".to_owned());
+            conversion.changes.push("left as JSX: `--as zubra` writes the .zb file once nothing is left to finish by hand".to_owned());
         }
     }
     let target = out.unwrap_or_else(|| {
@@ -578,10 +577,10 @@ fn rebase_imports(text: &str, from: &std::path::Path, to: &std::path::Path) -> (
     (out, moved)
 }
 
-/// `mnx migrate`: rewrite `.mnx` files for 2.0 in place (`--check`: only report, and fail if
+/// `zubra migrate`: rewrite `.zb` files for 2.0 in place (`--check`: only report, and fail if
 /// anything would change).
 fn migrate(arguments: Vec<String>) -> Result<(), String> {
-    let usage = "usage: mnx migrate <component.mnx>... [--check] [--to 3]";
+    let usage = "usage: zubra migrate <component.zb>... [--check] [--to 3]";
     let check = arguments.iter().any(|argument| argument == "--check");
     // `--to 3`: prepare 2.x code for 3.0 (`plan/decisions/3.0-scope.md`).
     let to = arguments
@@ -614,17 +613,17 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
     if to.is_some() {
         let mut pending = 0;
         for path in files {
-            if mnx_compiler::component_extension(path) != Some(".mnx") {
-                eprintln!("{path}: skipped (only .mnx scripts have signal `const`s to prepare)");
+            if zubra::component_extension(path) != Some(".zb") {
+                eprintln!("{path}: skipped (only .zb scripts have signal `const`s to prepare)");
                 continue;
             }
             let source = fs::read_to_string(path)
                 .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-            let (output, wrapped) = mnx_compiler::prepare_for_3(&source);
+            let (output, wrapped) = zubra::prepare_for_3(&source);
             if wrapped > 0 {
                 pending += 1;
                 if check {
-                    for found in mnx_compiler::uses_for_3(&source) {
+                    for found in zubra::uses_for_3(&source) {
                         eprint!("{}", found.render_warning(&source, path));
                     }
                 }
@@ -641,7 +640,7 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
         }
         if check && pending > 0 {
             return Err(format!(
-                "{pending} file{} would change; run `mnx migrate --to 3` without --check",
+                "{pending} file{} would change; run `zubra migrate --to 3` without --check",
                 if pending == 1 { "" } else { "s" }
             ));
         }
@@ -654,14 +653,14 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
     }
     let mut pending = 0;
     for path in files {
-        if mnx_compiler::component_extension(path) != Some(".mnx") {
+        if zubra::component_extension(path) != Some(".zb") {
             eprintln!("{path}: skipped (JSX components already have 2.0's semantics)");
             continue;
         }
         let source = fs::read_to_string(path)
             .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-        let migration = mnx_compiler::migrate(&source)
-            .map_err(|diagnostic| diagnostic.render_in(&source, path))?;
+        let migration =
+            zubra::migrate(&source).map_err(|diagnostic| diagnostic.render_in(&source, path))?;
         for change in &migration.changes {
             eprintln!("{path}: {change}");
         }
@@ -677,7 +676,7 @@ fn migrate(arguments: Vec<String>) -> Result<(), String> {
     }
     if check && pending > 0 {
         return Err(format!(
-            "{pending} file{} would change; run `mnx migrate` without --check",
+            "{pending} file{} would change; run `zubra migrate` without --check",
             if pending == 1 { "" } else { "s" }
         ));
     }

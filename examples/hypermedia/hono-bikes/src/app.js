@@ -1,6 +1,6 @@
 // The bike shop: Hono routes and htmx. Every route answers a plain request with a whole page
 // (so it works without JavaScript) and an htmx request (`HX-Request`) with just the fragment to
-// swap. Either way the mnx components in it are rendered on the server, and the browser
+// swap. Either way the zubra components in it are rendered on the server, and the browser
 // hydrates them where they land, swapped in or not.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { html, raw } from 'hono/html';
-import { mnx as mnxMiddleware } from '@mnx/server/hono';
+import { zubra as zubraMiddleware } from '@zubra/server/hono';
 import { CATEGORIES } from './store.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,11 +21,11 @@ const HTMX_CONFIG = JSON.stringify({ responseHandling: [{ code: '204', swap: fal
 
 export function createApp({ store, cache = true }) {
   const app = new Hono();
-  // @mnx/server: renders components, and serves their modules and @mnx/runtime under /_mnx.
-  const middleware = mnxMiddleware({ components: join(here, '../components'), cache });
-  const mnx = middleware.mnx;
+  // @zubra/server: renders components, and serves their modules and @zubra/runtime under /_zubra.
+  const middleware = zubraMiddleware({ components: join(here, '../components'), cache });
+  const zubra = middleware.zubra;
   app.use(middleware);
-  const c = (name, props) => raw(mnx.render(name, props));
+  const c = (name, props) => raw(zubra.render(name, props));
   app.get('/vendor/htmx.js', (ctx) => ctx.body(HTMX, 200, { 'content-type': 'text/javascript' }));
   app.get('/app.css', (ctx) => ctx.body(CSS, 200, { 'content-type': 'text/css' }));
 
@@ -80,16 +80,7 @@ export function createApp({ store, cache = true }) {
     return parts;
   };
 
-  // htmx 2 parses fragments with Document.parseHTMLUnsafe() where it exists. In the Chromium
-  // that Playwright ships (153), that drops HTML comments, and mnx's hydration markers are
-  // comments: swapped-in elements then can't hydrate and are rendered fresh (correct, but with a
-  // warning, and without keeping focus). DOMParser keeps them, and htmx uses it when
-  // parseHTMLUnsafe is missing. `?parser=native` leaves it alone (for the tests). See the README.
-  const parserFix = (ctx) => (ctx?.req.query('parser') === 'native' ? '' : html`<script>
-    if (Document.parseHTMLUnsafe && !Document.parseHTMLUnsafe('<p><!--x--></p>').body.firstChild.firstChild) delete Document.parseHTMLUnsafe;
-  </script>`);
-
-  const layout = (title, body, ctx) => html`<!doctype html>
+  const layout = (title, body) => html`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -97,14 +88,13 @@ export function createApp({ store, cache = true }) {
   <meta name="htmx-config" content="${HTMX_CONFIG}">
   <title>${title} · Spoke & Chain</title>
   <link rel="stylesheet" href="/app.css">
-  ${raw(mnx.head()) /* every component's CSS and the import map: htmx fragments can bring any of them */}
-  ${parserFix(ctx)}
+  ${raw(zubra.head()) /* every component's CSS and the import map: htmx fragments can bring any of them */}
   <script src="/vendor/htmx.js" defer></script>
 </head>
 <body>
   <header class="top"><a class="brand" href="/">Spoke & Chain</a> ${lowCount()}</header>
   <main>${body}</main>
-  ${raw(mnx.scripts())}
+  ${raw(zubra.scripts())}
 </body>
 </html>`;
 
@@ -128,7 +118,7 @@ export function createApp({ store, cache = true }) {
 
   app.get('/', (ctx) => {
     const { q, category, page } = params(ctx);
-    return ctx.html(layout('Inventory', html`<h1>Inventory</h1>${filters(q, category)}${table(rows({ q, category, page, through: page }))}`, ctx));
+    return ctx.html(layout('Inventory', html`<h1>Inventory</h1>${filters(q, category)}${table(rows({ q, category, page, through: page }))}`));
   });
 
   app.get('/items', (ctx) => {
@@ -149,7 +139,7 @@ export function createApp({ store, cache = true }) {
     const found = item(ctx);
     if (!found) return ctx.notFound();
     if (htmx(ctx)) return ctx.html(editor(found));
-    return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found))}`, ctx));
+    return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found))}`));
   });
 
   app.post('/items/:id', async (ctx) => {
@@ -169,7 +159,7 @@ export function createApp({ store, cache = true }) {
     if (Object.keys(errors).length) {
       const safe = { ...values, cents: Number.isFinite(values.cents) ? values.cents : found.cents, count: Number.isInteger(values.count) ? values.count : found.count };
       if (htmx(ctx)) return ctx.html(editor(found, safe, errors), 422);
-      return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found, safe, errors))}`, ctx), 422);
+      return ctx.html(layout(`Edit ${found.name}`, html`<h1>Edit</h1>${table(editor(found, safe, errors))}`), 422);
     }
     const updated = store.update(found.id, values);
     return htmx(ctx) ? ctx.html(html`${row(updated)}${lowCount(true)}`) : ctx.redirect(`/#item-${found.id}`, 303);

@@ -12,21 +12,21 @@ import { fileURLToPath } from 'node:url';
 
 export const here = dirname(fileURLToPath(import.meta.url));
 export const repo = join(here, '../../..');
-// MNX_BROWSER picks the engine: chromium (the default), firefox or webkit.
-export const engine = process.env.MNX_BROWSER || 'chromium';
+// ZUBRA_BROWSER picks the engine: chromium (the default), firefox or webkit.
+export const engine = process.env.ZUBRA_BROWSER || 'chromium';
 const launcher = createRequire(import.meta.url)('playwright')[engine];
 
 export let site;
-export const production = process.env.MNX_RUNTIME === 'production';
+export const production = process.env.ZUBRA_RUNTIME === 'production';
 let server, origin, browser;
 const pages = new Map();
 
 export function compiler(...args) {
-  return execFileSync(join(repo, 'target/debug/mnx'), ['compile', ...args], { encoding: 'utf8' });
+  return execFileSync(join(repo, 'target/debug/zubra'), ['compile', ...args], { encoding: 'utf8' });
 }
 
 /**
- * Register setup and teardown. `components` maps module names to `.mnx` paths; `files` maps
+ * Register setup and teardown. `components` maps module names to `.zb` paths; `files` maps
  * extra served paths to their contents (plain modules a component imports, …); `imports` adds
  * to the pages' import map (bare specifiers for those modules).
  */
@@ -34,8 +34,8 @@ export function useBrowser(components, files = {}, imports = {}) {
 extraImports = imports;
 before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
-  site = mkdtempSync(join(tmpdir(), 'mnx-browser-'));
-  // MNX_RUNTIME=production runs the suite against the production build (no hot reloading).
+  site = mkdtempSync(join(tmpdir(), 'zb-browser-'));
+  // ZUBRA_RUNTIME=production runs the suite against the production build (no hot reloading).
   cpSync(join(here, production ? '../../dist/production' : '../../src'), join(site, 'runtime'), { recursive: true });
   for (const [path, contents] of Object.entries(files)) writeFileSync(join(site, path), contents);
   for (const [name, path] of Object.entries(components)) {
@@ -73,7 +73,7 @@ let extraImports = {};
 export async function open(body, { modules = [], beforeModules = '' } = {}) {
   const path = `/page-${++pageCount}.html`;
   pages.set(path, `<!doctype html><meta charset="utf-8">
-<script type="importmap">${JSON.stringify({ imports: { '@mnx/runtime': '/runtime/index.js', '@mnx/runtime/spread': '/runtime/spread.js', '@mnx/runtime/primitives': '/runtime/primitives.js', ...extraImports } })}</script>
+<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': '/runtime/index.js', '@zubra/runtime/spread': '/runtime/spread.js', '@zubra/runtime/primitives': '/runtime/primitives.js', ...extraImports } })}</script>
 <script>window.lifecycle = []; window.messages = [];</script>
 <body>${body}</body>
 <script type="module">

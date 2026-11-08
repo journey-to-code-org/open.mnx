@@ -2,9 +2,9 @@
 // action run on the server; <Form> posts without a page load once JavaScript is running.
 import { useEffect, useRef, useState } from 'react';
 import { data, Form, useFetcher, useNavigation } from 'react-router';
-import BalanceList from '../../mnx/balance-list.mnx';
-import MoneyInput from '../../mnx/money-input.mnx';
-import SegmentedControl from '../../mnx/segmented-control.mnx';
+import BalanceList from '../../zubra/balance-list.zb';
+import MoneyInput from '../../zubra/money-input.zb';
+import SegmentedControl from '../../zubra/segmented-control.zb';
 import { add, balances, CATEGORIES, list, PEOPLE, remove } from '../lib/trip.server.js';
 
 export const meta = () => [{ title: 'Trip budget' }];

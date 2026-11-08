@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import Counter from './counter.mnx.tsx';
-import CounterElement from './counter.mnx.tsx?element';
+import Counter from './counter.zb.tsx';
+import CounterElement from './counter.zb.tsx?element';
 
 function App() {
   const [count, setCount] = useState(1);
@@ -16,4 +16,4 @@ function App() {
 
 const root = createRoot(document.getElementById('root')!);
 flushSync(() => root.render(<App />));
-Object.assign(window, { kind: typeof CounterElement === 'function' && CounterElement.mnx.tag, ready: true });
+Object.assign(window, { kind: typeof CounterElement === 'function' && CounterElement.zubra.tag, ready: true });

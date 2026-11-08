@@ -1,6 +1,6 @@
 import './globals.css';
 
-export const metadata = { title: 'WebConf 2026', description: 'A conference schedule built with Next.js and mnx components.' };
+export const metadata = { title: 'WebConf 2026', description: 'A conference schedule built with Next.js and zubra components.' };
 
 export default function Layout({ children }) {
   return (

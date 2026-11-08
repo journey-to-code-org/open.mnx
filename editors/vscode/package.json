@@ -1,13 +1,13 @@
 {
-  "name": "mnx",
-  "displayName": "mnx",
-  "description": "Language support for mnx Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
-  "version": "3.6.0",
+  "name": "zubra",
+  "displayName": "Zubra",
+  "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
+  "version": "5.0.0",
   "publisher": "journey-to-code",
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/journey-to-code-org/open.mnx.git",
+    "url": "https://github.com/journey-to-code-org/zubra.git",
     "directory": "editors/vscode"
   },
   "engines": {
@@ -21,37 +21,37 @@
   "contributes": {
     "languages": [
       {
-        "id": "mnx",
+        "id": "zubra",
         "aliases": [
-          "mnx"
+          "zubra"
         ],
         "extensions": [
-          ".mnx"
+          ".zb"
         ],
         "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
       {
-        "language": "mnx",
-        "scopeName": "text.html.mnx",
-        "path": "./syntaxes/mnx.tmLanguage.json",
+        "language": "zubra",
+        "scopeName": "text.html.zb",
+        "path": "./syntaxes/zubra.tmLanguage.json",
         "embeddedLanguages": {
           "source.js": "javascript",
           "source.ts": "typescript",
           "source.css": "css",
           "source.css.scss": "scss",
-          "meta.embedded.expression.mnx": "javascript"
+          "meta.embedded.expression.zb": "javascript"
         }
       }
     ],
     "configuration": {
-      "title": "mnx",
+      "title": "zubra",
       "properties": {
-        "mnx.compiler": {
+        "zubra.compiler": {
           "type": "string",
           "default": "",
-          "description": "Path to the mnx CLI. Empty: use @mnx/compiler (WebAssembly) if installed in the workspace, else `mnx` on PATH."
+          "description": "Path to the Zubra CLI. Empty: use @zubra/compiler (WebAssembly) if installed in the workspace, else `zubra` on PATH."
         }
       }
     }
@@ -60,7 +60,7 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@mnx/language-server": "file:../language-server",
+    "@zubra/language-server": "file:../language-server",
     "vscode-languageclient": "11.0.0"
   },
   "devDependencies": {

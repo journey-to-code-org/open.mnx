@@ -1,9 +1,0 @@
-<mnx-card heading="Card" open={true}>
-  <article>
-    <header><mnx-slot name="title"><h2>{heading}</h2></mnx-slot></header>
-    <mnx-if test={open}>
-      <section><mnx-slot><p>No content</p></mnx-slot></section>
-    </mnx-if>
-    <footer>{heading} footer</footer>
-  </article>
-</mnx-card>

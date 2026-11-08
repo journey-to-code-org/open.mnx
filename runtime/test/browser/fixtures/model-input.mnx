@@ -1,8 +1,0 @@
-<!--
-  A two-way stepper.
--->
-<mnx-model-input form-associated value:model={2}>
-  <button type="button" class="down" onclick={() => value--}>-</button>
-  <output>{value}</output>
-  <button type="button" class="up" onclick={() => (value = value + 1)}>+</button>
-</mnx-model-input>

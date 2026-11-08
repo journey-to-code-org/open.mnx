@@ -13,13 +13,13 @@ import { useBrowser, open, here, site, engine } from './harness.js';
 const skip = engine !== 'chromium' && 'counting live objects needs Chromium';
 
 useBrowser({
-  shared: join(here, 'fixtures/shared.mnx'),
-  card: join(here, 'fixtures/card.mnx'),
-  rating: join(here, 'fixtures/rating.mnx'),
-  badge: join(here, 'fixtures/badge.mnx'),
-  inbox: join(here, 'fixtures/inbox.mnx'),
+  shared: join(here, 'fixtures/shared.zb'),
+  card: join(here, 'fixtures/card.zb'),
+  rating: join(here, 'fixtures/rating.zb'),
+  badge: join(here, 'fixtures/badge.zb'),
+  inbox: join(here, 'fixtures/inbox.zb'),
 }, {
-  'shared-state.js': "import { state } from '@mnx/runtime';\nexport const shared = state(1);\nwindow.shared = shared;\n",
+  'shared-state.js': "import { state } from '@zubra/runtime';\nexport const shared = state(1);\nwindow.shared = shared;\n",
 });
 
 const src = join(here, '../../src');
@@ -86,7 +86,7 @@ async function live(page, tags) {
 
 const settle = (page) => page.evaluate(async () => {
   await new Promise((resolve) => setTimeout(resolve, 10));
-  await Promise.all([...document.querySelectorAll('*')].filter((el) => el.localName.startsWith('mnx-')).map((el) => el.updateComplete));
+  await Promise.all([...document.querySelectorAll('*')].filter((el) => el.localName.startsWith('zb-')).map((el) => el.updateComplete));
 });
 
 test('removed elements are collected, even when they read a signal that outlives them', { skip }, async () => {
@@ -94,17 +94,17 @@ test('removed elements are collected, even when they read a signal that outlives
   await page.evaluate(() => {
     const box = document.getElementById('box');
     for (let i = 0; i < 100; i++) {
-      box.insertAdjacentHTML('beforeend', `<mnx-shared><span>${i}</span></mnx-shared><mnx-card heading="c${i}"><p>${i}</p></mnx-card><mnx-inbox></mnx-inbox>`);
+      box.insertAdjacentHTML('beforeend', `<zb-shared><span>${i}</span></zb-shared><zb-card heading="c${i}"><p>${i}</p></zb-card><zb-inbox></zb-inbox>`);
     }
   });
   await settle(page);
-  assert.deepEqual(await live(page, ['mnx-shared', 'mnx-card', 'mnx-inbox', 'mnx-badge']), { 'mnx-shared': 100, 'mnx-card': 100, 'mnx-inbox': 100, 'mnx-badge': 200 });
+  assert.deepEqual(await live(page, ['zb-shared', 'zb-card', 'zb-inbox', 'zb-badge']), { 'zb-shared': 100, 'zb-card': 100, 'zb-inbox': 100, 'zb-badge': 200 });
   // Work while connected: the shared signal changes, rows re-render.
   await page.evaluate(() => { window.shared.set(2); });
   await settle(page);
   await page.evaluate(() => { document.getElementById('box').replaceChildren(); window.shared.set(3); });
   await settle(page);
-  assert.deepEqual(await live(page, ['mnx-shared', 'mnx-card', 'mnx-inbox', 'mnx-badge']), { 'mnx-shared': 0, 'mnx-card': 0, 'mnx-inbox': 0, 'mnx-badge': 0 });
+  assert.deepEqual(await live(page, ['zb-shared', 'zb-card', 'zb-inbox', 'zb-badge']), { 'zb-shared': 0, 'zb-card': 0, 'zb-inbox': 0, 'zb-badge': 0 });
   assert.deepEqual(messages, []);
   await page.close();
 });
@@ -114,11 +114,11 @@ for (const framework of ['React', 'Vue']) {
     const { page, messages } = await open('', { modules: ['card', 'rating', 'leak-apps'] });
     await page.evaluate((name) => { window.unmount = window[`mount${name}`](100); }, framework);
     await settle(page);
-    assert.deepEqual(await live(page, ['mnx-card', 'mnx-rating']), { 'mnx-card': 100, 'mnx-rating': 100 });
+    assert.deepEqual(await live(page, ['zb-card', 'zb-rating']), { 'zb-card': 100, 'zb-rating': 100 });
     await page.evaluate(() => window.unmount());
     await page.evaluate(() => { delete window.unmount; });
     await settle(page);
-    assert.deepEqual(await live(page, ['mnx-card', 'mnx-rating']), { 'mnx-card': 0, 'mnx-rating': 0 });
+    assert.deepEqual(await live(page, ['zb-card', 'zb-rating']), { 'zb-card': 0, 'zb-rating': 0 });
     assert.deepEqual(messages.filter((message) => !/You are running a development build of Vue/.test(message)), []);
     await page.close();
   });

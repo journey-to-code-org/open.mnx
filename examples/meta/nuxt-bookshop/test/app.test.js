@@ -1,5 +1,5 @@
 // The bookshop in Chromium: `nuxt build`, the Nitro server, then the list (filtered on the
-// server through an mnx segmented control) and the editor (four mnx controls on v-model).
+// server through a zubra segmented control) and the editor (four zubra controls on v-model).
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -7,11 +7,12 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-// Inside this repository: the CLI from `cargo build`, unless mnx.wasm is built (see README).
-const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'mnx.exe' : 'mnx');
-if (!process.env.MNX_COMPILER && existsSync(cli)) process.env.MNX_COMPILER = cli;
+// Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
+const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'zubra.exe' : 'zubra');
+if (!process.env.ZUBRA_COMPILER && existsSync(cli)) process.env.ZUBRA_COMPILER = cli;
 const port = 4900 + Math.floor(Math.random() * 200);
 const base = `http://127.0.0.1:${port}`;
 let server, browser;
@@ -40,10 +41,11 @@ async function open(path) {
   return { page, messages };
 }
 
-test('the list: server-rendered, filtered by genre through v-model on an mnx element', async () => {
+test('the list: server-rendered, filtered by genre through v-model on a zubra element', async () => {
   const { page, messages } = await open('/');
   await page.waitForSelector('stock-meter [role=meter]');
   assert.equal(await page.locator('.books li').count(), 7);
+  await shot(page, 'nuxt-bookshop');
   assert.equal(await page.textContent('li[data-id=b4] stock-meter span'), 'Out of stock');
   assert.equal(await page.textContent('li[data-id=b2] stock-meter span'), '2 left: reorder');
 
@@ -63,9 +65,9 @@ test('the list: server-rendered, filtered by genre through v-model on an mnx ele
 test('without JavaScript: the stock meters (light DOM) and the genre switch (a declarative shadow root) are in the server HTML', async () => {
   const html = await (await fetch(`${base}/`)).text();
   // The stock meter is a light-DOM component: the Vue wrapper wrote its props and its rendered
-  // children (3.3); the segmented control is shadow DOM, filled by @mnx/server's injectShadowRoots.
-  assert.match(html, /<stock-meter mnx-props="[^"]*">\s*<div role="meter"/, 'the Vue wrapper wrote mnx-props and the light-DOM content');
-  assert.match(html, /<segmented-control mnx-props="[^"]*"><template shadowrootmode="open">/, 'the shadow root');
+  // children (3.3); the segmented control is shadow DOM, filled by @zubra/server's injectShadowRoots.
+  assert.match(html, /<stock-meter zb-props="[^"]*">\s*<div role="meter"/, 'the Vue wrapper wrote zb-props and the light-DOM content');
+  assert.match(html, /<segmented-control zb-props="[^"]*"><template shadowrootmode="open">/, 'the shadow root');
   const context = await browser.newContext({ javaScriptEnabled: false });
   const page = await context.newPage();
   await page.goto(`${base}/`);

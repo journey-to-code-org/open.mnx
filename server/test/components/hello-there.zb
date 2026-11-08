@@ -1,0 +1,10 @@
+<script>
+  import { hydrated } from '@zubra/runtime'
+  const live = hydrated()
+</script>
+<style>
+  p { color: rgb(0, 128, 0); }
+</style>
+<hello-there name="you" items={[]}>
+  <p>Hello {name}{live ? "!" : "."} {items.filter((item) => item.on).map((item) => item.label).join(", ")}</p>
+</hello-there>

@@ -1,8 +1,8 @@
 // The window: pick a mode, say what you're working on, run the timer; finished sessions are
 // saved (by the main process, through the preload's `focusTimer` API) and logged.
-import './components/focus-timer.mnx';
-import './components/segmented-control.mnx';
-import './components/session-log.mnx';
+import './components/focus-timer.zb';
+import './components/segmented-control.zb';
+import './components/session-log.zb';
 
 const LENGTHS = { focus: 25 * 60, short: 5 * 60, long: 15 * 60 };
 const modes = document.querySelector('segmented-control');

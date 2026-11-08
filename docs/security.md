@@ -1,6 +1,6 @@
 # Security model
 
-mnx draws one trust boundary: **the `.mnx` source is code you trust; the values flowing into it are data you don't.** Props, attribute values, slot content supplied at build time, and values your script computes at runtime are all treated as untrusted. The rules below are enforced identically by the HTML output (at build time) and by the runtime (in the browser), so a component that is safe when server-rendered is safe when it updates.
+Zubra draws one trust boundary: **the `.zb` source is code you trust; the values flowing into it are data you don't.** Props, attribute values, slot content supplied at build time, and values your script computes at runtime are all treated as untrusted. The rules below are enforced identically by the HTML output (at build time) and by the runtime (in the browser), so a component that is safe when server-rendered is safe when it updates.
 
 ## What the compiler and runtime guarantee
 
@@ -22,9 +22,9 @@ mnx draws one trust boundary: **the `.mnx` source is code you trust; the values 
 
 ## What is your responsibility
 
-- **The script is your code.** It runs with the page's privileges, as any module does. Treat a `.mnx` file like a `.js` file in code review and dependency choices.
-- **Slot content is the caller's markup.** Content passed into a component's slots (children in HTML, a framework's children, `--slots` fragments at build time) is the caller's own DOM. mnx moves it into place and doesn't sanitize it. `--slots` fragments are parsed and validated by the compiler like templates, never pasted in as raw HTML.
-- **`innerHTML` on a host behaves as on any element.** Setting `element.innerHTML` on an mnx element routes the parsed nodes into its slots, with exactly the platform's semantics for parsing that string. Don't pass it untrusted HTML, as with any element.
+- **The script is your code.** It runs with the page's privileges, as any module does. Treat a `.zb` file like a `.js` file in code review and dependency choices.
+- **Slot content is the caller's markup.** Content passed into a component's slots (children in HTML, a framework's children, `--slots` fragments at build time) is the caller's own DOM. Zubra moves it into place and doesn't sanitize it. `--slots` fragments are parsed and validated by the compiler like templates, never pasted in as raw HTML.
+- **`innerHTML` on a host behaves as on any element.** Setting `element.innerHTML` on a Zubra element routes the parsed nodes into its slots, with exactly the platform's semantics for parsing that string. Don't pass it untrusted HTML, as with any element.
 - **Context is visible to descendants.** `provide` answers any element inside the provider that asks for that context key, including other libraries' elements, as the Context Protocol intends. Don't use context to pass secrets to specific elements.
 - **Third-party custom elements** that a template uses receive the values you bind (as properties once defined). What they do with them is up to them.
 

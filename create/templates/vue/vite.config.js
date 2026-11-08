@@ -1,4 +1,4 @@
 import vue from '@vitejs/plugin-vue';
-import mnx from '@mnx/unplugin/vite';
+import zubra from '@zubra/unplugin/vite';
 
-export default { plugins: [mnx(), vue()] };
+export default { plugins: [zubra(), vue()] };

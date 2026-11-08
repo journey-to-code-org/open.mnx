@@ -3,8 +3,8 @@
 //   node playground/build.mjs [--out <dir>] [--no-frameworks] [--require-wasm]
 //
 // - the page, its script and styles;
-// - @mnx/runtime's source, as the previews import it;
-// - compiler/mnx.wasm (from `npm run build` in compiler/), when it's there;
+// - @zubra/runtime's source, as the previews import it;
+// - compiler/zubra.wasm (from `npm run build` in compiler/), when it's there;
 // - React and Vue as ES modules for their previews, from examples/frameworks' node_modules
 //   (`npm ci` there), unless --no-frameworks.
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -23,9 +23,9 @@ mkdirSync(join(out, 'vendor'), { recursive: true });
 for (const file of ['index.html', 'app.js', 'style.css']) cpSync(join(here, file), join(out, file));
 cpSync(join(repo, 'runtime/src'), join(out, 'runtime'), { recursive: true });
 
-const wasm = join(repo, 'compiler/mnx.wasm');
-if (existsSync(wasm)) cpSync(wasm, join(out, 'mnx.wasm'));
-else if (flag('--require-wasm')) throw new Error('playground: compiler/mnx.wasm is missing (run `npm run build` in compiler/)');
+const wasm = join(repo, 'compiler/zubra.wasm');
+if (existsSync(wasm)) cpSync(wasm, join(out, 'zubra.wasm'));
+else if (flag('--require-wasm')) throw new Error('playground: compiler/zubra.wasm is missing (run `npm run build` in compiler/)');
 
 const frameworks = [];
 if (!flag('--no-frameworks')) {
@@ -50,4 +50,4 @@ if (!flag('--no-frameworks')) {
   frameworks.push('vue');
 }
 writeFileSync(join(out, 'vendor/frameworks.json'), JSON.stringify(frameworks));
-console.log(`playground: ${out} (${existsSync(join(out, 'mnx.wasm')) ? 'with' : 'without'} mnx.wasm; previews: html${frameworks.map((name) => `, ${name}`).join('')})`);
+console.log(`playground: ${out} (${existsSync(join(out, 'zubra.wasm')) ? 'with' : 'without'} zubra.wasm; previews: html${frameworks.map((name) => `, ${name}`).join('')})`);

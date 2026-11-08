@@ -5,7 +5,7 @@
       <input name="subject" value="<%= values.subject %>" maxlength="120" required aria-invalid="<%= errors.subject ? 'true' : 'false' %>" <% if (errors.subject) { %>aria-describedby="subject-error"<% } %>>
       <% if (errors.subject) { %><span class="error" id="subject-error"><%= errors.subject %></span><% } %>
     </label>
-    <%- mnx('priority-picker', { name: 'priority', value: values.priority, legend: 'How urgent is it?' }) %>
+    <%- zubra('priority-picker', { name: 'priority', value: values.priority, legend: 'How urgent is it?' }) %>
     <label class="field">What's happening?
       <textarea name="body" rows="7" required aria-invalid="<%= errors.body ? 'true' : 'false' %>"><%= values.body %></textarea>
       <% if (errors.body) { %><span class="error"><%= errors.body %></span><% } %>

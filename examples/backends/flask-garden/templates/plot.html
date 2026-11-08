@@ -1,6 +1,6 @@
 <div class="split">
   <section>
-    <h1>Plot {{ plot.id }} {{ mnx('status-pill', status=plot.status, waiting=plot.waiting) }}</h1>
+    <h1>Plot {{ plot.id }} {{ zubra('status-pill', status=plot.status, waiting=plot.waiting) }}</h1>
     <p>{{ plot.size }}, {{ plot.sun }} sun.{% if plot.holder %} Gardened by {{ plot.holder }}.{% endif %}</p>
     {% if done == 'reserved' %}
       <p class="notice" role="status">It's yours! We'll email you the gate code.</p>
@@ -13,15 +13,15 @@
         {% if errors.name %}<p class="error">{{ errors.name }}</p>{% endif %}
         <label>Email <input name="email" type="email" value="{{ signup.email }}" required autocomplete="email"></label>
         {% if errors.email %}<p class="error">{{ errors.email }}</p>{% endif %}
-        {{ mnx('crop-picker', name='crops', options=crops, value=signup.crops, max=max_crops, legend='Crops') }}
+        {{ zubra('crop-picker', name='crops', options=crops, value=signup.crops, max=max_crops, legend='Crops') }}
         {% if errors.crops %}<p class="error">{{ errors.crops }}</p>{% endif %}
-        {{ mnx('number-field', name='household', value=signup.household, min=1, max=8, step=1, label='Household', unit='people') }}
+        {{ zubra('number-field', name='household', value=signup.household, min=1, max=8, step=1, label='Household', unit='people') }}
         {% if errors.household %}<p class="error">{{ errors.household }}</p>{% endif %}
         <button>{{ 'Reserve plot ' ~ plot.id if plot.status == 'open' else 'Join waitlist' }}</button>
       </form>
     {% endif %}
   </section>
   <aside>
-    {{ mnx('plot-map', plots=plots, selected=plot.id, columns=4) }}
+    {{ zubra('plot-map', plots=plots, selected=plot.id, columns=4) }}
   </aside>
 </div>

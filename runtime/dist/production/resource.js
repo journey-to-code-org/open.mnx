@@ -2,7 +2,7 @@
 // Async data as signals: `resource(fetcher)`.
 //
 //   const user = resource(({ signal }) => fetch(`/api/users/${p.id}`, { signal }).then((r) => r.json()))
-//   <mnx-if test={user.loading}><p>Loading…</p><mnx-else><p>{user.value?.name}</p></mnx-else></mnx-if>
+//   <zb-if test={user.loading}><p>Loading…</p><zb-else><p>{user.value?.name}</p></zb-else></zb-if>
 //
 // The fetcher runs at once and again whenever a signal it read before its first `await`
 // changes (a prop, a state), like an effect. A new run aborts the previous one through the
@@ -14,8 +14,8 @@ import { effect } from './effect.js';
 
 const { untrack } = Signal.subtle;
 
-/** Marks a resource, so `<mnx-await>` follows its state instead of awaiting it once. */
-export const RESOURCE = Symbol.for('mnx.resource');
+/** Marks a resource, so `<zb-await>` follows its state instead of awaiting it once. */
+export const RESOURCE = Symbol.for('zubra.resource');
 
 /**
  * A signal-backed view of async data. `value`, `error`, `loading` and `status` (`"pending"`,
@@ -23,7 +23,7 @@ export const RESOURCE = Symbol.for('mnx.resource');
  * it awaitable (resolving to the current run's value).
  */
 export function resource(fetcher, { initial } = {}) {
-  if (typeof fetcher !== 'function') throw new TypeError('mnx: resource() takes a function that returns a value or a promise');
+  if (typeof fetcher !== 'function') throw new TypeError('zubra: resource() takes a function that returns a value or a promise');
   const value = new Signal.State(initial);
   const error = new Signal.State(undefined);
   const status = new Signal.State('pending');

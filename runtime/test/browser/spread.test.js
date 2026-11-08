@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { useBrowser, open, here } from './harness.js';
 
-useBrowser({ spread: join(here, 'fixtures/spread.mnx') });
+useBrowser({ spread: join(here, 'fixtures/spread.zb') });
 
 const set = (page, values) => page.evaluate(async (values) => {
   const el = document.querySelector('spread-demo');
@@ -73,5 +73,5 @@ test('what an attribute could not do, a spread cannot: unsafe URLs, text handler
   assert.equal(attributes.onclick, undefined, 'no handler as text');
   assert.equal(attributes.style, undefined, 'no style text');
   assert.equal(await page.textContent('spread-demo a'), 'link', 'no markup');
-  assert.equal(messages.filter((message) => message.startsWith('error: mnx:')).length, 5, messages.join('\n'));
+  assert.equal(messages.filter((message) => message.startsWith('error: zubra:')).length, 5, messages.join('\n'));
 });

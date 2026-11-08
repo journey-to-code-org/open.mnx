@@ -2,6 +2,148 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.0.0 — 2026-11-08
+
+The platform's markers (`plan/roadmap-5.0.md`). The server markup's hydration markers are processing instructions instead of comments. Components and APIs don't change; update the packages together (`docs/migrating-to-5.0.md`).
+
+### Changed
+
+- **Hydration markers are processing instructions:** `<?zb [?>` … `<?zb ]?>` for a region, `<?zb [??>` for a region left to the browser, `<?zb [!?>` for supplied slot content, and `<?zb ?>` before dynamic text. They were `<!--[-->`, `<!--]-->`, `<!--[?-->`, `<!--[!-->` and `<!---->`.
+  - The Rust HTML output, `@zubra/compiler`'s `render()`, `@zubra/server` and the framework wrappers' server rendering all write them.
+  - Chrome and Edge 150+ parse them as `ProcessingInstruction` nodes; other browsers parse them as comments (`<!--?zb [?-->`). The runtime reads both.
+  - The runtime still reads 4.x's comment markers, for all of 5.x, so servers and runtimes can be updated in either order.
+  - Client templates (the compiled module's `template`) keep the comment form: the runtime parses them itself.
+- **Streaming uses `<template for>`.** A pending region is a named range (`<?start name="zb-0-0"?>`…`<?end?>`), and each resolved region arrives in a `<template for="zb-0-0">`.
+  - Chrome and Edge 150+ put it in place themselves, without JavaScript.
+  - The inline script hands the element the value, and puts the region in place where the browser didn't: other browsers, and shadow roots, which a `<template for>` can't reach.
+  - An element that starts before its region arrives removes the range's name, so the browser has nothing to replace, and renders the region itself.
+  - It replaces 3.3's `<template data-zb-swap>`.
+- **The compiled code's interface is `abi: 3`.** A 4.x runtime refuses 5.0 modules, with an error that says to update it, because it can't read 5.0's markers. The 5.0 runtime still runs modules compiled by 3.x and 4.x (`abi: 2`).
+- **Range positions count elements and markers only.** A comment or processing instruction that isn't a marker, such as a stream's `<?start>`, doesn't shift the paths after it.
+
+### Fixed
+
+- **Streamed regions with content after them.** The server took the region's HTML from its opening marker to the end of the host, not to its closing marker. With more than one pending region the swap could put the wrong content in place.
+
+### Removed
+
+- **Workarounds the markers no longer need:**
+  - the Eleventy example minifies with plain `removeComments: true`;
+  - the htmx example no longer deletes `Document.parseHTMLUnsafe`, which drops comments in Chromium and keeps processing instructions.
+  - `ZUBRA_MARKER_COMMENT` stays, for a 4.x server's markup.
+
+### Tests
+
+- `runtime/test/browser/markers.test.js`: hydration in place from the three marker forms (processing instructions, the comments other browsers make of them, and 4.x comments), and from minified markup.
+- `@zubra/server`: no-JavaScript streaming in Chromium, and the script's fallback for a shadow root and for markup parsed as comments.
+- The help desk's streamed activity appears without JavaScript in Chromium.
+
+## 4.3.0 — 2026-11-08
+
+The rest of the template sugar (`plan/roadmap-4.x.md`, 4.3). Additive.
+
+### Added
+
+- **`let:name={…}` on `<zb-each>` and `<zb-then>`** names an expression for the row or the result:
+
+  ```html
+  <zb-each items={cart} as="{ price, qty }" let:total={price * qty} let:big={total > 5}>
+    <li class:big={big}>{total}</li>
+  </zb-each>
+  ```
+
+  - It's derived: each read is its current value, so it follows the row.
+  - It's read-only: assigning it is the same error as assigning a loop variable.
+  - Later `let:`s can use earlier ones, and the key can use them too.
+  - The server evaluates them for values known at build time; a `let:` the server can't evaluate leaves the list to the browser.
+  - On any other element, `let:` is an error.
+- **`<zb-switch value={…}>`** with `<zb-case is="paid">`, `<zb-case is={["shipped", "delivered"]}>` and an optional final `<zb-else>`.
+  - The first case whose `is` equals the value, or whose array lists it, renders.
+  - It compiles to the `zb-if` chain it stands for (`===`, and `||` for an array), so known values render on the server and the markers don't change.
+  - A quoted `is` is a string.
+  - Errors cover: other content in the switch, a case after the `zb-else`, no cases, an empty `is={[]}`, and a stray `<zb-case>`.
+- **Tools and examples:**
+  - the language server and the grammar know `zb-switch`, `zb-case` and `let:`;
+  - the README, the guide's templates page and the skill describe them;
+  - the planner's event tabs are a `zb-switch`.
+
+## 4.2.0 — 2026-11-08
+
+Async that reads well (`plan/roadmap-4.x.md`, 4.2). Additive: every 4.1 component compiles and runs as before.
+
+### Added
+
+- **`<zb-pending>`** names `<zb-await>`'s pending content. Content written straight inside still works the same way.
+- **`<zb-await {user}>`** is short for `value={user}`.
+- **An array value** (`value={[user, posts]}`) waits for every promise and resource in it, as `Promise.all` does, and resolves to the array of their values. Any rejection goes to `zb-catch`. The value is evaluated again only when what it reads changes, so a resource settling doesn't call `posts()` again.
+- **Destructuring in `as`**, on `zb-then`, `zb-catch` and `zb-each`, and for the item of `.map()` in braces:
+  - for example `as="[{ name }, list]"`, `as="{ message }"` or `as="{ id, address: { city } }"`;
+  - names, renames, nesting and holes work;
+  - defaults and rest elements are errors that say why;
+  - each name reads through the row's or the branch's signal, so it stays reactive, and a value known at build time is destructured on the server.
+- **`retry()`** in `zb-catch` refreshes the value's resources and evaluates the value again.
+- **`delay={ms}`** shows the pending content only once the value has been pending that long. Until then the previous content stays, or nothing the first time.
+- **`keep`** keeps the settled content while a resource reloads, instead of showing the pending content again. The host has `:state(loading)` meanwhile.
+- **Tools and examples:**
+  - the language server and the grammar know `zb-pending`, `delay` and `keep`;
+  - the README, the guide's async page and the skill describe all of this;
+  - the help desk's recent activity and the recipe reviews use `<zb-pending>`, and the reviews retry on an error.
+
+## 4.1.0 — 2026-11-07
+
+Conditions without wrappers (`plan/roadmap-4.x.md`, 4.1). Additive: every 4.0 component compiles as before, unless it has a `zb-` attribute on an element, which 4.0 silently ignored.
+
+### Added
+
+- **`zb-if`, `zb-else-if` and `zb-else` as attributes:**
+
+  ```html
+  <p zb-if={count === 0}>Nothing yet.</p>
+  <p zb-else-if={count < 5}>A few.</p>
+  <ul zb-else>…</ul>
+  ```
+
+  - A condition goes on one element. `zb-else-if` and `zb-else` go on the siblings right after it (whitespace may come between).
+  - It compiles to the same thing as the `<zb-if>` wrapper, which stays, for conditions over several siblings or over text.
+  - It keeps tables and lists valid HTML for editors and formatters (`<tr zb-if={…}>`).
+  - Errors that say what to write: on a directive, on the host, without a sibling to follow, after the chain's `zb-else`, quoted, without a value, or two on one element.
+- **Markup in braces**, in the three forms that are directives:
+  - `{a && <p>…</p>}` is a `zb-if`;
+  - `{a ? <b>…</b> : <i>…</i>}` is a `zb-if` with a `zb-else` (either side may be text, an expression or `null`);
+  - `{list.map((item, i) => <li key={item.id}>…</li>)}` is a `zb-each`, keyed by the element's `key`.
+
+  The markup inside is the template's own HTML: directives, modifiers, `class:` and nested braces all work, and each brace holds one element. Anything else with markup in it is an error naming the form or directive to use. So is markup in an attribute's braces, which 4.0 reported as a parse error.
+- **Tools:**
+  - the language server completes `zb-if`, `zb-else-if` and `zb-else` on any element;
+  - the VS Code grammar highlights them as directives, and a tag inside braces as a tag;
+  - the guide's templates page, the README and the `zubra-component` skill describe both forms (the skill keeps directives as the house style for markup in braces);
+  - the playground has a Conditions example.
+
+### Changed
+
+- **The `zb-` attribute prefix is reserved.** An unknown `zb-…` attribute is an error with a suggestion (`zb-iff` → "did you mean `zb-if`?"), and a host attribute can't start with `zb-`. `data-zb-*` stays yours.
+- **The examples and the registry use the attribute form** where a `<zb-if>` wrapped one element on its own lines: 56 wrappers in 40 components, compiling to the same output apart from the whitespace that was inside the wrapper. `examples/stats.mjs` counts what's left (9 wrappers, around several siblings or inline).
+
+## 4.0.0 — 2026-11-07
+
+**mnx is now Zubra.** The only change in this release is the name (`docs/migrating-to-4.0.md`). The npm scope `@mnx` belongs to someone else, so the packages could never have been published under it. Nothing had been published yet, so this was the cheapest time to choose a name the project can own everywhere. The format, the runtime's behaviour, the compiled code's ABI and every API are those of 3.6.0.
+
+### Changed (breaking)
+
+- **Files:** `.mnx`, `.mnx.jsx` and `.mnx.tsx` are now `.zb`, `.zb.jsx` and `.zb.tsx`.
+- **Directives and attributes:** `<mnx-if>`, `<mnx-each>`, `<mnx-slot>`, `<mnx-await>` and the rest are `<zb-…>`; `mnx-props` is `zb-props`, and `data-mnx-*` is `data-zb-*`. Class names derived from tags follow the tag (`ZbPicker`).
+- **Packages:** `@zubra/runtime`, `@zubra/compiler`, `@zubra/unplugin`, `@zubra/server`, `@zubra/language-server` and `create-zubra`; the crate is `zubra`.
+- **Commands and variables:** the command is `zubra`, the environment variables are `ZUBRA_*`, and the served assets are at `/_zubra/`.
+- **Names in APIs:** `ZubraModel` (Angular), `createZubra()`, `res.locals.zubra` and `request.zubra`.
+- **Skills:** the coding-agent skills are `zubra-component`, `zubra-consume`, `zubra-cli` and `zubra-server`.
+- **The repository** is https://github.com/journey-to-code-org/zubra.
+- No aliases for the old spellings: nobody outside the project used them.
+
+### Fixed
+
+- **The crate ships only the compiler:** 51 files, about 210 KB, down from 797 files and 1.1 MB. It used to include the examples and the npm packages.
+- **`@zubra/unplugin`'s peer dependencies** named the 2.x compiler and runtime (`^2.0.0`), so npm would have refused to install it next to 3.x. They are now `^4.0.0`, and `scripts/bump-version.sh` keeps them in step.
+
 ## 3.6.0 — 2026-11-07
 
 Accessible primitives (`plan/roadmap-3.5.md`, 3.6). The Zag.js spike showed that the platform does most of what a headless library is for, that two keyboard behaviours are missing, and that Zag covers the hard widgets once spread exists. This release ships each of those.

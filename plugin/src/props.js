@@ -1,11 +1,11 @@
-// `mnx-props` for Svelte and Solid. React's and Vue's adapters write it themselves; Svelte and Solid
+// `zb-props` for Svelte and Solid. React's and Vue's adapters write it themselves; Svelte and Solid
 // use the elements directly, and their server HTML has no object props (Svelte writes
-// "[object Object]", Solid's `prop:` values are properties). So in their server builds, each mnx
-// host in a component's markup gets `mnx-props={JSON.stringify({ … })}` from the attributes that
-// set its props, and `@mnx/server`'s injectShadowRoots() renders it complete.
+// "[object Object]", Solid's `prop:` values are properties). So in their server builds, each zubra
+// host in a component's markup gets `zb-props={JSON.stringify({ … })}` from the attributes that
+// set its props, and `@zubra/server`'s injectShadowRoots() renders it complete.
 
 /**
- * `code` with `mnx-props` added to the hosts of `tags` (tag → its prop names). `dialect` is
+ * `code` with `zb-props` added to the hosts of `tags` (tag → its prop names). `dialect` is
  * `svelte` (`log={…}`, `{log}`, `bind:value={…}`) or `solid` (`prop:items={…}`, `items={…}`).
  */
 export function addProps(code, tags, dialect) {
@@ -18,7 +18,7 @@ export function addProps(code, tags, dialect) {
     const attributes = readAttributes(code, match.index + match[0].length);
     if (!attributes) continue;
     opening.lastIndex = attributes.end;
-    if (attributes.list.some((attribute) => attribute.name === 'mnx-props')) continue;
+    if (attributes.list.some((attribute) => attribute.name === 'zb-props')) continue;
     const entries = [];
     for (const { name, expression, shorthand } of attributes.list) {
       if (expression == null) continue;
@@ -28,7 +28,7 @@ export function addProps(code, tags, dialect) {
       else entries.push(`${JSON.stringify(prop)}: (${expression})`);
     }
     if (!entries.length) continue;
-    edits.push({ at: match.index + match[0].length, text: ` mnx-props={JSON.stringify({ ${entries.join(', ')} })}` });
+    edits.push({ at: match.index + match[0].length, text: ` zb-props={JSON.stringify({ ${entries.join(', ')} })}` });
   }
   if (!edits.length) return null;
   let out = code;
@@ -119,10 +119,10 @@ function skipTemplate(code, start) {
   return -1;
 }
 
-/** The `.mnx` files a module imports (specifiers, as written). */
-export function mnxImports(code) {
+/** The `.zb` files a module imports (specifiers, as written). */
+export function zubraImports(code) {
   const found = [];
-  const pattern = /\bimport\s+(?:[^'"]*?\sfrom\s+)?['"]([^'"]+\.mnx(?:\.[jt]sx)?)(?:\?[^'"]*)?['"]/g;
+  const pattern = /\bimport\s+(?:[^'"]*?\sfrom\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)(?:\?[^'"]*)?['"]/g;
   for (let match; (match = pattern.exec(code)); ) found.push(match[1]);
   return found;
 }

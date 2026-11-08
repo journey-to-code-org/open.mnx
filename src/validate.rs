@@ -9,7 +9,7 @@
 //!    fill, and dynamic values are escaped and safety-checked.
 //!
 //! Inside the template, names resolve innermost-first: loop variables, then props, then script
-//! bindings. So in `<mnx-header title={title}><h1>{title}</h1>`, `{title}` is the *prop* (which
+//! bindings. So in `<zb-header title={title}><h1>{title}</h1>`, `{title}` is the *prop* (which
 //! defaults to the script's `title`), and a build-time override reaches the template.
 
 use std::collections::{HashMap, HashSet};
@@ -110,7 +110,7 @@ fn partial() -> bool {
 pub type Gap = (Span, Option<String>);
 
 thread_local! {
-    /// While `mnx check --server` runs: where partial rendering left something for the browser,
+    /// While `zubra check --server` runs: where partial rendering left something for the browser,
     /// and, for an attribute, which one.
     static GAPS: std::cell::RefCell<Option<Vec<Gap>>> = const { std::cell::RefCell::new(None) };
 }
@@ -170,7 +170,7 @@ fn pending(name: &str) -> bool {
 /// Like [`validate`], but what only the browser can compute (runtime-only values, JavaScript
 /// expressions, defaults computed in the browser) is left for the element instead of being an
 /// error: text renders empty, attributes are left out, and conditionals and lists render as
-/// empty regions marked `<!--[?-->`, which the element fills when it starts.
+/// empty regions marked `<?zb [??>`, which the element fills when it starts.
 pub fn validate_partial(
     component: ast::ComponentAst,
     values: &Value,
@@ -262,7 +262,7 @@ fn lower_component(
         if let Some(lang) = &style.lang {
             return Err(Diagnostic::new(
                 style.span,
-                format!("`<style lang=\"{lang}\">` needs a bundler to compile it: use @mnx/unplugin (Vite)"),
+                format!("`<style lang=\"{lang}\">` needs a bundler to compile it: use @zubra/unplugin (Vite)"),
             ));
         }
         if component.shadow {
@@ -272,7 +272,7 @@ fn lower_component(
                 Node::Element(ir::Element {
                     name: "style".to_owned(),
                     attributes: vec![ir::Attribute {
-                        name: "data-mnx".to_owned(),
+                        name: "data-zubra".to_owned(),
                         value: None,
                     }],
                     children: vec![Node::Text(vec![Part::Literal(css)])],
@@ -459,8 +459,8 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
     .with_model_events())
 }
 
-/// Dynamic text that shares its parent with other nodes, or sits directly inside an `mnx-if`
-/// branch or `mnx-each` row (which has no element of its own), gets an empty-comment anchor
+/// Dynamic text that shares its parent with other nodes, or sits directly inside an `zb-if`
+/// branch or `zb-each` row (which has no element of its own), gets an empty-comment anchor
 /// before it in both backends, so the JavaScript side can find it in server-rendered markup.
 /// Text that is an element's only child is bound through the element and needs no anchor.
 pub(crate) fn needs_text_anchor(siblings: &[ast::Node], node: &ast::Node, block_top: bool) -> bool {
@@ -873,6 +873,18 @@ impl Context<'_> {
         for node in nodes {
             match node {
                 ast::Node::Text(parts) => self.resolve_parts(parts, scopes)?,
+                ast::Node::Element(element) if element.name.eq_ignore_ascii_case("zb-case") => {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "zb-case is only valid as a child of zb-switch",
+                    ));
+                }
+                ast::Node::Element(element) if element.name.eq_ignore_ascii_case("zb-pending") => {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "zb-pending is only valid as the first child of zb-await",
+                    ));
+                }
                 ast::Node::Element(element) => {
                     for attribute in &element.attributes {
                         match &attribute.value {
@@ -903,16 +915,21 @@ impl Context<'_> {
                     item,
                     index,
                     key,
+                    lets,
                     children,
                     ..
                 } => {
                     self.resolve_expression(items, *items_span, scopes)?;
-                    scopes.push(std::iter::once(item.clone()).chain(index.clone()).collect());
-                    let result = match key {
-                        Some((key, key_span)) => self.resolve_expression(key, *key_span, scopes),
-                        None => Ok(()),
-                    }
-                    .and_then(|()| self.resolve_nodes(children, scopes));
+                    scopes.push(bound_names(item).into_iter().chain(index.clone()).collect());
+                    let result = self
+                        .resolve_lets(lets, scopes)
+                        .and_then(|()| match key {
+                            Some((key, key_span)) => {
+                                self.resolve_expression(key, *key_span, scopes)
+                            }
+                            None => Ok(()),
+                        })
+                        .and_then(|()| self.resolve_nodes(children, scopes));
                     scopes.pop();
                     result?;
                 }
@@ -920,7 +937,7 @@ impl Context<'_> {
                     if !scopes.is_empty() {
                         return Err(Diagnostic::new(
                             *span,
-                            "mnx-slot can't be inside mnx-each: slotted content can only be in one place",
+                            "zb-slot can't be inside zb-each: slotted content can only be in one place",
                         ));
                     }
                     self.resolve_nodes(fallback, scopes)?;
@@ -928,7 +945,7 @@ impl Context<'_> {
                 ast::Node::Else { span, .. } => {
                     return Err(Diagnostic::new(
                         *span,
-                        "mnx-else is only valid as a direct child of mnx-if",
+                        "zb-else is only valid as a direct child of zb-if",
                     ));
                 }
                 ast::Node::Await {
@@ -937,13 +954,32 @@ impl Context<'_> {
                     pending,
                     then,
                     catch,
+                    delay,
                     ..
                 } => {
                     self.resolve_expression(value, *value_span, scopes)?;
+                    if let Some((delay, span)) = delay {
+                        self.resolve_expression(delay, *span, scopes)?;
+                    }
                     self.resolve_nodes(pending, scopes)?;
-                    for branch in then.iter().chain(catch) {
-                        scopes.push(branch.name.iter().cloned().collect());
-                        let result = self.resolve_nodes(&branch.children, scopes);
+                    for (branch, caught) in then
+                        .iter()
+                        .map(|b| (b, false))
+                        .chain(catch.iter().map(|b| (b, true)))
+                    {
+                        let mut names: Vec<String> = branch
+                            .name
+                            .iter()
+                            .flat_map(|name| bound_names(name))
+                            .collect();
+                        // `retry()` in zb-catch runs the value again (4.2).
+                        if caught {
+                            names.push("retry".to_owned());
+                        }
+                        scopes.push(names);
+                        let result = self
+                            .resolve_lets(&branch.lets, scopes)
+                            .and_then(|()| self.resolve_nodes(&branch.children, scopes));
                         scopes.pop();
                         result?;
                     }
@@ -952,11 +988,26 @@ impl Context<'_> {
                     return Err(Diagnostic::new(
                         branch.span,
                         format!(
-                            "mnx-{} is only valid as a direct child of mnx-await",
+                            "zb-{} is only valid as a direct child of zb-await",
                             if *caught { "catch" } else { "then" }
                         ),
                     ));
                 }
+            }
+        }
+        Ok(())
+    }
+
+    /// `let:` names: each expression resolved in the scope so far, then its name added to it.
+    fn resolve_lets(
+        &self,
+        lets: &[ast::Let],
+        scopes: &mut [Vec<String>],
+    ) -> Result<(), Diagnostic> {
+        for binding in lets {
+            self.resolve_expression(&binding.value, binding.span, scopes)?;
+            if let Some(scope) = scopes.last_mut() {
+                scope.push(binding.name.clone());
             }
         }
         Ok(())
@@ -1146,7 +1197,18 @@ impl Context<'_> {
         self.lower_block(nodes, state, false)
     }
 
-    /// `block_top`: these nodes are the top level of an `mnx-if` branch or `mnx-each` row.
+    /// `block_top`: these nodes are the top level of an `zb-if` branch or `zb-each` row.
+    /// `let:` values for the innermost scope, evaluated in order (each may use the ones before).
+    fn lower_lets(&self, lets: &[ast::Let], state: &mut LowerState) -> Result<(), Diagnostic> {
+        for binding in lets {
+            let value = self.evaluate(&binding.value, binding.span, state)?;
+            if let Some(scope) = state.scopes.last_mut() {
+                scope.push((binding.name.clone(), value));
+            }
+        }
+        Ok(())
+    }
+
     fn lower_block(
         &self,
         nodes: &[ast::Node],
@@ -1229,17 +1291,24 @@ impl Context<'_> {
                 item,
                 index,
                 key,
+                lets,
                 children,
                 ..
             } => {
-                let Some(value) = self.evaluate_known(items, *items_span, state)? else {
+                // A `let:` the server can't evaluate leaves the list to the browser.
+                let browser_only = lets.iter().any(|binding| binding.value.is_runtime());
+                let Some(value) = (if browser_only {
+                    None
+                } else {
+                    self.evaluate_known(items, *items_span, state)?
+                }) else {
                     return Ok(vec![Node::OpenClient, Node::Close]);
                 };
                 let Value::Array(list) = value else {
                     return Err(Diagnostic::new(
                         *items_span,
                         format!(
-                            "mnx-each items must be an array, found {}",
+                            "zb-each items must be an array, found {}",
                             expression::type_name(&value)
                         ),
                     ));
@@ -1248,11 +1317,15 @@ impl Context<'_> {
                 let mut output = vec![Node::Open];
                 let mut keys = HashSet::new();
                 for (position, entry) in list.into_iter().enumerate() {
-                    let mut scope = vec![(item.clone(), entry)];
+                    let mut scope = destructure(item, &entry);
                     if let Some(index) = index {
                         scope.push((index.clone(), Value::from(position)));
                     }
                     state.scopes.push(scope);
+                    if let Err(error) = self.lower_lets(lets, state) {
+                        state.scopes.pop();
+                        return Err(error);
+                    }
                     if let Some((key, key_span)) = key {
                         let checked = self.evaluate_known(key, *key_span, state).and_then(
                             |value| match value {
@@ -1265,7 +1338,7 @@ impl Context<'_> {
                                         Err(Diagnostic::new(
                                             *key_span,
                                             format!(
-                                                "duplicate mnx-each key {value} (row {})",
+                                                "duplicate zb-each key {value} (row {})",
                                                 position + 1
                                             ),
                                         ))
@@ -1274,7 +1347,7 @@ impl Context<'_> {
                                 Some(other) => Err(Diagnostic::new(
                                     *key_span,
                                     format!(
-                                        "mnx-each key must be a string or number, found {}",
+                                        "zb-each key must be a string or number, found {}",
                                         expression::type_name(&other)
                                     ),
                                 )),
@@ -1334,7 +1407,7 @@ impl Context<'_> {
                         children: fallback,
                     })])
                 } else {
-                    // A region; `<!--[!-->` marks supplied content, which stays static, as
+                    // A region; `<?zb [!?>` marks supplied content, which stays static, as
                     // opposed to fallback content, which the JavaScript side binds.
                     let mut output = Vec::new();
                     match supplied {
@@ -1371,9 +1444,9 @@ impl Context<'_> {
             }
             ast::Node::Else { span, .. } => Err(Diagnostic::new(
                 *span,
-                "mnx-else is only valid as a direct child of mnx-if",
+                "zb-else is only valid as a direct child of zb-if",
             )),
-            // A value known at build time isn't a promise: the `mnx-then` content, with it.
+            // A value known at build time isn't a promise: the `zb-then` content, with it.
             // Otherwise the server can't wait for the value: it renders the pending content in
             // a region the element renders itself when the value settles.
             ast::Node::Await {
@@ -1395,10 +1468,12 @@ impl Context<'_> {
                             branch
                                 .name
                                 .iter()
-                                .map(|name| (name.clone(), resolved.clone()))
+                                .flat_map(|name| destructure(name, &resolved))
                                 .collect(),
                         );
-                        let lowered = self.lower_block(&branch.children, state, true);
+                        let lowered = self
+                            .lower_lets(&branch.lets, state)
+                            .and_then(|()| self.lower_block(&branch.children, state, true));
                         state.scopes.pop();
                         output.extend(lowered?);
                     }
@@ -1413,7 +1488,7 @@ impl Context<'_> {
             ast::Node::Settled { caught, branch } => Err(Diagnostic::new(
                 branch.span,
                 format!(
-                    "mnx-{} is only valid as a direct child of mnx-await",
+                    "zb-{} is only valid as a direct child of zb-await",
                     if *caught { "catch" } else { "then" }
                 ),
             )),
@@ -2253,7 +2328,7 @@ pub fn is_safe_url(value: &str) -> bool {
 
 // ---- using a child component ---------------------------------------------------------------
 //
-// The checks both backends run on `<mnx-child …>`, from the child's interface alone.
+// The checks both backends run on `<zb-child …>`, from the child's interface alone.
 
 /// A listener for a near miss of one of the child's events is a typo: it would never run.
 /// Other names may be native events, or bubble up from further inside.
@@ -2326,7 +2401,7 @@ pub(crate) fn unknown_child_prop(
     if attribute.name == crate::parser::SPREAD {
         return Diagnostic::new(
             attribute.span,
-            format!("<{tag}> is an mnx component: pass each prop rather than spreading an object onto it"),
+            format!("<{tag}> is a zubra component: pass each prop rather than spreading an object onto it"),
         )
         .with_help("a spread works on HTML elements and other libraries' custom elements");
     }
@@ -2544,4 +2619,43 @@ pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
         }
     }
     table[a.len()][b.len()]
+}
+
+/// The names an `as` binds: itself, or a pattern's names.
+fn bound_names(text: &str) -> Vec<String> {
+    if crate::ast::is_pattern(text) {
+        crate::ast::bindings(text)
+            .map(|names| names.into_iter().map(|(name, _)| name).collect())
+            .unwrap_or_default()
+    } else {
+        vec![text.trim().to_owned()]
+    }
+}
+
+/// An `as` bound to a value known at build time: each name with the part of the value its path
+/// reaches (`null` where the value has no such property or index, as JavaScript gives
+/// `undefined`).
+fn destructure(text: &str, value: &Value) -> Vec<(String, Value)> {
+    if !crate::ast::is_pattern(text) {
+        return vec![(text.trim().to_owned(), value.clone())];
+    }
+    crate::ast::bindings(text)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, path)| {
+            let mut current = value;
+            for step in &path {
+                current = match (step, current) {
+                    (crate::ast::Step::Key(key), Value::Object(map)) => {
+                        map.get(key).unwrap_or(&Value::Null)
+                    }
+                    (crate::ast::Step::Index(index), Value::Array(list)) => {
+                        list.get(*index).unwrap_or(&Value::Null)
+                    }
+                    _ => &Value::Null,
+                };
+            }
+            (name, current.clone())
+        })
+        .collect()
 }

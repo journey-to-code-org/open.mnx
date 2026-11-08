@@ -1,11 +1,11 @@
-// Svelte 5: mnx elements used directly, props as properties and on<name> events, a shadow-DOM
+// Svelte 5: zubra elements used directly, props as properties and on<name> events, a shadow-DOM
 // element with named slots filled from Svelte markup, keyed re-creation with {#key}, and a
 // component that listens on the document (1–4 keys) and cleans up when removed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts } from './harness.js';
 
-test('svelte-flashcards: a spaced-repetition trainer built from mnx elements', async () => {
+test('svelte-flashcards: a spaced-repetition trainer built from zubra elements', async () => {
   const { page, messages } = await launch('svelte-flashcards');
   await page.waitForSelector('flip-card');
   await settle(page);

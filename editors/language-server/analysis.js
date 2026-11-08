@@ -1,18 +1,21 @@
-// What the language server knows about a `.mnx` document, as plain functions (no LSP types
+// What the language server knows about a `.zb` document, as plain functions (no LSP types
 // beyond positions), so they can be tested directly.
 
 /** The directives, with their attributes. */
 export const DIRECTIVES = {
-  'mnx-if': { description: 'Render the content when `test` is truthy; an optional final `<mnx-else>` otherwise.', attributes: { test: 'The condition: `test={…}`.' } },
-  'mnx-else': { description: 'The content of an `<mnx-if>` when its test is falsy. Must be its last child.', attributes: {} },
-  'mnx-each': {
-    description: 'Render the content once per item of `items`.',
+  'zb-if': { description: 'Render the content when `test` is truthy; an optional final `<zb-else>` otherwise.', attributes: { test: 'The condition: `test={…}`.' } },
+  'zb-else': { description: 'The content of an `<zb-if>` when its test is falsy. Must be its last child.', attributes: {} },
+  'zb-each': {
+    description: 'Render the content once per item of `items`. `let:name={…}` names a value per row.',
     attributes: { items: 'The array: `items={…}`.', as: 'The name of each item.', index: 'The name of the index (optional).', key: 'A unique string or number per item, so rows follow their items: `key={item.id}`.' },
   },
-  'mnx-slot': { description: 'Where content given to the element goes; the children are the fallback.', attributes: { name: 'The slot name (omit for the default slot).' } },
-  'mnx-await': { description: 'Show the content while `value` (a promise or a `resource()`) is pending, then `<mnx-then>` or `<mnx-catch>`.', attributes: { value: 'The promise or resource: `value={…}`.' } },
-  'mnx-then': { description: 'The content of an `<mnx-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value.' } },
-  'mnx-catch': { description: 'The content of an `<mnx-await>` if its value rejected.', attributes: { as: 'The name of the error.' } },
+  'zb-slot': { description: 'Where content given to the element goes; the children are the fallback.', attributes: { name: 'The slot name (omit for the default slot).' } },
+  'zb-await': { description: 'Show `<zb-pending>` while `value` (a promise, a `resource()`, or an array of them) is pending, then `<zb-then>` or `<zb-catch>`. `<zb-await {user}>` is short for `value={user}`.', attributes: { value: 'The promise, resource, or array of them: `value={…}`.', delay: 'Show the pending content only after this many milliseconds: `delay={200}`.', keep: 'Keep the settled content while a resource reloads; the host gets `:state(loading)`.' } },
+  'zb-switch': { description: 'Render the first `<zb-case>` whose `is` matches `value`, else the final `<zb-else>`.', attributes: { value: 'The value to match: `value={…}`.' } },
+  'zb-case': { description: 'Inside `<zb-switch>`: rendered when `is` equals the value (`is="paid"`), or is an array that contains it (`is={["shipped", "delivered"]}`).', attributes: { is: 'A string (`is="paid"`), a value (`is={…}`) or an array of them.' } },
+  'zb-pending': { description: 'The content of a `<zb-await>` while its value is pending. Comes first.', attributes: {} },
+  'zb-then': { description: 'The content of a `<zb-await>` once its value has resolved.', attributes: { as: 'The name of the resolved value, or a pattern: `as="{ name }"`, `as="[user, posts]"`.' } },
+  'zb-catch': { description: 'The content of a `<zb-await>` if its value rejected. `retry()` runs the value again.', attributes: { as: 'The name of the error, or a pattern: `as="{ message }"`.' } },
 };
 
 /** Line/character → offset. */
@@ -123,6 +126,16 @@ export function documentation(component) {
   return lines.join('\n');
 }
 
+/** The conditions an element can carry as attributes (4.1). */
+export const CONDITIONS = {
+  'zb-if': 'Render this element only when the condition is truthy: `zb-if={…}`.',
+  'zb-else-if': 'Render this element when the `zb-if` (or `zb-else-if`) sibling just before it didn\'t, and this condition is truthy.',
+  'zb-else': 'Render this element when none of the `zb-if` and `zb-else-if` siblings just before it did.',
+};
+const conditionItems = (prefix) => Object.entries(CONDITIONS)
+  .filter(([name]) => name.startsWith(prefix))
+  .map(([name, description]) => ({ label: name, kind: 'attribute', documentation: description, insertText: name === 'zb-else' ? name : `${name}={$1}`, snippet: name !== 'zb-else' }));
+
 /** Completion items (label, kind, detail, documentation, insertText) at `offset`. */
 export function completions(text, offset, components) {
   const context = contextAt(text, offset);
@@ -136,11 +149,11 @@ export function completions(text, offset, components) {
     const directive = DIRECTIVES[context.tag];
     if (directive) {
       return Object.entries(directive.attributes).map(([name, description]) => ({
-        label: name, kind: 'attribute', documentation: description, insertText: ['as', 'index', 'name'].includes(name) ? `${name}="$1"` : `${name}={$1}`, snippet: true,
+        label: name, kind: 'attribute', documentation: description, insertText: name === 'keep' ? 'keep' : ['as', 'index', 'name'].includes(name) ? `${name}="$1"` : `${name}={$1}`, snippet: true,
       }));
     }
     const component = components.find((candidate) => candidate.tag === context.tag);
-    if (!component) return [];
+    if (!component) return conditionItems(context.prefix);
     return [
       ...component.attributes.map((attribute) => ({
         label: attribute.name, kind: 'attribute', detail: attribute.type,
@@ -151,6 +164,7 @@ export function completions(text, offset, components) {
         label: `on${event.name}`, kind: 'event', detail: event.type, documentation: event.description,
         insertText: `on${event.name}={$1}`, snippet: true,
       })),
+      ...conditionItems(''),
     ].filter((item) => item.label.startsWith(context.prefix));
   }
   if (context.kind === 'expression') {

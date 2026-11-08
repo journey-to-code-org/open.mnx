@@ -1,7 +1,7 @@
 //! 2.7's progressive enhancement: `<select value>` and `<textarea value>` in HTML output, the
 //! `.submit` and `.mod` modifiers, `:bind` on child elements, and `hydrated()`.
 
-use mnx_compiler::{compile, compile_js};
+use zubra::{compile, compile_js};
 
 fn html(source: &str) -> String {
     compile(source, "{}").unwrap_or_else(|error| panic!("{}", error.message))
@@ -9,13 +9,13 @@ fn html(source: &str) -> String {
 
 #[allow(dead_code)]
 fn js(source: &str) -> String {
-    compile_js(source, "@mnx/runtime", "x.mnx").unwrap_or_else(|error| panic!("{}", error.message))
+    compile_js(source, "@zubra/runtime", "x.zb").unwrap_or_else(|error| panic!("{}", error.message))
 }
 
 #[test]
 fn a_selects_value_marks_its_option_and_a_textareas_value_is_its_content() {
     let output = html(
-        r#"<mnx-x status="pending" note="a < b">
+        r#"<zb-x status="pending" note="a < b">
   <select name="s" value={status}>
     <option value="open" selected>Open</option>
     <optgroup label="Later"><option value="pending">Pending</option></optgroup>
@@ -26,7 +26,7 @@ fn a_selects_value_marks_its_option_and_a_textareas_value_is_its_content() {
   </option></select>
   <select value={"none"}><option value="a">A</option></select>
   <textarea name="n" value={note}></textarea>
-</mnx-x>"#,
+</zb-x>"#,
     );
     assert!(output.contains(r#"<select name="s">"#), "{output}");
     assert!(
@@ -59,7 +59,7 @@ fn error(source: &str) -> String {
     let html = compile(source, "{}")
         .err()
         .map(|error| format!("{} {}", error.message, error.help.unwrap_or_default()));
-    let js = compile_js(source, "@mnx/runtime", "x.mnx")
+    let js = compile_js(source, "@zubra/runtime", "x.zb")
         .err()
         .map(|error| format!("{} {}", error.message, error.help.unwrap_or_default()));
     html.or(js)
@@ -68,9 +68,9 @@ fn error(source: &str) -> String {
 
 #[test]
 fn submit_and_mod_modifiers() {
-    let output = js(r#"<mnx-x>
+    let output = js(r#"<zb-x>
   <form><select onchange.submit></select><textarea onkeydown.mod.enter.prevent.submit={() => {}}></textarea></form>
-</mnx-x>"#);
+</zb-x>"#);
     assert!(
         output.contains(r#"on: "change", handler: () => null, modifiers: { submit: true }"#),
         "{output}"
@@ -81,34 +81,32 @@ fn submit_and_mod_modifiers() {
         "{output}"
     );
     // Nothing of them in the HTML.
-    let page = html(r#"<mnx-x><select onchange.submit></select></mnx-x>"#);
+    let page = html(r#"<zb-x><select onchange.submit></select></zb-x>"#);
     assert!(page.contains("<select></select>"), "{page}");
     assert!(
-        error(r#"<mnx-x><input onkeydown.mod.ctrl.enter={() => {}}></mnx-x>"#)
+        error(r#"<zb-x><input onkeydown.mod.ctrl.enter={() => {}}></zb-x>"#)
             .contains("`.mod` already means Ctrl")
     );
     // Without .submit, an event attribute still needs a handler.
-    assert!(
-        error(r#"<mnx-x><select onchange.prevent></select></mnx-x>"#)
-            .contains("inline event-handler attributes are not allowed")
-    );
+    assert!(error(r#"<zb-x><select onchange.prevent></select></zb-x>"#)
+        .contains("inline event-handler attributes are not allowed"));
 }
 
 #[test]
 fn hydrated_is_false_on_the_server_and_a_signal_in_the_template() {
     let source = r#"<script>
-  import { hydrated } from '@mnx/runtime'
+  import { hydrated } from '@zubra/runtime'
   const live = hydrated()
 </script>
-<mnx-x>
-  <mnx-if test={!live}><button>Apply</button></mnx-if>
+<zb-x>
+  <zb-if test={!live}><button>Apply</button></zb-if>
   <p class:on={live}>{live ? "live" : "static"}</p>
-</mnx-x>"#;
+</zb-x>"#;
     let page = html(source);
     assert!(
         page.contains("<button>Apply</button>")
             && page.contains("<p>static</p>")
-            && !page.contains("[?"),
+            && !page.contains("<?zb [??>"),
         "{page}"
     );
     let output = js(source);
@@ -120,9 +118,9 @@ fn hydrated_is_false_on_the_server_and_a_signal_in_the_template() {
 
 #[test]
 fn bind_on_a_child_is_the_prop_and_its_change_event() {
-    let output = js(r#"<mnx-x color="red">
+    let output = js(r#"<zb-x color="red">
   <other-thing value:bind={color}></other-thing>
-</mnx-x>"#);
+</zb-x>"#);
     assert!(
         output.contains(r#"prop: "value", value: () => $p.color"#),
         "{output}"
@@ -133,10 +131,11 @@ fn bind_on_a_child_is_the_prop_and_its_change_event() {
         ),
         "{output}"
     );
-    assert!(error(r#"<mnx-x v=""><input value:bind={v}></mnx-x>"#)
-        .contains("a native <input> has none"));
     assert!(
-        error(r#"<mnx-x v=""><other-thing value:bind={v + 1}></other-thing></mnx-x>"#)
+        error(r#"<zb-x v=""><input value:bind={v}></zb-x>"#).contains("a native <input> has none")
+    );
+    assert!(
+        error(r#"<zb-x v=""><other-thing value:bind={v + 1}></other-thing></zb-x>"#)
             .contains("takes a `let` or a prop")
     );
 }
@@ -144,26 +143,26 @@ fn bind_on_a_child_is_the_prop_and_its_change_event() {
 #[test]
 fn a_known_first_operand_decides_and_and_or_on_the_server() {
     let source = r#"<script>
-  import { hydrated } from '@mnx/runtime'
+  import { hydrated } from '@zubra/runtime'
   const live = hydrated()
   let text = ""
 </script>
-<mnx-x>
+<zb-x>
   <button class="a" disabled={live && text.trim() === ""}>a</button>
   <button class="b" disabled={!live || text.trim() === ""}>b</button>
   <button class="c" disabled={text.trim() === "" && live}>c</button>
-</mnx-x>"#;
-    let page = mnx_compiler::compile_html_with_options(
+</zb-x>"#;
+    let page = zubra::compile_html_with_options(
         source,
-        "x.mnx",
+        "x.zb",
         "{}",
         "{}",
-        mnx_compiler::HtmlOptions {
-            slot_source: mnx_compiler::SlotSource::Template,
+        zubra::HtmlOptions {
+            slot_source: zubra::SlotSource::Template,
             partial: true,
             pending: Vec::new(),
         },
-        &mnx_compiler::filesystem,
+        &zubra::filesystem,
     )
     .unwrap();
     assert!(

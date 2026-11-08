@@ -9,16 +9,16 @@ import { wrap as wrapVue, models } from '../src/vue.js';
 import { registerRenderer } from '../src/server.js';
 
 const meta = (props, events = []) => ({
-  tag: 'mnx-picker',
+  tag: 'zb-picker',
   props: Object.fromEntries(Object.entries(props).map(([name, value]) => [name, { attribute: name, default: value, required: false }])),
   events, slots: [], shadow: false, form: false,
 });
-const element = (props, events) => ({ mnx: meta(props, events) });
+const element = (props, events) => ({ zubra: meta(props, events) });
 
-test('wrap() needs a compiled mnx element', () => {
+test('wrap() needs a compiled zubra element', () => {
   for (const wrap of [wrapReact, wrapVue]) {
-    assert.throws(() => wrap(class {}), /needs a compiled mnx element/);
-    assert.throws(() => wrap(undefined), /needs a compiled mnx element/);
+    assert.throws(() => wrap(class {}), /needs a compiled zubra element/);
+    assert.throws(() => wrap(undefined), /needs a compiled zubra element/);
   }
 });
 
@@ -32,38 +32,38 @@ test('two-way bindings are <prop> + <prop>change pairs', () => {
 
 test('the React wrapper renders on the server: the element, its attributes and children', () => {
   const Picker = wrapReact(element({ value: 1, info: { a: 1 } }, ['valuechange']));
-  assert.equal(Picker.displayName, 'MnxPicker');
+  assert.equal(Picker.displayName, 'ZbPicker');
   const html = renderToString(React.createElement(Picker, { value: 2, info: { a: 2 }, id: 'p', className: 'big', onValueChange() {} },
     React.createElement('b', { slot: 'icon' }, 'hi')));
-  assert.equal(html, '<mnx-picker id="p" class="big" mnx-props="{&quot;value&quot;:2,&quot;info&quot;:{&quot;a&quot;:2}}"><b slot="icon">hi</b></mnx-picker>',
-    'props are written once, as JSON in mnx-props (for the element, and for @mnx/server\'s shadow roots); event handlers are set in the browser');
-  // No props given: no mnx-props.
-  assert.equal(renderToString(React.createElement(Picker, { id: 'q' })), '<mnx-picker id="q"></mnx-picker>');
+  assert.equal(html, '<zb-picker id="p" class="big" zb-props="{&quot;value&quot;:2,&quot;info&quot;:{&quot;a&quot;:2}}"><b slot="icon">hi</b></zb-picker>',
+    'props are written once, as JSON in zb-props (for the element, and for @zubra/server\'s shadow roots); event handlers are set in the browser');
+  // No props given: no zb-props.
+  assert.equal(renderToString(React.createElement(Picker, { id: 'q' })), '<zb-picker id="q"></zb-picker>');
 });
 
 test('the React wrapper renders a shadow-DOM element\'s shadow root on the server, when it has no children', () => {
   const field = {
-    mnx: {
-      tag: 'mnx-shadow-field',
+    zubra: {
+      tag: 'zb-shadow-field',
       props: { value: { attribute: 'value', default: 0, required: false, model: true }, label: { attribute: 'label', default: '', required: false, model: false } },
       events: ['valuechange'], slots: [], shadow: true, form: true,
     },
   };
-  registerRenderer('mnx-shadow-field', (props) => `<mnx-shadow-field><template shadowrootmode="open"><b>${props.label ?? ''}: ${props.value ?? 0}</b></template></mnx-shadow-field>`);
+  registerRenderer('zb-shadow-field', (props) => `<zb-shadow-field><template shadowrootmode="open"><b>${props.label ?? ''}: ${props.value ?? 0}</b></template></zb-shadow-field>`);
   const Field = wrapReact(field);
   assert.equal(renderToString(React.createElement(Field, { value: 3, label: 'Seats', name: 'seats' })),
-    '<mnx-shadow-field name="seats" mnx-props="{&quot;value&quot;:3,&quot;label&quot;:&quot;Seats&quot;}"><template shadowrootmode="open"><b>Seats: 3</b></template><input type="hidden" name="seats" value="3" data-mnx-fallback></mnx-shadow-field>',
+    '<zb-shadow-field name="seats" zb-props="{&quot;value&quot;:3,&quot;label&quot;:&quot;Seats&quot;}"><template shadowrootmode="open"><b>Seats: 3</b></template><input type="hidden" name="seats" value="3" data-zb-fallback></zb-shadow-field>',
     'the shadow root, and the value a form would submit (for before JavaScript)');
   // Children go to its slots instead, so no shadow root is written (React would hydrate around it).
-  assert.equal(renderToString(React.createElement(Field, { value: 3 }, 'x')), '<mnx-shadow-field mnx-props="{&quot;value&quot;:3}">x</mnx-shadow-field>');
+  assert.equal(renderToString(React.createElement(Field, { value: 3 }, 'x')), '<zb-shadow-field zb-props="{&quot;value&quot;:3}">x</zb-shadow-field>');
   // Without a renderer (no server build), an empty host, as before.
-  const Other = wrapReact({ mnx: { ...field.mnx, tag: 'mnx-unrendered' } });
-  assert.equal(renderToString(React.createElement(Other, {})), '<mnx-unrendered></mnx-unrendered>');
+  const Other = wrapReact({ zubra: { ...field.zb, tag: 'zb-unrendered' } });
+  assert.equal(renderToString(React.createElement(Other, {})), '<zb-unrendered></zb-unrendered>');
 });
 
 test('the Vue wrapper declares the props, events and v-model it supports', () => {
   const Picker = wrapVue(element({ value: '', label: 'x' }, ['valuechange', 'open']));
-  assert.equal(Picker.name, 'MnxPicker');
+  assert.equal(Picker.name, 'ZbPicker');
   assert.deepEqual(Object.keys(Picker.props), ['value', 'label', 'modelValue']);
   assert.deepEqual(Picker.emits, ['valuechange', 'open', 'update:value', 'update:modelValue']);
   const NoModel = wrapVue(element({ label: 'x' }, ['open']));

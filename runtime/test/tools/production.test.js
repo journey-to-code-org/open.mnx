@@ -16,7 +16,7 @@ test('the production build has the same exports, and no hot reloading', async ()
   const [dev, prod] = await Promise.all([import('../../src/index.js'), import('../../dist/production/index.js')]);
   assert.deepEqual(Object.keys(prod).sort(), Object.keys(dev).sort());
   const element = readFileSync(join(root, 'dist/production/element.js'), 'utf8');
-  for (const gone of ['__MNX_HOT__', '#reload', 'mnx.hot', '@hot']) assert.ok(!element.includes(gone), gone);
+  for (const gone of ['__ZUBRA_HOT__', '#reload', 'zubra.hot', '@hot']) assert.ok(!element.includes(gone), gone);
 });
 
 test('@hot fences', () => {

@@ -1,0 +1,28 @@
+<!--
+  A ticket's priority as a row of choices. They're native radio buttons in the page (light DOM),
+  so they submit with their form before any JavaScript has loaded; once it has, the choice is
+  also a two-way `value` (`valuechange`), and the chosen one is highlighted as it changes.
+  @fires valuechange - The priority changed; `detail` is the new one.
+-->
+<script>
+  const LEVELS = ["low", "normal", "high", "urgent"]
+</script>
+<style>
+  fieldset { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; padding: 0; border: 0; }
+  legend { width: 100%; margin-bottom: 0.3rem; font-weight: 600; }
+  label { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.75rem; border: 1px solid #d6dae3; border-radius: 0.5rem; background: white; cursor: pointer; text-transform: capitalize; }
+  label:has(input:focus-visible) { outline: 2px solid #4f5df5; outline-offset: 1px; }
+  label.checked { border-color: #4f5df5; background: #eef0ff; font-weight: 600; }
+  label[data-level=urgent].checked { border-color: #c62f3f; background: #fdecee; }
+</style>
+<priority-picker name="priority" value:model="normal" legend="Priority">
+  <fieldset>
+    <legend>{legend}</legend>
+    <zb-each items={LEVELS} as="level" key={level}>
+      <label class:checked={level === value} data-level={level}>
+        <input type="radio" name={name} value={level} checked={level === value} onchange={() => (value = level)}>
+        <span>{level}</span>
+      </label>
+    </zb-each>
+  </fieldset>
+</priority-picker>

@@ -1,0 +1,13 @@
+<!-- 4.3: let: names derived per row, and zb-switch over a status. -->
+<zb-switch-let cart={[]} status="new">
+  <ul>
+    <zb-each items={cart} as="{ id, price, qty }" key={id} let:total={price * qty} let:big={total > 5}>
+      <li class:big={big}>{id}: {total}</li>
+    </zb-each>
+  </ul>
+  <zb-switch value={status}>
+    <zb-case is="paid"><p class="status">Paid</p></zb-case>
+    <zb-case is={["shipped", "delivered"]}><p class="status">On its way</p></zb-case>
+    <zb-else><p class="status">Waiting</p></zb-else>
+  </zb-switch>
+</zb-switch-let>

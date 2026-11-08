@@ -1,8 +1,8 @@
-# mnx for Vue developers
+# Zubra for Vue developers
 
-If you write single-file components, mnx will look familiar: a script, scoped styles and a template in one file, compiled ahead of time to fine-grained DOM updates. The output is a standard custom element instead of a Vue component.
+If you write single-file components, Zubra will look familiar: a script, scoped styles and a template in one file, compiled ahead of time to fine-grained DOM updates. The output is a standard custom element instead of a Vue component.
 
-| Vue | mnx |
+| Vue | Zubra |
 |---|---|
 | `defineProps({ label: { type: String, default: "Hi" } })` | `<my-greeting label="Hi">`: the host tag's attributes are the props |
 | `const count = ref(0)`, `count.value++` | `let count = 0`, `count++` |
@@ -11,8 +11,8 @@ If you write single-file components, mnx will look familiar: a script, scoped st
 | `watch(source, (next, prev) => …)` | `watch(source, (next, prev) => …)` |
 | `watchEffect(() => …)` | `effect(() => …)` |
 | `onMounted`, `onUnmounted` | `onMount`, `onUnmount` |
-| `v-if` / `v-else-if` / `v-else` | `<mnx-if>` / `<mnx-else-if>` / `<mnx-else>` |
-| `v-for="item in items" :key="item.id"` | `<mnx-each items={items} as="item" key={item.id}>` |
+| `v-if` / `v-else-if` / `v-else` | `<zb-if>` / `<zb-else-if>` / `<zb-else>` |
+| `v-for="item in items" :key="item.id"` | `<zb-each items={items} as="item" key={item.id}>` |
 | `:class="{ open }"` | `class:open` or `class={{ open }}` |
 | `:style="{ fontSize: size + 'px' }"` | `style:font-size={size + "px"}` |
 | `@submit.prevent="save"` | `onsubmit.prevent={save}` |
@@ -20,18 +20,18 @@ If you write single-file components, mnx will look familiar: a script, scoped st
 | `ref="input"` | `ref={input}` with `let input = null` |
 | `defineEmits` + `emit('select', id)` | `emit('select', id)`: calling it declares it |
 | `defineModel()` | `value:model={…}` on the host |
-| `<slot>`, `<slot name="footer">` | `<mnx-slot>`, `<mnx-slot name="footer">` |
+| `<slot>`, `<slot name="footer">` | `<zb-slot>`, `<zb-slot name="footer">` |
 | `$slots.footer` | `hasSlot('footer')` |
 | `provide` / `inject` | `provide` / `inject` (with `createContext`) |
 | `<style scoped>` | `<style>`: always scoped |
 
-## Using mnx components in a Vue app
+## Using Zubra components in a Vue app
 
-With `@mnx/unplugin`, importing an `.mnx` file into a `.vue` file gives you a Vue component: `v-model` binds the `value` + `valuechange` pair (or any `:model` prop with `v-model:name`), events work with `@name`, and slots map to slots.
+With `@zubra/unplugin`, importing an `.zb` file into a `.vue` file gives you a Vue component: `v-model` binds the `value` + `valuechange` pair (or any `:model` prop with `v-model:name`), events work with `@name`, and slots map to slots.
 
 ```vue
 <script setup>
-import QuantityStepper from './components/quantity-stepper.mnx';
+import QuantityStepper from './components/quantity-stepper.zb';
 const tickets = ref(1);
 </script>
 <template>

@@ -1,16 +1,16 @@
-// Server markup whose comments were stripped: the element's runtime loads this module only when it
+// Server markup whose markers were stripped: the element's runtime loads this module only when it
 // meets such markup.
 //
-// An HTML minifier, a sanitizer or a fragment parser (htmx in some browsers) can remove the
-// server markup's comments: the region markers (<!--[-->, <!--]-->) and text anchors (<!---->).
-// Rather than render such an element afresh, `remark` walks the template against the markup by
-// structure and puts the comments back, where that's unambiguous:
+// A sanitizer or a fragment parser can remove the server markup's markers: the region markers
+// (<?zb [?>, <?zb ]?>) and text anchors (<?zb ?>), or the comments a 4.x server wrote, which an HTML
+// minifier removes too. Rather than render such an element afresh, `remark` walks the template
+// against the markup by structure and puts the markers back (as comments), where that's unambiguous:
 // - a text anchor's text runs up to the next element, so its place is always known;
-// - an mnx-if region holds the branch the current values choose, and an mnx-each region one row
+// - an zb-if region holds the branch the current values choose, and an zb-each region one row
 //   per item, each with the shape of its block (checked element by element);
 // - a light-DOM slot region is the rest of its range, when nothing follows it there; its
 //   content is the fallback if it has the fallback's shape, and supplied content otherwise.
-// Anything else (an mnx-await, content projected into a child component, a region the server
+// Anything else (an zb-await, content projected into a child component, a region the server
 // left to the browser, other than one left empty) can't be placed for sure, and the element
 // renders afresh as before.
 
@@ -111,7 +111,7 @@ export function remark(root, template, parts, { blueprint, isOpen, isClose, read
         } catch (error) {
           if (error !== fail) throw error;
           // Nothing here where the region's content would be: the server left it to the
-          // browser (<!--[?-->), when what follows in the markup is what follows in the template.
+          // browser (`[?`), when what follows in the markup is what follows in the template.
           edits.length = saved;
           cursor = start;
           if (!followsRegion(t, skipText(cursor))) throw fail;
@@ -147,7 +147,7 @@ export function remark(root, template, parts, { blueprint, isOpen, isClose, read
         }
         cursor = null;
       } else {
-        throw fail; // mnx-await
+        throw fail; // zb-await
       }
       // Past the template's matching close.
       let depth = 0;

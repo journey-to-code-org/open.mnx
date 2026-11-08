@@ -1,5 +1,5 @@
 'use server';
-// The feedback form's Server Action. The star rating and the switch are mnx form controls
+// The feedback form's Server Action. The star rating and the switch are zubra form controls
 // (form-associated custom elements), so their values arrive in FormData like any input's.
 import { revalidatePath } from 'next/cache';
 import { addFeedback } from '@/lib/feedback.js';

@@ -6,7 +6,7 @@ export function load() {
 }
 
 export const actions = {
-  // The steppers and the effort rating are mnx form controls: their values arrive in the form
+  // The steppers and the effort rating are zubra form controls: their values arrive in the form
   // data under their names, like native inputs'.
   log: async ({ request }) => {
     const form = await request.formData();

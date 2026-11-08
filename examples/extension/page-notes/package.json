@@ -1,8 +1,8 @@
 {
-  "name": "mnx-example-page-notes",
+  "name": "zubra-example-page-notes",
   "private": true,
   "type": "module",
-  "description": "A Chrome extension (Manifest V3): notes for each site, with mnx components in its popup, its options page and a widget on the pages themselves.",
+  "description": "A Chrome extension (Manifest V3): notes for each site, with Zubra components in its popup, its options page and a widget on the pages themselves.",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
@@ -10,9 +10,9 @@
     "test": "node --test \"test/*.test.js\""
   },
   "devDependencies": {
-    "@mnx/compiler": "file:../../../compiler",
-    "@mnx/runtime": "file:../../../runtime",
-    "@mnx/unplugin": "file:../../../plugin",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/unplugin": "file:../../../plugin",
     "esbuild": "0.28.2",
     "playwright": "1.63.0"
   }

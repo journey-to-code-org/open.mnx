@@ -1,0 +1,9 @@
+<!-- review-list in a shadow root, which a streamed <template for> can't reach. -->
+<review-panel shadow reviews={[]}>
+  <zb-await value={reviews}>
+    <p class="loading">Loading…</p>
+    <zb-then as="list">
+      <ul><zb-each items={list} as="r" key={r.id}><li>{r.name}: {r.stars}</li></zb-each></ul>
+    </zb-then>
+  </zb-await>
+</review-panel>

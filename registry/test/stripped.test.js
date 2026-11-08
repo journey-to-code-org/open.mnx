@@ -1,6 +1,7 @@
-// Server markup with its comments stripped (an HTML minifier's removeComments, a sanitizer, htmx
-// in some browsers): which registry components hydrate in place, with their markers put back by
-// structure, and which render fresh (each with its reason). `node --test registry/test/`.
+// Server markup with its markers stripped (a sanitizer that removes processing instructions, or
+// an HTML minifier's removeComments on a 4.x server's comment markers): which registry components
+// hydrate in place, with their markers put back by structure, and which render fresh (each with
+// its reason). `node --test registry/test/`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
@@ -10,8 +11,8 @@ import { useBrowser, open, compiler } from '../../runtime/test/browser/harness.j
 import * as zag from './zag.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const names = readdirSync(join(here, '../components')).filter((file) => file.endsWith('.mnx')).map((file) => file.slice(0, -4));
-useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.mnx`)])), zag.files, zag.imports);
+const names = readdirSync(join(here, '../components')).filter((file) => file.endsWith('.zb')).map((file) => file.slice(0, -3));
+useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.zb`)])), zag.files, zag.imports);
 
 // Components that can't be placed without their markers, and why. Everything else must hydrate
 // in place.
@@ -20,7 +21,7 @@ const FRESH = {};
 test('stripped server markup: every registry component hydrates in place, or is listed with its reason', async (t) => {
   const results = {};
   for (const name of names) {
-    const html = compiler(join(here, '../components', `${name}.mnx`), '--partial').replace(/<!--[^]*?-->/g, '');
+    const html = compiler(join(here, '../components', `${name}.zb`), '--partial').replace(/<\?zb [^]*?\?>/g, '');
     const { page, messages } = await open(html, {
       beforeModules: `window.kept = [...document.body.querySelectorAll('*')].filter((node) => node.localName !== 'script');`,
       modules: [name],
@@ -30,10 +31,10 @@ test('stripped server markup: every registry component hydrates in place, or is 
       await Promise.all([...document.querySelectorAll('*')].filter((el) => el.updateComplete).map((el) => el.updateComplete));
     });
     const kept = await page.evaluate(() => window.kept.every((node) => node.isConnected));
-    // (Only mnx's own messages: a component's defaults alone can be meaningless, like a date
+    // (Only zubra's own messages: a component's defaults alone can be meaningless, like a date
     // grid with no dates.)
-    const mnx = messages.filter((message) => message.includes('mnx:'));
-    results[name] = kept && !mnx.length ? 'in place' : `fresh (${mnx[0] ?? 'nodes replaced'})`;
+    const zubra = messages.filter((message) => message.includes('zubra:'));
+    results[name] = kept && !zubra.length ? 'in place' : `fresh (${zubra[0] ?? 'nodes replaced'})`;
     await page.close();
   }
   t.diagnostic(Object.entries(results).map(([name, how]) => `${name}: ${how}`).join(', '));

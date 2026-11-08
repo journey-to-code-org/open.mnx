@@ -5,10 +5,10 @@ const { title } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{title} · mnx kitchen</title>
+    <title>{title} · zubra kitchen</title>
   </head>
   <body>
-    <header class="site"><a href="/">mnx kitchen</a></header>
+    <header class="site"><a href={import.meta.env.BASE_URL}>zubra kitchen</a></header>
     <main><slot /></main>
   </body>
 </html>

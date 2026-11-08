@@ -1,8 +1,8 @@
 {
-  "name": "@mnx-examples/ui",
+  "name": "@zubra-examples/ui",
   "version": "1.0.0",
   "private": true,
-  "description": "A component library built from the mnx registry with `mnx build --lib`, used by the React and Vue examples like any package from npm.",
+  "description": "A component library built from the Zubra registry with `zubra build --lib`, used by the React and Vue examples like any package from npm.",
   "license": "ISC",
   "type": "module",
   "scripts": {

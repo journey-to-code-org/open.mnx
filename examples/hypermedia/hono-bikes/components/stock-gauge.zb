@@ -1,0 +1,17 @@
+<!--
+  How many are in stock, against the shop's reorder point: a bar and a word for it.
+-->
+<style>
+  :host { display: inline-flex; align-items: center; gap: 0.5rem; }
+  meter { width: 5rem; height: 0.7rem; }
+  span { font-variant-numeric: tabular-nums; min-width: 1.5rem; text-align: right; }
+  small { padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+  small[data-level=low] { background: #fff1d6; color: #8a5a00; }
+  small[data-level=out] { background: #fde2e1; color: #a1251f; }
+</style>
+<stock-gauge count={0} reorder={3} capacity={20}>
+  <meter min="0" max={capacity} low={reorder + 1} optimum={capacity} value={count} aria-label="Stock"></meter>
+  <span>{count}</span>
+  <small zb-if={count === 0} data-level="out">Out</small>
+  <small zb-else-if={count <= reorder} data-level="low">Low</small>
+</stock-gauge>

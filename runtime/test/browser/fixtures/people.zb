@@ -1,0 +1,10 @@
+<zb-people people={[{ name: "Ada", role: "math" }, { name: "Linus", role: "kernels" }]} tags={["x", "y"]}>
+  <div>
+    <ul>
+      <zb-each items={people} as="person">
+        <li><b>{person.name}</b> works on {person.role}</li>
+      </zb-each>
+    </ul>
+    <p><zb-each items={tags} as="tag">#{tag} </zb-each></p>
+  </div>
+</zb-people>

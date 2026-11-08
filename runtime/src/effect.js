@@ -215,7 +215,7 @@ export function flush() {
       watcher.watch(); // re-arm before running, so writes made by effects schedule another round
       if (pending.length === 0) return;
       if (round >= MAX_ROUNDS) {
-        report(new Error('mnx: effects keep re-triggering each other; stopped after 100 rounds'));
+        report(new Error('zubra: effects keep re-triggering each other; stopped after 100 rounds'));
         return;
       }
       const effects = pending.map((computed) => effectOf.get(computed)).sort((a, b) => a.id - b.id);

@@ -1,6 +1,10 @@
 # Page Notes: a Chrome extension
 
-Notes for each site, as a Manifest V3 extension. mnx components appear in three very different
+![Page notes](../../../demos/shots/page-notes.jpg)
+
+This one is a browser extension, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below load it.
+
+Notes for each site, as a Manifest V3 extension. Zubra components appear in three very different
 places:
 
 - **the toolbar popup**: the active site's notes, and a box to add one (`note-list`,
@@ -13,7 +17,7 @@ places:
 The service worker keeps the toolbar badge at the active site's note count.
 
 ```sh
-cargo build                 # from the repository root (the compiler, until @mnx/compiler is on npm)
+cargo build                 # from the repository root (the compiler, until @zubra/compiler is on npm)
 cd examples/extension/page-notes
 npm install
 npm run build               # → dist/
@@ -22,7 +26,7 @@ npm run build               # → dist/
 Then open `chrome://extensions`, turn on Developer mode, choose "Load unpacked" and pick `dist/`.
 `npm run watch` rebuilds as you edit; reload the extension to pick it up.
 
-`build.mjs` is esbuild with mnx's esbuild plugin (`@mnx/unplugin/esbuild`):
+`build.mjs` is esbuild with Zubra's esbuild plugin (`@zubra/unplugin/esbuild`):
 - the popup, options and service worker are ES modules;
 - content scripts can't be ES modules, so they're bundled as IIFEs.
 
@@ -36,16 +40,16 @@ restyle everything.
   widget therefore runs in the page's own world (`"world": "MAIN"`), and a second content
   script, the bridge, stays in the isolated world for `chrome.storage`. They talk through DOM
   events with JSON in `detail`. The page can see and send those events too, so the widget only
-  displays what it gets, as text (mnx escapes it). A test sends it markup.
+  displays what it gets, as text (Zubra escapes it). A test sends it markup.
 - **Shadow DOM protects what's inside, not the host.** The host element lives in the page. A
   site's `* { font-family: … !important }` matches it and beats `:host` rules, and the font then
   inherits into the shadow root. The fix is `!important` in `:host`, which wins across a shadow
-  boundary. `all: initial` alone isn't enough. Any mnx component meant for other people's pages
+  boundary. `all: initial` alone isn't enough. Any Zubra component meant for other people's pages
   needs this, which suggests a `host-reset` option, or a documented pattern.
 - **A CSP without `eval` is fine.** MV3 forbids `eval` and inline scripts on extension pages.
-  mnx compiles ahead of time and its runtime has no `eval`, so nothing needed changing.
-- **No parent-side binding between mnx components.** Frameworks bind a `:model` prop with
-  `v-model` or `bind:`. Inside an mnx template, a parent writes
+  Zubra compiles ahead of time and its runtime has no `eval`, so nothing needed changing.
+- **No parent-side binding between Zubra components.** Frameworks bind a `:model` prop with
+  `v-model` or `bind:`. Inside a Zubra template, a parent writes
   `value={color} onvaluechange={(event) => (color = event.detail)}`. (`value:model={color}` on
   the child is an error: it declares a model, it doesn't bind one.)
 - **A plugin bug, fixed in this release:** under esbuild (and Bun), unplugin's `this.error()`

@@ -1,5 +1,5 @@
 // The TC39 Signals API (https://github.com/tc39/proposal-signals): the platform's own when the
-// browser has it, otherwise mnx's implementation.
+// browser has it, otherwise zubra's implementation.
 
 export declare namespace Signal {
   interface Options<T> {

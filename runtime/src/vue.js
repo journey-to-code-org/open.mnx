@@ -1,7 +1,7 @@
-// Vue 3 adapter: an mnx element as a Vue component.
+// Vue 3 adapter: a zubra element as a Vue component.
 //
 //   <script setup>
-//   import Rating from './rating.mnx'          // the build plugin wraps it for .vue files
+//   import Rating from './rating.zb'          // the build plugin wraps it for .vue files
 //   </script>
 //   <Rating v-model="stars" @change="saved" />
 //
@@ -37,7 +37,7 @@ function named(name, nodes) {
 
 const same = (a, b) => Object.is(a, b);
 
-/** The given props as JSON for the host's `mnx-props`, or null. */
+/** The given props as JSON for the host's `zb-props`, or null. */
 function propsJson(values) {
   const given = Object.entries(values).filter(([, value]) => value !== undefined && typeof value !== 'function');
   if (!given.length) return null;
@@ -61,8 +61,8 @@ const setProps = {
 };
 
 export function wrap(Element) {
-  const meta = Element?.mnx;
-  if (!meta) throw new TypeError('mnx: wrap() needs a compiled mnx element (the default export of a .mnx module)');
+  const meta = Element?.zubra;
+  if (!meta) throw new TypeError('zubra: wrap() needs a compiled zubra element (the default export of a .zb module)');
   const { tag, props, events } = meta;
   const pairs = models(meta);
   const primary = pairs.find((pair) => pair.prop === 'value') ?? (pairs.length === 1 ? pairs[0] : null);
@@ -115,10 +115,10 @@ export function wrap(Element) {
         // HTML, so it shows before JavaScript. In the browser the vnode has no children at all
         // (`null`, not `[]`): Vue then never looks inside the host while hydrating, so the
         // element's markup stays for the element to hydrate in place (3.3). (A page can also go
-        // through @mnx/server's injectShadowRoots, which is the same for shadow DOM.)
+        // through @zubra/server's injectShadowRoots, which is the same for shadow DOM.)
         const bare = children.length === 0;
         const inner = bare && typeof window === 'undefined' ? { innerHTML: serverContent(Element, { props: json ? JSON.parse(json) : {}, name: attrs.name }) } : {};
-        return withDirectives(h(tag, { ...attrs, ...listeners, ...(json ? { 'mnx-props': json } : {}), ...inner, ref: (node) => { element = node; } }, bare ? null : children), [[setProps, values]]);
+        return withDirectives(h(tag, { ...attrs, ...listeners, ...(json ? { 'zb-props': json } : {}), ...inner, ref: (node) => { element = node; } }, bare ? null : children), [[setProps, values]]);
       };
     },
   });

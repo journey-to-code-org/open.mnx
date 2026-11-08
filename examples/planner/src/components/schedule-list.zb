@@ -1,0 +1,47 @@
+<!--
+  An event's running order, sorted by time. Items outside the event's hours, or at the same
+  time as another, are flagged.
+-->
+<script>
+  import { usePlanner } from '../store.js'
+
+  const { act } = usePlanner()
+  let time = ""
+  let title = ""
+
+  const items = [...event.schedule].sort((a, b) => a.time.localeCompare(b.time))
+  const clashes = new Set(items.filter((item, i) => items.some((other, j) => j !== i && other.time === item.time)).map((item) => item.id))
+  const warning = (item) =>
+    clashes.has(item.id) ? "Same time as another item" : item.time < event.start || item.time > event.end ? "Outside the event's hours" : ""
+
+  function add(submitEvent) {
+    act('schedule.add', event.id, { time, title: title.trim() })
+    title = ""
+    submitEvent.target.querySelector('input[type=time]').focus()
+  }
+</script>
+<style>
+  ol { list-style: none; margin: 0 0 1rem; padding: 0; }
+  li { display: grid; grid-template-columns: 4rem 1fr auto; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+  time { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .warn { display: block; font-size: 0.75rem; color: var(--warn); }
+  form { display: grid; grid-template-columns: 8rem 1fr auto; gap: 0.5rem; }
+  .empty { color: var(--muted); }
+</style>
+<schedule-list event={{ id: "", start: "", end: "", schedule: [] }}>
+  <ol zb-if={items.length > 0}>
+    <zb-each items={items} as="item" key={item.id}>
+      <li>
+        <time>{item.time}</time>
+        <span>{item.title}<zb-if test={warning(item)}><span class="warn">{warning(item)}</span></zb-if></span>
+        <button type="button" class="icon" aria-label={`Remove ${item.title}`} onclick={() => act('schedule.remove', event.id, item.id)}>✕</button>
+      </li>
+    </zb-each>
+  </ol>
+  <p zb-else class="empty">No schedule yet. Add the first item below.</p>
+  <form onsubmit.prevent={add}>
+    <input type="time" required aria-label="Time" value={time} oninput={(e) => (time = e.target.value)}>
+    <input required placeholder="What happens" aria-label="What happens" value={title} oninput={(e) => (title = e.target.value)}>
+    <button type="submit" class="primary">Add</button>
+  </form>
+</schedule-list>

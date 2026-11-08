@@ -1,0 +1,57 @@
+<!--
+  The planner: owns the data (provided as context to everything inside), the route
+  (`#/` or `#/events/<id>`) and the dialog that creates and edits events.
+-->
+<script>
+  import { provide } from '@zubra/runtime'
+  import { Planner, createPlanner, blankEvent } from '../store.js'
+  import './month-calendar.zb'
+  import './upcoming-list.zb'
+  import './event-page.zb'
+  import './event-dialog.zb'
+
+  const planner = createPlanner(globalThis.localStorage ?? null)
+  provide(Planner, planner)
+
+  const read = () => {
+    const match = /^#\/events\/([\w-]+)/.exec(globalThis.location?.hash ?? "")
+    return match ? match[1] : ""
+  }
+  let eventId = read()
+
+  let editing = null
+  const create = (day) => (editing = blankEvent(day))
+  const edit = () => (editing = planner.find(eventId))
+
+  function save(event) {
+    const id = planner.save(event.detail)
+    editing = null
+    location.hash = `#/events/${id}`
+  }
+  function remove() {
+    planner.remove(eventId)
+    location.hash = "#/"
+  }
+</script>
+<style>
+  :host { display: block; max-width: 72rem; margin: 0 auto; padding: 0 1.25rem 4rem; }
+  header { display: flex; align-items: center; gap: 1rem; padding: 1.25rem 0; }
+  header a { font-weight: 800; font-size: 1.125rem; color: inherit; text-decoration: none; letter-spacing: -0.01em; }
+  header a span { color: var(--accent); }
+  header button { margin-left: auto; }
+  .home { display: grid; grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr); gap: 1.5rem; align-items: start; }
+  @media (max-width: 52rem) { .home { grid-template-columns: 1fr; } }
+</style>
+<planner-app>
+  <zb-window onhashchange={() => (eventId = read())}></zb-window>
+  <header>
+    <a href="#/">zubra <span>planner</span></a>
+    <button type="button" class="primary new-event" onclick={() => create()}>New event</button>
+  </header>
+  <event-page zb-if={eventId} event-id={eventId} onedit={edit} onremove={remove}></event-page>
+  <div zb-else class="home">
+    <month-calendar ondaypick={(event) => create(event.detail)}></month-calendar>
+    <upcoming-list></upcoming-list>
+  </div>
+  <event-dialog event={editing} onsave={save} onclose={() => (editing = null)}></event-dialog>
+</planner-app>

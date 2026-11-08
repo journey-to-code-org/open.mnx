@@ -4,7 +4,7 @@ export interface LibraryOptions {
   /** The package's name and version; default: the current directory's package.json. */
   name?: string;
   version?: string;
-  /** The runtime module the elements import. Default: `@mnx/runtime`. */
+  /** The runtime module the elements import. Default: `@zubra/runtime`. */
   runtime?: string;
 }
 

@@ -1,11 +1,11 @@
 //! 3.0: a signal `const` in a script means its value, as in the template. `.get()`/`.set()`
-//! written out stay, `signal(name)` is the signal itself, and `mnx migrate --to 3` prepares 2.x
+//! written out stay, `signal(name)` is the signal itself, and `zubra migrate --to 3` prepares 2.x
 //! code (it wraps the bare uses that passed the signal in `signal(…)`).
 
-use mnx_compiler::{compile_js, prepare_for_3, uses_for_3, warnings};
+use zubra::{compile_js, prepare_for_3, uses_for_3, warnings};
 
 const SOURCE: &str = r#"<script>
-  import { state, computed, watch, formValue } from '@mnx/runtime'
+  import { state, computed, watch, formValue } from '@zubra/runtime'
 
   const count = state(0)
   const doubled = computed(() => count.get() * 2)
@@ -13,26 +13,26 @@ const SOURCE: &str = r#"<script>
   watch(doubled, (next) => console.log(next))
   function reset() { count.set(0) }
 </script>
-<mnx-n><button onclick={reset}>{count} {doubled}</button></mnx-n>"#;
+<zb-n><button onclick={reset}>{count} {doubled}</button></zb-n>"#;
 
 #[test]
 fn a_signal_const_reads_as_its_value_in_the_script() {
     let js = compile_js(
         r#"<script>
-  import { state, signal, watch } from '@mnx/runtime'
+  import { state, signal, watch } from '@zubra/runtime'
   const count = state(1)
   const total = count + 1
   function log() { console.log(count, { count }) }
   count.set(2)
   watch(signal(count), log)
 </script>
-<mnx-n><p>{count} {total}</p></mnx-n>"#,
-        "@mnx/runtime",
-        "n.mnx",
+<zb-n><p>{count} {total}</p></zb-n>"#,
+        "@zubra/runtime",
+        "n.zb",
     )
     .unwrap();
     assert!(
-        js.contains("const total = __mnxComputed(() => (count.get() + 1))"),
+        js.contains("const total = __zubraComputed(() => (count.get() + 1))"),
         "derived from the value: {js}"
     );
     assert!(
@@ -77,7 +77,8 @@ fn migrate_to_3_lists_and_wraps_2x_uses_once_and_imports_signal() {
     let (output, wrapped) = prepare_for_3(SOURCE);
     assert_eq!(wrapped, 2);
     assert!(
-        output.contains("import { state, computed, watch, formValue, signal } from '@mnx/runtime'"),
+        output
+            .contains("import { state, computed, watch, formValue, signal } from '@zubra/runtime'"),
         "{output}"
     );
     assert!(
@@ -88,7 +89,7 @@ fn migrate_to_3_lists_and_wraps_2x_uses_once_and_imports_signal() {
     // Nothing left to wrap, and it compiles to what 2.x meant: the signals themselves.
     assert!(uses_for_3(&output).is_empty());
     assert_eq!(prepare_for_3(&output), (output.clone(), 0));
-    let js = compile_js(&output, "@mnx/runtime", "n.mnx").unwrap();
+    let js = compile_js(&output, "@zubra/runtime", "n.zb").unwrap();
     assert!(
         js.contains("formValue(signal(count))") && js.contains("watch(signal(doubled)"),
         "{js}"
@@ -97,7 +98,7 @@ fn migrate_to_3_lists_and_wraps_2x_uses_once_and_imports_signal() {
 
 #[test]
 fn no_signals_no_changes() {
-    let source = "<script>\n  let count = 0\n</script>\n<mnx-n><p>{count}</p></mnx-n>";
+    let source = "<script>\n  let count = 0\n</script>\n<zb-n><p>{count}</p></zb-n>";
     assert!(uses_for_3(source).is_empty());
     assert_eq!(prepare_for_3(source), (source.to_owned(), 0));
 }

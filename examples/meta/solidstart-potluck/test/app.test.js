@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { shot } from '../../../../demos/shot.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let server, url, browser;
@@ -49,6 +50,7 @@ const meter = (page, course) => page.locator('dish-board').getByRole('meter', { 
 test('the page hydrates without errors; the board gets its data from Solid (prop:)', async () => {
   const page = await open();
   assert.equal(await meter(page, 'Mains'), 'Mains: 1 of 3');
+  await shot(page, 'solidstart-potluck');
   assert.equal(await meter(page, 'Desserts'), 'Desserts: 1 of 2');
   assert.equal((await page.locator('dish-board li[data-course=dessert] ul li').textContent()).trim(), 'Ines +2');
   assert.equal((await page.textContent('.lede')).trim(), '3 households, 6 people so far.');
@@ -56,7 +58,7 @@ test('the page hydrates without errors; the board gets its data from Solid (prop
   await page.done();
 });
 
-test('signing up: the mnx controls submit with the action\'s form, and the board updates in place', async () => {
+test('signing up: the zubra controls submit with the action\'s form, and the board updates in place', async () => {
   const page = await open();
   await page.fill('input[name=name]', 'Theo');
   await page.fill('input[name=dish]', 'Lemonade');
@@ -77,7 +79,7 @@ test('signing up: the mnx controls submit with the action\'s form, and the board
 
 test('without JavaScript: the board is in the server HTML, and signing up posts the controls\' values', async () => {
   const page = await open({ javascript: false });
-  // The shadow roots came with the page (src/middleware.js runs it through @mnx/server).
+  // The shadow roots came with the page (src/middleware.js runs it through @zubra/server).
   assert.equal(await meter(page, 'Mains'), 'Mains: 1 of 3');
   assert.equal((await page.locator('dish-board li[data-course=dessert] ul li').textContent()).trim(), 'Ines +2');
   await page.fill('input[name=name]', 'Uma');

@@ -1,6 +1,6 @@
 // The toolbar popup: the current site's notes, and a box to add one.
-import './components/note-list.mnx';
-import './components/note-composer.mnx';
+import './components/note-list.zb';
+import './components/note-composer.zb';
 import { load, originOf, save, settings } from './notes.js';
 
 const list = document.querySelector('note-list');

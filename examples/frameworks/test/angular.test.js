@@ -1,10 +1,10 @@
-// Angular (reactive forms, compiled ahead of time with Analog's Vite plugin): mnx elements as
-// form controls through MnxModel, with validation, a step indicator's events and a live summary.
+// Angular (reactive forms, compiled ahead of time with Analog's Vite plugin): zubra elements as
+// form controls through ZubraModel, with validation, a step indicator's events and a live summary.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, settle, texts } from './harness.js';
 
-test('angular-booking: a booking wizard whose controls are mnx elements', async () => {
+test('angular-booking: a booking wizard whose controls are zubra elements', async () => {
   const { page, messages } = await launch('angular-booking');
   await page.waitForSelector('choice-cards [role=radio]');
   await settle(page);
@@ -57,7 +57,7 @@ test('angular-booking: a booking wizard whose controls are mnx elements', async 
   assert.deepEqual(await texts(page, '.summary td'), ['Summit suite × 2 nights', '$620', 'Taxes (12%)', '$74', 'Total', '$694']);
   await go('button.next');
 
-  // Step 3: toggle switches bound through mnxModel="checked".
+  // Step 3: toggle switches bound through zubraModel="checked".
   await go('toggle-switch:has-text("Breakfast") button');
   await go('toggle-switch:has-text("Airport pickup") button');
   assert.equal(await page.textContent('toggle-switch:has-text("Breakfast") .extra'), '$108');
@@ -77,10 +77,10 @@ test('angular-booking: a booking wizard whose controls are mnx elements', async 
   await page.fill('input[formcontrolname=email]', 'ada@example.com');
   await go('button.next');
   assert.equal(await page.textContent('h1'), "You're booked");
-  assert.match(await page.textContent('.reference'), /^MNX-[A-Z0-9]{6}$/);
+  assert.match(await page.textContent('.reference'), /^ZB-[A-Z0-9]{6}$/);
   assert.match(await page.textContent('.confirmation'), /Summit suite at Ridge lodge, 2 nights for 3\. Total \$815\./);
 
-  // Starting over resets every control, mnx ones included.
+  // Starting over resets every control, zubra ones included.
   await go('.confirmation button');
   assert.equal(await page.textContent('.summary .where'), 'Not chosen yet');
   assert.equal(await page.textContent('quantity-stepper[label=adults] output'), '2');

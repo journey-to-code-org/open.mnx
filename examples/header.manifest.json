@@ -7,8 +7,8 @@
       "declarations": [
         {
           "kind": "class",
-          "name": "MnxHeader",
-          "tagName": "mnx-header",
+          "name": "ZbHeader",
+          "tagName": "zb-header",
           "customElement": true,
           "superclass": {
             "name": "HTMLElement",
@@ -60,15 +60,15 @@
           "kind": "js",
           "name": "default",
           "declaration": {
-            "name": "MnxHeader",
+            "name": "ZbHeader",
             "module": "header.js"
           }
         },
         {
           "kind": "custom-element-definition",
-          "name": "mnx-header",
+          "name": "zb-header",
           "declaration": {
-            "name": "MnxHeader",
+            "name": "ZbHeader",
             "module": "header.js"
           }
         }

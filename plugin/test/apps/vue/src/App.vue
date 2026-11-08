@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import Rating from '../components/rating.mnx';
-import Card from '../components/card.mnx';
+import Rating from '../components/rating.zb';
+import Card from '../components/card.zb';
 
 const stars = ref(1);
 const items = ref(['a', 'b']);

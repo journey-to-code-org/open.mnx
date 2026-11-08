@@ -1,6 +1,6 @@
 # Browser support
 
-mnx 3.0 targets browsers with **Baseline 2026** features: everything Baseline Widely available, plus the features below. (2.x targeted Baseline 2025.) When a newer feature is used, it's used only where the browser has it.
+Zubra 3.0 targets browsers with **Baseline 2026** features: everything Baseline Widely available, plus the features below. (2.x targeted Baseline 2025.) When a newer feature is used, it's used only where the browser has it.
 
 Moving the target dropped no fallback. Each one is still for a feature that isn't Widely available, so the policy below keeps it:
 - `moveBefore()` isn't in Safari (Limited availability);
@@ -24,5 +24,5 @@ The browser suites run in Chromium. Since 2.9, CI also runs the runtime's browse
 
 Known engine issues:
 - **Firefox before 159** can apply a light-DOM component's `<style>` to content slotted into it, when that content sits beside the component's own elements of the same kind. Firefox shares styles between siblings that differ only in an attribute an `@scope` rule depends on ([bug 2075194](https://bugzilla.mozilla.org/show_bug.cgi?id=2075194), fixed in 159). Shadow components are unaffected.
-- **Firefox** logs "The invalid form control … is not focusable" when a form with an invalid mnx control won't submit. It's only a message: Firefox does focus the input inside (the validation anchor), as Chromium and WebKit do, and the form is refused. `form.reportValidity()` logs nothing.
+- **Firefox** logs "The invalid form control … is not focusable" when a form with an invalid Zubra control won't submit. It's only a message: Firefox does focus the input inside (the validation anchor), as Chromium and WebKit do, and the form is refused. `form.reportValidity()` logs nothing.
 - **WebKit** clears long lists more slowly relative to building them than Chromium does (2,000 rows cleared in about 2.8× the time of creating 1,000). It isn't the quadratic case the benchmark guards against, so the ratio checks run in Chromium only.

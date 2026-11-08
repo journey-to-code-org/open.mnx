@@ -1,9 +1,9 @@
 // React Router's own server entry (from @react-router/dev's defaults), with one change: the
-// page streams through @mnx/server, which gives each shadow-DOM mnx element its server-rendered
-// shadow root (from the `mnx-props` the React wrapper writes), and form controls a hidden
+// page streams through @zubra/server, which gives each shadow-DOM zubra element its server-rendered
+// shadow root (from the `zb-props` the React wrapper writes), and form controls a hidden
 // input, so the balances show and the form submits before JavaScript.
 import { PassThrough } from "node:stream";
-import { createMnx } from "@mnx/server";
+import { createZubra } from "@zubra/server";
 
 import { createReadableStreamFromReadable } from "@react-router/node";
 import { ServerRouter } from "react-router";
@@ -13,7 +13,7 @@ import { renderToPipeableStream } from "react-dom/server";
 
 export const streamTimeout = 5_000;
 
-const mnx = createMnx({ components: "mnx" });
+const zubra = createZubra({ components: "zubra" });
 
 export default function handleRequest(
   request,
@@ -62,7 +62,7 @@ export default function handleRequest(
 
           responseHeaders.set("Content-Type", "text/html");
 
-          const shadowRoots = mnx.injectShadowRootsStream();
+          const shadowRoots = zubra.injectShadowRootsStream();
           shadowRoots.pipe(body);
           pipe(shadowRoots);
 

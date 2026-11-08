@@ -1,0 +1,64 @@
+<!--
+  Events as a searchable list: upcoming first, with past events on request.
+-->
+<script>
+  import { computed } from '@zubra/runtime'
+  import { usePlanner, CATEGORIES } from '../store.js'
+  import { today, formatShortDay, relative } from '../dates.js'
+
+  const { events } = usePlanner()
+  let query = ""
+  let category = "all"
+  let past = false
+
+  const shown = computed(() => {
+    const now = today()
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    return events.get()
+      .filter((event) => (past ? event.day < now : event.day >= now))
+      .filter((event) => category === "all" || event.category === category)
+      .filter((event) => words.every((word) => `${event.title} ${event.location}`.toLowerCase().includes(word)))
+      .sort((a, b) => (past ? -1 : 1) * (a.day + a.start).localeCompare(b.day + b.start))
+  })
+  const going = (event) => event.guests.filter((guest) => guest.rsvp === "yes").length
+  const open = (event) => event.tasks.filter((task) => !task.done).length
+</script>
+<style>
+  :host { display: block; padding: 1rem; border-radius: 1rem; background: var(--surface); box-shadow: var(--shadow); }
+  h2 { margin: 0 0 0.75rem; font-size: 1.25rem; }
+  .filters { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+  a { display: grid; gap: 0.15rem; padding: 0.6rem 0.75rem; border-radius: 0.6rem; border: 1px solid var(--line); color: inherit; text-decoration: none; }
+  a:hover { background: var(--hover); }
+  strong { font-size: 0.9375rem; }
+  .when { font-size: 0.8125rem; color: var(--muted); }
+  .facts { display: flex; gap: 0.75rem; font-size: 0.75rem; color: var(--muted); }
+  .empty { margin: 1rem 0; color: var(--muted); font-size: 0.875rem; }
+</style>
+<upcoming-list>
+  <h2>Events</h2>
+  <div class="filters">
+    <input type="search" placeholder="Search events" aria-label="Search events" value={query} oninput={(e) => (query = e.target.value)}>
+    <select aria-label="Category" value={category} onchange={(e) => (category = e.target.value)}>
+      <option value="all">All</option>
+      <zb-each items={CATEGORIES} as="name" key={name}><option value={name}>{name}</option></zb-each>
+    </select>
+  </div>
+  <div class="tabs" role="group" aria-label="When">
+    <button type="button" class="pill" class:on={!past} aria-pressed={past ? "false" : "true"} onclick={() => (past = false)}>Upcoming</button>
+    <button type="button" class="pill" class:on={past} aria-pressed={past ? "true" : "false"} onclick={() => (past = true)}>Past</button>
+  </div>
+  <ul zb-if={shown.length > 0}>
+    <zb-each items={shown} as="event" key={event.id}>
+      <li>
+        <a href={`#/events/${event.id}`}>
+          <strong>{event.title}</strong>
+          <span class="when">{formatShortDay(event.day)} · {event.start} · {relative(event.day)}</span>
+          <span class="facts"><span>{going(event)} going</span><span>{open(event)} to do</span><span>{event.category}</span></span>
+        </a>
+      </li>
+    </zb-each>
+  </ul>
+  <p zb-else class="empty">{query || category !== "all" ? "No events match." : past ? "Nothing in the past." : "Nothing planned. Pick a day on the calendar."}</p>
+</upcoming-list>

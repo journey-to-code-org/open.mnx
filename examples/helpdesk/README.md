@@ -1,17 +1,21 @@
-# Help desk: Express, EJS and MongoDB, with mnx components
+# Help desk: Express, EJS and MongoDB, with Zubra components
+
+![Help desk](../../demos/shots/helpdesk.jpg)
+
+This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
 
 A ticket tracker for a support team. Customers file tickets and follow the conversation. Agents work a queue, reply, leave internal notes, change status and priority, assign tickets and watch response deadlines.
 
-It's an ordinary Node server app: Express routes, EJS templates, MongoDB. The interactive parts are mnx components, and it uses them the way mnx is meant to work on a server:
+It's an ordinary Node server app: Express routes, EJS templates, MongoDB. The interactive parts are Zubra components, and it uses them the way Zubra is meant to work on a server:
 
 | Promise | Here |
 |---|---|
-| **Server-rendered first** | Each page's components are rendered to HTML on the request by `@mnx/server` (Express middleware over `@mnx/compiler`), inside the EJS templates: `<%- mnx('ticket-table', { tickets }) %>`. The SLA timers' "due in 2h 30m" is in that HTML, worked out on the server from the request's time rather than filled in later. |
+| **Server-rendered first** | Each page's components are rendered to HTML on the request by `@zubra/server` (Express middleware over `@zubra/compiler`), inside the EJS templates: `<%- zubra('ticket-table', { tickets }) %>`. The SLA timers' "due in 2h 30m" is in that HTML, worked out on the server from the request's time rather than filled in later. |
 | **Hydrated, not re-rendered** | The browser loads each component's module and binds it to the markup that's already there. The test checks that a table row is the same DOM node before and after. |
 | **Works without JavaScript** | The components render native form elements in light DOM (radio buttons, selects, a textarea), so filing a ticket, replying, filtering and updating all work as plain HTML forms. The test runs the whole flow with JavaScript turned off. |
 | **Then better with it** | J/K/Enter moves through the queue. Filters apply as you choose them. The reply box counts characters, waits for text and sends on Ctrl+Enter. Priorities highlight as you pick them. SLA timers keep counting. |
-| **No bundler** | `/_mnx/components/<name>.js` is each component compiled on request, and an import map points `@mnx/runtime` at the runtime's own modules (both served by `@mnx/server`). A page loads only the components it rendered. |
-| **Components you own** | The dashboard's donut chart and spark line came from the registry: `npx mnx add donut-chart spark-line --dir components`. |
+| **No bundler** | `/_zubra/components/<name>.js` is each component compiled on request, and an import map points `@zubra/runtime` at the runtime's own modules (both served by `@zubra/server`). A page loads only the components it rendered. |
+| **Components you own** | The dashboard's donut chart and spark line came from the registry: `npx zubra add donut-chart spark-line --dir components`. |
 
 ## Run it
 
@@ -25,11 +29,11 @@ Sign in as anyone on the list: Ada and Sam are agents; Lena, Raj and Tom are cus
 
 ### The compiler
 
-The server renders components with `@mnx/compiler`, which includes the compiler when it's installed from npm. Inside this repository it has to be built first, and `npm start` checks for it (`scripts/ensure-compiler.js`):
+The server renders components with `@zubra/compiler`, which includes the compiler when it's installed from npm. Inside this repository it has to be built first, and `npm start` checks for it (`scripts/ensure-compiler.js`):
 
-- **With Rust installed**, `npm start` runs `cargo build` at the repository root the first time, and uses that CLI (`target/debug/mnx`, or `mnx.exe` on Windows).
-- **Without Rust**, download `mnx.wasm` instead: GitHub → Actions → CI → the latest run on `main` → Artifacts → `mnx-wasm`. Unzip it into `compiler/` (as `compiler/mnx.wasm`), then `npm start`.
-- `MNX_COMPILER=/path/to/mnx` points at a CLI anywhere else.
+- **With Rust installed**, `npm start` runs `cargo build` at the repository root the first time, and uses that CLI (`target/debug/zubra`, or `zubra.exe` on Windows).
+- **Without Rust**, download `zubra.wasm` instead: GitHub → Actions → CI → the latest run on `main` → Artifacts → `zubra-wasm`. Unzip it into `compiler/` (as `compiler/zubra.wasm`), then `npm start`.
+- `ZUBRA_COMPILER=/path/to/zubra` points at a CLI anywhere else.
 
 If none of these is there, `npm start` stops and says so, rather than serving error pages.
 
@@ -38,11 +42,11 @@ If none of these is there, `npm start` stops and says so, rather than serving er
 ```text
 server.js              starts the app with a store
 src/app.js             routes; renders a view, then the layout, and finish() adds the CSS and modules
-                       it used (@mnx/server/express: res.locals.mnx)
+                       it used (@zubra/server/express: res.locals.zubra)
 src/auth.js            sign-in as a signed cookie
 src/store/             memory.js and mongo.js, one interface (seed.js has the demo data)
 views/*.ejs            the pages
-components/*.mnx       status-badge, priority-picker, sla-timer, ticket-table, filter-bar,
+components/*.zb       status-badge, priority-picker, sla-timer, ticket-table, filter-bar,
                        ticket-thread, reply-composer; donut-chart and spark-line from the registry
 ```
 

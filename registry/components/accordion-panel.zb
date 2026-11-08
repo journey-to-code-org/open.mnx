@@ -1,0 +1,23 @@
+<!--
+  A section that opens and closes, on the native <details>: the browser does the keyboard (Enter
+  and Space on the heading), the find-in-page opening and the announcements. Panels with the same
+  `group` form an accordion where one is open at a time (<details name>). `open` is two-way.
+  @slot - The panel's content.
+  @slot heading - Its heading (defaults to `heading`).
+-->
+<style>
+  :host { display: block; }
+  details { border-bottom: 1px solid var(--line, #dde); }
+  summary { display: flex; align-items: center; gap: 0.75rem; padding: 0.8rem 0.25rem; font-weight: 600; cursor: pointer; list-style: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: ""; margin-left: auto; width: 0.5rem; height: 0.5rem; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform 0.2s; }
+  details[open] > summary::after { transform: rotate(-135deg); }
+  summary:focus-visible { outline: 2px solid var(--accent, #36c); outline-offset: 2px; border-radius: 0.3rem; }
+  .body { padding: 0 0.25rem 1rem; }
+</style>
+<accordion-panel open:model={false} heading="" group="">
+  <details name={group || null} open={open} ontoggle={(event) => (open = event.target.open)}>
+    <summary><zb-slot name="heading">{heading}</zb-slot></summary>
+    <div class="body"><zb-slot></zb-slot></div>
+  </details>
+</accordion-panel>
