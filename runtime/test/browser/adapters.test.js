@@ -136,10 +136,18 @@ before(async () => {
   await bundle('vue3', VUE_APP);
 });
 
-const settle = (page) => page.evaluate(async () => {
-  await new Promise((resolve) => setTimeout(resolve));
-  await Promise.all([...document.querySelectorAll('zb-rating, zb-card, zb-badge')].map((el) => el.updateComplete));
-});
+// Until every element is live (its listeners bound), a click can land on a button that does nothing:
+// WebKit under load did that. `:state(hydrated)` is the signal that they're ready.
+const settle = async (page) => {
+  await page.waitForFunction(() => {
+    const elements = [...document.querySelectorAll('zb-rating, zb-card, zb-badge')];
+    return elements.length > 0 && elements.every((el) => el.matches(':state(hydrated)'));
+  });
+  await page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve));
+    await Promise.all([...document.querySelectorAll('zb-rating, zb-card, zb-badge')].map((el) => el.updateComplete));
+  });
+};
 
 const read = (page) => page.evaluate(() => {
   const strip = (html) => html.replace(/<!--.*?-->/g, '');

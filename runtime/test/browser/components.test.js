@@ -568,8 +568,8 @@ test('server markup whose comments were stripped hydrates in place: anchors, zb-
   // Hydrated (its listeners bound) once remark.js, loaded on demand, has put the markers back.
   await page.waitForSelector('zb-stripped:state(hydrated)');
   await page.click('zb-stripped button');
-  await page.waitForFunction(() => document.querySelector('zb-stripped h2').textContent === 'Today: Drinks, 3 picks!', null, { timeout: 2000 })
-    .catch(() => {});
+  // Firefox on a busy runner took longer than the 2 seconds this used to allow; a failure now says so.
+  await page.waitForFunction(() => document.querySelector('zb-stripped h2').textContent === 'Today: Drinks, 3 picks!', null, { timeout: 10000 });
   assert.equal(await page.textContent('zb-stripped h2'), 'Today: Drinks, 3 picks!', 'the anchored text updates');
   assert.equal(await page.evaluate(() => window.kept.includes(document.querySelector('zb-stripped h2 b'))), true);
   // The regions work as regions afterwards.

@@ -62,7 +62,10 @@ test('the stats and the list: zubra elements with Svelte props, including an obj
 
 test('logging a workout: a form action, enhanced, with zubra form controls submitting like inputs', async () => {
   const { page, messages } = await open('/');
-  await page.waitForSelector('quantity-stepper[name=sets] button.more');
+  // Live, not just drawn: the server's markup has the buttons before their listeners are bound.
+  await page.waitForSelector('quantity-stepper[name=sets]:state(hydrated)');
+  await page.waitForSelector('quantity-stepper[name=reps]:state(hydrated)');
+  await page.waitForSelector('star-rating:state(hydrated)');
   await page.selectOption('select[name=exercise]', 'row');
   await page.click('quantity-stepper[name=sets] button.more');
   await page.click('quantity-stepper[name=reps] button.less');
