@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "create-zubra": "./index.js"
+    "create-zubra": "index.js"
   },
   "files": [
     "index.js",

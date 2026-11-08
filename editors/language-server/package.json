@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "zubra-language-server": "./server.js"
+    "zubra-language-server": "server.js"
   },
   "exports": {
     ".": "./server.js",

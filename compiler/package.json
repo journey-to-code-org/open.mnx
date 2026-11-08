@@ -26,17 +26,18 @@
     "cli.js",
     "library.js",
     "library.d.ts",
-    "registry"
+    "registry",
+    "!registry/test"
   ],
   "scripts": {
     "build": "cargo build -p zubra-wasm --target wasm32-unknown-unknown --release && cp ../target/wasm32-unknown-unknown/release/zubra_wasm.wasm zubra.wasm",
     "test": "node --test \"test/*.test.js\"",
-    "prepack": "node -e \"const fs=require('fs');fs.rmSync('registry',{recursive:true,force:true});fs.cpSync('../registry','registry',{recursive:true,filter:(p)=>!/[\\\\/](test|node_modules)([\\\\/]|$)/.test(p)})\""
+    "prepack": "node scripts/prepack.mjs"
   },
   "engines": {
     "node": ">=20"
   },
   "bin": {
-    "zubra": "./cli.js"
+    "zubra": "cli.js"
   }
 }
