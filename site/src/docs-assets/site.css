@@ -1,9 +1,10 @@
 :root {
   --bg: #ffffff; --surface: #f6f7fb; --ink: #1c2030; --muted: #61677a; --line: #dfe2ea; --accent: #4f5df5; --code: #eef0f7;
+  --t-comment: #5b6074; --t-tag: #b0235c; --t-attr: #8a4b00; --t-string: #0b6b3a; --t-keyword: #4a3fd0; --t-fn: #0b5cad; --t-num: #9a3412;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #12141b; --surface: #1a1d27; --ink: #e8eaf2; --muted: #9aa0b4; --line: #2c3040; --accent: #8b95ff; --code: #1f2330; color-scheme: dark; }
+  :root { --bg: #12141b; --surface: #1a1d27; --ink: #e8eaf2; --muted: #9aa0b4; --line: #2c3040; --accent: #8b95ff; --code: #1f2330; --t-comment: #8d93a8; --t-tag: #ff8fb3; --t-attr: #f5b97a; --t-string: #7ee0a6; --t-keyword: #aab2ff; --t-fn: #7cc4ff; --t-num: #ffa27a; color-scheme: dark; }
 }
 * { box-sizing: border-box; }
 html { scroll-padding-top: 4.5rem; }
@@ -41,6 +42,14 @@ main { min-width: 0; padding: 1.5rem 1.25rem 3rem 2rem; }
 .doc code { padding: 0.1em 0.3em; border-radius: 0.3rem; background: var(--code); font: 0.88em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .doc pre { margin: 0 0 1.25rem; padding: 0.9rem 1rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 0.6rem; background: var(--code); line-height: 1.5; }
 .doc pre code { padding: 0; background: none; font-size: 0.86rem; }
+.token.comment, .token.prolog, .token.doctype { color: var(--t-comment); }
+.token.tag, .token.selector, .token.deleted { color: var(--t-tag); }
+.token.attr-name, .token.property, .token.constant, .token.symbol { color: var(--t-attr); }
+.token.string, .token.attr-value, .token.template-string, .token.char, .token.inserted { color: var(--t-string); }
+.token.keyword, .token.boolean, .token.atrule { color: var(--t-keyword); }
+.token.function, .token.class-name, .token.builtin { color: var(--t-fn); }
+.token.number, .token.regex { color: var(--t-num); }
+.token.punctuation, .token.operator { color: var(--ink); }
 .doc blockquote { margin: 0 0 1rem; padding: 0.1rem 1rem; border-left: 3px solid var(--accent); color: var(--muted); }
 .doc table { display: block; max-width: 100%; margin: 0 0 1.25rem; overflow-x: auto; border-collapse: collapse; font-size: 0.93rem; }
 .doc th, .doc td { padding: 0.45rem 0.7rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
