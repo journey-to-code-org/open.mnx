@@ -7,10 +7,11 @@ import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useBrowser, open, compiler } from '../../runtime/test/browser/harness.js';
+import * as zag from './zag.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const names = readdirSync(join(here, '../components')).filter((file) => file.endsWith('.mnx')).map((file) => file.slice(0, -4));
-useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.mnx`)])));
+useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.mnx`)])), zag.files, zag.imports);
 
 // Components that can't be placed without their markers, and why. Everything else must hydrate
 // in place.

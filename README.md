@@ -531,7 +531,7 @@ The package needs no bundler or mnx tooling on the consumer's side:
 
 `buildLibrary(dir, options)` from `@mnx/compiler/library` does the same from a script. `examples/frameworks/ui/` is one, built from the registry, and the React and Vue example apps import it like a package from npm.
 
-**Start from the registry.** `npx mnx add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty, from form controls to a modal dialog and charts, each tested from the keyboard and by role and accessible name. `npx mnx add --list` lists them; `registry/README.md` has the details and the theme properties.
+**Start from the registry.** `npx mnx add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty-five, from form controls and charts to tabs, menus, tooltips and a combobox, each tested from the keyboard and by role and accessible name. `npx mnx add --list` lists them; `registry/README.md` has the details and the theme properties. For the widgets Radix and shadcn/ui give React apps (menus, tabs, tooltips, comboboxes), see [Accessible widgets without a headless library](docs/guide/accessible-widgets.md): the platform, two keyboard primitives in `@mnx/runtime/primitives`, and Zag.js through `@mnx/runtime/zag`.
 
 **Storybook.** With `@storybook/web-components`, give Storybook the manifest and it fills each story's controls and docs (attributes, properties, events, slots, descriptions) from it:
 

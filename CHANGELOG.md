@@ -2,6 +2,31 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.6.0 — 2026-11-07
+
+Accessible primitives (`plan/roadmap-3.5.md`, 3.6). The Zag.js spike showed that the platform does most of what a headless library is for, that two keyboard behaviours are missing, and that Zag covers the hard widgets once spread exists. This release ships each of those.
+
+### Added
+
+- **`@mnx/runtime/primitives`** (1.0 KB gzipped): `rovingFocus(container, { selector, orientation, loop, onMove })`, one tab stop for a group with arrow keys, Home and End between the items (it skips disabled and hidden items and swaps Left and Right in RTL), and `typeahead(container, { selector, text, timeout, onMatch })`, type a letter to jump to an item. Both work on any element in any framework and return their cleanup.
+- **`@mnx/runtime/zag`** (0.3 KB): `useMachine(machine, props)` runs a [Zag.js](https://zagjs.com) machine in a component, and `normalizeProps` comes with it. The props function is read whenever Zag asks, so it can read state and props. The service is read reactively, so `computed(() => x.connect(machine.current, normalizeProps))` stays current. Each connection gets a fresh machine, because a stopped Zag machine can't be restarted, so moving the element keeps working. `@zag-js/vanilla` is an optional peer dependency.
+- **Five registry components**, each tested by role, accessible name and keyboard (the registry now has 25):
+  - `accordion-panel`: `<details>`; the same `group` gives an exclusive accordion.
+  - `tool-tip`: `popover="manual"`, `aria-describedby` on the trigger; shown on hover and focus after `delay`; Escape hides it without moving focus.
+  - `tab-list`: `rovingFocus`, automatic or `manual` activation; the slotted `data-tab` elements become labelled tab panels.
+  - `dropdown-menu`: `popover` with `popovertarget`; Up and Down open it, arrows and typing move, focus returns to the button, Tab closes it, and it fires `itemselect`.
+  - `combo-box`: Zag's combobox through `@mnx/runtime/zag` and spread; a form control.
+  - `tool-tip` and `dropdown-menu` use CSS anchor positioning, and place themselves with script where it isn't supported.
+- **`mnx add` says which npm packages a component imports**, and how to install them. `registry/index.json` lists them under `packages`.
+- **The guide: [Accessible widgets without a headless library](docs/guide/accessible-widgets.md)**. It maps Radix and shadcn/ui to the platform, the primitives, a registry component or Zag, and gives what each path costs.
+- **`mnx build --lib` lists the npm packages its components import as peer dependencies**, with the project's own version range where it lists one (`@zag-js/combobox` and `@zag-js/vanilla` for a library with `combo-box`).
+- The registry's tests run in Firefox and WebKit in CI as well, because the widgets rely on newer platform features. All 25 components hydrate in place from stripped server markup.
+- The test harness takes extra import-map entries (`useBrowser(components, files, imports)`).
+
+### Changed
+
+- The example library (`examples/frameworks/ui/`) and the plugin's library test build the registry's components that have no npm dependencies. That leaves out `combo-box`, so their apps and the plain page don't need Zag.
+
 ## 3.5.0 — 2026-11-07
 
 Spread (`plan/roadmap-3.5.md`, 3.5). Two findings pointed at the same gap: `mnx convert` stopped at a spread in nearly every shadcn/ui component, and the Zag.js spike needed a `ref` callback for every part of its combobox. Both now go through one feature.

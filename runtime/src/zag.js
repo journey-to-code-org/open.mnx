@@ -1,0 +1,58 @@
+// @mnx/runtime/zag: Zag.js state machines driving mnx components.
+//
+// Zag (https://zagjs.com) is a framework-agnostic set of accessible widget behaviours (combobox,
+// date picker, colour picker, tree view, …) as state machines, each with a `connect()` that
+// returns prop getters. In an mnx script:
+//
+//   import * as combobox from '@zag-js/combobox'
+//   import { id, computed } from '@mnx/runtime'
+//   import { useMachine, normalizeProps } from '@mnx/runtime/zag'
+//
+//   const uid = id()                                   // once: Zag's ids must be stable
+//   const service = useMachine(combobox.machine, () => ({ id: uid, collection, onValueChange }))
+//   const api = computed(() => combobox.connect(service.current, normalizeProps))
+//
+//   <input {...api.getInputProps()}>
+//
+// `useMachine` runs Zag's own vanilla machine and turns its notifications into a signal, so the
+// `api` computed re-derives when the machine changes, and also when the props function reads mnx
+// state or props that change. A Zag machine can't be restarted once stopped (stopping drops its
+// subscriptions), so each connection of the element gets a fresh one: an element that is moved,
+// or removed and put back, keeps working. (`plan/evidence/2026-11-07-zag-spike.md`.)
+//
+// Zag is an optional peer dependency: install `@zag-js/vanilla` and the machines you use.
+import { VanillaMachine } from '@zag-js/vanilla';
+import { state, onMount } from './element.js';
+
+export { normalizeProps } from '@zag-js/vanilla';
+
+/**
+ * Run a Zag machine for this element: started when it connects, stopped when it disconnects.
+ * `props` is Zag's props, or a function returning them (read again whenever Zag asks, so it can
+ * read mnx state and props). Returns `{ current }`: the machine's service, read reactively.
+ */
+export function useMachine(machine, props = {}) {
+  const make = () => new VanillaMachine(machine, props);
+  // Before the element connects, a machine that hasn't started: connect() can read it, so the
+  // first render has the right attributes.
+  const current = state(make(), { equals: () => false });
+  const version = state(0);
+  let first = true;
+  onMount(() => {
+    const running = first ? current.get() : make();
+    first = false;
+    const unsubscribe = running.subscribe(() => version.set(version.get() + 1));
+    running.start();
+    current.set(running);
+    return () => {
+      unsubscribe();
+      running.stop();
+    };
+  });
+  return {
+    get current() {
+      version.get();
+      return current.get().service;
+    },
+  };
+}

@@ -119,6 +119,13 @@ export default wrap(Element);
   // package.json: what's given, then the project's own package.json, then defaults.
   const project = existsSync('package.json') ? JSON.parse(readFileSync('package.json', 'utf8')) : {};
   const runtimeRange = `^${compilerVersion.replace(/^(\d+\.\d+)\..*/, '$1.0')}`;
+  // npm packages the components import (a Zag machine, say), as peers: the app installs them
+  // once. The range is the project's own, where it lists the package.
+  const ranges = { ...project.peerDependencies, ...project.devDependencies, ...project.dependencies };
+  const imported = [...new Set(readdirSync(out, { recursive: true }).filter((file) => file.endsWith('.js') && !/^(react|vue)[\\/]/.test(file)).flatMap((file) =>
+    [...readFileSync(join(out, file), 'utf8').matchAll(/(?:^|\n)\s*(?:import|export)\b[^'"]*?\bfrom\s*['"]((?:@[\w.-]+\/)?[\w.-]+)[^'"]*['"]/g)].map((match) => match[1])))]
+    .filter((name) => name !== runtime && !name.startsWith('.')).sort();
+  if (imported.some((name) => name.startsWith('@zag-js/')) && !imported.includes('@zag-js/vanilla')) imported.push('@zag-js/vanilla');
   const pkg = {
     name: options.name ?? project.name ?? 'mnx-components',
     version: options.version ?? project.version ?? '0.1.0',
@@ -142,7 +149,7 @@ export default wrap(Element);
         [`./vue/${module}`, { types: `./vue/${module}.d.ts`, default: `./vue/${module}.js` }],
       ])),
     },
-    peerDependencies: { [runtime]: runtimeRange, react: '>=18', vue: '>=3.3' },
+    peerDependencies: { [runtime]: runtimeRange, ...Object.fromEntries(imported.map((name) => [name, ranges[name] ?? '*'])), react: '>=18', vue: '>=3.3' },
     peerDependenciesMeta: { react: { optional: true }, vue: { optional: true } },
   };
   write('package.json', JSON.stringify(pkg, null, 2) + '\n');

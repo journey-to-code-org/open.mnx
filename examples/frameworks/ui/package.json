@@ -6,6 +6,6 @@
   "license": "ISC",
   "type": "module",
   "scripts": {
-    "build": "mnx build --lib ../../../registry/components --out dist"
+    "build": "node ../test/build-ui.mjs"
   }
 }

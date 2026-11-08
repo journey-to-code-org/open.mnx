@@ -1,7 +1,7 @@
 // Writes index.json, the registry's catalogue, from the components' own description comments:
 //   node registry/build-index.mjs [--check]
 // With --check it fails if index.json is out of date (CI runs that).
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,7 @@ const CATEGORIES = {
   input: ['tag-input', 'date-range', 'money-input', 'star-rating', 'toggle-switch', 'choice-cards', 'color-swatches', 'quantity-stepper', 'segmented-control'],
   display: ['donut-chart', 'spark-line', 'line-chart', 'progress-ring', 'streak-grid', 'flip-card', 'step-indicator'],
   app: ['kanban-column', 'chat-message', 'message-composer', 'modal-dialog'],
+  widget: ['accordion-panel', 'tool-tip', 'tab-list', 'dropdown-menu', 'combo-box'],
 };
 
 export function catalogue() {
@@ -24,9 +25,26 @@ export function catalogue() {
     if (!description) throw new Error(`registry: ${name} has no description comment`);
     const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? '';
     const dependencies = [...script.matchAll(/import\s+['"]\.\/([a-z0-9-]+)\.mnx['"]/g)].map((match) => match[1]);
-    return { name, category, description, files: [file], dependencies };
+    // npm packages it imports, beyond the runtime: `mnx add` says to install them. The Zag adapter
+    // needs @zag-js/vanilla, which it imports itself.
+    const packages = [...new Set([...script.matchAll(/from\s+['"]((?:@[a-z0-9-]+\/)?[a-z0-9-]+)[^'"]*['"]/g)].map((match) => match[1]).filter((name) => name !== '@mnx/runtime'))];
+    if (/from\s+['"]@mnx\/runtime\/zag['"]/.test(script)) packages.unshift('@zag-js/vanilla');
+    return { name, category, description, files: [file], dependencies, ...(packages.length ? { packages } : {}) };
   });
   return { components };
+}
+
+/**
+ * Copies the components that import no npm packages into `into`, for the libraries the tests and
+ * examples build from the registry: a plain page, or an app that hasn't installed Zag, can use them
+ * all. Returns `into`.
+ */
+export function standalone(into) {
+  mkdirSync(into, { recursive: true });
+  for (const component of catalogue().components) {
+    if (!component.packages) for (const file of component.files) copyFileSync(join(here, 'components', file), join(into, file));
+  }
+  return into;
 }
 
 const text = JSON.stringify(catalogue(), null, 2) + '\n';

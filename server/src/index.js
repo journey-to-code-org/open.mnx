@@ -91,7 +91,7 @@ export function createMnx({ components = 'components', prefix = '/_mnx', cache =
     return response.output;
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@mnx/runtime': `${base}/runtime/index.js`, '@mnx/runtime/spread': `${base}/runtime/spread.js` } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@mnx/runtime': `${base}/runtime/index.js`, '@mnx/runtime/spread': `${base}/runtime/spread.js`, '@mnx/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
   const head = (names) => {
     const styles = names.map(css).join('\n');
     return `${styles ? `<style data-mnx-components>${styles}</style>\n` : ''}${importMap()}`;

@@ -1,0 +1,59 @@
+<!--
+  A combobox: type to filter, arrow keys to move, Enter to pick, Escape to close. A form control.
+  Its behaviour is Zag.js's combobox machine (through @mnx/runtime/zag); its markup and styles are
+  this file's. It needs `npm install @zag-js/vanilla @zag-js/combobox`. `items` is
+  `[{ value, label }]`; `value` is two-way.
+  @fires valuechange - An item was picked; `detail` is its value.
+-->
+<script>
+  import * as combobox from '@zag-js/combobox'
+  import { id, computed } from '@mnx/runtime'
+  import { useMachine, normalizeProps } from '@mnx/runtime/zag'
+
+  let query = ""
+  const shown = items.filter((item) => item.label.toLowerCase().includes(query.toLowerCase()))
+  const collection = combobox.collection({ items: shown, itemToValue: (item) => item.value, itemToString: (item) => item.label })
+
+  const uid = id() // once: Zag's ids must be stable
+  const machine = useMachine(combobox.machine, () => ({
+    id: uid,
+    collection,
+    value: value ? [value] : [],
+    placeholder,
+    onInputValueChange: (details) => { query = details.inputValue },
+    // Opened from the button or the arrow keys: show everything, as Zag's own examples do.
+    onOpenChange: (details) => { if (details.open && details.reason !== "input-change") query = "" },
+    onValueChange: (details) => { value = details.value[0] ?? "" },
+  }))
+  const api = computed(() => combobox.connect(machine.current, normalizeProps))
+</script>
+<style>
+  :host { display: inline-block; font: inherit; }
+  [data-part=root] { display: grid; gap: 0.3rem; }
+  [data-part=label] { font-weight: 600; }
+  [data-part=control] { display: flex; border: 1px solid var(--line, #dde); border-radius: 0.5rem; background: var(--surface, #fff); }
+  [data-part=control]:focus-within { outline: 2px solid var(--accent, #36c); outline-offset: 1px; }
+  input { flex: 1; min-width: 0; padding: 0.45rem 0.6rem; border: 0; background: transparent; color: inherit; font: inherit; outline: none; }
+  [data-part=trigger] { padding: 0 0.6rem; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+  ul { list-style: none; margin: 0; padding: 0.3rem; min-width: 12rem; max-height: 16rem; overflow: auto; border: 1px solid var(--line, #dde); border-radius: 0.6rem; background: var(--surface, #fff); box-shadow: 0 8px 24px #0d122026; }
+  ul:not([data-state=open]) { display: none; }
+  li { padding: 0.4rem 0.6rem; border-radius: 0.4rem; cursor: pointer; }
+  li[data-highlighted] { background: var(--hover, #f2f4f8); }
+  li[data-state=checked] { font-weight: 700; }
+</style>
+<combo-box form-associated value:model="" label="" placeholder="" items={[]}>
+  <div {...api.getRootProps()}>
+    <label {...api.getLabelProps()}>{label}</label>
+    <div {...api.getControlProps()}>
+      <input {...api.getInputProps()}>
+      <button type="button" {...api.getTriggerProps()}>▾</button>
+    </div>
+  </div>
+  <div {...api.getPositionerProps()}>
+    <ul {...api.getContentProps()}>
+      <mnx-each items={shown} as="item" key={item.value}>
+        <li {...api.getItemProps({ item })}>{item.label}</li>
+      </mnx-each>
+    </ul>
+  </div>
+</combo-box>

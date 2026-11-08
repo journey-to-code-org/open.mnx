@@ -173,6 +173,7 @@ const importMap = () => JSON.stringify({
   imports: {
     '@mnx/runtime': `${runtimeUrl}index.js`,
     '@mnx/runtime/spread': `${runtimeUrl}spread.js`,
+    '@mnx/runtime/primitives': `${runtimeUrl}primitives.js`,
     '@mnx/runtime/': runtimeUrl,
     '@mnx/runtime/react': `${runtimeUrl}react.js`,
     '@mnx/runtime/vue': `${runtimeUrl}vue.js`,

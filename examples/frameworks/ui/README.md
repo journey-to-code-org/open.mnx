@@ -1,10 +1,12 @@
 # @mnx-examples/ui
 
-A component library built from the [component registry](../../../registry/) with one command:
+A component library built from the [component registry](../../../registry/) with `mnx build --lib`:
 
 ```sh
-npm run build        # mnx build --lib ../../../registry/components --out dist
+npm run build        # node ../test/build-ui.mjs: the registry's components, built into dist/
 ```
+
+It takes every registry component that has no npm dependencies, so it leaves out `combo-box`, which needs Zag.js. A library that included it would list `@zag-js/combobox` and `@zag-js/vanilla` as peer dependencies, which `mnx build --lib` does for any package a component imports.
 
 `dist/` is a package anyone can install and use, without the mnx plugin. It has an ES module per element, React and Vue entries with typings, `custom-elements.json` and `exports`. Two of the framework apps use it the way they would use any package from npm:
 

@@ -7,10 +7,12 @@ import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { useBrowser, open } from '../../runtime/test/browser/harness.js';
+import * as zag from './zag.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const names = readdirSync(join(here, '../components')).filter((file) => file.endsWith('.mnx')).map((file) => file.slice(0, -4));
-useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.mnx`)])));
+
+useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../components', `${name}.mnx`)])), zag.files, zag.imports);
 
 /** Open `body` with `name`'s module, recording the events listed on window.events. */
 async function page(name, body, events = []) {
@@ -32,7 +34,7 @@ const done = async (page, messages) => {
 };
 
 test('every registry component is tested here', () => {
-  assert.equal(names.length, 20);
+  assert.equal(names.length, 25);
 });
 
 // ---- inputs ---------------------------------------------------------------------------------
@@ -339,5 +341,162 @@ test('modal-dialog: a labelled modal; focus goes in and comes back; Escape and t
   await settle(p);
   assert.equal(await dialog.isVisible(), false);
   assert.equal(await p.locator('modal-dialog footer').count(), 1, 'actions given');
+  await done(p, messages);
+});
+
+// ---- accessible widgets ---------------------------------------------------------------------
+
+test('accordion-panel: native disclosure from the keyboard; one open at a time in a group', async () => {
+  const { page: p, messages, events } = await page('accordion-panel', `
+    <accordion-panel heading="Shipping" group="faq"><p>Two days.</p></accordion-panel>
+    <accordion-panel heading="Returns" group="faq" open><p>Thirty days.</p></accordion-panel>`, ['openchange']);
+  const shipping = p.locator('summary', { hasText: 'Shipping' });
+  assert.equal(await p.getByText('Thirty days.').isVisible(), true);
+  await shipping.focus();
+  await p.keyboard.press('Enter');
+  await settle(p);
+  assert.equal(await p.getByText('Two days.').isVisible(), true);
+  assert.equal(await p.getByText('Thirty days.').isVisible(), false, 'the other closed');
+  assert.deepEqual(await p.evaluate(() => [...document.querySelectorAll('accordion-panel')].map((panel) => panel.open)), [true, false]);
+  assert.deepEqual((await events()).map(([type, detail]) => `${type}:${detail}`).sort(), ['openchange:false', 'openchange:true']);
+  await p.keyboard.press(' ');
+  await settle(p);
+  assert.equal(await p.getByText('Two days.').isVisible(), false);
+  await done(p, messages);
+});
+
+test('tool-tip: describes its trigger; shows on focus and hover, Escape hides it', async () => {
+  const { page: p, messages } = await page('tool-tip', '<tool-tip text="Copy the link" delay="0"><button>Copy</button></tool-tip>');
+  const button = p.getByRole('button', { name: 'Copy' });
+  const tip = p.getByRole('tooltip');
+  assert.equal(await p.evaluate(() => document.getElementById(document.querySelector('button').getAttribute('aria-describedby')).textContent), 'Copy the link');
+  assert.equal(await tip.isVisible(), false);
+  await button.focus();
+  await p.waitForTimeout(30);
+  assert.equal(await tip.isVisible(), true);
+  assert.equal(await tip.textContent(), 'Copy the link');
+  const [trigger, own] = await p.evaluate(() => [document.querySelector('button'), document.querySelector('[role=tooltip]')].map((el) => el.getBoundingClientRect().toJSON()));
+  assert.ok(own.bottom <= trigger.top + 1 || own.top >= trigger.bottom - 1, 'placed beside the trigger, not over it');
+  await p.keyboard.press('Escape');
+  assert.equal(await tip.isVisible(), false);
+  assert.equal(await p.evaluate(() => document.activeElement.textContent), 'Copy', 'focus stays');
+  await p.evaluate(() => document.activeElement.blur());
+  await button.hover();
+  await p.waitForTimeout(30);
+  assert.equal(await tip.isVisible(), true);
+  await p.mouse.move(400, 400);
+  await p.waitForTimeout(30);
+  assert.equal(await tip.isVisible(), false);
+  await done(p, messages);
+});
+
+test('tab-list: one tab stop; arrows choose (or only move, when manual); panels labelled and hidden', async () => {
+  const body = (manual) => `
+    <tab-list label="Account" ${manual ? 'manual' : ''}>
+      <section data-tab="profile">Profile form</section>
+      <section data-tab="billing">Billing form</section>
+      <section data-tab="team">Team list</section>
+    </tab-list>`;
+  const tabs = [{ value: 'profile', label: 'Profile' }, { value: 'billing', label: 'Billing' }, { value: 'team', label: 'Team' }];
+  const { page: p, messages, events } = await page('tab-list', body(false), ['valuechange']);
+  await p.evaluate((tabs) => { document.querySelector('tab-list').tabs = tabs; }, tabs);
+  await settle(p);
+  const list = p.getByRole('tablist', { name: 'Account' });
+  assert.equal(await list.getByRole('tab', { name: 'Profile' }).getAttribute('aria-selected'), 'true');
+  assert.equal(await p.getByRole('tabpanel', { name: 'Profile' }).textContent(), 'Profile form');
+  assert.equal(await p.getByText('Billing form').isVisible(), false);
+  await p.keyboard.press('Tab');
+  assert.equal(await p.evaluate(() => document.activeElement.textContent), 'Profile');
+  await p.keyboard.press('ArrowRight');
+  await settle(p);
+  assert.equal(await list.getByRole('tab', { name: 'Billing' }).getAttribute('aria-selected'), 'true');
+  assert.equal(await p.getByRole('tabpanel', { name: 'Billing' }).isVisible(), true);
+  await p.keyboard.press('End');
+  await p.keyboard.press('ArrowRight'); // loops
+  await settle(p);
+  assert.equal(await p.evaluate(() => document.activeElement.textContent), 'Profile');
+  assert.deepEqual(await events(), [['valuechange', 'billing'], ['valuechange', 'team'], ['valuechange', 'profile']]);
+  await p.keyboard.press('Tab');
+  assert.equal(await p.evaluate(() => document.activeElement.getAttribute('role')), 'tabpanel', 'Tab leaves the list for the panel');
+  await done(p, messages);
+
+  const manual = await page('tab-list', body(true), ['valuechange']);
+  await manual.page.evaluate((tabs) => { document.querySelector('tab-list').tabs = tabs; }, tabs);
+  await settle(manual.page);
+  await manual.page.keyboard.press('Tab');
+  await manual.page.keyboard.press('ArrowRight');
+  await settle(manual.page);
+  assert.deepEqual(await manual.events(), [], 'moving doesn\'t choose');
+  await manual.page.keyboard.press('Enter');
+  await settle(manual.page);
+  assert.deepEqual(await manual.events(), [['valuechange', 'billing']]);
+  await done(manual.page, manual.messages);
+});
+
+test('dropdown-menu: a menu button; arrows and typing move; picking returns focus; Escape closes', async () => {
+  const { page: p, messages, events } = await page('dropdown-menu', '<dropdown-menu label="Actions"></dropdown-menu><button id="after">After</button>', ['itemselect']);
+  await p.evaluate(() => { document.querySelector('dropdown-menu').items = [{ value: 'edit', label: 'Edit' }, { value: 'copy', label: 'Duplicate' }, { value: 'archive', label: 'Archive', disabled: true }, { value: 'delete', label: 'Delete' }]; });
+  await settle(p);
+  const button = p.getByRole('button', { name: 'Actions' });
+  assert.equal(await button.getAttribute('aria-haspopup'), 'menu');
+  await button.focus();
+  await p.keyboard.press('ArrowDown');
+  await settle(p);
+  const menu = p.getByRole('menu', { name: 'Actions' });
+  assert.equal(await menu.isVisible(), true);
+  assert.equal(await button.getAttribute('aria-expanded'), 'true');
+  const focused = () => p.evaluate(() => document.activeElement.textContent);
+  assert.equal(await focused(), 'Edit');
+  await p.keyboard.press('ArrowDown');
+  await p.keyboard.press('ArrowDown'); // skips the disabled item
+  assert.equal(await focused(), 'Delete');
+  await p.keyboard.press('e'); // typeahead
+  assert.equal(await focused(), 'Edit');
+  await p.keyboard.press('ArrowUp'); // loops
+  assert.equal(await focused(), 'Delete');
+  await p.keyboard.press('Enter');
+  await settle(p);
+  assert.equal(await menu.isVisible(), false);
+  assert.equal(await focused(), 'Actions', 'focus returns');
+  assert.deepEqual(await events(), [['itemselect', 'delete']]);
+
+  await p.keyboard.press('ArrowUp'); // opens at the last item
+  await settle(p);
+  assert.equal(await focused(), 'Delete');
+  await p.keyboard.press('Escape');
+  await settle(p);
+  assert.equal(await menu.isVisible(), false);
+  assert.equal(await focused(), 'Actions');
+  assert.equal(await button.getAttribute('aria-expanded'), 'false');
+
+  await p.keyboard.press('Enter'); // the button toggles it, as any popover button
+  await settle(p);
+  assert.equal(await menu.isVisible(), true);
+  const [anchor, own] = await p.evaluate(() => [document.querySelector('.trigger'), document.querySelector('[role=menu]')].map((el) => el.getBoundingClientRect().toJSON()));
+  assert.ok(own.top >= anchor.bottom - 1, 'below the button');
+  await p.keyboard.press('Tab');
+  await settle(p);
+  assert.equal(await menu.isVisible(), false, 'Tab closes it');
+  await done(p, messages);
+});
+
+test('combo-box (Zag): a labelled combobox; typing filters, arrows and Enter pick; a form value', async () => {
+  const { page: p, messages, events } = await page('combo-box', '<form><combo-box name="fruit" label="Fruit"></combo-box></form>', ['valuechange']);
+  await p.evaluate(() => { document.querySelector('combo-box').items = [{ value: 'apple', label: 'Apple' }, { value: 'banana', label: 'Banana' }, { value: 'blueberry', label: 'Blueberry' }]; });
+  await settle(p);
+  const field = p.getByRole('combobox', { name: 'Fruit' });
+  await field.click();
+  await field.pressSequentially('b');
+  await settle(p);
+  const listbox = p.getByRole('listbox');
+  assert.equal(await listbox.isVisible(), true);
+  assert.deepEqual(await listbox.getByRole('option').allTextContents(), ['Banana', 'Blueberry']);
+  await p.keyboard.press('ArrowDown');
+  await p.keyboard.press('ArrowDown');
+  await p.keyboard.press('Enter');
+  await settle(p);
+  assert.equal(await field.inputValue(), 'Blueberry');
+  assert.deepEqual(await events(), [['valuechange', 'blueberry']]);
+  assert.equal((await formData(p)).fruit, 'blueberry');
   await done(p, messages);
 });

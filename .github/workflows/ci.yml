@@ -84,6 +84,9 @@ jobs:
         working-directory: runtime
       - run: npm run test:browser
         working-directory: runtime
+      # The registry's widgets (3.6) lean on newer platform features (popover, anchor positioning,
+      # <details name>), so they run in every engine.
+      - run: node --test "registry/test/*.test.js"
       - run: npm ci
         working-directory: plugin
       - run: npm ci

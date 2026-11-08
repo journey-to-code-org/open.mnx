@@ -36,6 +36,7 @@ Each step builds on the last, in about ten minutes each.
 - [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms do; render props, framework context and Suspense don't.
 - [Server rendering, honestly](../server-rendering.md): what renders where, without JavaScript, and the gaps that remain.
 - [mnx on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
+- [Accessible widgets without a headless library](accessible-widgets.md): what Radix and shadcn/ui give React, from the platform, `@mnx/runtime/primitives` and Zag.js.
 
 ## Reference
 

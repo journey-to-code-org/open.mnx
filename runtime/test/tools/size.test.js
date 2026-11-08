@@ -22,6 +22,10 @@ const BUDGETS = {
   'src/effect.js': { gzip: 4 * 1024 },
   // `{...spread}`'s binder (3.5), loaded only by components whose template spreads.
   'src/spread.js': { gzip: 1.5 * 1024, external: ['./element.js', './effect.js'] },
+  // rovingFocus and typeahead (3.6), for menus, tab lists and toolbars.
+  'src/primitives.js': { gzip: 1.25 * 1024 },
+  // The Zag adapter (3.6), without Zag itself (an app's dependency, like the machines).
+  'src/zag.js': { gzip: 0.5 * 1024, external: ['./element.js', '@zag-js/vanilla'] },
 };
 
 for (const [entry, budget] of Object.entries(BUDGETS)) {

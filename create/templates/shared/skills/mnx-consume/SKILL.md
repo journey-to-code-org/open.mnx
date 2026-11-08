@@ -31,7 +31,7 @@ A library from `mnx build --lib` has the same per element: `@acme/ui/star-rating
 
 ## What crosses, and what doesn't
 
-Props, events, two-way binding, slots, form participation, refs to the host and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the mnx component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/open.mnx/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives.
+Props, events, two-way binding, slots, form participation, refs to the host and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the mnx component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/open.mnx/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside an mnx component, use the platform, `@mnx/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/open.mnx/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
 
 ## Server rendering in a framework
 

@@ -71,6 +71,10 @@ An mnx component is one `.mnx` file: a `<script>`, a `<style>`, and a template w
 - **Forms**: `form-associated` on the host makes the element a control; a single `:model` prop is its submitted value under its `name`. `validity(() => message)` takes part in validation (`''` is valid). `onFormReset`, `onFormRestore`, `onFormDisabled`.
 - **`<script lang="ts">`** for TypeScript (erasable syntax only). `declare const value: number | null` types a prop whose default doesn't say enough.
 
+## Accessible widgets
+
+There is no Radix here; use, in order: the platform (`<dialog>` with `showModal()`, `popover` + `popovertarget`, CSS anchor positioning, `<details name>`, `<select>`, `<input type=range>`); `rovingFocus(container, { selector, orientation, onMove })` and `typeahead(container, { selector })` from `@mnx/runtime/primitives`, called in `onMount` (each returns its cleanup) for menus, tab lists, toolbars and listboxes; and for combobox, date picker, colour picker or tree view, a Zag.js machine through `@mnx/runtime/zag`: `const machine = useMachine(combobox.machine, () => ({ id: uid, … }))` with `uid = id()` hoisted, `const api = computed(() => combobox.connect(machine.current, normalizeProps))`, then `{...api.getXProps()}` on the elements. Copy the registry's `tab-list`, `dropdown-menu`, `tool-tip`, `accordion-panel` and `combo-box` rather than writing one from scratch.
+
 ## JSX form
 
 A `.mnx.jsx` / `.mnx.tsx` file default-exports a function; same element, same rules: `function StarRating({ value = model(0), max = 5, onValueChange })`, top-level `let` is state, `cond && <X/>` and `list.map(…)` with `key` are the directives, `children` is the default slot, `onValueChange(x)` fires `valuechange`. Prefer `.mnx` unless the project is already JSX.
@@ -81,4 +85,4 @@ The server evaluates the deterministic subset (props, arithmetic, ternaries, tem
 
 ## Reference
 
-The mnx README is the full reference; read a section only when a rule above isn't enough: https://github.com/journey-to-code-org/open.mnx#writing-a-component, `#directives`, `#classes-styles-events-and-references`, `#script-state-and-hooks`, `#events`, `#slots`, `#forms`, `#styles`, `#async-data`, `#server-rendering-and-hydration`. The registry holds twenty tested, accessible components to copy the shape from (`npx mnx add --list`; `registry/components/` in the mnx repository).
+The mnx README is the full reference; read a section only when a rule above isn't enough: https://github.com/journey-to-code-org/open.mnx#writing-a-component, `#directives`, `#classes-styles-events-and-references`, `#script-state-and-hooks`, `#events`, `#slots`, `#forms`, `#styles`, `#async-data`, `#server-rendering-and-hydration`. The registry holds twenty-five tested, accessible components to copy the shape from (`npx mnx add --list`; `registry/components/` in the mnx repository).

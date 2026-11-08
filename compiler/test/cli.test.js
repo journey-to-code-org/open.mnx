@@ -15,12 +15,12 @@ const cli = join(here, '../cli.js');
 const env = { ...process.env, MNX_COMPILER: process.env.MNX_COMPILER ?? join(repo, 'target/debug/mnx') };
 const mnx = (args, cwd) => spawnSync(process.execPath, [cli, ...args], { cwd, env, encoding: 'utf8' });
 
-test('the registry lists 20 components, each with a description, category and files', () => {
+test('the registry lists 25 components, each with a description, category and files', () => {
   const { components } = readRegistry();
-  assert.equal(components.length, 20);
+  assert.equal(components.length, 25);
   for (const component of components) {
     assert.ok(component.description.length > 20, component.name);
-    assert.ok(['input', 'display', 'app'].includes(component.category), component.name);
+    assert.ok(['input', 'display', 'app', 'widget'].includes(component.category), component.name);
     assert.deepEqual(component.files, [`${component.name}.mnx`]);
   }
   const index = spawnSync(process.execPath, [join(repo, 'registry/build-index.mjs'), '--check'], { encoding: 'utf8' });
@@ -47,6 +47,11 @@ test('mnx add copies components in, never over your edits without --force, and s
   assert.match(mnx(['add', '--list'], dir).stdout, /^chat-message +One message/m);
   // Into another directory, through the API.
   assert.deepEqual(add(['star-rating'], { target: join(dir, 'ui') }), [join(dir, 'ui/star-rating.mnx')]);
+  // A component that imports npm packages says which to install.
+  run = mnx(['add', 'combo-box', 'tab-list'], dir);
+  assert.equal(run.status, 0, run.stderr);
+  assert.match(run.stdout, /they import @zag-js\/vanilla, @zag-js\/combobox: npm install @zag-js\/vanilla @zag-js\/combobox/);
+  assert.doesNotMatch(mnx(['add', 'accordion-panel'], dir).stdout, /npm install/);
 });
 
 test('mnx build --lib and mnx check, from the command line', () => {

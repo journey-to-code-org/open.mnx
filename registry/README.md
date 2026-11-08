@@ -1,6 +1,6 @@
 # The mnx component registry
 
-Twenty accessible components, drawn from the example apps, to copy into your project:
+Twenty-five accessible components to copy into your project:
 
 ```sh
 npx mnx add tag-input modal-dialog         # into src/components/ (--dir elsewhere)
@@ -9,15 +9,17 @@ npx mnx add --list
 
 `mnx` comes with `@mnx/compiler`. The files are copied, not installed: they're yours to edit, and `mnx add` never overwrites a file you have (`--force` does).
 
-| Inputs | Display | App pieces |
-|---|---|---|
-| `tag-input`, `date-range`, `money-input`, `star-rating`, `toggle-switch`, `choice-cards`, `color-swatches`, `quantity-stepper`, `segmented-control` | `donut-chart`, `spark-line`, `line-chart`, `progress-ring`, `streak-grid`, `flip-card`, `step-indicator` | `kanban-column`, `chat-message`, `message-composer`, `modal-dialog` |
+| Inputs | Display | App pieces | Widgets |
+|---|---|---|---|
+| `tag-input`, `date-range`, `money-input`, `star-rating`, `toggle-switch`, `choice-cards`, `color-swatches`, `quantity-stepper`, `segmented-control` | `donut-chart`, `spark-line`, `line-chart`, `progress-ring`, `streak-grid`, `flip-card`, `step-indicator` | `kanban-column`, `chat-message`, `message-composer`, `modal-dialog` | `accordion-panel`, `tool-tip`, `tab-list`, `dropdown-menu`, `combo-box` |
+
+The widgets are the pieces Radix and shadcn/ui give React apps, built on the platform (`<details>`, `popover`, anchor positioning) and `@mnx/runtime/primitives`. `combo-box` uses Zag.js through `@mnx/runtime/zag`. It imports `@zag-js/vanilla` and `@zag-js/combobox`, and `mnx add` says to install them (`index.json` lists them under `packages`). [Accessible widgets without a headless library](../docs/guide/accessible-widgets.md) maps the rest.
 
 Each component's comment says what it does, its props, slots and events (`index.json` collects them). The inputs are form controls with a two-way `value` (or `checked`), so `v-model`, React's controlled pattern and Angular's `MnxModel` work with them as they are.
 
 ## Accessibility
 
-Every component is tested in Chromium (`test/components.test.js`) the way assistive technology meets it: found by its role and accessible name, used from the keyboard (radio groups with arrow keys and one tab stop, Space and Enter on switches and toggle buttons, a dialog that moves focus in and back, Escape to close), and checked for the state it announces (`aria-checked`, `aria-pressed`, `aria-current`, `aria-expanded`).
+Every component is tested in Chromium (`test/components.test.js`) the way assistive technology meets it: found by its role and accessible name, used from the keyboard (radio groups, tab lists and menus with arrow keys and one tab stop, typing to jump in a menu, Space and Enter on switches and toggle buttons, a dialog and a menu that move focus in and back, Escape to close), and checked for the state it announces (`aria-checked`, `aria-pressed`, `aria-current`, `aria-expanded`).
 
 ## Theming
 
