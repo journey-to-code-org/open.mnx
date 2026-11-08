@@ -64,3 +64,19 @@ test('every link from the page into the docs lands on a page that was built', ()
     assert.ok(existsSync(join(dir, href.slice(base.length), 'index.html')), `${href} isn't a built docs page`);
   }
 });
+
+test('the brand files are the shapes the page and the docs draw', () => {
+  const brand = (name) => readFileSync(join(repo, 'brand', name), 'utf8');
+  const shapes = (svg) => [...svg.matchAll(/ d="([^"]+)"/g)].map((match) => match[1]);
+  const mark = shapes(brand('zubra-mark.svg'));
+  assert.equal(mark.length, 3);
+  assert.deepEqual(shapes(brand('zubra-mark-on-dark.svg')), mark, 'the on-dark mark has the same shapes');
+  for (const file of ['site/src/_includes/mark.njk', 'docs/site/build.mjs']) {
+    const source = readFileSync(join(repo, file), 'utf8');
+    for (const shape of mark) assert.ok(source.includes(shape), `${file} draws the brand mark`);
+  }
+  const tile = shapes(brand('zubra-tile.svg'));
+  assert.deepEqual(shapes(readFileSync(join(repo, 'site/src/favicon.svg'), 'utf8')), tile, 'the favicon is the tile');
+  assert.ok(existsSync(join(dir, 'favicon.svg')) && existsSync(join(dir, 'apple-touch-icon.png')), 'the build has the favicon and the apple-touch icon');
+  assert.ok(readFileSync(join(repo, 'brand/zubra-tile-512.png')).subarray(1, 4).toString() === 'PNG', 'the 512 px tile is a PNG');
+});

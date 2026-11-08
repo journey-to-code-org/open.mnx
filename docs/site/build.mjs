@@ -67,6 +67,9 @@ export const nav = [
   ] },
 ];
 
+/** The mark (brand/zubra-mark.svg), inline so it takes the page's colours. */
+const mark = '<svg class="mark" viewBox="0 0 96 96" aria-hidden="true" focusable="false"><path fill="currentColor" d="M10 15 a5 5 0 0 1 5 -5 H81 a5 5 0 0 1 5 5 V27 H10 Z"/><path fill="currentColor" d="M10 69 H86 V81 a5 5 0 0 1 -5 5 H15 a5 5 0 0 1 -5 -5 Z"/><path fill="var(--accent)" d="M54 27 H86 L42 69 H10 Z"/></svg>';
+
 /** Where a page lives under <base>docs/: docs/guide/x.md → guide/x/, README.md → reference/ (by `slug`). */
 const slugOf = (page) => page.slug ?? page.file.replace(/^docs\//, '').replace(/\.md$/, '');
 
@@ -154,7 +157,7 @@ ${group.pages.map((entry) => {
 <body>
   <a class="skip" href="#content">Skip to the content</a>
   <header class="top">
-    <a class="brand" href="${base}docs/">Zubra <span>docs</span></a>
+    <a class="brand" href="${base}docs/">${mark}Zubra <span>docs</span></a>
     <nav aria-label="Site">
       <a class="all-pages" href="#docs-nav">All pages</a>
       <a href="${base}playground/">Playground</a>

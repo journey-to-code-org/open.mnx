@@ -13,8 +13,9 @@ a { color: var(--accent); }
 .skip:focus { left: 1rem; top: 1rem; z-index: 10; background: var(--bg); padding: 0.5rem 0.75rem; }
 
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.7rem 1rem; border-bottom: 1px solid var(--line); background: var(--bg); }
-.brand { white-space: nowrap; color: var(--ink); font-weight: 700; font-size: 1.1rem; text-decoration: none; }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; color: var(--ink); font-weight: 700; font-size: 1.1rem; text-decoration: none; }
 .brand span { color: var(--muted); font-weight: 500; }
+.brand .mark { width: 1.5rem; height: 1.5rem; }
 .top nav { display: flex; gap: 1rem; font-size: 0.95rem; }
 .top nav a { white-space: nowrap; text-decoration: none; }
 

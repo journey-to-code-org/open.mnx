@@ -1,3 +1,5 @@
+<p align="center"><img src="brand/zubra-tile.svg" width="96" height="96" alt="Zubra"></p>
+
 # Zubra
 
 Zubra is a compiler for Web Components. You write a component as HTML with `{expr}` bindings and a `<script>`. Zubra turns it into server-rendered HTML and a small custom element that hydrates that HTML. React, Vue and any other framework can then use the element without integration code.

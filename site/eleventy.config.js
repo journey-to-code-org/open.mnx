@@ -23,6 +23,7 @@ export default function (eleventyConfig) {
   eleventyConfig.addFilter('tidy', (code) => code.replace(/[ \t]+$/gm, ''));
   eleventyConfig.addPassthroughCopy({ 'src/assets': 'landing' });
   eleventyConfig.addPassthroughCopy({ 'src/favicon.svg': 'favicon.svg' });
+  eleventyConfig.addPassthroughCopy({ 'src/apple-touch-icon.png': 'apple-touch-icon.png' });
 
   return {
     dir: { input: 'src', output: process.env.OUT ?? '_site', includes: '_includes', data: '_data' },
