@@ -1,6 +1,6 @@
 {
   "name": "@zubra/language-server",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "description": "Language server for .zb components: diagnostics, completion, hover and go to definition",
   "license": "ISC",
   "repository": {
@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "zubra-language-server": "./server.js"
+    "zubra-language-server": "server.js"
   },
   "exports": {
     ".": "./server.js",

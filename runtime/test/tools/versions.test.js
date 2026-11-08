@@ -26,3 +26,13 @@ test('the plugin and the server ask for this release of the compiler and the run
     for (const name of ['@zubra/compiler', '@zubra/runtime']) assert.equal(wanted[name], range, `${path}: ${name}`);
   }
 });
+
+test('command names point at their file without "./", the form npm 11 keeps when publishing', () => {
+  // npm 11 drops a bin written "./cli.js" ("script name … was invalid and removed"), so the
+  // package would install without its command.
+  for (const path of ['compiler', 'create', 'editors/language-server']) {
+    for (const [name, file] of Object.entries(json(`${path}/package.json`).bin)) {
+      assert.doesNotMatch(file, /^\.\//, `${path}: bin ${name}`);
+    }
+  }
+});

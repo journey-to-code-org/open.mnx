@@ -1,6 +1,6 @@
 {
   "name": "create-zubra",
-  "version": "5.0.1",
+  "version": "5.0.2",
   "description": "Start an app with Zubra web components: `npm create zubra`",
   "license": "ISC",
   "repository": {
@@ -10,7 +10,7 @@
   },
   "type": "module",
   "bin": {
-    "create-zubra": "./index.js"
+    "create-zubra": "index.js"
   },
   "files": [
     "index.js",
