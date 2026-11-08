@@ -359,3 +359,50 @@ jobs:
         working-directory: editors/vscode
       - run: npm test
         working-directory: editors/vscode
+
+  skills:
+    name: Skills (examples compile, copies in sync)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build --release --locked
+      - run: node --test skills/test/skills.test.js
+
+  skills-agent:
+    # The skill in use: an agent writes a component from it alone (plan/roadmap-4.0.md, decision 4).
+    # Non-blocking, and only where an API key is set, until it has been stable for three releases.
+    name: Skills (an agent uses them; non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: env.ANTHROPIC_API_KEY == ''
+        run: echo "ANTHROPIC_API_KEY is not set; skipping" && exit 0
+      - if: env.ANTHROPIC_API_KEY != ''
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - if: env.ANTHROPIC_API_KEY != ''
+        uses: Swatinem/rust-cache@v2
+      - if: env.ANTHROPIC_API_KEY != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: env.ANTHROPIC_API_KEY != ''
+        run: cargo build --release --locked
+      - if: env.ANTHROPIC_API_KEY != ''
+        run: npm ci && npx playwright install --with-deps chromium
+        working-directory: runtime
+      - if: env.ANTHROPIC_API_KEY != ''
+        run: npm install -g @anthropic-ai/claude-code
+      - if: env.ANTHROPIC_API_KEY != ''
+        run: MNX_AGENT="claude -p" node --test skills/test/agent.test.js

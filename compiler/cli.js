@@ -6,7 +6,7 @@
 //   mnx add --list
 //   mnx compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
 //   mnx check <file>... [--server]          --server: what a server without JavaScript leaves out
-//   mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]   React → mnx JSX
+//   mnx convert <Component.jsx> [--prefix <word>] [--as jsx|mnx] [--out <file> | --stdout]   React → mnx JSX, or .mnx
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,9 +115,9 @@ function main(argv) {
     const files = add(rest, { target: flags.dir ?? 'src/components', force: flags.force });
     console.log(`mnx: added ${files.join(', ')}. They're yours now: edit them as you like.`);
   } else if (command === 'convert') {
-    if (rest.length !== 1) throw new Error('usage: mnx convert <Component.jsx> [--prefix <word>] [--out <file> | --stdout]');
+    if (rest.length !== 1) throw new Error('usage: mnx convert <Component.jsx> [--prefix <word>] [--as jsx|mnx] [--out <file> | --stdout]');
     const path = resolve(rest[0]);
-    const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix });
+    const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix, as: flags.as });
     if (!response.ok) throw new Error(response.error);
     for (const change of response.changes) process.stderr.write(`${rest[0]}: ${change}\n`);
     if (flags.stdout) process.stdout.write(response.output);

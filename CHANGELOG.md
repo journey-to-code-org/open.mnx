@@ -2,6 +2,22 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.2.0 — 2026-11-07
+
+Usable by agents (`plan/roadmap-4.0.md`, 3.2): the thing the survey said nobody had asked a web-component tool for yet.
+
+### Added
+
+- **Mutating state updates the DOM.** `let items = []` then `items.push(x)`, `items.splice(i, 1)`, `items[0].done = true`, `form.email = "…"`, `delete form.email`: a `let` (or `state()`, or `from()`) holding an array or a plain object holds a reactive proxy, with a `Signal.State` per property, so a write re-runs only what read that property (`runtime/src/deep.js`, about 370 B gzipped). Nested arrays and objects are wrapped as they're read; class instances, `Map`, `Set`, `Date`, DOM nodes and functions aren't. `raw(value)` from `@mnx/runtime` gives the original back. Props aren't wrapped. `mnx-each` reads the list's length and indices, so pushes and splices re-run it and keyed rows keep their elements. The compiler's output is unchanged. (`plan/decisions/deep-reactivity.md`.) The runtime's gzip budgets are 13.5 KB (development) and 13 KB (production), up from 13 / 12.5.
+- **`skills/`**: `mnx-component` (writing one), `mnx-consume` (using one from each framework), `mnx-cli`, `mnx-server`, each written so an agent can do the job from it alone, and **`AGENTS.md`** naming them. `skills/test/skills.test.js` compiles every component example in them and checks the copies; `skills/test/agent.test.js` has an agent write a component from the skill alone and checks it compiles, renders on the server and works in Chromium (run with `MNX_AGENT="claude -p"`; a non-blocking CI job where `ANTHROPIC_API_KEY` is set).
+- **`npm create mnx` writes `AGENTS.md` and `skills/`** into the new project; **`mnx build --lib` writes `skills/using-<package>/SKILL.md`** from the manifest, so a library tells agents its components' props, events, slots and two-way bindings.
+- **`mnx convert`**: `useReducer` becomes a `let` and a `dispatch` that assigns; `createContext` and `useContext` become the runtime's (`inject()`), with `<Context.Provider>`, exported contexts and contexts from other modules reported; a received event prop passed on (`onClose={onClose}`) becomes a call; `--component <Name>` converts one of a file's several exported components (`export function X` or `export { X }`); `--as mnx` writes the HTML-first `.mnx` file, with the script as written and the template's indentation, once nothing is left to finish. `docs/convert-measured.md` runs it over shadcn/ui's 325 components: 0 convert without a hand finish, 323 because of spread props, which is the next thing to build.
+- `--emit interface` includes `required` per prop; `scripts/sync-skills.sh`.
+
+### Examples
+
+- The trail filter and the recipe reviews mutate their lists instead of rebuilding them; the scoreboard counts "a let rebuilt instead of mutated" (0).
+
 ## 3.1.0 — 2026-11-07
 
 Who this is for (`plan/roadmap-4.0.md`, 3.1). The first release whose evidence is what people who don't use web components said, rather than what building the examples took. Nothing in the compiler or runtime changed; the positioning did.

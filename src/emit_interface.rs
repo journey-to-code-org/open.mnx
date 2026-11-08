@@ -118,6 +118,7 @@ pub fn server_interface(component: &ComponentAst) -> Result<String, Diagnostic> 
                 "type": prop_type(prop),
                 "default": prop.default,
                 "model": prop.model,
+                "required": prop.required(),
             })
         })
         .collect();

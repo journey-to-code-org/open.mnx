@@ -59,6 +59,11 @@ test('mnx build --lib and mnx check, from the command line', () => {
   const pkg = JSON.parse(readFileSync(join(dir, 'dist/package.json'), 'utf8'));
   assert.deepEqual([pkg.name, pkg.version, pkg.license], ['@acme/widgets', '0.3.0', 'MIT']);
   assert.ok(existsSync(join(dir, 'dist/react/toggle-switch.d.ts')));
+  // A skill for coding agents, from the manifest: every component, its props, events and slots.
+  const skill = readFileSync(join(dir, 'dist/skills/using-acme-widgets/SKILL.md'), 'utf8');
+  assert.match(skill, /^---\nname: using-acme-widgets\ndescription: Use the @acme\/widgets web components \(<quantity-stepper>, <toggle-switch>\)/);
+  assert.match(skill, /### `<toggle-switch>`[\s\S]*\| `checked` \| `boolean` \| `false` \| two-way: fires `checkedchange` \|/);
+  assert.match(skill, /Import `@acme\/widgets\/quantity-stepper`/);
 
   run = mnx(['check', 'src/components/quantity-stepper.mnx'], dir);
   assert.match(run.stdout, /checked 1 file: no errors/);
@@ -84,7 +89,7 @@ test('mnx convert: a React component becomes an mnx JSX component next to it; wh
   writeFileSync(join(dir, 'Menu.jsx'), "import { useContext } from 'react';\nexport default function UserMenu() {\n  const theme = useContext(Theme);\n  return <nav />;\n}\n");
   run = mnx(['convert', 'Menu.jsx', '--stdout'], dir);
   assert.equal(run.status, 1);
-  assert.match(run.stderr, /`useContext` isn't converted/);
+  assert.match(run.stderr, /`useContext` became `inject\(\)`, but its context comes from elsewhere/);
   assert.match(run.stderr, /1 thing to finish by hand/);
 });
 

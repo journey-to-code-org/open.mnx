@@ -12,6 +12,9 @@
 //! const input = useRef(null); input.current    →   let input = null; input
 //! useEffect(() => …, [])                       →   onMount(() => …)
 //! useEffect(() => …, [count])                  →   onMount(() => effect(() => …))   (it tracks what it reads)
+//! const [s, dispatch] = useReducer(r, init)   →   let s = init; const dispatch = (action) => (s = r(s, action))
+//! const Ctx = createContext(x); useContext(Ctx) →   createContext(x) and inject(Ctx) from @mnx/runtime
+//! <Child onClose={onClose}>                    →   onClose={(event) => onClose(event)} (a received event prop, passed on)
 //! ```
 //!
 //! `onChange` on a text field becomes `onInput` (React's `onChange` fires on every keystroke; the
@@ -69,11 +72,25 @@ const CONVERTED: &[&str] = &[
     "useRef",
     "useEffect",
     "useLayoutEffect",
+    "useReducer",
+    "useContext",
+    "createContext",
 ];
 
 /// Convert the React component in `source` (`path` gives the dialect: .jsx, .tsx, .js, .ts).
 /// `prefix` names a one-word component (`Counter` with prefix `app` → `<app-counter>`).
 pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Conversion, Diagnostic> {
+    convert_component(source, path, prefix, None)
+}
+
+/// As [`convert`], converting the exported component named `component` when a file exports
+/// several (`mnx convert Menu.tsx --component MenuItem`).
+pub fn convert_component(
+    source: &str,
+    path: &str,
+    prefix: Option<&str>,
+    component: Option<&str>,
+) -> Result<Conversion, Diagnostic> {
     let typescript = path.ends_with(".tsx") || path.ends_with(".ts");
     let source_type = if typescript {
         SourceType::tsx()
@@ -133,7 +150,18 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
     // Otherwise the file's one exported component (`export function CardEditor`), which becomes
     // the default export.
     if function.is_none() {
-        let named: Vec<_> = parsed
+        // `export function X` and `function X … export { X }`: (where `export` goes, the function).
+        let mut exported_names: Vec<String> = Vec::new();
+        let mut specifier_exports: Vec<(u32, u32)> = Vec::new();
+        for statement in &parsed.program.body {
+            if let Statement::ExportNamedDeclaration(export) = statement {
+                specifier_exports.push((export.span.start, export.span.end));
+                for specifier in &export.specifiers {
+                    exported_names.push(specifier.local.name().to_string());
+                }
+            }
+        }
+        let named: Vec<(u32, &oxc_ast::ast::Function<'_>, bool)> = parsed
             .program
             .body
             .iter()
@@ -145,18 +173,92 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
                             .as_ref()
                             .is_some_and(|id| id.name.starts_with(char::is_uppercase)) =>
                     {
-                        Some((export.span.start, &**declaration))
+                        Some((export.span.start, &**declaration, false))
                     }
                     _ => None,
                 },
+                Statement::FunctionDeclaration(declaration)
+                    if declaration.id.as_ref().is_some_and(|id| {
+                        id.name.starts_with(char::is_uppercase)
+                            && exported_names.iter().any(|name| name == id.name.as_str())
+                    }) =>
+                {
+                    Some((declaration.span.start, &**declaration, true))
+                }
                 _ => None,
             })
             .collect();
-        if let [(export, declaration)] = named.as_slice() {
-            work.edit(*export, *export + "export".len() as u32, "export default");
-            work.changes
-                .push("made the component the file's default export".to_owned());
-            function = Some(*declaration);
+        let make_default = |work: &mut Work<'_>, at: u32, via_specifier: bool| {
+            if via_specifier {
+                work.edit(at, at, "export default ");
+            } else {
+                work.edit(at, at + "export".len() as u32, "export default");
+            }
+        };
+        let names = |several: &[(u32, &oxc_ast::ast::Function<'_>, bool)]| {
+            several
+                .iter()
+                .filter_map(|(_, declaration, _)| {
+                    declaration.id.as_ref().map(|id| format!("`{}`", id.name))
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        match (named.as_slice(), component) {
+            ([(export, declaration, via_specifier)], None) => {
+                make_default(&mut work, *export, *via_specifier);
+                for (start, end) in &specifier_exports {
+                    work.remove(*start, *end);
+                }
+                work.changes
+                    .push("made the component the file's default export".to_owned());
+                function = Some(*declaration);
+            }
+            (several, Some(wanted)) if !several.is_empty() => {
+                match several.iter().find(|(_, declaration, _)| {
+                    declaration.id.as_ref().is_some_and(|id| id.name == wanted)
+                }) {
+                    Some((export, declaration, via_specifier)) => {
+                        make_default(&mut work, *export, *via_specifier);
+                        // The other components leave with the file; what they used stays and
+                        // is reported by the compile check if the chosen one needs it.
+                        for (other, declaration, _) in several {
+                            if other != export {
+                                work.remove(*other, declaration.span.end);
+                            }
+                        }
+                        for (start, end) in &specifier_exports {
+                            work.remove(*start, *end);
+                        }
+                        work.changes.push(format!(
+                            "converted `{wanted}` of the {} components this file exports; the others are left out of the result",
+                            several.len()
+                        ));
+                        function = Some(*declaration);
+                    }
+                    None => {
+                        return Err(Diagnostic::new(
+                            Span::new(1, 1),
+                            format!("no exported component named `{wanted}` in this file"),
+                        )
+                        .with_help(format!("it exports {}", names(several))));
+                    }
+                }
+            }
+            (several, None) if several.len() > 1 => {
+                return Err(Diagnostic::new(
+                    Span::new(1, 1),
+                    format!(
+                        "this file exports {} components; `mnx convert` converts one at a time",
+                        several.len()
+                    ),
+                )
+                .with_help(format!(
+                    "pass `--component <Name>`, one of {}",
+                    names(several)
+                )));
+            }
+            _ => {}
         }
     }
     let Some(function) = function else {
@@ -198,8 +300,31 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
     };
     let tag = kebab(&name);
 
-    // Props must be destructured: their names are the props.
+    // Props must be destructured: their names are the props. The `on<Name>` ones are events,
+    // which the component may only call; passing one on (`onClose={onClose}`) becomes a call.
+    let mut callbacks: HashSet<SymbolId> = HashSet::new();
     if let Some(parameter) = function.params.items.first() {
+        if let BindingPattern::ObjectPattern(pattern) = &parameter.pattern {
+            for property in &pattern.properties {
+                let binding = match &property.value {
+                    BindingPattern::BindingIdentifier(identifier) => Some(identifier),
+                    BindingPattern::AssignmentPattern(assignment) => match &assignment.left {
+                        BindingPattern::BindingIdentifier(identifier) => Some(identifier),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(binding) = binding {
+                    let name = binding.name.as_str();
+                    if name.len() > 2
+                        && name.starts_with("on")
+                        && name[2..].starts_with(char::is_uppercase)
+                    {
+                        callbacks.insert(binding.symbol_id());
+                    }
+                }
+            }
+        }
         if let BindingPattern::BindingIdentifier(identifier) = &parameter.pattern {
             work.unsupported(
                 identifier.span.start,
@@ -257,6 +382,46 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
         }
     };
 
+    // `const Ctx = createContext(x)` at module level: the runtime's `createContext`, so
+    // `inject(Ctx)` (from `useContext`) and `provide(Ctx, v)` elsewhere share it.
+    let mut contexts: HashSet<SymbolId> = HashSet::new();
+    for statement in &parsed.program.body {
+        let (declaration, exported) = match statement {
+            Statement::VariableDeclaration(declaration) => (&**declaration, false),
+            Statement::ExportDeclaration(export) => match &export.declaration {
+                oxc_ast::ast::Declaration::VariableDeclaration(declaration) => {
+                    (&**declaration, true)
+                }
+                _ => continue,
+            },
+            _ => continue,
+        };
+        for declarator in &declaration.declarations {
+            let Some(Expression::CallExpression(call)) = &declarator.init else {
+                continue;
+            };
+            if hook_of(&call.callee).as_deref() != Some("createContext") {
+                continue;
+            }
+            let callee = call.callee.span();
+            work.edit(callee.start, callee.end, "createContext");
+            work.used.insert("createContext");
+            if exported {
+                // A JSX component file exports only its component.
+                work.unsupported(
+                    statement.span().start,
+                    "an exported context can't stay in a component file",
+                    "move `createContext` (from @mnx/runtime) to its own module and import the context here and in the providers",
+                );
+                continue;
+            }
+            if let BindingPattern::BindingIdentifier(binding) = &declarator.id {
+                contexts.insert(binding.symbol_id());
+            }
+            work.changes.push("`createContext` is the runtime's (the Context Protocol): `inject()` reads it, and a parent calls `provide(context, value)`".to_owned());
+        }
+    }
+
     // The body's top-level statements: where hooks are called.
     let mut setters: HashMap<SymbolId, String> = HashMap::new();
     let mut refs: HashSet<SymbolId> = HashSet::new();
@@ -267,6 +432,13 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
             match statement {
                 Statement::VariableDeclaration(declaration) => {
                     convert_declaration(declaration, &hook_of, &mut work, &mut setters, &mut refs);
+                    convert_context_and_reducer(
+                        declaration,
+                        &hook_of,
+                        scoping,
+                        &contexts,
+                        &mut work,
+                    );
                     record_inits(declaration, &hook_of, &mut inits);
                 }
                 Statement::ExpressionStatement(expression) => {
@@ -382,8 +554,14 @@ pub fn convert(source: &str, path: &str, prefix: Option<&str>) -> Result<Convers
         }
     }
 
-    // JSX: `onChange` on text fields, and what has no mnx equivalent.
-    let mut jsx = Jsx { work: &mut work };
+    // JSX: `onChange` on text fields, a received event prop passed on, and what has no mnx
+    // equivalent.
+    let mut jsx = Jsx {
+        work: &mut work,
+        scoping,
+        callbacks: &callbacks,
+        contexts: &contexts,
+    };
     jsx.visit_program(&parsed.program);
 
     // Imports: the converted hooks leave `react`; what's used comes from @mnx/runtime, in its
@@ -640,6 +818,7 @@ fn convert_declaration<'a>(
                         .to_owned(),
                 );
             }
+            "useContext" | "useReducer" | "createContext" => {} // convert_context_and_reducer
             "useRef" => {
                 let BindingPattern::BindingIdentifier(binding) = &declarator.id else {
                     continue;
@@ -658,6 +837,116 @@ fn convert_declaration<'a>(
                     "effects don't return values",
                 );
             }
+        }
+    }
+}
+
+/// `const v = useContext(Ctx)` → `inject(Ctx)`; `const [s, dispatch] = useReducer(r, init)` →
+/// `let s = init` and a `dispatch` that assigns.
+fn convert_context_and_reducer<'a>(
+    declaration: &VariableDeclaration<'a>,
+    hook_of: &dyn Fn(&Expression<'a>) -> Option<String>,
+    scoping: &oxc_semantic::Scoping,
+    contexts: &HashSet<SymbolId>,
+    work: &mut Work<'_>,
+) {
+    for declarator in &declaration.declarations {
+        let Some(Expression::CallExpression(call)) = &declarator.init else {
+            continue;
+        };
+        let Some(hook) = hook_of(&call.callee) else {
+            continue;
+        };
+        if declaration.declarations.len() > 1 {
+            continue; // reported by convert_declaration
+        }
+        let keyword = declaration.span.start;
+        let keyword_end = keyword + declaration.kind.as_str().len() as u32;
+        match hook.as_str() {
+            "useContext" => {
+                let callee = call.callee.span();
+                work.edit(callee.start, callee.end, "inject");
+                work.used.insert("inject");
+                let created_here = match call.arguments.first() {
+                    Some(Argument::Identifier(identifier)) => scoping
+                        .get_reference(identifier.reference_id())
+                        .symbol_id()
+                        .is_some_and(|symbol| contexts.contains(&symbol)),
+                    _ => false,
+                };
+                if created_here {
+                    work.changes.push("`useContext` became `inject()`: a signal that follows the nearest `provide()` above the element".to_owned());
+                } else {
+                    work.unsupported(
+                        call.span.start,
+                        "`useContext` became `inject()`, but its context comes from elsewhere",
+                        "create that context with `createContext` from @mnx/runtime where it's exported, and have the providing component call `provide(context, value)`",
+                    );
+                }
+            }
+            "useReducer" => {
+                let BindingPattern::ArrayPattern(pattern) = &declarator.id else {
+                    work.unsupported(
+                        declarator.span.start,
+                        "`useReducer` not destructured into `[state, dispatch]` isn't converted",
+                        "write `const [state, dispatch] = useReducer(reducer, initial)`",
+                    );
+                    continue;
+                };
+                let (Some(Some(BindingPattern::BindingIdentifier(state))), dispatch) = (
+                    pattern.elements.first().map(|element| element.as_ref()),
+                    pattern
+                        .elements
+                        .get(1)
+                        .and_then(|element| match element.as_ref() {
+                            Some(BindingPattern::BindingIdentifier(dispatch)) => {
+                                Some(dispatch.name.as_str())
+                            }
+                            _ => None,
+                        }),
+                ) else {
+                    continue;
+                };
+                let arguments = call.arguments.as_slice();
+                let (Some(reducer), Some(initial)) = (arguments.first(), arguments.get(1)) else {
+                    work.unsupported(
+                        call.span.start,
+                        "`useReducer` without an initial state isn't converted",
+                        "pass the initial state as the second argument",
+                    );
+                    continue;
+                };
+                let reducer_text = work.source
+                    [reducer.span().start as usize..reducer.span().end as usize]
+                    .to_owned();
+                let initial_text = work.source
+                    [initial.span().start as usize..initial.span().end as usize]
+                    .to_owned();
+                // `useReducer(r, arg, init)`: the state starts as `init(arg)`.
+                let start = match arguments.get(2) {
+                    Some(init) => format!(
+                        "({})({initial_text})",
+                        &work.source[init.span().start as usize..init.span().end as usize]
+                    ),
+                    None => initial_text,
+                };
+                work.edit(keyword, keyword_end, "let");
+                work.edit(pattern.span.start, pattern.span.end, &state.name);
+                work.edit(call.span.start, call.span.end, &start);
+                if let Some(dispatch) = dispatch {
+                    let end = declaration.span.end;
+                    work.edit(
+                        end,
+                        end,
+                        &format!(
+                            "\n  const {dispatch} = (action) => ({} = {reducer_text}({}, action));",
+                            state.name, state.name
+                        ),
+                    );
+                }
+                work.changes.push("`useReducer` became a `let` and a `dispatch` that assigns the reducer's result".to_owned());
+            }
+            _ => {}
         }
     }
 }
@@ -861,6 +1150,11 @@ impl<'a> Visit<'a> for Leftovers<'_, 'a> {
 
 struct Jsx<'w, 's> {
     work: &'w mut Work<'s>,
+    scoping: &'s oxc_semantic::Scoping,
+    /// The component's `on<Name>` props.
+    callbacks: &'w HashSet<SymbolId>,
+    /// Contexts created in this file (`<Ctx.Provider>` can't be converted; `provide()` can).
+    contexts: &'w HashSet<SymbolId>,
 }
 
 impl<'a> Visit<'a> for Jsx<'_, '_> {
@@ -868,6 +1162,31 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
         let tag = match &element.name {
             JSXElementName::Identifier(identifier) => Some(identifier.name.as_str()),
             JSXElementName::IdentifierReference(identifier) => Some(identifier.name.as_str()),
+            JSXElementName::MemberExpression(member) => {
+                // `<Ctx.Provider value={…}>`: providing is a call in mnx, not an element.
+                if member.property.name == "Provider" {
+                    let created_here = match &member.object {
+                        oxc_ast::ast::JSXMemberExpressionObject::IdentifierReference(
+                            identifier,
+                        ) => self
+                            .scoping
+                            .get_reference(identifier.reference_id())
+                            .symbol_id()
+                            .is_some_and(|symbol| self.contexts.contains(&symbol)),
+                        _ => false,
+                    };
+                    self.work.unsupported(
+                        element.span.start,
+                        "`<Context.Provider>` isn't converted",
+                        if created_here {
+                            "call `provide(Context, value)` from @mnx/runtime in the script, and render the children directly; `inject(Context)` in a descendant follows it"
+                        } else {
+                            "create the context with `createContext` from @mnx/runtime, call `provide(Context, value)` in the script, and render the children directly"
+                        },
+                    );
+                }
+                None
+            }
             _ => None,
         };
         let text_field = match tag {
@@ -893,6 +1212,37 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
                     let JSXAttributeName::Identifier(name) = &attribute.name else {
                         continue;
                     };
+                    // `onClose={onClose}` with a received event prop: an mnx event prop can only
+                    // be called, so pass it on as a call.
+                    if let Some(oxc_ast::ast::JSXAttributeValue::ExpressionContainer(container)) =
+                        &attribute.value
+                    {
+                        if let Some(Expression::Identifier(identifier)) =
+                            container.expression.as_expression()
+                        {
+                            let callback = self
+                                .scoping
+                                .get_reference(identifier.reference_id())
+                                .symbol_id()
+                                .is_some_and(|symbol| self.callbacks.contains(&symbol));
+                            if callback && name.name.starts_with("on") {
+                                let span = identifier.span;
+                                self.work.edit(
+                                    span.start,
+                                    span.end,
+                                    &format!("(event) => {}(event)", identifier.name),
+                                );
+                                if !self
+                                    .work
+                                    .changes
+                                    .iter()
+                                    .any(|change| change.starts_with("a received event prop"))
+                                {
+                                    self.work.changes.push("a received event prop passed on (`onClose={onClose}`) became a call, since an event prop fires the event".to_owned());
+                                }
+                            }
+                        }
+                    }
                     if name.name == "onDoubleClick" {
                         // React's name for the DOM's `dblclick`.
                         self.work.edit(name.span.start, name.span.end, "onDblClick");

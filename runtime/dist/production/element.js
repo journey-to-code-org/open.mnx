@@ -1177,6 +1177,9 @@ function bindEach(part, open, hydrating, context) {
       if (list != null) console.error('mnx: mnx-each items must be an array; got', list);
       list = [];
     }
+    // Reactive state (deep.js) tracks by property: reading the length and each index here means
+    // `items.push(x)`, `items.splice(…)` and `items[i] = x` re-run this effect.
+    for (let index = 0, { length } = list; index < length; index++) list[index];
     const hydrate = first;
     first = false;
     untrack(() => {

@@ -30,7 +30,7 @@ mod validate;
 
 pub use components::component_extension;
 pub use components::{filesystem, Loader};
-pub use convert::{convert, Conversion};
+pub use convert::{convert, convert_component, Conversion};
 /// `mnx migrate --to 3`: wrap 2.x code's bare uses of a signal `const` in `signal(…)`.
 pub fn prepare_for_3(source: &str) -> (String, usize) {
     future::prepare(source)
@@ -82,6 +82,31 @@ fn front<T>(
     let path = path.unwrap_or("component.mnx.tsx");
     let lowered = jsx::lower(source, path, loader)?;
     compile(&lowered.text).map_err(|diagnostic| jsx::remap(diagnostic, Some((source, &lowered))))
+}
+
+/// A JSX component as `.mnx` text: the same lowering the compiler runs before compiling one.
+/// (`mnx convert --as mnx` writes it as the converted file.)
+pub fn lower_jsx(source: &str, path: &str) -> Result<String, Diagnostic> {
+    jsx::lower_readable(source, path)
+}
+
+/// `mnx convert --as mnx`: the conversion's JSX component as a readable `.mnx` file. The
+/// conversion's `output` and `file_name` are replaced, or, when the JSX can't be lowered yet
+/// (something is still to finish by hand), a diagnostic says so and the JSX stays.
+pub fn convert_as_mnx(conversion: &mut convert::Conversion) -> Option<Diagnostic> {
+    match jsx::lower_readable(&conversion.output, &conversion.file_name) {
+        Ok(text) => {
+            conversion.output = text;
+            conversion.file_name = format!("{}.mnx", conversion.tag);
+            conversion
+                .changes
+                .push("written as an .mnx file (HTML-first)".to_owned());
+            None
+        }
+        Err(error) => Some(error.with_help(
+            "finish the JSX component first; `--as mnx` writes the .mnx file once it compiles",
+        )),
+    }
 }
 
 fn read(path: &str) -> Result<String, Diagnostic> {

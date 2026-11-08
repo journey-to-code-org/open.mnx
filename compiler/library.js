@@ -10,6 +10,7 @@
 //   index.js, index.d.ts          every element, by its class name
 //   react/…, vue/…                each element as a React or Vue component, typed
 //   custom-elements.json          the Custom Elements Manifest (Storybook, IDEs, docs tools)
+//   skills/using-<name>/SKILL.md  how to use the components, for coding agents, from the manifest
 //   package.json                  exports for all of the above
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -77,7 +78,8 @@ export function buildLibrary(dir, options = {}) {
     const tag = declaration.tagName;
     const name = declaration.name ?? pascal(tag);
     modules.push(...manifest.modules);
-    components.push({ tag, name, module });
+    const face = JSON.parse(compile(path, { emit: 'interface' }).output);
+    components.push({ tag, name, module, declaration, interface: face });
 
     // The element, also exported by its class name (as its typings declare).
     write(`${module}.js`, `${js.output.replace(/^export default \$define\(/m, 'const $element = $define(')}
@@ -144,6 +146,72 @@ export default wrap(Element);
     peerDependenciesMeta: { react: { optional: true }, vue: { optional: true } },
   };
   write('package.json', JSON.stringify(pkg, null, 2) + '\n');
-  return { components, warnings };
+  // A skill for coding agents: how to use this library's components, from the manifest, so an
+  // agent needn't read the modules to learn the props, events and slots.
+  write(`skills/${skillName(pkg.name)}/SKILL.md`, skill(pkg.name, components));
+  return { components: components.map(({ tag, name, module }) => ({ tag, name, module })), warnings };
   }
+}
+
+const skillName = (name) => `using-${name.replace(/^@/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}`;
+
+/** The library's skill: one section per component, from its manifest declaration and interface. */
+function skill(name, components) {
+  const code = (text) => `\`${text}\``;
+  const sections = components.map(({ tag, name: className, module, declaration, interface: face }) => {
+    const props = face.props ?? [];
+    const events = declaration.events ?? [];
+    const slots = (declaration.slots ?? []).map((slot) => slot.name || 'default');
+    const model = props.filter((prop) => prop.model).map((prop) => prop.name);
+    const lines = [`### ${code(`<${tag}>`)}`, ''];
+    if (declaration.description) lines.push(declaration.description.replace(/\s*\n\s*/g, ' '), '');
+    lines.push(`Import ${code(`${name}/${module}`)} (the element, also exported as ${code(className)}), ${code(`${name}/react/${module}`)} (a React component) or ${code(`${name}/vue/${module}`)} (a Vue component).`, '');
+    if (props.length) {
+      lines.push('| Prop | Type | Default | |', '|---|---|---|---|');
+      for (const prop of props) {
+        const note = [prop.required ? 'required' : '', prop.model ? `two-way: fires ${code(`${prop.name}change`)}` : ''].filter(Boolean).join('; ');
+        lines.push(`| ${code(prop.name)} | ${code(prop.type ?? 'unknown')} | ${prop.required ? '' : code(JSON.stringify(prop.default))} | ${note} |`);
+      }
+      lines.push('');
+    }
+    if (events.length) {
+      lines.push('Events (bubbling `CustomEvent`s, data in `detail`):', '');
+      for (const event of events) lines.push(`- ${code(event.name)} (${code(event.type?.text ?? 'CustomEvent')})${event.description ? `: ${event.description.replace(/\s*\n\s*/g, ' ')}` : ''}`);
+      lines.push('');
+    }
+    if (slots.length) lines.push(`Slots: ${slots.map((slot) => code(slot)).join(', ')}.`, '');
+    if (face.form) lines.push('A form control: give it a `name` and it submits with the form, validates, and resets.', '');
+    if (model.length) lines.push(`Two-way binding: ${model.map((prop) => `${code(prop)} with ${code(`${prop}change`)}`).join(', ')} (Vue ${code('v-model')}, Svelte ${code('bind:')}, React controlled, Angular ${code('mnxModel')}).`, '');
+    return lines.join('\n');
+  });
+  return `---
+name: ${skillName(name)}
+description: Use the ${name} web components (${components.map((c) => `<${c.tag}>`).join(', ')}) from React, Vue, Svelte, Solid, Angular, plain HTML or a server-rendered page. Covers each component's props, events, slots and two-way binding.
+---
+
+${name} is a library of mnx web components. Each is a standard custom element: **properties in, DOM events out, children as slots.** It works in every framework without integration code, and ${code(`${name}/react`)} and ${code(`${name}/vue`)} export ready-made wrappers.
+
+## Steps
+
+1. Import the component the way the app's framework reads imports: React and Vue apps import from ${code(`${name}/react`)} or ${code(`${name}/vue`)} (or the per-component path); everything else imports ${code(`${name}/<component>`)}, which defines the element, and writes the tag.
+2. Pass objects and arrays as properties (every framework binding does; in raw HTML, JSON in the attribute). Listen for the event names below, lowercase, with ${code('event.detail')}.
+3. Done when the component renders, a typo'd prop is a type error (typings ship with the package), and the handler receives ${code('detail')}.
+
+| Framework | Props | Events | Two-way |
+|---|---|---|---|
+| React | ${code('<Tag value={v} items={list} />')} | ${code('onValueChange={(e) => e.detail}')} | ${code('value')} + ${code('onValueChange')} |
+| Vue | ${code(':items="list"')} | ${code('@valuechange="…"')} | ${code('v-model')} / ${code('v-model:prop')} |
+| Svelte | ${code('{value} items={list}')} | ${code('onvaluechange={…}')} | ${code('bind:value')} |
+| Solid | ${code('prop:items={list}')} | ${code('on:valuechange={…}')} | ${code('prop:value')} + ${code('on:valuechange')} |
+| Angular (${code('CUSTOM_ELEMENTS_SCHEMA')}) | ${code('[items]="list"')} | ${code('(valuechange)="…"')} | ${code('mnxModel [(ngModel)]')} from ${code('@mnx/runtime/angular')} |
+| Plain HTML | ${code('el.items = list')} or a JSON attribute | ${code("addEventListener('valuechange', …)")} | the pair by hand |
+
+Server rendering: the elements hydrate server HTML in place; inside Nuxt, SvelteKit, React Router, SolidStart or Next.js, use ${code('@mnx/server')}'s ${code('injectShadowRoots()')} (see https://github.com/journey-to-code-org/open.mnx/blob/main/docs/server-rendering.md).
+
+## Components
+
+${sections.join('\n\n')}
+
+The full manifest is ${code('custom-elements.json')} in this package.
+`;
 }

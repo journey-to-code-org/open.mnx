@@ -41,7 +41,7 @@ fn the_interface_says_what_a_server_needs_to_read_a_host_back() {
     assert_eq!(json["form"], true);
     assert_eq!(
         json["props"][0],
-        serde_json::json!({ "name": "value", "attribute": "value", "type": "number", "default": 1, "model": true })
+        serde_json::json!({ "name": "value", "attribute": "value", "type": "number", "default": 1, "model": true, "required": false })
     );
     assert_eq!(json["props"][2]["default"], serde_json::json!([]));
     assert_eq!(json["events"], serde_json::json!(["valuechange"]));

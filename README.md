@@ -551,6 +551,8 @@ export const Default = { args: { value: 2, max: 5 } };
 ```sh
 mnx convert src/TodoItem.jsx              # or npx mnx convert, from @mnx/compiler
 mnx convert src/Counter.jsx --prefix app  # one-word names need a prefix: <app-counter>
+mnx convert src/Menu.jsx --component MenuItem   # one of several exported components
+mnx convert src/TodoItem.jsx --as mnx     # the HTML-first .mnx file instead of JSX (once nothing is left to finish)
 ```
 
 The body of an mnx component runs once per element, so the hooks become what they stand for:
@@ -562,12 +564,17 @@ The body of an mnx component runs once per element, so the hooks become what the
 | `useRef(null)` and `ref.current` | `let ref = null` and `ref` |
 | `useEffect(fn, [])` | `onMount(fn)` |
 | `useEffect(fn, deps)` | `onMount(() => effect(fn))`: after the DOM updates, re-run when what it reads changes |
+| `const [s, dispatch] = useReducer(r, init)` | `let s = init` and `const dispatch = (action) => (s = r(s, action))` |
+| `createContext(x)`, `useContext(Ctx)` | the runtime's `createContext` and `inject(Ctx)` (the Context Protocol); a `<Ctx.Provider>` is reported: the parent calls `provide(Ctx, value)` |
+| `<Child onClose={onClose}>` (a received event prop, passed on) | `onClose={(event) => onClose(event)}`, since an event prop fires the event |
 | `onChange` on a text field, `onDoubleClick` | `onInput`, `onDblClick` (the DOM's events) |
 
 Preact's hooks (`preact/hooks`) convert the same way. Comments and formatting are kept, since only what changes is rewritten. What it can't convert, it reports, with advice, and it exits with status 1:
-- other hooks (`useContext`, `useReducer`, custom hooks);
+- custom hooks, a context created in another module, an exported context (a component file exports only its component), `<Context.Provider>`;
 - props taken as one object rather than destructured;
 - spread attributes and `dangerouslySetInnerHTML`.
+
+`docs/convert-measured.md` runs it over shadcn/ui's 325 components: spread props block nearly all of them, which is the next thing to build.
 
 The result is compiled as part of the conversion, and a compile error is shown at its place in the output. With `--out` in another folder, relative imports are adjusted to it.
 

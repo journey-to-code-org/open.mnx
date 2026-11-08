@@ -134,8 +134,7 @@ export default function UserMenu(props) {
         report,
         [
             "4:34 props as one object (`props`) aren't converted",
-            "5:17 `useContext` isn't converted",
-            "6:29 `useReducer` isn't converted",
+            "5:17 `useContext` became `inject()`, but its context comes from elsewhere",
             "8:15 spread attributes aren't converted",
             "8:31 `dangerouslySetInnerHTML` isn't converted",
         ]
@@ -145,7 +144,14 @@ export default function UserMenu(props) {
     assert!(
         conversion
             .output
-            .starts_with("import { useContext, useReducer } from 'react';"),
+            .starts_with("import { inject } from '@mnx/runtime';"),
+        "{}",
+        conversion.output
+    );
+    assert!(
+        conversion.output.contains(
+            "let state = {};\n  const dispatch = (action) => (state = reduce(state, action));"
+        ),
         "{}",
         conversion.output
     );
@@ -163,4 +169,122 @@ fn no_component_is_an_error() {
         "{}",
         error.message
     );
+}
+
+#[test]
+fn context_reducer_and_passed_on_callbacks_are_converted() {
+    let source = r#"import React, { useReducer, useContext, createContext } from 'react';
+import Dialog from './dialog.mnx';
+
+const Theme = createContext('light');
+
+function reducer(state, action) {
+  return action.type === 'add' ? { count: state.count + action.by } : state;
+}
+
+/** Counts. */
+export default function ThemedCounter({ step = 1, onClose, onCountChange }) {
+  const theme = useContext(Theme);
+  const [state, dispatch] = useReducer(reducer, { count: 0 }, (initial) => initial);
+  function add() {
+    dispatch({ type: 'add', by: step });
+    onCountChange(state.count);
+  }
+  return (
+    <div className={theme}>
+      <button onClick={add}>+{step}</button>
+      <Dialog onClose={onClose} onOpen={onClose} />
+    </div>
+  );
+}
+"#;
+    let conversion = convert(source, "ThemedCounter.jsx", None).unwrap();
+    assert!(
+        conversion.unsupported.is_empty(),
+        "{:?}",
+        conversion.unsupported
+    );
+    let output = &conversion.output;
+    assert!(
+        output.starts_with("import { createContext, inject } from '@mnx/runtime';"),
+        "{output}"
+    );
+    assert!(
+        output.contains("const Theme = createContext('light');"),
+        "{output}"
+    );
+    assert!(output.contains("const theme = inject(Theme);"), "{output}");
+    assert!(
+        output.contains("let state = ((initial) => initial)({ count: 0 });\n  const dispatch = (action) => (state = reducer(state, action));"),
+        "{output}"
+    );
+    assert!(
+        output.contains(
+            "<Dialog onClose={(event) => onClose(event)} onOpen={(event) => onClose(event)} />"
+        ),
+        "{output}"
+    );
+    // The compile check needs the child's file; that is the only thing reported.
+    assert!(
+        conversion
+            .compile_error
+            .as_ref()
+            .is_some_and(|error| error.message.contains("./dialog.mnx")),
+        "{:?}",
+        conversion.compile_error
+    );
+}
+
+#[test]
+fn exported_context_and_providers_are_reported() {
+    let source = r#"import { createContext } from 'react';
+export const Theme = createContext('light');
+export default function ThemeRoot({ children }) {
+  return <Theme.Provider value="dark">{children}</Theme.Provider>;
+}
+"#;
+    let conversion = convert(source, "ThemeRoot.jsx", None).unwrap();
+    let messages: Vec<&str> = conversion
+        .unsupported
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "an exported context can't stay in a component file",
+            "`<Context.Provider>` isn't converted"
+        ]
+    );
+}
+
+#[test]
+fn as_mnx_writes_a_readable_html_first_file() {
+    let source = r#"import { useState, useEffect } from 'react';
+
+/** A toggle button. */
+export default function AppToggle({ label = 'On', onToggle }) {
+  const [on, setOn] = useState(false);
+  const text = on ? `${label}: yes` : `${label}: no`;
+  useEffect(() => { document.title = text; }, [text]);
+  return (
+    <div className="toggle">
+      <button aria-pressed={on} onClick={() => { setOn(!on); onToggle(!on); }}>
+        {text}
+      </button>
+      {on && <em>lit</em>}
+    </div>
+  );
+}
+"#;
+    let mut conversion = convert(source, "Toggle.jsx", None).unwrap();
+    assert!(conversion.unsupported.is_empty() && conversion.compile_error.is_none());
+    assert!(mnx_compiler::convert_as_mnx(&mut conversion).is_none());
+    assert_eq!(conversion.file_name, "app-toggle.mnx");
+    assert_eq!(
+        conversion.output,
+        "<!--\nA toggle button.\n-->\n<script>\nimport { emit } from '@mnx/runtime';\nimport { effect, onMount } from '@mnx/runtime';\nlet on = false;\nconst text = on ? `${label}: yes` : `${label}: no`;\nonMount(() => effect(() => { document.title = text; }));\n</script>\n<app-toggle label={'On'}>\n  <div class=\"toggle\">\n    <button aria-pressed={on} onclick={() => { on = !on; emit(\"toggle\", !on); }}>\n      {text}\n    </button>\n    <mnx-if test={on}><em>lit</em></mnx-if>\n  </div>\n</app-toggle>\n"
+    );
+    // And it compiles as an .mnx file.
+    mnx_compiler::compile_js(&conversion.output, "@mnx/runtime", "app-toggle.mnx").unwrap();
 }

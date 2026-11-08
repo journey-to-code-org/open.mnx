@@ -136,8 +136,21 @@ pub fn rewrite_statement(
     statement: &Statement<'_>,
     derived: &dyn Fn(&BindingPattern<'_>) -> bool,
 ) -> Result<Vec<Edit>, Diagnostic> {
+    rewrite_statement_with(names, statement, derived, true)
+}
+
+/// As [`rewrite_statement`]; with `declarations` false, `let` and derived `const`s are left as
+/// written and only the names are rewritten (readable JSX lowering).
+pub fn rewrite_statement_with(
+    names: &impl Names,
+    statement: &Statement<'_>,
+    derived: &dyn Fn(&BindingPattern<'_>) -> bool,
+    declarations: bool,
+) -> Result<Vec<Edit>, Diagnostic> {
     let mut rewriter = Rewriter::new(names);
-    if let Statement::VariableDeclaration(declaration) = statement {
+    if !declarations {
+        rewriter.visit_statement(statement);
+    } else if let Statement::VariableDeclaration(declaration) = statement {
         let start = declaration.span.start as usize;
         match declaration.kind {
             VariableDeclarationKind::Let => {

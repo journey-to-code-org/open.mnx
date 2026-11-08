@@ -101,8 +101,17 @@ fn respond(request: &Map<String, Value>) -> Value {
 
     // `convert`: a React component → an mnx JSX component (`prefix` names a one-word one).
     if text("command") == Some("convert") {
-        return match crate::convert(source, &path, text("prefix")) {
-            Ok(conversion) => {
+        return match crate::convert_component(source, &path, text("prefix"), text("component")) {
+            Ok(mut conversion) => {
+                // `"as": "mnx"`: the readable .mnx file, once nothing is left to finish.
+                if text("as") == Some("mnx")
+                    && conversion.unsupported.is_empty()
+                    && conversion.compile_error.is_none()
+                {
+                    if let Some(error) = crate::convert_as_mnx(&mut conversion) {
+                        conversion.unsupported.push(error);
+                    }
+                }
                 let target = match path.rsplit_once('/') {
                     Some((directory, _)) => format!("{directory}/{}", conversion.file_name),
                     None => conversion.file_name.clone(),
