@@ -1,6 +1,6 @@
 // Builds the demo gallery for GitHub Pages:
 //
-//   node demos/build.mjs [--out _site] [--base /open.mnx/] [--require-wasm] [--only id,id]
+//   node demos/build.mjs [--out _site] [--base /zubra/] [--require-wasm] [--only id,id]
 //
 //   <base>                 the gallery (index.html): every example, with a screenshot
 //   <base>playground/      the playground (playground/build.mjs)
@@ -86,7 +86,7 @@ console.log(`demos: ${out} (${present.length} live examples, served from ${base}
 
 function gallery({ built, shots }) {
   const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  const source = (demo) => `https://github.com/${repository ?? 'journey-to-code-org/open.mnx'}/tree/main/${demo.dir}`;
+  const source = (demo) => `https://github.com/${repository ?? 'journey-to-code-org/zubra'}/tree/main/${demo.dir}`;
   const groups = [...new Set(demos.map((demo) => demo.group))];
   const card = (demo) => {
     const live = built.includes(demo.id);
@@ -155,7 +155,7 @@ function gallery({ built, shots }) {
       <p>Web components written like JSX and compiled ahead of time, used in every framework and on every kind of server. Each one is a complete app, tested in a browser on every change.</p>
       <div class="actions">
         <a class="primary" href="playground/">Try the playground</a>
-        <a href="https://github.com/${repository ?? 'journey-to-code-org/open.mnx'}">Source on GitHub</a>
+        <a href="https://github.com/${repository ?? 'journey-to-code-org/zubra'}">Source on GitHub</a>
       </div>
     </header>
     <main>

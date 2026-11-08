@@ -2,6 +2,37 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.0.1 — 2026-11-08
+
+A fix for Astro builds, plus the demo gallery and examples with the styling libraries people use. No API changes.
+
+### Fixed
+
+- **Astro: the server build couldn't find `zubra.wasm`** when `@zubra/compiler` was linked, from a workspace or a `file:` dependency. Vite bundled the compiler into Astro's prerender chunks, so it looked for `zubra.wasm` there. The integration now keeps the compiler external in every server environment (`resolve.external`), including Astro's own `prerender` environment.
+
+### Added
+
+- **A demo gallery on GitHub Pages** (`demos/`):
+  - the playground (now at `/playground/`);
+  - live builds of the static examples;
+  - a screenshot of every example, also at the top of each example's README.
+
+  `demos/build.mjs` builds it, and a CI job checks that every demo loads under the base path.
+- **Examples with styling libraries**, each with a browser test:
+  - `examples/frameworks/tailwind-cafe` (Tailwind 4);
+  - `shadcn-invoices` (React, shadcn/ui and Radix);
+  - `mui-clinic` (MUI 9);
+  - `bootstrap-devday` (Bootstrap 5 and Sass).
+
+  `docs/guide/styling-libraries.md` covers how components get an app's styles in light and shadow DOM, for each library.
+- **Lockfiles for `examples/todo`, `examples/planner` and `examples/recipes`.** The Astro and Eleventy examples now take a `DEMO_BASE`.
+
+### Changed
+
+- **CI:**
+  - the gallery check builds with the WebAssembly compiler, as the Pages deploy does;
+  - the focus-timer job caches Electron's binary and retries its download.
+
 ## 5.0.0 — 2026-11-08
 
 The platform's markers (`plan/roadmap-5.0.md`). The server markup's hydration markers are processing instructions instead of comments. Components and APIs don't change; update the packages together (`docs/migrating-to-5.0.md`).

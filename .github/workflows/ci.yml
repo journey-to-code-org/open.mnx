@@ -154,13 +154,13 @@ jobs:
         working-directory: examples/frameworks
       - name: Install the other static examples
         run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done
-      - run: node demos/build.mjs --require-wasm --out _site --base /open.mnx/
+      - run: node demos/build.mjs --require-wasm --out _site --base /zubra/
       - run: npx playwright install --with-deps chromium
         working-directory: examples/frameworks
       - run: node --test "demos/test/*.test.js"
         env:
           GALLERY: _site
-          GALLERY_BASE: /open.mnx/
+          GALLERY_BASE: /zubra/
 
   frameworks:
     name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular)
