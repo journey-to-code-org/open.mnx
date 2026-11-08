@@ -498,6 +498,11 @@ fn lower_uncached(
         props: Vec::new(),
         from: from_names,
         readable,
+        type_ranges: if path.ends_with(".tsx") {
+            crate::typescript::type_ranges_tsx(source)
+        } else {
+            Vec::new()
+        },
     };
     lowering.parameters(function)?;
     let body = function
@@ -738,6 +743,12 @@ fn element_name(name: &JSXElementName<'_>) -> Option<String> {
     }
 }
 
+/// Whether a JSX tag names a component (`<Badge>`) rather than an element (`<span>`).
+fn name_is_component(name: &JSXElementName<'_>) -> bool {
+    element_name(name)
+        .is_some_and(|name| name.starts_with(|character: char| character.is_ascii_uppercase()))
+}
+
 fn attribute_name(name: &JSXAttributeName<'_>) -> String {
     match name {
         JSXAttributeName::Identifier(identifier) => identifier.name.to_string(),
@@ -776,6 +787,8 @@ struct Lowering<'s, 'l> {
     /// `lower_readable`: keep the script as written, apart from `on…` calls, and the template's
     /// whitespace.
     readable: bool,
+    /// In a .tsx file, the type syntax to blank in template expressions (`e.target as Element`).
+    type_ranges: Vec<std::ops::Range<usize>>,
 }
 
 impl Lowering<'_, '_> {
@@ -1046,7 +1059,20 @@ impl Lowering<'_, '_> {
         close: &str,
     ) -> Result<(), Diagnostic> {
         let span = expression.span();
-        let edits = self.rewrite_expression(expression, Context::Template)?;
+        let mut edits = self.rewrite_expression(expression, Context::Template)?;
+        // TypeScript in a template expression: blanked, as in the script.
+        for range in &self.type_ranges {
+            if span.start as usize <= range.start && range.end <= span.end as usize {
+                let blank: String = self.source[range.clone()]
+                    .chars()
+                    .map(|character| if character == '\n' { '\n' } else { ' ' })
+                    .collect();
+                edits.push(Edit {
+                    range: range.clone(),
+                    text: blank,
+                });
+            }
+        }
         // Errors about the expression point at its `{`, as in an .mnx file.
         let before = self.source[..span.start as usize].trim_end();
         let brace = if before.ends_with('{') {
@@ -1237,10 +1263,19 @@ impl Lowering<'_, '_> {
         for attribute in &opening.attributes {
             let attribute = match attribute {
                 JSXAttributeItem::Attribute(attribute) => attribute,
+                JSXAttributeItem::SpreadAttribute(spread) if !name_is_component(&opening.name) => {
+                    // `{...attributes}` on an element: the same spread as in an .mnx template.
+                    if let Some(at) = contains_jsx(&spread.argument) {
+                        return Err(self.error(at, "JSX inside a spread isn't supported"));
+                    }
+                    out.synthetic(" ", spread.span.start as usize);
+                    self.expression(out, &spread.argument, "{...", "}")?;
+                    continue;
+                }
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     return Err(self.error(
                         spread.span.start,
-                        "spread attributes aren't supported; pass each prop",
+                        "spreading onto an mnx component isn't supported; pass each prop",
                     ));
                 }
             };

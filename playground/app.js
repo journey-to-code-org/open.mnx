@@ -82,6 +82,37 @@ const EXAMPLES = {
 </info-card>
 `,
   },
+  spread: {
+    label: 'Spread',
+    page: '<disclosure-panel heading="What does {...} do?"></disclosure-panel>',
+    source: `<!--
+  {...object} puts an object's entries on an element: attributes, on<Name> listeners, and
+  properties such as value. It's how a headless library hands out a widget's behaviour.
+-->
+<script>
+  import { id } from '@mnx/runtime'
+
+  let open = false
+  const panelId = id()
+  // A tiny "prop getter", the shape Zag.js and other headless libraries use.
+  const trigger = {
+    "aria-expanded": open,
+    "aria-controls": panelId,
+    onClick: () => (open = !open),
+  }
+  const panel = { id: panelId, hidden: !open, role: "region" }
+</script>
+<style>
+  :host { display: block; margin: 0.5rem; font: 15px system-ui; }
+  button { font: inherit; padding: 0.4rem 0.8rem; border: 1px solid #ccd; border-radius: 0.5rem; background: white; cursor: pointer; }
+  [role=region] { margin-top: 0.5rem; padding: 0.5rem 0.8rem; border-left: 3px solid #36c; }
+</style>
+<disclosure-panel heading="Details">
+  <button type="button" {...trigger}>{heading}</button>
+  <div {...panel}>An attribute written on the element wins over the spread, and a spread can't do anything an attribute couldn't.</div>
+</disclosure-panel>
+`,
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -141,6 +172,7 @@ let frameworks = []; // the framework previews this site was built with (vendor/
 const importMap = () => JSON.stringify({
   imports: {
     '@mnx/runtime': `${runtimeUrl}index.js`,
+    '@mnx/runtime/spread': `${runtimeUrl}spread.js`,
     '@mnx/runtime/': runtimeUrl,
     '@mnx/runtime/react': `${runtimeUrl}react.js`,
     '@mnx/runtime/vue': `${runtimeUrl}vue.js`,

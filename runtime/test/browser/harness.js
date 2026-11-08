@@ -70,7 +70,7 @@ let pageCount = 0;
 export async function open(body, { modules = [], beforeModules = '' } = {}) {
   const path = `/page-${++pageCount}.html`;
   pages.set(path, `<!doctype html><meta charset="utf-8">
-<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js" } }</script>
+<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js", "@mnx/runtime/spread": "/runtime/spread.js" } }</script>
 <script>window.lifecycle = []; window.messages = [];</script>
 <body>${body}</body>
 <script type="module">

@@ -948,3 +948,33 @@ fn server_rendered_slot_html_is_kept_as_written() {
     .message
     .contains("does not match"));
 }
+
+#[test]
+fn a_runtime_hook_used_without_its_import_is_an_error_with_the_fix() {
+    let error = mnx_compiler::compile_js(
+        "<script>\n  import { onMount } from '@mnx/runtime'\n  onMount(() => {})\n  const doubled = computed(() => 2)\n</script>\n<x-a><p>{doubled}</p></x-a>",
+        "@mnx/runtime",
+        "x.mnx",
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("`computed` is a hook from @mnx/runtime, but the script doesn't import it"),
+        "{}",
+        error.message
+    );
+    assert_eq!(
+        error.help.as_deref(),
+        Some("import it: `import { computed } from '@mnx/runtime'`")
+    );
+    // Declared or imported under the name, or a prop with it: fine.
+    for source in [
+        "<script>\n  import { computed } from '@mnx/runtime'\n  const d = computed(() => 2)\n</script>\n<x-a><p>{d}</p></x-a>",
+        "<script>\n  function state() { return 1 }\n  const d = state()\n</script>\n<x-a><p>{d}</p></x-a>",
+        "<script>\n  import * as id from './id.js'\n  const d = id.next()\n</script>\n<x-a><p>{d}</p></x-a>",
+        "<script>\n  const d = keys + 1\n</script>\n<x-a keys={1}><p>{d}</p></x-a>",
+    ] {
+        mnx_compiler::compile_js(source, "@mnx/runtime", "x.mnx").unwrap_or_else(|error| panic!("{source}: {}", error.message));
+    }
+}

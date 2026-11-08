@@ -47,6 +47,7 @@ An mnx component is one `.mnx` file: a `<script>`, a `<style>`, and a template w
 - **`{expr}`** in text, inside quoted attributes (`class="card {kind}"`) or as a whole attribute (`items={list}`, any type). Any JavaScript expression; signals and props read as values.
 - **Events on elements**: `onclick={fn}` or `onclick={() => …}`. Modifiers: `onsubmit.prevent`, `.stop`, `.once`, `.self`, `.capture`, `.passive`, `.submit` (submits the form after the handler); key filters `onkeydown.enter`, `.escape`, `.space`, `.up`, `.shift.enter`, `.mod.enter` (⌘ or Ctrl).
 - **`class:name={bool}`**, `class={{ a, b: cond }}`, **`style:prop={value}`**, `style:--var={value}`, `style={{ … }}`. Never build a class or style string by hand.
+- **`{...object}`** spreads attributes, `on<Name>` listeners and properties onto an HTML element (`<input {...api.getInputProps()}>`): use it for a headless library's prop getters. Explicit attributes win; it isn't allowed on the host, directives or mnx components.
 - **`ref={el}`** assigns an element to a `let` once rendered. **`<mnx-window>`/`<mnx-document>`** take listeners (`<mnx-document onkeydown.escape={close}>`), removed on unmount.
 
 ## Directives

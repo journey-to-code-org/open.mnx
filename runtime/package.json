@@ -1,6 +1,6 @@
 {
   "name": "@mnx/runtime",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "description": "Browser runtime for mnx compiled components, built on the TC39 Signals API",
   "license": "ISC",
   "repository": {
@@ -24,6 +24,11 @@
       "types": "./types/effect.d.ts",
       "production": "./dist/production/effect.js",
       "default": "./src/effect.js"
+    },
+    "./spread": {
+      "types": "./types/spread.d.ts",
+      "production": "./dist/production/spread.js",
+      "default": "./src/spread.js"
     },
     "./react": {
       "types": "./types/react.d.ts",

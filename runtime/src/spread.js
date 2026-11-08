@@ -1,0 +1,154 @@
+// {...spread} in compiled components: an object's entries as an element's attributes,
+// properties and listeners. Its own entry (`@mnx/runtime/spread`), which a compiled module imports
+// only when its template spreads, so components that don't, don't load it.
+import { $r, isSafeUrl } from './element.js';
+import { effect } from './effect.js';
+
+const see = (section) => ` (see https://github.com/journey-to-code-org/open.mnx#${section})`;
+
+// ---- {...spread}: an object's entries as attributes, properties and listeners --------------
+
+// The same lists the compiler checks attributes against (src/validate.rs).
+const SPREAD_URLS = new Set(['action', 'background', 'cite', 'codebase', 'data', 'formaction', 'href', 'longdesc', 'manifest', 'poster', 'profile', 'src', 'xlink:href', 'usemap']);
+// Keys that would write markup or script: never from a spread.
+const SPREAD_REFUSED = new Set(['innerhtml', 'outerhtml', 'innertext', 'textcontent', 'srcdoc', 'dangerouslysetinnerhtml', 'children']);
+const SPREAD_PROPERTIES = new Set(['value', 'checked', 'selected', 'indeterminate']);
+const SPREAD_NAMES = { classname: 'class', htmlfor: 'for' };
+const kebab = (key) => (key.startsWith('--') ? key : key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
+
+/**
+ * `{...object}` on an element: each entry an attribute (`true` a bare one, `false`, `null` and
+ * `undefined` none; `aria-*` booleans as "true"/"false", as Zag and React write them), `on<Name>`
+ * functions listeners, `value`/`checked`/`selected`/`indeterminate` properties, `class` merged
+ * token by token, `style` an object set through the CSSOM. Keys the element binds itself
+ * (`part.own`) are left to it. Entries that disappear are removed. Nothing a spread does could
+ * not be done by an attribute: string handlers, style strings, unsafe URLs and markup are refused.
+ */
+export function spread(part, node) {
+  const own = new Set(part.own ?? []);
+  const listeners = new Map(); // event → { latest, listener }
+  let previous = new Map(); // normalized name → value
+  let classes = [];
+  let styles = new Set();
+  effect(() => {
+    let given = $r(part.spread());
+    if (given == null) given = {};
+    if (typeof given !== 'object' || Array.isArray(given)) {
+      console.error('mnx: {...} spreads an object of attributes; got', given);
+      given = {};
+    }
+    const next = new Map();
+    const events = new Set();
+    let nextClasses = [];
+    let nextStyles = new Set();
+    for (const [key, value] of Object.entries(given)) {
+      if (value === undefined) continue;
+      const lower = key.toLowerCase();
+      if (lower.length > 2 && lower.startsWith('on') && (typeof value === 'function' || typeof value === 'string')) {
+        if (typeof value === 'string') {
+          console.error(`mnx: a spread can't add a handler as text ("${key}"); pass a function${see('safety')}`);
+          continue;
+        }
+        const event = lower.slice(2);
+        if (own.has(`on${event}`)) continue;
+        events.add(event);
+        let entry = listeners.get(event);
+        if (!entry) {
+          entry = { latest: value, listener: (domEvent) => entry.latest.call(node, domEvent) };
+          listeners.set(event, entry);
+          node.addEventListener(event, entry.listener);
+        }
+        entry.latest = value;
+        continue;
+      }
+      const name = SPREAD_NAMES[lower] ?? (lower.startsWith('aria-') || lower.startsWith('data-') || node.namespaceURI !== 'http://www.w3.org/1999/xhtml' ? key : lower);
+      if (SPREAD_REFUSED.has(lower)) {
+        console.error(`mnx: a spread can't set "${key}"${see('safety')}`);
+        continue;
+      }
+      if (name === 'class') {
+        nextClasses = String(value ?? '').split(/\s+/).filter(Boolean);
+        continue;
+      }
+      if (name === 'style') {
+        if (value === null || value === false) continue;
+        if (typeof value !== 'object') {
+          console.error(`mnx: a spread's style must be an object of properties (set through the CSSOM), not text${see('safety')}:`, value);
+          continue;
+        }
+        for (const [property, propertyValue] of Object.entries(value)) {
+          const css = kebab(property);
+          if (own.has(`style:${css}`)) continue;
+          if (propertyValue == null || propertyValue === false) continue;
+          nextStyles.add(css);
+          if (node.style.getPropertyValue(css) !== String(propertyValue)) node.style.setProperty(css, String(propertyValue));
+        }
+        continue;
+      }
+      if (own.has(name.toLowerCase())) continue;
+      next.set(name, value);
+    }
+    // Listeners whose keys went away.
+    for (const [event, entry] of listeners) {
+      if (!events.has(event)) {
+        node.removeEventListener(event, entry.listener);
+        listeners.delete(event);
+      }
+    }
+    // Classes, token by token (the element's own class and class: toggles stay).
+    for (const token of classes) if (!nextClasses.includes(token)) node.classList.remove(token);
+    for (const token of nextClasses) node.classList.add(token);
+    classes = nextClasses;
+    for (const css of styles) if (!nextStyles.has(css)) node.style.removeProperty(css);
+    if (styles.size && !nextStyles.size && node.getAttribute('style') === '') node.removeAttribute('style');
+    styles = nextStyles;
+    // Attributes and properties.
+    for (const [name, value] of previous) {
+      if (next.has(name)) continue;
+      if (SPREAD_PROPERTIES.has(name)) node[name] = name === 'value' ? '' : false;
+      else node.removeAttribute(name);
+    }
+    for (const [name, value] of next) {
+      if (SPREAD_PROPERTIES.has(name) && name in node) {
+        const property = name === 'value' ? (value == null ? '' : String(value)) : !!value;
+        if (node[name] !== property) node[name] = property;
+        continue;
+      }
+      if (value === null || value === false && !name.startsWith('aria-')) {
+        node.removeAttribute(name);
+        continue;
+      }
+      if (typeof value === 'boolean') {
+        if (name.startsWith('aria-')) node.setAttribute(name, String(value));
+        else node.toggleAttribute(name, value);
+        continue;
+      }
+      if (typeof value === 'object' || typeof value === 'function') {
+        console.error(`mnx: a spread can't write ${typeof value === 'function' ? 'a function' : 'an object'} to the "${name}" attribute`, value);
+        node.removeAttribute(name);
+        continue;
+      }
+      const text = String(value);
+      if (SPREAD_URLS.has(name.toLowerCase())) {
+        if (text.trim() === '') {
+          node.removeAttribute(name);
+          continue;
+        }
+        if (!isSafeUrl(text)) {
+          console.error(`mnx: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
+          node.removeAttribute(name);
+          continue;
+        }
+      }
+      if (node.getAttribute(name) !== text) node.setAttribute(name, text);
+    }
+    previous = next;
+    return undefined;
+  });
+  // The listeners go with the element's scope.
+  effect(() => () => {
+    for (const [event, entry] of listeners) node.removeEventListener(event, entry.listener);
+    listeners.clear();
+  });
+}
+

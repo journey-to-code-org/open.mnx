@@ -163,7 +163,7 @@ test('a plain page imports the elements with an import map, no build step', asyn
   const pages = join(work, 'plain');
   mkdirSync(pages, { recursive: true });
   writeFileSync(join(pages, 'index.html'), `<!doctype html>
-<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js", "@demo/ui": "/ui/index.js" } }</script>
+<script type="importmap">{ "imports": { "@mnx/runtime": "/runtime/index.js", "@mnx/runtime/spread": "/runtime/spread.js", "@demo/ui": "/ui/index.js" } }</script>
 <star-rating label="Stars" value="3"></star-rating>
 <script type="module">import '@demo/ui'; await customElements.whenDefined('star-rating'); window.ready = true;</script>`);
   const url = await serve([['/runtime/', runtime], ['/ui/', lib], ['/', pages]]);

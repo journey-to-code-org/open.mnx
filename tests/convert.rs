@@ -135,7 +135,6 @@ export default function UserMenu(props) {
         [
             "4:34 props as one object (`props`) aren't converted",
             "5:17 `useContext` became `inject()`, but its context comes from elsewhere",
-            "8:15 spread attributes aren't converted",
             "8:31 `dangerouslySetInnerHTML` isn't converted",
         ]
     );
@@ -287,4 +286,127 @@ export default function AppToggle({ label = 'On', onToggle }) {
     );
     // And it compiles as an .mnx file.
     mnx_compiler::compile_js(&conversion.output, "@mnx/runtime", "app-toggle.mnx").unwrap();
+}
+
+#[test]
+fn shadcn_style_components_convert_rest_props_and_class_name_become_the_host_s() {
+    let source = r#"import * as React from "react"
+import { cn } from "@/lib/utils"
+
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card" className={cn("rounded-xl border", className)} {...props} />
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="card-title" className={cn("font-semibold", className)} {...props} />
+}
+
+export { Card, CardTitle }
+"#;
+    let conversion =
+        mnx_compiler::convert_component(source, "card.tsx", Some("ui"), Some("CardTitle")).unwrap();
+    assert!(
+        conversion.unsupported.is_empty(),
+        "{:?}",
+        conversion.unsupported
+    );
+    assert!(
+        conversion.compile_error.is_none(),
+        "{:?}\n{}",
+        conversion.compile_error,
+        conversion.output
+    );
+    let output = &conversion.output;
+    assert!(
+        output.contains("export default function CardTitle({}) {"),
+        "{output}"
+    );
+    assert!(
+        output.contains(r#"className={cn("font-semibold", undefined)} />"#),
+        "{output}"
+    );
+    assert!(
+        !output.contains("function Card("),
+        "the file's other components are left out: {output}"
+    );
+    assert!(!output.contains("export {"), "{output}");
+    assert!(
+        !output.contains("\n\n\n"),
+        "no gaps where they were: {output}"
+    );
+    assert!(conversion
+        .changes
+        .iter()
+        .any(|change| change.contains("`...props` spread onto the returned element went")));
+    assert!(conversion
+        .changes
+        .iter()
+        .any(|change| change.contains("`className` became the host's own `class`")));
+    // Several components and no choice: an error that lists them.
+    let error = mnx_compiler::convert(source, "card.tsx", Some("ui")).unwrap_err();
+    assert!(
+        error.message.contains("exports 2 components"),
+        "{}",
+        error.message
+    );
+    assert!(
+        error
+            .help
+            .as_deref()
+            .unwrap_or_default()
+            .contains("`Card`, `CardTitle`"),
+        "{:?}",
+        error.help
+    );
+}
+
+#[test]
+fn rest_props_anywhere_but_the_returned_element_are_reported() {
+    let source = "export default function UiWrap({ ...props }) {\n  return <div className=\"wrap\"><table {...props} /></div>;\n}\n";
+    let conversion = convert(source, "Wrap.jsx", None).unwrap();
+    let messages: Vec<&str> = conversion
+        .unsupported
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect();
+    assert_eq!(messages, ["the rest of the props, used other than spread onto the returned element, aren't converted"]);
+}
+
+#[test]
+fn a_spread_onto_an_element_converts_and_onto_a_component_is_reported() {
+    let source = "import Badge from './badge';\nexport default function UiRow({ attrs = {} }) {\n  return <li {...attrs}><Badge {...attrs} /></li>;\n}\n";
+    let conversion = convert(source, "Row.jsx", None).unwrap();
+    let messages: Vec<&str> = conversion
+        .unsupported
+        .iter()
+        .map(|d| d.message.as_str())
+        .collect();
+    assert_eq!(messages, ["spreading onto a component isn't converted"]);
+    assert!(conversion.output.contains("<li {...attrs}>"));
+}
+
+#[test]
+fn a_component_built_on_a_react_primitive_is_refused_up_front() {
+    for (module, library) in [
+        ("radix-ui", "Radix"),
+        ("@radix-ui/react-dialog", "Radix"),
+        ("cmdk", "cmdk"),
+        ("@headlessui/react", "Headless UI"),
+    ] {
+        let source = format!("import {{ Thing }} from \"{module}\"\nexport default function UiThing() {{\n  return <Thing />;\n}}\n");
+        let error = convert(&source, "Thing.jsx", None).unwrap_err();
+        assert!(
+            error.message.contains(&format!("built on {library}")),
+            "{module}: {}",
+            error.message
+        );
+        assert!(error
+            .help
+            .as_deref()
+            .unwrap_or_default()
+            .contains("@mnx/runtime/zag"));
+    }
+    // A type-only import isn't the primitive.
+    let typed = "import type { DialogProps } from \"@radix-ui/react-dialog\"\nexport default function UiThing() {\n  return <p />;\n}\n";
+    assert!(convert(typed, "Thing.tsx", None).is_ok());
 }

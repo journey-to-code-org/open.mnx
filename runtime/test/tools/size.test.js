@@ -20,12 +20,16 @@ const BUDGETS = {
   'dist/production/index.js': { gzip: 13 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
+  // `{...spread}`'s binder (3.5), loaded only by components whose template spreads.
+  'src/spread.js': { gzip: 1.5 * 1024, external: ['./element.js', './effect.js'] },
 };
 
 for (const [entry, budget] of Object.entries(BUDGETS)) {
   test(`${entry} fits its budget`, async (t) => {
     // Split as a bundler would: remark.js (stripped markup) is imported only when needed.
-    const result = await build({ entryPoints: { entry: join(here, '../..', entry) }, bundle: true, splitting: true, outdir: '/out', minify: true, format: 'esm', write: false, logLevel: 'silent' });
+    // `external`: modules the entry shares with the main runtime, which an app already has.
+    const shared = { name: 'shared', setup(build) { build.onResolve({ filter: /.*/ }, (args) => (budget.external?.includes(args.path) ? { path: args.path, external: true } : undefined)); } };
+    const result = await build({ entryPoints: { entry: join(here, '../..', entry) }, bundle: true, splitting: true, outdir: '/out', minify: true, format: 'esm', write: false, logLevel: 'silent', plugins: [shared] });
     const code = result.outputFiles.find((file) => file.path.endsWith('/entry.js')).contents;
     const gzip = gzipSync(code).length;
     t.diagnostic(`${entry}: ${code.length} B minified, ${gzip} B gzip, ${brotliCompressSync(code).length} B brotli`);

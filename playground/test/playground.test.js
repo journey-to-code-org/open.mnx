@@ -101,7 +101,7 @@ test('an edit recompiles; an error shows with its location; the link keeps the e
   await shared.close();
 });
 
-test('the examples: slots with hasSlot, and a list with directives', async () => {
+test('the examples: slots with hasSlot, a list with directives, and a spread', async () => {
   const { page, errors } = await openPlayground();
   await page.selectOption('#example', 'slots');
   await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('info-card'));
@@ -116,6 +116,16 @@ test('the examples: slots with hasSlot, and a list with directives', async () =>
   await list.waitForFunction(() => document.querySelectorAll('todo-list li').length === 3);
   await list.click('todo-list li >> nth=1');
   await list.waitForFunction(() => document.querySelector('todo-list p').textContent === '1 left');
+
+  // A spread: the preview loads @mnx/runtime/spread through the import map.
+  await page.selectOption('#example', 'spread');
+  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('@mnx/runtime/spread'));
+  const panel = await frame(page, 'html');
+  await panel.waitForFunction(() => document.querySelector('disclosure-panel button')?.getAttribute('aria-expanded') === 'false');
+  assert.equal(await panel.$eval('disclosure-panel [role=region]', (el) => el.hidden), true);
+  await panel.click('disclosure-panel button');
+  await panel.waitForFunction(() => document.querySelector('disclosure-panel button').getAttribute('aria-expanded') === 'true');
+  assert.equal(await panel.$eval('disclosure-panel [role=region]', (el) => el.hidden), false);
   assert.deepEqual(errors, []);
   await page.close();
 });

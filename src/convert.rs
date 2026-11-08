@@ -113,6 +113,25 @@ pub fn convert_component(
     let scoping = semantic.scoping();
     let nodes = semantic.nodes();
 
+    // A component built on a third-party React primitive (Radix and the like) has no DOM markup to
+    // convert to: its behaviour is the primitive's. Say so once, up front, with what to use instead.
+    for statement in &parsed.program.body {
+        let Statement::ImportDeclaration(import) = statement else {
+            continue;
+        };
+        let module = import.source.value.as_str().unwrap_or_default();
+        if import.import_kind.is_type() {
+            continue;
+        }
+        if let Some((library, instead)) = react_primitive(module) {
+            return Err(Diagnostic::new(
+                at_offset(source, import.span.start),
+                format!("this component is built on {library} (`{module}`), whose React components have no HTML to convert to"),
+            )
+            .with_help(instead));
+        }
+    }
+
     let mut work = Work {
         source,
         edits: Vec::new(),
@@ -222,13 +241,20 @@ pub fn convert_component(
                         make_default(&mut work, *export, *via_specifier);
                         // The other components leave with the file; what they used stays and
                         // is reported by the compile check if the chosen one needs it.
+                        // With the blank lines after each, so the file doesn't fill with gaps.
+                        let through_blank_lines = |end: u32| {
+                            let rest = &source[end as usize..];
+                            let blank =
+                                rest.len() - rest.trim_start_matches(['\n', '\r', ' ', '\t']).len();
+                            end + blank as u32
+                        };
                         for (other, declaration, _) in several {
                             if other != export {
-                                work.remove(*other, declaration.span.end);
+                                work.remove(*other, through_blank_lines(declaration.span.end));
                             }
                         }
                         for (start, end) in &specifier_exports {
-                            work.remove(*start, *end);
+                            work.remove(*start, through_blank_lines(*end));
                         }
                         work.changes.push(format!(
                             "converted `{wanted}` of the {} components this file exports; the others are left out of the result",
@@ -303,8 +329,65 @@ pub fn convert_component(
     // Props must be destructured: their names are the props. The `on<Name>` ones are events,
     // which the component may only call; passing one on (`onClose={onClose}`) becomes a call.
     let mut callbacks: HashSet<SymbolId> = HashSet::new();
+    // `...props` (spread onto the root element, it goes: the host carries its own attributes) and
+    // `className` (the host's `class`): taken out of the parameters.
+    let mut rest_props: Option<SymbolId> = None;
+    let mut class_name: Option<SymbolId> = None;
     if let Some(parameter) = function.params.items.first() {
         if let BindingPattern::ObjectPattern(pattern) = &parameter.pattern {
+            let mut kept = Vec::new();
+            let mut removed = false;
+            for property in &pattern.properties {
+                let text = &source[property.span.start as usize..property.span.end as usize];
+                let is_class_name = matches!(&property.key, oxc_ast::ast::PropertyKey::StaticIdentifier(key) if key.name == "className")
+                    && matches!(
+                        &property.value,
+                        BindingPattern::BindingIdentifier(_) | BindingPattern::AssignmentPattern(_)
+                    );
+                if is_class_name {
+                    let identifier = match &property.value {
+                        BindingPattern::BindingIdentifier(identifier) => {
+                            Some(identifier.symbol_id())
+                        }
+                        BindingPattern::AssignmentPattern(assignment) => match &assignment.left {
+                            BindingPattern::BindingIdentifier(identifier) => {
+                                Some(identifier.symbol_id())
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    class_name = identifier;
+                    removed = true;
+                    continue;
+                }
+                kept.push(text.to_owned());
+            }
+            if let Some(rest) = &pattern.rest {
+                if let BindingPattern::BindingIdentifier(identifier) = &rest.argument {
+                    rest_props = Some(identifier.symbol_id());
+                    removed = true;
+                }
+            }
+            // `{ … }: React.ComponentProps<"span"> & …`: a React type, meaningless for an element.
+            if let Some(annotation) = &parameter.type_annotation {
+                let text = &source[annotation.span.start as usize..annotation.span.end as usize];
+                if text.contains("React.") || text.contains("ComponentProps") {
+                    work.edit(annotation.span.start, annotation.span.end, "");
+                    work.changes.push("the props' React type went (the element's props are its parameters, typed by their defaults)".to_owned());
+                }
+            }
+            if removed {
+                let inner = &source[pattern.span.start as usize + 1..pattern.span.end as usize - 1];
+                let text = if kept.is_empty() {
+                    "{}".to_owned()
+                } else if inner.contains('\n') {
+                    format!("{{\n  {},\n}}", kept.join(",\n  "))
+                } else {
+                    format!("{{ {} }}", kept.join(", "))
+                };
+                work.edit(pattern.span.start, pattern.span.end, &text);
+            }
             for property in &pattern.properties {
                 let binding = match &property.value {
                     BindingPattern::BindingIdentifier(identifier) => Some(identifier),
@@ -331,6 +414,70 @@ pub fn convert_component(
                 format!("props as one object (`{}`) aren't converted", identifier.name),
                 "destructure them in the parameters, as `function TodoItem({ text, done = false })`: each name is a prop",
             );
+        }
+    }
+
+    // `className` is the host's own `class`: its uses become `undefined` (it styles the host, so
+    // the element inside keeps the classes written for it).
+    if let Some(symbol) = class_name {
+        for reference in scoping.get_resolved_references(symbol) {
+            let span = nodes.get_node(reference.node_id()).kind().span();
+            let shorthand = matches!(nodes.parent_kind(reference.node_id()), AstKind::ObjectProperty(property) if property.shorthand);
+            work.edit(
+                span.start,
+                span.end,
+                if shorthand {
+                    "className: undefined"
+                } else {
+                    "undefined"
+                },
+            );
+        }
+        work.changes.push("`className` became the host's own `class` (the consumer's classes style the host, and the element inside keeps its own)".to_owned());
+    }
+    // `...props` spread onto the returned element goes: that element sits inside the host, which
+    // carries the consumer's attributes itself. Anywhere else, it's reported.
+    let root_tag = function
+        .body
+        .as_ref()
+        .and_then(|body| match body.statements.last() {
+            Some(Statement::ReturnStatement(statement)) => {
+                statement.argument.as_ref().and_then(|argument| {
+                    match argument.without_parentheses() {
+                        Expression::JSXElement(element) => Some((
+                            element.opening_element.span.start,
+                            element.opening_element.span.end,
+                        )),
+                        _ => None,
+                    }
+                })
+            }
+            _ => None,
+        });
+    if let Some(symbol) = rest_props {
+        let mut dropped = false;
+        for reference in scoping.get_resolved_references(symbol) {
+            let span = nodes.get_node(reference.node_id()).kind().span();
+            match nodes.parent_kind(reference.node_id()) {
+                AstKind::JSXSpreadAttribute(spread)
+                    if root_tag.is_some_and(|(start, end)| start <= spread.span.start && spread.span.end <= end) =>
+                {
+                    let mut start = spread.span.start as usize;
+                    while start > 0 && source.as_bytes()[start - 1].is_ascii_whitespace() {
+                        start -= 1;
+                    }
+                    work.edit(start as u32, spread.span.end, "");
+                    dropped = true;
+                }
+                _ => work.unsupported(
+                    span.start,
+                    "the rest of the props, used other than spread onto the returned element, aren't converted",
+                    "an mnx component's host carries the consumer's attributes itself; declare each prop the component reads",
+                ),
+            }
+        }
+        if dropped {
+            work.changes.push("`...props` spread onto the returned element went: the host carries the consumer's attributes (id, aria-*, data-*, event listeners) itself".to_owned());
         }
     }
 
@@ -562,7 +709,8 @@ pub fn convert_component(
         callbacks: &callbacks,
         contexts: &contexts,
     };
-    jsx.visit_program(&parsed.program);
+    // Only the component being converted: a file's other components are left out of the result.
+    jsx.visit_function(function, oxc_syntax::scope::ScopeFlags::empty());
 
     // Imports: the converted hooks leave `react`; what's used comes from @mnx/runtime, in its
     // place.
@@ -688,10 +836,13 @@ impl Work<'_> {
             .edits
             .iter()
             .filter(|(start, end, _)| {
-                !self
-                    .removed
-                    .iter()
-                    .any(|(from, to)| (from, to) != (start, end) && from <= start && end <= to)
+                // Inside a removed span, an edit goes too; an insertion at either edge stays.
+                !self.removed.iter().any(|(from, to)| {
+                    (from, to) != (start, end)
+                        && from <= start
+                        && end <= to
+                        && !(start == end && (start == from || start == to))
+                })
             })
             .collect();
         edits.sort_by_key(|(start, end, _)| (*start, *end));
@@ -1203,11 +1354,17 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
         };
         for item in &element.attributes {
             match item {
-                JSXAttributeItem::SpreadAttribute(spread) => self.work.unsupported(
-                    spread.span.start,
-                    "spread attributes aren't converted",
-                    "write each attribute out; mnx checks every one against the element",
-                ),
+                // A spread onto an element is an mnx spread now (3.5); onto a component, not.
+                JSXAttributeItem::SpreadAttribute(spread)
+                    if tag.is_some_and(|tag| tag.starts_with(char::is_uppercase)) =>
+                {
+                    self.work.unsupported(
+                        spread.span.start,
+                        "spreading onto a component isn't converted",
+                        "pass each prop; an mnx component checks every one",
+                    )
+                }
+                JSXAttributeItem::SpreadAttribute(_) => {}
                 JSXAttributeItem::Attribute(attribute) => {
                     let JSXAttributeName::Identifier(name) = &attribute.name else {
                         continue;
@@ -1295,4 +1452,26 @@ fn kebab(name: &str) -> String {
         }
     }
     out
+}
+
+/// A third-party React library of behaviour components, and what to use instead.
+fn react_primitive(module: &str) -> Option<(&'static str, String)> {
+    let library = match module {
+        "radix-ui" => "Radix",
+        _ if module.starts_with("@radix-ui/") => "Radix",
+        _ if module.starts_with("@headlessui/") => "Headless UI",
+        _ if module.starts_with("react-aria") || module.starts_with("@react-aria/") => "React Aria",
+        _ if module.starts_with("@ark-ui/react") => "Ark UI",
+        _ if module.starts_with("@base-ui") => "Base UI",
+        "cmdk" => "cmdk",
+        "vaul" => "vaul",
+        "input-otp" => "input-otp",
+        "sonner" => "sonner",
+        "react-day-picker" => "react-day-picker",
+        "react-resizable-panels" => "react-resizable-panels",
+        "recharts" => "Recharts",
+        _ if module.starts_with("embla-carousel-react") => "Embla's React carousel",
+        _ => return None,
+    };
+    Some((library, "build it on the platform's element (<dialog>, popover, <details>, <input type=\"range\">, <select>), a registry component (`mnx add --list`), or a Zag.js machine through @mnx/runtime/zag (docs/guide/accessible-widgets.md)".to_owned()))
 }

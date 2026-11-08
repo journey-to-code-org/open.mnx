@@ -1,0 +1,11 @@
+<!-- {...spread}: every rule, driven from outside through the `attrs` prop. -->
+<script>
+  let clicks = 0
+  let lit = false
+</script>
+<spread-demo attrs={{}} field={{}}>
+  <a class="base" class:lit={lit} title="own" {...attrs}>link</a>
+  <input {...field}>
+  <button type="button" onclick={() => (lit = !lit)}>toggle</button>
+  <output>{clicks}</output>
+</spread-demo>

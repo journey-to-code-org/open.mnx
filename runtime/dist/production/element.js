@@ -668,6 +668,10 @@ function bind(part, node, hydrating, context) {
     // The handler is read when the event fires, so swapping it never re-subscribes.
     const [listener, options] = listen(part, node);
     node.addEventListener(part.on, listener, options);
+  } else if (part.bind) {
+    // A part whose code lives in its own entry (`{...spread}`: @mnx/runtime/spread), so
+    // components that don't use it don't load it.
+    part.bind(part, node);
   } else if (part.classes) {
     // A computed class beside class: toggles: token by token, leaving the toggles' alone.
     let previous = [];

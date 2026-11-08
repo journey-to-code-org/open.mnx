@@ -2,6 +2,34 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 3.5.0 — 2026-11-07
+
+Spread (`plan/roadmap-3.5.md`, 3.5). Two findings pointed at the same gap: `mnx convert` stopped at a spread in nearly every shadcn/ui component, and the Zag.js spike needed a `ref` callback for every part of its combobox. Both now go through one feature.
+
+### Added
+
+- **`{...object}` in a start tag**, in `.mnx` and JSX: an object's entries as an element's attributes, listeners and properties, the way headless libraries hand out behaviour (`<input {...api.getInputProps()}>`).
+  - **Listeners:** `on<Name>` functions are listeners, replaced when the function changes and removed with their key.
+  - **Properties:** `value`, `checked`, `selected` and `indeterminate` are set as properties; `className` and `htmlFor` mean `class` and `for`.
+  - **Classes and styles:** `class` merges token by token with the element's own classes and `class:` toggles; `style` is an object set through the CSSOM.
+  - **Values:** `true` is a bare attribute; `aria-*` booleans are written as `"true"`/`"false"`; `false`, `null` and `undefined` remove the attribute; entries that disappear are removed.
+  - **Precedence:** an attribute written on the element wins.
+  - **Refused:** text handlers, `style` text, unsafe URLs and markup keys (`innerHTML`, `srcdoc`, `children`, …). Nothing a spread does could not be done by an attribute.
+  - **Server:** a spread known at build time renders, with the same checks; one known only in the browser is left for the element.
+  - **Not allowed** on the host, a directive or an imported mnx component, each with an error that says why.
+  - **Where the code lives:** `@mnx/runtime/spread` (1.4 KB gzipped), which a compiled module imports only when its template spreads, so the main runtime is unchanged (12.9 KB). An import map needs its entry; `@mnx/server`, the playground and the Flask example have it.
+- **`mnx check`: a runtime hook used without its import is an error**, with the import to add (`computed`, `emit`, `onMount` and the rest). It would have thrown in the browser. Every component in the repository passes.
+- **TypeScript in a `.mnx.tsx` template expression** (`(e.target as HTMLElement)`, `a!`) is stripped, like the script's.
+- The playground has a spread example.
+
+### `mnx convert`
+
+- A spread onto an element is an mnx spread, not a report; a spread onto another component is reported.
+- `...props` spread onto the returned element is dropped: the host carries the consumer's attributes. `className` becomes the host's own `class`. The props' React type goes.
+- A component built on a third-party React primitive (Radix, Headless UI, React Aria, Ark, Base UI, cmdk, vaul, sonner, Recharts, …) is refused up front, with what to use instead.
+- Fixed: an insertion at the edge of a removed span was dropped (`useMemo(() => { … }, deps)` lost its `)()`); a file's other components were checked as if they were converted; removing them left blank lines.
+- **shadcn/ui, re-measured** (`docs/convert-measured.md`): 50 of the 68 components in its plain-markup files convert and compile (0 in 3.2); its 46 primitive-based files are refused with one message each.
+
 ## 3.4.0 — 2026-11-07
 
 Evidence (`plan/roadmap-4.0.md`, 3.4): the claims the pitch rests on, with numbers, written for the people who argued against them.
