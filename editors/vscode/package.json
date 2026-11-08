@@ -57,7 +57,8 @@
     }
   },
   "scripts": {
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "@zubra/language-server": "file:../language-server",
@@ -69,5 +70,21 @@
   },
   "overrides": {
     "minimatch": "11.0.5"
+  },
+  "icon": "icon.png",
+  "keywords": [
+    "zubra",
+    "web components",
+    "custom elements",
+    "zb",
+    "language server"
+  ],
+  "galleryBanner": {
+    "color": "#14161F",
+    "theme": "dark"
+  },
+  "homepage": "https://journey-to-code-org.github.io/zubra/",
+  "bugs": {
+    "url": "https://github.com/journey-to-code-org/zubra/issues"
   }
 }
