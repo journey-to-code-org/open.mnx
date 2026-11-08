@@ -93,3 +93,19 @@ test('the playground loads', { skip: !existsSync(join(dir, 'playground/index.htm
   assert.match(readFileSync(join(dir, 'playground/index.html'), 'utf8'), /playground/);
   await page.close();
 });
+
+test('the landing page runs its own Zubra component: Copy puts the install command on the clipboard', async () => {
+  const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(new URL('', site.url).href);
+  await page.waitForSelector('copy-button:state(hydrated)');
+  const button = page.locator('copy-button .copy');
+  assert.equal((await button.innerText()).trim(), 'Copy');
+  await button.click();
+  await page.waitForFunction(() => document.querySelector('copy-button .copy').textContent.trim() === 'Copied!');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'npm create zubra@latest');
+  assert.deepEqual(errors, []);
+  await context.close();
+});

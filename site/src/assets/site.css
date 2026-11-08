@@ -40,6 +40,8 @@ h1, h2, h3, h4 { line-height: 1.15; letter-spacing: -0.02em; }
 .install { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; max-width: 30rem; margin-bottom: 1.25rem; padding: 0.7rem 0.8rem 0.7rem 1rem; border: 1px solid var(--line); border-radius: 0.7rem; background: #0d0f15; }
 .install code { flex: 1; min-width: 0; padding: 0; background: none; color: #f2f3f8; font-size: 1rem; overflow-wrap: anywhere; }
 .copy { padding: 0.35rem 0.8rem; border: 1px solid #3a3f55; border-radius: 0.45rem; background: #232738; color: #f2f3f8; font: inherit; font-size: 0.85rem; cursor: pointer; }
+/* Until the element is live the button would do nothing, so the command stays and the button waits. */
+copy-button:not(:state(hydrated)) .copy { display: none; }
 .copy:hover { border-color: var(--accent); }
 .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0; }
 .button { display: inline-block; padding: 0.65rem 1.1rem; border: 1px solid var(--line); border-radius: 0.6rem; color: inherit; font-weight: 700; text-decoration: none; }

@@ -22,6 +22,8 @@ export default function (eleventyConfig) {
   eleventyConfig.addFilter('tighten', (code) => code.replace(/ {2,}(\/\/|\/\*|<!--)/g, '  $1'));
   eleventyConfig.addFilter('tidy', (code) => code.replace(/[ \t]+$/gm, ''));
   eleventyConfig.addPassthroughCopy({ 'src/assets': 'landing' });
+  // The runtime the page's own component imports, as the playground serves it (no bundler).
+  eleventyConfig.addPassthroughCopy({ '../runtime/src': 'landing/runtime' });
   eleventyConfig.addPassthroughCopy({ 'src/favicon.svg': 'favicon.svg' });
   eleventyConfig.addPassthroughCopy({ 'src/apple-touch-icon.png': 'apple-touch-icon.png' });
 
