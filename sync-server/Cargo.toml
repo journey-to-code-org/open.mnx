@@ -1,0 +1,18 @@
+[package]
+name = "zubra-sync"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97"
+license = "ISC"
+repository = "https://github.com/journey-to-code-org/zubra"
+description = "The Zubra Sync log as one binary: the @zubra/sync protocol over HTTP, with a SQLite file, and no Node.js"
+publish = false
+
+[[bin]]
+name = "zubra-sync"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde_json = "1"
+tiny_http = "0.12"

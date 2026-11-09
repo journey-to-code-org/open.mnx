@@ -106,6 +106,26 @@ pub struct Script {
     /// `declare const value: T` in a TypeScript script: the prop's type, by prop name, and
     /// where it's declared.
     pub prop_types: Vec<(String, String, Span)>,
+    /// `'use collection tasks'` at the top of the script: its top-level `let`s are the fields of
+    /// a document in a local store, kept by `@zubra/sync`.
+    pub collection: Option<Collection>,
+    /// `let editing = ephemeral(false)` (from `@zubra/sync`): state that isn't stored.
+    pub ephemeral: Vec<String>,
+    /// `let cursor = presence({ x: 0, y: 0 })`: state shared live with the document's other
+    /// viewers, never stored.
+    pub presence: Vec<String>,
+    /// `let others = peers()`: the other viewers' presence, as an array.
+    pub peers: Option<String>,
+}
+
+/// `'use collection <name>'`, or `'use collection <name> by <prop>, <prop>'`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Collection {
+    pub name: String,
+    /// The props whose values make the document's key (`doc` unless `by` says otherwise; not
+    /// `id`, which is every element's own DOM id and must be unique on a page).
+    pub keys: Vec<String>,
+    pub span: Span,
 }
 
 /// An `emit("name", detail)` call: the component fires a DOM event called `name`.

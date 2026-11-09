@@ -1,0 +1,52 @@
+{
+  "name": "@zubra/sync",
+  "version": "5.1.1",
+  "description": "Local-first state for Zubra components: 'use collection' keeps a component's state in IndexedDB, across reloads, offline, and in step across tabs.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./connect": {
+      "types": "./src/connect.d.ts",
+      "default": "./src/connect.js"
+    },
+    "./server": {
+      "types": "./src/server.d.ts",
+      "default": "./src/server.js"
+    },
+    "./sqlite": {
+      "types": "./src/sqlite.d.ts",
+      "default": "./src/sqlite.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit \"test/*.test.js\"",
+    "test:binary": "ZUBRA_SYNC_BACKEND=binary node --test --test-force-exit test/browser.test.js"
+  },
+  "peerDependencies": {
+    "@zubra/runtime": "^5.1.0"
+  },
+  "devDependencies": {
+    "@zubra/compiler": "file:../compiler",
+    "@zubra/runtime": "file:../runtime",
+    "@zubra/server": "file:../server",
+    "playwright": "1.63.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
+    "directory": "sync"
+  }
+}

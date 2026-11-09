@@ -3,6 +3,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { createZubra } from '../src/index.js';
@@ -38,6 +40,13 @@ async function open(url, { javascript = true, before } = {}) {
   return page;
 }
 const layout = (body) => `<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body>${body}</body></html>`;
+
+test('imports adds import map entries for other packages the components import', () => {
+  const zubra = createZubra({ components, imports: { '@zubra/sync': '/sync/index.js' } });
+  const html = zubra.page().finish('<html><head></head><body></body></html>');
+  assert.match(html, /"@zubra\/runtime":"\/_zubra\/runtime\/index\.js"/);
+  assert.match(html, /"@zubra\/sync":"\/sync\/index\.js"/);
+});
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
@@ -294,5 +303,40 @@ test('stream(): the script puts regions in place where the browser doesn\'t (a s
     assert.equal(await page.evaluate(() => window.swapped), true, 'in place before the elements started');
     assert.deepEqual(page.errors, []);
     await page.done();
+  }
+});
+
+test("@zubra/sync is served and mapped by itself, when it's installed", async () => {
+  // An app of its own: @zubra/sync in its node_modules (linked to this repository's), and a
+  // 'use collection' component.
+  const app = mkdtempSync(join(tmpdir(), 'zubra-with-sync-'));
+  mkdirSync(join(app, 'node_modules', '@zubra'), { recursive: true });
+  symlinkSync(join(here, '../../sync'), join(app, 'node_modules', '@zubra', 'sync'), 'dir');
+  mkdirSync(join(app, 'components'));
+  writeFileSync(join(app, 'components', 'note-card.zb'), "<script>'use collection notes'; let text = ''</script>\n<note-card doc=\"\">{text}</note-card>\n");
+  after(() => rmSync(app, { recursive: true, force: true }));
+  const zubra = createZubra({ components: join(app, 'components') });
+  const page = zubra.page();
+  const html = page.finish(`<html><head></head><body>${page.render('note-card', { doc: 'n1' })}</body></html>`);
+  assert.match(html, /"@zubra\/sync":"\/_zubra\/sync\/index\.js"/);
+  assert.match(html, /"@zubra\/sync\/connect":"\/_zubra\/sync\/connect\.js"/);
+  for (const file of ['index.js', 'connect.js']) {
+    const response = await zubra.fetch(new Request(`http://localhost/_zubra/sync/${file}`));
+    assert.equal(response.status, 200, file);
+    assert.match(response.headers.get('content-type'), /javascript/);
+  }
+  assert.equal((await zubra.fetch(new Request('http://localhost/_zubra/sync/package.json'))).status, 404); // only its modules
+});
+
+test("a 'use collection' component without @zubra/sync installed says what to install", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-no-sync-'));
+  try {
+    writeFileSync(join(dir, 'note-card.zb'), "<script>'use collection notes'; let text = ''</script>\n<note-card doc=\"\">{text}</note-card>\n");
+    const zubra = createZubra({ components: dir });
+    const page = zubra.page();
+    const body = page.render('note-card', { doc: 'n1' });
+    assert.throws(() => page.finish(`<html><head></head><body>${body}</body></html>`), /needs @zubra\/sync\. Install it: npm install @zubra\/sync/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

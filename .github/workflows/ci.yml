@@ -135,6 +135,18 @@ jobs:
         working-directory: server
       - run: npm test
         working-directory: server
+      # @zubra/sync ('use collection': reloads, documents, elements and tabs, in Chromium).
+      - run: npm ci
+        working-directory: sync
+      - run: npx playwright install --with-deps chromium
+        working-directory: sync
+      # The same tests against the zubra-sync binary (protocol tests pick it up when it's built;
+      # test:binary puts it behind the browser tests' server).
+      - run: cargo build --locked -p zubra-sync
+      - run: npm test
+        working-directory: sync
+      - run: npm run test:binary
+        working-directory: sync
       - run: npm ci
         working-directory: compiler
       - run: node --test test/server-evaluation.test.js
@@ -319,6 +331,28 @@ jobs:
       # The tests run the server on Node.js and on Bun.
       - run: npm test
         working-directory: examples/hypermedia/hono-bikes
+
+  standup:
+    name: Local-first example (standup, @zubra/sync)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/standup/package-lock.json
+      - run: cargo build --locked
+      - run: npm ci
+        working-directory: examples/standup
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/standup
+      - run: npm test
+        working-directory: examples/standup
 
   clients:
     name: Extension and desktop examples (${{ matrix.app }})

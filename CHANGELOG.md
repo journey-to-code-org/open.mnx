@@ -2,6 +2,29 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+Zubra Sync, tier 0: component state that lives on the device.
+
+### Added
+
+- **`'use collection <name>'`** at the top of a component script. Its top-level `let`s become the fields of a document keyed by the `doc` prop (or the props after `by`: `'use collection rows by list, item'`), and the compiled module calls `@zubra/sync` with them. A key prop the host doesn't declare is a compile error.
+- **`ephemeral(value)`** from `@zubra/sync`: state that isn't stored. The server renders its value.
+- **`@zubra/sync`**, a new package: keeps those documents in IndexedDB (in memory without it). Writes are signal assignments, saved behind the UI; an element saves nothing until its document has loaded; elements and tabs showing the same document follow each other (BroadcastChannel). Last-writer-wins per field. `configure({ store })` takes another store.
+- **`@zubra/sync/connect`** and **`@zubra/sync/server`**: share documents between devices through a log over plain HTTP (`POST …/push`, `GET …/pull?since=`). Each changed field is stamped with a hybrid logical clock and queued until the network allows; every device applies last-writer-wins per field to the same changes, so they converge. The server keeps the log in order (in memory by default, or any `{ append, after }`), with `authorize()` for writes and reads.
+- **A live channel**: `GET /_zb/sync/live` streams changes as they're pushed (server-sent events); `connect()` uses it and polls only while it's down. `createSyncServer().handle(req, res)` serves it on Node.
+- **Presence**: `let cursor = presence(v)` is shared live with the document's other viewers and never stored; `let others = peers()` is the array of them, `{ peer, ...presence }`. Across tabs with no server (BroadcastChannel), and across devices through `connect()` (`POST /_zb/sync/presence` and the live stream). At most one message a frame, a heartbeat, a 30-second timeout, and a goodbye on `pagehide` or a dropped connection. The server renders `presence()` values and an empty `peers()`.
+- **`sqliteLog(path)`** from `@zubra/sync/sqlite`: the log in a SQLite file, through `node:sqlite` or `bun:sqlite`. The live stream now sends a backlog longer than one page whole before anything live.
+- **A write could be lost on a slow network.** Two pushes can be out at once (the debounce and the poll loop). When they came back, each removed as many changes from the outbox as it had sent, counting from the front, so a change made while they were out could be removed without ever being sent. A push now removes exactly the changes it sent. Found by a CI run where the checkbox change never reached the log.
+- **`connect({ webrtc: true })`**: presence over WebRTC data channels between viewers of a room, once they've met; the server carries introductions, goodbyes and signaling (`POST /_zb/sync/signal`, a `signal` event on the target's live stream), and presence to anyone without a channel. ICE servers are configurable; TURN is the app's. Both servers support signaling.
+- **`zubra-sync`**, a binary (`sync-server/`, `cargo build -p zubra-sync`): the sync protocol, live stream and presence included, with SQLite built in and no Node.js. Same table as `sqliteLog()`; CORS for `--origin`s. The protocol and browser tests run against it too.
+- **`@zubra/server` serves `@zubra/sync` by itself** when it's installed, and maps `@zubra/sync` and `@zubra/sync/connect` in the page, so `'use collection'` needs no setup. When it isn't installed, the page fails as it's built, naming the component and `npm install @zubra/sync`; `@zubra/unplugin` says the same at build time. `createZubra({ imports })` adds import map entries for other packages.
+- **`examples/standup`**: a local-first team board on plain Node: `'use collection'` cards, presence, offline edits, a SQLite log, tested with two browsers.
+
+### Changed
+
+- **An unknown directive in a component script is an error, with a hint**: a likely typo gets "did you mean" (`'use colection tasks'` → `'use collection tasks'`), `'use client'` is explained as unneeded, `'use server'` at the top of a script is pointed at exported functions, and anything else lists the two directives Zubra knows and the package behind each. `'use strict'` is still allowed.
+
 ## 5.2.0 — 2026-11-09
 
 Plain custom elements: a component as one file with no runtime to install.
@@ -9,6 +32,7 @@ Plain custom elements: a component as one file with no runtime to install.
 ### Added
 
 - **`--emit element`: a component as a plain custom element, with no runtime to install.** One module, no imports, built from the same definition as `--emit js`. It covers light-DOM components: props, every template part, `zb-if`, `zb-each`, light-DOM slots kept live under React, Vue, Svelte and Lit, `state`/`computed`/`effect`, lifecycle, form association and scoped styles. Shadow DOM, spreads, `zb-await` and runtime extras such as `resource` and `@zubra/runtime/zag` are refused with a reason. Server hydration and hot reload stay with `@zubra/runtime`. About 5.5 KB gzipped for a small element (the slot code is left out when there are no slots), 7 KB with slots. Also in `zubra request` (`"emit": "element"`) and `@zubra/compiler`. CI runs the runtime's browser suites and the registry's tests on both outputs. See `docs/plain-elements.md`.
+
 ## 5.1.2 — 2026-11-09
 
 ### Fixed

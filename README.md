@@ -401,6 +401,10 @@ In the HTML output, `<select value={…}>` marks the matching `<option selected>
 
 The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone.
 
+**State on the device.** `'use collection tasks'` at the top of a script keeps its top-level `let`s in IndexedDB (through `@zubra/sync`), as the document keyed by the `doc` prop: `<task-item doc="t42">` is `tasks/t42`. Assignments update the page at once and the store behind it; the state survives reloads, works offline, and other elements and tabs showing the same document follow. `let editing = ephemeral(false)` is state that isn't stored. `docs/sync.md` has the rules. It needs `@zubra/sync` installed; a bundler or `@zubra/server` picks it up from there, and if it's missing the error says which component needs it and what to run.
+
+**Directives.** Zubra knows two: `'use collection <name>'` first in a script (`@zubra/sync`), and `'use server'` first in an exported function (`@zubra/actions`, in progress). Anything else written as a directive is an error that says what was probably meant: `'use colection'` gets "did you mean 'use collection'", and `'use client'` is explained as unneeded, since every component already runs in the browser.
+
 ## Context
 
 `createContext(default)`, `provide(context, value)` and `inject(context)` follow the Web Components Community Group [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md). `inject` returns a signal that follows the nearest provider above the element. A consumer defined before its provider still connects; one that's moved asks again; one that's removed unsubscribes. Because the protocol is plain DOM events, Zubra components share context with other implementations such as Lit's `@lit/context`.

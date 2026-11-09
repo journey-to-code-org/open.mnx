@@ -29,5 +29,5 @@ oxc_syntax = "0.157"
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 
 [workspace]
-members = [".", "wasm"]
+members = [".", "wasm", "sync-server"]
 resolver = "2"
