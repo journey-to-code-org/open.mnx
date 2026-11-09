@@ -9,6 +9,7 @@ import { useBrowser, open, compiler, here, site, runtimeOnly } from './harness.j
 useBrowser({
   card: join(here, 'fixtures/card.zb'),
   panel: join(here, 'fixtures/panel.zb'),
+  either: join(here, 'fixtures/either-link.zb'),
 });
 
 const readCard = (page) =>
@@ -346,5 +347,28 @@ test("a framework's empty-text anchors stay with the content they bracket, so it
 test('markers and whitespace alone leave a slot empty', async () => {
   const { page } = await open('<zb-card>\n  <!--marker-->\n</zb-card>', { modules: ['card'] });
   assert.deepEqual(await readCard(page), { header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer' });
+  await page.close();
+});
+
+test('text alone given to an element whose template starts with a condition is slotted, and follows the branch that shows', async () => {
+  const { page, messages } = await open('<zb-either>Save <b>now</b></zb-either><zb-either href="/go">Go</zb-either><zb-either></zb-either><zb-either href="/x"><b>Bold</b></zb-either><zb-either>Plain</zb-either>', { modules: ['either'] });
+
+  const read = () => page.evaluate(() => [...document.querySelectorAll('zb-either')].map((el) => {
+    const inner = el.querySelector('.either');
+    return `${inner.localName}:${inner.innerHTML.replace(/<!--.*?-->|<\\?zb.*?>/g, '')}`;
+  }));
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('zb-either')].map((el) => el.updateComplete)));
+  assert.deepEqual(await read(), ['button:Save <b>now</b>', 'a:Go', 'button:Fallback', 'a:<b>Bold</b>', 'button:Plain'], 'text alone is content too, not server markup');
+  await page.evaluate(async () => {
+    const [first, second] = document.querySelectorAll('zb-either');
+    window.bold = first.querySelector('b');
+    first.href = '/now';
+    second.href = '';
+    await first.updateComplete;
+    await second.updateComplete;
+  });
+  assert.deepEqual(await read(), ['a:Save <b>now</b>', 'button:Go', 'button:Fallback', 'a:<b>Bold</b>', 'button:Plain']);
+  assert.equal(await page.evaluate(() => document.querySelector('zb-either a b') === window.bold), true, 'the same nodes, moved');
+  assert.deepEqual(messages, []);
   await page.close();
 });

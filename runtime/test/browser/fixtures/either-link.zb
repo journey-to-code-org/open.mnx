@@ -1,0 +1,9 @@
+<!--
+  A template that starts with a condition, with the same slot in both branches: a link with
+  `href`, a button without. Text alone given to it once looked like server markup whose markers
+  were stripped (the template's whitespace matched it), so the text was lost.
+-->
+<zb-either href="">
+  <a zb-if={href} class="either" href={href}><zb-slot></zb-slot></a>
+  <button zb-else class="either" type="button"><zb-slot>Fallback</zb-slot></button>
+</zb-either>

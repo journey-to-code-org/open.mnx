@@ -56,7 +56,12 @@ export function remark(root, template, parts, { blueprint, isOpen, isClose, read
     let index = 0;
     for (; t; t = t.nextSibling) {
       if (t.nodeType === TEXT) {
-        if (cursor?.nodeType === TEXT) cursor = cursor.nextSibling; // static text (if kept)
+        // Static text (if kept): the same words as the template's. Text that isn't (a page's own
+        // `<x-a>Save</x-a>` where the template has only whitespace) isn't server markup.
+        if (cursor?.nodeType === TEXT) {
+          if (cursor.data.trim() !== t.data.trim()) throw fail;
+          cursor = cursor.nextSibling;
+        }
         continue;
       }
       const path = [...prefix, index];
