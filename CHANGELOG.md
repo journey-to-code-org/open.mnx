@@ -2,6 +2,17 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **`service-status`, a registry component** (`npx zubra add service-status`): a service's status from a JSON endpoint, with "Checking…", the status and its message, the error with Retry, and Refresh that keeps the last answer showing. It's the registry's first `zb-await`, so the stripped-markers suite now covers a region the server leaves to the element. That suite now compares against the same markup with its markers kept (the same server nodes must survive), since a pending `zb-await` is re-rendered either way, and it fails if a component warns even with its markers.
+- **Server markup with an `zb-await` hydrates in place without its markers.** When a sanitizer has removed the `<?zb …?>` markers, `remark.js` now places an `zb-await` region by structure, as it does `zb-if` and `zb-each`: its `zb-then` block, for a value the server knew at build time, or its pending block, which the element renders afresh anyway. Until now such an element rendered entirely afresh, losing text typed and focus taken before JavaScript.
+
+### Changed
+
+- **A slot inside `zb-then` or `zb-catch` is reported as such.** The error said "can't be inside zb-each" wherever the slot was; it now names the branch it's in and says to put the slot outside the `zb-await`.
+
 ## 5.3.0 — 2026-11-09
 
 Zubra Actions and Zubra Sync: a component's form can post to a server function, with or without JavaScript, and a component's state can live on the device, shared across tabs and devices.
@@ -29,6 +40,7 @@ Zubra Actions and Zubra Sync: a component's form can post to a server function, 
 - **`export interface`, `export type` and `export type { … }` in `<script lang="ts">`.** They're type-only, so the no-exports rule for component scripts no longer refuses them: they're erased from the JavaScript and reach the generated typings exported, as every declaration does. A value export is still an error.
 - **`ZUBRA_MARKER_PATTERN` and `ZUBRA_MARKER_DIRECTIVE`** from `@zubra/compiler`, for the two minifiers that strip the hydration markers unless told otherwise: `preserveComments: [ZUBRA_MARKER_PATTERN]` for @swc/html, and the posthtml parser option `directives: [ZUBRA_MARKER_DIRECTIVE]` for htmlnano. The markers test uses them, so they can't drift from what the tools accept.
 - **The README says what Zubra is and isn't**: the compiler and runtime are the project; `@zubra/unplugin`, `@zubra/server`, `@zubra/actions`, `@zubra/sync`, the starter, the editor extension and the registry are optional, separate installs, in one table that says when each is needed. The status line explains what the major version counts.
+
 
 ### Changed
 

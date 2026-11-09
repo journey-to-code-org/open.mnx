@@ -76,6 +76,6 @@ The React and Vue wrappers `@zubra/unplugin` and `zubra build --lib` write are t
 
 ## Where this sits against Lit and Stencil
 
-Lit components are TypeScript files compiled by your own `tsc`, so every TypeScript feature works and the types of properties are whatever you declare; the cost is that the element's interface for *other* tools (manifest, React wrapper typings) needs a separate analyzer. Stencil runs the TypeScript compiler itself and generates framework packages with full types, at the cost of its compiler being a TypeScript program with the whole language service in it.
+Lit components are TypeScript files compiled by your own `tsc`, so every TypeScript feature works and the types of properties are whatever you declare, and with lit-analyzer its templates' bindings are checked against those types too, which Zubra's aren't; the cost is that the element's interface for *other* tools (manifest, React wrapper typings) needs a separate analyzer. Stencil runs the TypeScript compiler itself and generates framework packages with full types, at the cost of its compiler being a TypeScript program with the whole language service in it.
 
 Zubra's position is the middle one: the compiler carries the type *text* through to the interface with no type checker in the path, and leaves checking to the `tsc` that already runs in the consuming app. The full comparison is in [Compared with Lit and Stencil](compared-with-lit-and-stencil.md).

@@ -723,6 +723,40 @@ fn js_output_rejects_what_it_cannot_do_yet() {
     assert!(slot_in_loop
         .message
         .contains("zb-slot can't be inside zb-each"));
+    // Inside zb-then or zb-catch, the error names that branch (it named zb-each until 5.2), and
+    // says what to do instead.
+    for branch in ["then", "catch"] {
+        let source = format!("<zb-x value={{null}}><zb-await value={{value}}><zb-{branch} as=\"v\"><zb-slot></zb-slot></zb-{branch}></zb-await></zb-x>");
+        let error = compile_js(&source, "r", "t").unwrap_err();
+        assert!(
+            error
+                .message
+                .contains(&format!("zb-slot can't be inside zb-{branch}")),
+            "{}",
+            error.message
+        );
+        assert!(
+            error
+                .help
+                .as_deref()
+                .unwrap_or_default()
+                .contains("outside zb-await"),
+            "{:?}",
+            error.help
+        );
+    }
+    // The directive markers in the name scopes are never offered as a "did you mean".
+    let typo = compile_js(
+        "<zb-x items={[]}><zb-each items={items} as=\"i\"><p>{each}</p></zb-each></zb-x>",
+        "r",
+        "t",
+    )
+    .unwrap_err();
+    assert!(
+        !typo.help.as_deref().unwrap_or_default().contains('#'),
+        "{:?}",
+        typo.help
+    );
     let reserved = compile_js(
         "<script>const $p = 1</script><zb-x><p></p></zb-x>",
         "r",

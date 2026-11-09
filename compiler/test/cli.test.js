@@ -15,9 +15,9 @@ const cli = join(here, '../cli.js');
 const env = { ...process.env, ZUBRA_COMPILER: process.env.ZUBRA_COMPILER ?? join(repo, 'target/debug/zubra') };
 const zubra = (args, cwd) => spawnSync(process.execPath, [cli, ...args], { cwd, env, encoding: 'utf8' });
 
-test('the registry lists 25 components, each with a description, category and files', () => {
+test('the registry lists 26 components, each with a description, category and files', () => {
   const { components } = readRegistry();
-  assert.equal(components.length, 25);
+  assert.equal(components.length, 26);
   for (const component of components) {
     assert.ok(component.description.length > 20, component.name);
     assert.ok(['input', 'display', 'app', 'widget'].includes(component.category), component.name);

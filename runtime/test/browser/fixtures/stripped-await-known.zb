@@ -1,0 +1,10 @@
+<!-- An zb-await of a value known at build time: the server renders zb-then, and without its
+     markers the element finds it by that block's shape. -->
+<script>
+  const user = { name: "Ada", roles: ["admin", "editor"] }
+</script>
+<zb-stripped-known>
+  <h2>Profile</h2>
+  <zb-await value={user}><p>Loading…</p><zb-then as="u"><p class="name">{u.name}</p><ul><zb-each items={u.roles} as="role"><li>{role}</li></zb-each></ul></zb-then></zb-await>
+  <footer>End</footer>
+</zb-stripped-known>

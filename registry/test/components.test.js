@@ -3,10 +3,10 @@
 // the CLI and served with the runtime, as in runtime/test/browser. `node --test registry/test/`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { useBrowser, open } from '../../runtime/test/browser/harness.js';
+import { useBrowser, open, site } from '../../runtime/test/browser/harness.js';
 import * as zag from './zag.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -34,7 +34,7 @@ const done = async (page, messages) => {
 };
 
 test('every registry component is tested here', () => {
-  assert.equal(names.length, 25);
+  assert.equal(names.length, 26);
 });
 
 // ---- inputs ---------------------------------------------------------------------------------
@@ -205,6 +205,46 @@ test('spark-line, line-chart, progress-ring: images named with what they show', 
     assert.equal(await p.getByRole('img', { name: expected }).count(), 1, `${name}: ${await p.locator('[role=img]').first().getAttribute('aria-label')}`);
     await done(p, messages);
   }
+});
+
+test('service-status: a named live region; Checking… then the status; an error offers Retry; Refresh checks again', async () => {
+  // Real JSON from the page's own server (the harness serves `site`): no fetch stub.
+  writeFileSync(join(site, 'status-ok.json'), JSON.stringify({ status: 'degraded', message: 'Slow logins' }));
+  writeFileSync(join(site, 'status-later.json'), JSON.stringify({ status: 'operational' }));
+  const { page: p, messages, events } = await page('service-status', '<service-status label="API" src="status-ok.json"></service-status>', ['statusload']);
+  const region = p.getByRole('status', { name: 'API status' });
+  await p.waitForFunction(() => !document.querySelector('service-status .pending'));
+  assert.equal((await region.textContent()).replace(/\s+/g, ' ').trim(), 'Degraded Slow logins');
+  assert.deepEqual(await events(), [['statusload', { status: 'degraded', message: 'Slow logins' }]]);
+
+  // A new source checks again; Refresh keeps the answer showing meanwhile (`keep`).
+  await p.evaluate(() => { document.querySelector('service-status').src = 'status-later.json'; });
+  await p.waitForFunction(() => document.querySelector('service-status .state')?.textContent.includes('Operational'));
+  writeFileSync(join(site, 'status-later.json'), JSON.stringify({ status: 'down', message: 'Paged' }));
+  await p.evaluate(() => {
+    window.pendingSeen = false;
+    new MutationObserver(() => { window.pendingSeen ||= !!document.querySelector('service-status .pending'); })
+      .observe(document.querySelector('service-status'), { subtree: true, childList: true });
+  });
+  await p.getByRole('button', { name: 'Refresh' }).click();
+  await p.waitForFunction(() => document.querySelector('service-status .state')?.textContent.includes('Down'));
+  assert.equal(await p.evaluate(() => window.pendingSeen), false, 'never back to Checking… while refreshing');
+
+  // A failed check: the error, and Retry, which checks again.
+  await p.evaluate(() => { document.querySelector('service-status').src = 'status-missing.json'; });
+  await p.getByRole('button', { name: 'Retry' }).waitFor();
+  assert.match(await region.textContent(), /Couldn't check: 404/);
+  writeFileSync(join(site, 'status-missing.json'), JSON.stringify({ status: 'operational' }));
+  await p.getByRole('button', { name: 'Retry' }).click();
+  await p.waitForFunction(() => document.querySelector('service-status .state')?.textContent.includes('Operational'));
+  // (The browser logs the 404 itself; nothing from zubra.)
+  await done(p, messages.filter((message) => !message.includes('404')));
+
+  // No source: says so, and Refresh is disabled.
+  const { page: empty, messages: quiet } = await page('service-status', '<service-status label="Search"></service-status>');
+  await empty.waitForFunction(() => document.querySelector('service-status .state')?.textContent.includes('No source'));
+  assert.equal(await empty.getByRole('button', { name: 'Refresh' }).isDisabled(), true);
+  await done(empty, quiet);
 });
 
 test('streak-grid: a named group of day buttons; arrow keys move by day and week; today is the tab stop', async () => {

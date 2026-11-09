@@ -28,6 +28,7 @@ useBrowser({
   countdown: join(here, 'fixtures/countdown.zb'),
   stripped: join(here, 'fixtures/stripped-card.zb'),
   'stripped-await': join(here, 'fixtures/stripped-await.zb'),
+  'stripped-known': join(here, 'fixtures/stripped-await-known.zb'),
 });
 
 // ---- fresh rendering and updates -----------------------------------------------------------
@@ -618,12 +619,44 @@ test('stripped markup with content given to a slot keeps that content', { skip: 
   await page.close();
 });
 
-test('stripped markup that cannot be placed for sure (an zb-await) renders fresh, with a warning that says why', async () => {
-  const html = strip(compiler(join(here, 'fixtures/stripped-await.zb')));
+test('stripped markup with a pending zb-await hydrates in place: the region is found by the pending block, and only it re-renders', { skip: runtimeOnly }, async () => {
+  const html = strip(compiler(join(here, 'fixtures/stripped-await.zb'), '--partial'));
+  assert.match(html, /<span>waiting<\/span>/, 'the server rendered the pending block');
+  const { page, messages } = await open(html, {
+    modules: ['stripped-await'],
+    // Typed and focused before the element starts: kept, because the element doesn't render afresh.
+    beforeModules: `${keepNodes('zb-stripped-await')} const note = document.querySelector('.note'); note.value = 'typed early'; note.focus();`,
+  });
+  await page.waitForFunction(() => document.querySelector('zb-stripped-await span')?.textContent === 'done');
+  const kept = await page.evaluate(() => window.kept.filter((node) => node.isConnected).map((node) => node.localName));
+  assert.deepEqual(kept, ['p', 'input', 'footer'], 'everything but the pending block is the server markup');
+  assert.equal(await page.inputValue('zb-stripped-await .note'), 'typed early');
+  assert.equal(await page.evaluate(() => document.activeElement.className), 'note');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('stripped markup with an zb-await of a value known at build time hydrates its zb-then in place', { skip: runtimeOnly }, async () => {
+  const html = strip(compiler(join(here, 'fixtures/stripped-await-known.zb')));
+  assert.match(html, /<p class="name">Ada<\/p>/, 'the server rendered zb-then');
+  const { page, messages } = await open(html, { modules: ['stripped-known'], beforeModules: keepNodes('zb-stripped-known') });
+  await page.waitForSelector('zb-stripped-known:state(hydrated)');
+  assert.equal(await page.evaluate(() => window.kept.every((node) => node.isConnected)), true, 'nothing re-rendered');
+  assert.deepEqual(await page.$$eval('zb-stripped-known li', (items) => items.map((item) => item.textContent)), ['admin', 'editor']);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('stripped markup that cannot be placed for sure renders fresh, with a warning that says why', async () => {
+  // Markup that isn't this template's (another block where the pending one would be).
+  const html = strip(compiler(join(here, 'fixtures/stripped-await.zb'), '--partial')).replace('<span>waiting</span>', '<em>other</em>');
   const { page, messages } = await open(html, { modules: ['stripped-await'] });
   await page.waitForFunction(() => document.querySelector('zb-stripped-await span')?.textContent === 'done');
-  assert.equal(messages.length, 1, messages.join('\n'));
-  assert.match(messages[0], /hydration markers .* are missing.*removed them/);
+  assert.equal(await page.locator('zb-stripped-await em').count(), 0, 'rendered afresh');
+  if (!runtimeOnly) {
+    assert.equal(messages.length, 1, messages.join('\n'));
+    assert.match(messages[0], /hydration markers .* are missing.*removed them/);
+  }
   await page.close();
 });
 
