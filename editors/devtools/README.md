@@ -31,7 +31,7 @@ Until it's in the stores, load it unpacked from this folder:
 
 Then open DevTools on your app, select an element, and find **Zubra** beside Styles and Computed.
 
-To package it for a store: `cd editors/devtools && zip -r ../zubra-devtools.zip . -x 'test/*' package.json README.md`.
+To package it for a store: `cd editors/devtools && npm run pack`, which writes `editors/zubra-devtools-<version>.zip` (manifest.json at its root, without the tests, scripts, README and package.json). It uses Node alone, so it works on Windows too, where there's no `zip` command. The same zip goes to the Chrome Web Store, Edge Add-ons and Firefox Add-ons.
 
 ## Tests
 

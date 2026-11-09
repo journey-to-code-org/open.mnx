@@ -2,3 +2,6 @@
 node_modules/
 /_site/
 /site/_site/
+
+# Store packages from `npm run pack` (editors/devtools)
+editors/*.zip
