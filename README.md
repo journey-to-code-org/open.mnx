@@ -22,7 +22,7 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 | `@zubra/sync` | `'use collection'`: state kept in IndexedDB, synced across tabs and devices | A component's state must survive reloads or work offline |
 | `create-zubra`, the VS Code extension, the registry | A starter, editor support, 25 components to copy | Convenience |
 
-Each sibling exists because a component feature wanted it (`docs/actions.md`, `docs/sync.md` say which), and each is a separate install that the compiler reports by name when a component uses a directive it serves. A compiler alone, with `zubra compile --emit element`, is one file and no dependency.
+Each sibling exists because a component feature wanted it (`docs/actions.md`, `docs/sync.md` say which), and each is a separate install that the compiler reports by name when a component uses a directive it serves. The compiler knows those two directives itself rather than through a plugin hook, so that the CLI, `zubra serve` and servers in other languages compile a `.zb` file exactly as a bundler does; [Compared with Lit and Stencil](docs/compared-with-lit-and-stencil.md#why-the-compiler-knows-use-server-and-use-collection-by-name) has the reasoning. A compiler alone, with `zubra compile --emit element`, is one file and no dependency.
 
 ```html
 <!-- copy-button.zb -->
