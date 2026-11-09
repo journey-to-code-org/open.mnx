@@ -62,6 +62,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             .collect(),
         ..Script::default()
     };
+    script.collection = directive(&parsed.program.directives, &at)?;
     let mut import_ranges = Vec::new();
     // `'use server'` functions: where they are, and every name they reference.
     let mut import_locals: Vec<Vec<String>> = Vec::new();
@@ -70,6 +71,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     // `hydrated` imported from @zubra/runtime (its local names), and bindings initialized with a
     // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
     let mut hydrated_names: Vec<String> = Vec::new();
+    // `ephemeral` imported from @zubra/sync (its local names).
+    let mut ephemeral_names: Vec<String> = Vec::new();
+    let mut presence_names: Vec<String> = Vec::new();
+    let mut peers_names: Vec<String> = Vec::new();
     let mut calls: Vec<(usize, String)> = Vec::new();
     // `from` imported from @zubra/runtime, and `let x = from(arg)` bindings: (binding, callee,
     // the argument's text, whether it's a `let`, where it is).
@@ -170,6 +175,18 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             && named.imported.name().as_str() == "emit"
                         {
                             script.emit = Some(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(SYNC)
+                            && named.imported.name().as_str() == "ephemeral"
+                        {
+                            ephemeral_names.push(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(SYNC) {
+                            match named.imported.name().as_str() {
+                                "presence" => presence_names.push(named.local.name.to_string()),
+                                "peers" => peers_names.push(named.local.name.to_string()),
+                                _ => {}
+                            }
                         }
                         if import.source.value.as_str() == Some(RUNTIME)
                             && named.imported.name().as_str() == "hydrated"
@@ -331,7 +348,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     }
     script.body = body;
     // `hydrated()` is false until the element starts, so on the server it's `false`.
-    for (index, text) in calls {
+    for (index, text) in calls.clone() {
         let call = text.split_whitespace().collect::<String>();
         if hydrated_names
             .iter()
@@ -339,6 +356,36 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         {
             script.bindings[index].init = Some(expression::Expression::Boolean(false));
         }
+    }
+    // `let editing = ephemeral(false)` is state that isn't stored; on the server it's its value.
+    for (index, callee, argument, _, _) in &linked {
+        if ephemeral_names.contains(callee) {
+            script.bindings[*index].init = expression::parse(argument).ok();
+            script.ephemeral.push(script.bindings[*index].name.clone());
+        }
+        // `let cursor = presence(v)`: shared live, not stored; on the server it's `v`.
+        if presence_names.contains(callee) {
+            script.bindings[*index].init = expression::parse(argument).ok();
+            script.presence.push(script.bindings[*index].name.clone());
+        }
+    }
+    // `let others = peers()`: nobody else is there on the server.
+    for (index, text) in &calls {
+        let Some(callee) = text.strip_suffix("()") else {
+            continue;
+        };
+        if !peers_names.iter().any(|name| name == callee.trim()) {
+            continue;
+        }
+        let binding = &mut script.bindings[*index];
+        if script.peers.is_some() {
+            return Err(Diagnostic::new(
+                binding.span,
+                "`peers()` once per component is enough",
+            ));
+        }
+        binding.init = expression::parse("[]").ok();
+        script.peers = Some(binding.name.clone());
     }
     // `let x = from(prop)` starts as `prop`, so on the server it's the argument's value.
     for (index, callee, argument, mutable, offset) in linked {
@@ -386,6 +433,8 @@ pub fn template_emits(source: &str, emit: &str, span: Span) -> Result<Vec<Emit>,
 
 /// The module components import hooks from.
 pub const RUNTIME: &str = "@zubra/runtime";
+/// The package that keeps `'use collection'` components' state.
+pub const SYNC: &str = "@zubra/sync";
 
 /// Finds `emit("name", detail)` calls; `emit` used any other way can't be analyzed.
 struct EmitFinder<'s, F: Fn(u32) -> Span> {
@@ -586,6 +635,112 @@ pub fn union(types: impl IntoIterator<Item = String>) -> String {
     } else {
         seen.join(" | ")
     }
+}
+
+/// What to say about a directive Zubra doesn't know: what it probably meant, or why it isn't
+/// needed, and the two it does know.
+fn unknown_directive(text: &str, span: Span) -> Diagnostic {
+    const KNOWN: &str = "Zubra knows two directives: 'use collection <name>' first in a script, to keep its state on the device (@zubra/sync), and 'use server' first in an exported function, to run it on the server (@zubra/actions)";
+    let word = text
+        .strip_prefix("use ")
+        .unwrap_or(text)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default();
+    const SERVER: &str = "'use server' goes first in an exported function's body, not the script: `export async function save(formData) { 'use server'; … }`";
+    let rest: Vec<&str> = text.split_whitespace().skip(2).collect();
+    let help = match word {
+        "server" => SERVER.to_owned(),
+        "client" => format!("a Zubra component already runs in the browser, so 'use client' isn't needed: remove it. {KNOWN}"),
+        _ if close_to(word, "collection") => {
+            let name = if rest.is_empty() { "<name>".to_owned() } else { rest.join(" ") };
+            format!("did you mean 'use collection {name}'?")
+        }
+        _ if close_to(word, "server") => format!("did you mean 'use server'? {SERVER}"),
+        _ => KNOWN.to_owned(),
+    };
+    Diagnostic::new(span, format!("unknown directive '{text}'")).with_help(help)
+}
+
+/// A typo away (at most two edits, for words of four letters or more).
+fn close_to(word: &str, known: &str) -> bool {
+    if word.len() < 4 || word == known {
+        return false;
+    }
+    let (a, b): (Vec<char>, Vec<char>) = (word.chars().collect(), known.chars().collect());
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut previous = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let here = row[j + 1];
+            row[j + 1] = (previous + usize::from(ca != cb))
+                .min(row[j] + 1)
+                .min(here + 1);
+            previous = here;
+        }
+    }
+    row[b.len()] <= 2
+}
+
+/// The script's own directives: `'use collection <name>'` (keyed by the `doc` prop, or by the props
+/// after `by`: `'use collection tasks by list, item'`). Any
+/// other `'use …'` is a mistake worth naming, not something to ignore.
+fn directive(
+    directives: &[oxc_ast::ast::Directive<'_>],
+    at: &dyn Fn(u32) -> Span,
+) -> Result<Option<crate::ast::Collection>, Diagnostic> {
+    let mut found = None;
+    for directive in directives {
+        let text = directive.directive.as_str().trim();
+        let span = at(directive.span.start);
+        if text == "use strict" {
+            continue;
+        }
+        let Some(rest) = text.strip_prefix("use collection") else {
+            return Err(unknown_directive(text, span));
+        };
+        if found.is_some() {
+            return Err(Diagnostic::new(
+                span,
+                "a component belongs to one collection",
+            ));
+        }
+        let (name, keys) = match rest.trim().split_once(" by ") {
+            Some((name, keys)) => (
+                name.trim(),
+                keys.split(',')
+                    .map(|key| key.trim().to_owned())
+                    .collect::<Vec<_>>(),
+            ),
+            None => (rest.trim(), vec!["doc".to_owned()]),
+        };
+        let identifier = |word: &str| {
+            !word.is_empty()
+                && word.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && word
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        };
+        if !identifier(name) || name.contains(char::is_whitespace) {
+            return Err(Diagnostic::new(
+                span,
+                "name the collection: 'use collection tasks' (letters, digits, - and _)",
+            ));
+        }
+        if keys.iter().any(|key| !identifier(key) || key.contains('-')) {
+            return Err(Diagnostic::new(
+                span,
+                "`by` lists the props that key a document: 'use collection tasks by projectId, id'",
+            ));
+        }
+        found = Some(crate::ast::Collection {
+            name: name.to_owned(),
+            keys,
+            span,
+        });
+    }
+    Ok(found)
 }
 
 #[cfg(test)]

@@ -137,3 +137,23 @@ fn a_jsx_component_file_can_export_server_functions() {
     let js = compile_js(source, "@zubra/runtime", "j-form.zb.jsx").unwrap();
     assert!(!js.contains("db.js"), "{js}");
 }
+
+#[test]
+fn a_component_can_keep_its_state_on_the_device_and_post_to_the_server() {
+    let source = "<script>\n  'use collection notes';\n  import { db } from './db.js';\n  let text = '';\n  export async function save(formData) {\n    'use server';\n    return db.save(formData.get('text'));\n  }\n</script>\n<note-form doc=\"\"><form action={save}><textarea name=\"text\" value={text}></textarea></form></note-form>";
+    let js = compile_js(source, "@zubra/runtime", "note-form.zb").unwrap();
+    assert!(
+        js.contains(r#"$collection("notes", ["doc"], $p, { text });"#),
+        "{js}"
+    );
+    assert!(
+        js.contains(r#"const save = "/_zb/action/note-form/save";"#),
+        "{js}"
+    );
+    assert!(!js.contains("db.js"), "{js}");
+    let server = compile_server(source).unwrap();
+    assert!(
+        server.contains("export async function save(formData)"),
+        "{server}"
+    );
+}

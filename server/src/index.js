@@ -16,7 +16,8 @@
 // form-associated ones a hidden input, so the page is complete before JavaScript.
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import { StringDecoder } from 'node:string_decoder';
 import * as nodeStream from 'node:stream';
 const { Transform } = nodeStream;
@@ -36,15 +37,35 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
  * `components`: the folder of `.zb` (and `.zb.jsx`/`.zb.tsx`) files. `prefix`: the URL path
  * the browser modules are served under. `cache`: keep compiled output (turn it off in
  * development to pick up edits). `production`: serve the runtime's production build, without hot
- * reloading (by default when `NODE_ENV` is `production`).
+ * reloading (by default when `NODE_ENV` is `production`). `imports`: more import map entries,
+ * for packages the components import beyond `@zubra/runtime` and `@zubra/sync` (both of which
+ * are served and mapped by themselves).
  */
-export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
+export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', imports = {} } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
   const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
   const productionDir = join(sourceDir, '..', 'dist', 'production');
   const runtimeDir = production && existsSync(productionDir) ? productionDir : sourceDir;
   const base = prefix.replace(/\/$/, '');
+
+  // @zubra/sync, for components that start with 'use collection': found from the components
+  // folder (the app's own node_modules), served under <prefix>/sync/ and put in the import map,
+  // so a page needs no setup for it. Not installed: such a component says so (`needs()`).
+  const syncDir = (() => {
+    for (const from of [join(root, 'noop.js'), join(process.cwd(), 'noop.js')]) {
+      try {
+        return dirname(createRequire(pathToFileURL(from)).resolve('@zubra/sync'));
+      } catch {}
+    }
+    return null;
+  })();
+  const needs = (name, code) => {
+    if (!syncDir && code.includes('from "@zubra/sync"')) {
+      throw new Error(`@zubra/server: ${relative(process.cwd(), pathOf(name))} starts with 'use collection', which needs @zubra/sync. Install it: npm install @zubra/sync`);
+    }
+    return code;
+  };
 
   // name (the path without its extension, "/"-separated) → file
   const files = new Map();
@@ -88,11 +109,15 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
   const js = (name) => once(`js:${name}`, () => {
     const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@zubra/runtime' });
     if (!response.ok) throw new Error(response.error);
-    return response.output;
+    return needs(name, response.output);
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, ...syncImports, ...imports } })}</script>`;
+  const syncImports = syncDir ? { '@zubra/sync': `${base}/sync/index.js`, '@zubra/sync/connect': `${base}/sync/connect.js` } : {};
   const head = (names) => {
+    // A component that needs a package that isn't installed fails here, while the page is built,
+    // with the reason, rather than later in the browser as an unresolved import.
+    for (const name of names) js(name);
     const styles = names.map(css).join('\n');
     return `${styles ? `<style data-zb-components>${styles}</style>\n` : ''}${importMap()}`;
   };
@@ -106,6 +131,11 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
       const name = rest.slice('components/'.length, -3);
       if (!files.has(name)) return { status: 404, type: 'text/plain', body: 'Not found' };
       return { status: 200, type: TYPES['.js'], body: js(name) };
+    }
+    if (rest.startsWith('sync/') && syncDir) {
+      const file = resolve(syncDir, rest.slice('sync/'.length));
+      if (!file.startsWith(syncDir + sep) || extname(file) !== '.js' || !existsSync(file)) return { status: 404, type: 'text/plain', body: 'Not found' };
+      return { status: 200, type: TYPES['.js'], body: readFileSync(file) };
     }
     if (rest.startsWith('runtime/')) {
       const file = resolve(runtimeDir, rest.slice('runtime/'.length));
@@ -296,6 +326,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
       writeFileSync(file, js(name));
     }
     cpSync(runtimeDir, join(out, 'runtime'), { recursive: true });
+    if (syncDir) cpSync(syncDir, join(out, 'sync'), { recursive: true, filter: (from) => !from.endsWith('.d.ts') });
   }
 
   /**

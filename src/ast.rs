@@ -111,6 +111,16 @@ pub struct Script {
     pub server_exports: Vec<ServerExport>,
     /// The `import` statements the server functions need (for `--emit server`).
     pub server_imports: Vec<String>,
+    /// `'use collection tasks'` at the top of the script: its top-level `let`s are the fields of
+    /// a document in a local store, kept by `@zubra/sync`.
+    pub collection: Option<Collection>,
+    /// `let editing = ephemeral(false)` (from `@zubra/sync`): state that isn't stored.
+    pub ephemeral: Vec<String>,
+    /// `let cursor = presence({ x: 0, y: 0 })`: state shared live with the document's other
+    /// viewers, never stored.
+    pub presence: Vec<String>,
+    /// `let others = peers()`: the other viewers' presence, as an array.
+    pub peers: Option<String>,
 }
 
 /// An exported function marked `'use server'`. Its body never reaches the browser: the browser
@@ -129,6 +139,16 @@ pub struct ServerExport {
 /// The URL a server function is served at: `/_zb/action/<tag>/<name>`.
 pub fn action_url(tag: &str, name: &str) -> String {
     format!("/_zb/action/{tag}/{name}")
+}
+
+/// `'use collection <name>'`, or `'use collection <name> by <prop>, <prop>'`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Collection {
+    pub name: String,
+    /// The props whose values make the document's key (`doc` unless `by` says otherwise; not
+    /// `id`, which is every element's own DOM id and must be unique on a page).
+    pub keys: Vec<String>,
+    pub span: Span,
 }
 
 /// An `emit("name", detail)` call: the component fires a DOM event called `name`.

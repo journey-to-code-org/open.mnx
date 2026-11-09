@@ -46,6 +46,16 @@ pub fn emit(
     source_name: &str,
     component_extension: Option<&str>,
 ) -> Result<String, Diagnostic> {
+    // `@zubra/sync` binds to `@zubra/runtime`'s signals, which an element doesn't have.
+    if let Some(collection) = &component.script.collection {
+        return Err(Diagnostic::new(
+            collection.span,
+            "--emit element doesn't support 'use collection': `@zubra/sync` works with `@zubra/runtime`, which a plain element doesn't include",
+        )
+        .with_help(
+            "compile this component with --emit js (the default), which keeps its state on the device",
+        ));
+    }
     if component.shadow {
         return Err(Diagnostic::new(
             component.tag_span,

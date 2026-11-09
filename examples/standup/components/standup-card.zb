@@ -1,0 +1,44 @@
+<!--
+  One person's standup card. Its state is a document on the device ('use collection cards',
+  keyed by `doc`): typing updates the card at once, offline too, and the store and the team
+  follow. Who else is editing it is presence: shared live, never stored.
+-->
+<script>
+  'use collection cards'
+  import { presence, peers } from '@zubra/sync'
+
+  let today = ""
+  let blocked = false
+  let editing = presence(false)
+  let others = peers()
+
+  const busy = others.filter((other) => other.editing).length
+</script>
+<style>
+  .card { border: 1px solid #c9ccd3; border-radius: 10px; padding: 1rem; display: grid; gap: 0.5rem; }
+  .card.blocked { border-color: #c62f3f; }
+  h2 { margin: 0; font-size: 1.1rem; }
+  label { display: grid; gap: 0.25rem; }
+  label.blocked { display: flex; align-items: center; gap: 0.4rem; }
+  textarea { font: inherit; }
+  .presence { margin: 0; color: #4a5bd4; font-size: 0.9rem; }
+</style>
+
+<standup-card doc="" name="">
+  <article class={blocked ? "card blocked" : "card"}>
+    <h2>{name}</h2>
+    <label>
+      Today
+      <textarea name="today" rows="3" value={today}
+        oninput={(event) => (today = event.target.value)}
+        onfocus={() => (editing = true)}
+        onblur={() => (editing = false)}></textarea>
+    </label>
+    <label class="blocked">
+      <input type="checkbox" name="blocked" checked={blocked} onchange={(event) => (blocked = event.target.checked)} />
+      Blocked
+    </label>
+    <p class="presence" zb-if={busy > 0}>{busy === 1 ? "Someone else is editing this" : busy + " others are editing this"}</p>
+  </article>
+
+</standup-card>
