@@ -65,3 +65,18 @@ Each module holds only what its component uses, so plain output is small:
 (Minified with esbuild, then `gzip -9`.) Each plain element carries its own copy of the helpers it uses. For a handful of components, plain output is smaller; past that, the shared runtime is. Use plain output to read what a component does, to hand someone one file, to add a component to a page you don't build, or to publish a component with no dependencies. Use `--emit js` for an app, and for server-rendered pages.
 
 A component written as JSX (`.zb.jsx`, `.zb.tsx`) reads the same way: its script is written out as `zubra convert --as zubra` would write it, with props as `element.name` and state as `name.value`, and its text keeps JSX's whitespace rule.
+
+## Back to `.zb`: `zubra convert`
+
+The other direction: `zubra convert my-element.js` reads a custom element in this shape and writes the `.zb` component it means.
+
+```sh
+zubra compile toggle-switch.zb --emit element --output toggle-switch.js
+# … read it, change it, learn from it …
+zubra convert toggle-switch.js --out toggle-switch.zb
+```
+
+It undoes what the emitter did. The props (`static zubra`, or `observedAttributes` with `#props`) become the host tag's attributes. The script comes back as written: `element.count` is `count`, `const count = state(0)` is `let count = 0`, and the hooks are imported again. Each `bind()` goes back onto its node as an attribute, a `class:`, a `style:` or text. Each listener becomes an `on…`, with its modifiers read back from the checks (`onkeydown.enter.prevent`). `list()`, `when()` and the slots become `<zb-each>`, `<zb-if>` and `<zb-slot>`, and the stylesheet comes back unscoped. An element written by hand in the same shape converts too: a class with `#setup()` that clones its markup, names its nodes and keeps a list of `bind(read, write)` updates.
+
+It is checked as a fixed point: every component `--emit element` accepts (the registry and the runtime's test components, 61 of them), compiled, converted back and compiled again, gives the same element. What it can't place (a DOM call that isn't one of the emitter's, module code beyond the element and its helpers) is reported at its line with `not converted:`, not guessed, and the result is compiled to check it. TypeScript's types don't survive the trip, since the element is JavaScript.
+
