@@ -106,3 +106,34 @@ fn only_use_server_functions_can_be_exported() {
     .unwrap_err();
     assert!(error.message.contains("can't export"), "{}", error.message);
 }
+
+#[test]
+fn typescript_server_functions_and_their_imports_stay_out_of_the_typings() {
+    let source = "<script lang=\"ts\">\n  import { db } from './db.js';\n  export async function save(formData: FormData): Promise<number> {\n    'use server';\n    return db.save(formData);\n  }\n</script>\n<ts-form><form action={save}></form></ts-form>";
+    let server = compile_server(source).unwrap();
+    assert!(
+        server.contains("export async function save(formData"),
+        "{server}"
+    );
+    assert!(!server.contains("Promise<number>"), "{server}");
+    let dts = zubra::compile_declarations(source, "ts-form.zb").unwrap();
+    assert!(!dts.contains("db.js"), "{dts}");
+}
+
+#[test]
+fn a_jsx_component_file_can_export_server_functions() {
+    let source = "import { db } from './db.js';\nexport async function save(formData) { 'use server'; return db.save(formData) }\nexport default function JForm() { return <form action={save}><button>Save</button></form> }";
+    let html = compile(source, "{}").unwrap();
+    assert!(
+        html.contains(r#"<form action="/_zb/action/j-form/save" method="post">"#),
+        "{html}"
+    );
+    let server = compile_server(source).unwrap();
+    assert!(server.contains("import { db } from './db.js';"), "{server}");
+    assert!(
+        server.contains(r#""/_zb/action/j-form/save": save"#),
+        "{server}"
+    );
+    let js = compile_js(source, "@zubra/runtime", "j-form.zb.jsx").unwrap();
+    assert!(!js.contains("db.js"), "{js}");
+}
