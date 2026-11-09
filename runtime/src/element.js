@@ -48,6 +48,12 @@ export function isSafeUrl(value) {
   return ['http', 'https', 'mailto', 'tel'].includes(beforePath.slice(0, colon).toLowerCase());
 }
 
+/** A srcset whose every candidate's URL is safe (src/validate.rs `is_safe_srcset`). */
+export function isSafeSrcset(value) {
+  const urls = String(value).split(',').map((candidate) => candidate.trim().split(/\s+/)[0]).filter(Boolean);
+  return urls.length > 0 && urls.every(isSafeUrl);
+}
+
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 
 /** Attribute text → prop value, typed by the prop's default (JSON for arrays and objects). */
@@ -1090,6 +1096,11 @@ function bindAttribute(part, node) {
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
     // No URL yet (a prop's "" default, before the app sets it): no attribute, and nothing to report.
     if (part.url && text.trim() === '') return node.removeAttribute(name);
+    if (part.srcset && text.trim() === '') return node.removeAttribute(name);
+    if (part.srcset && !isSafeSrcset(text)) {
+      console.error(`zubra: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
+      return node.removeAttribute(name);
+    }
     if (part.url && !isSafeUrl(text)) {
       console.error(`zubra: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
       return node.removeAttribute(name);

@@ -1013,6 +1013,8 @@ impl<'a> Emitter<'a> {
                         ", boolean: true".to_owned()
                     } else if URL_ATTRIBUTES.contains(&lower.as_str()) {
                         ", url: true".to_owned()
+                    } else if lower == "srcset" {
+                        ", srcset: true".to_owned()
                     } else if custom
                         && child.is_none()
                         && matches!(value, AttributeValue::Expression(..))

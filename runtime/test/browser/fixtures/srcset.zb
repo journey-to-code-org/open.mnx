@@ -1,0 +1,4 @@
+<zb-srcset set="">
+  <img alt="" class="bound" srcset={set}>
+  <img alt="" class="text" srcset="{set}">
+</zb-srcset>

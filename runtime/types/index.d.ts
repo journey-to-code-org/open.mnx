@@ -199,6 +199,8 @@ export declare const ABI: number;
 
 /** Whether a URL is safe for `href`/`src`: relative, or http(s), mailto or tel. */
 export declare function isSafeUrl(value: string): boolean;
+/** True when every candidate in a srcset has a safe URL (the check a dynamic `srcset` gets). */
+export declare function isSafeSrcset(value: string): boolean;
 /** @internal Read a value that may be a signal. */
 export declare function $r<T>(value: MaybeSignal<T>): T;
 /** @internal A value as template text. */

@@ -67,11 +67,12 @@ test('listeners follow the latest function and go when their key does; propertie
 
 test('what an attribute could not do, a spread cannot: unsafe URLs, text handlers, markup, style text', async () => {
   const { page, messages } = await open('<spread-demo></spread-demo>', { modules: ['spread'] });
-  await set(page, { attrs: { href: 'javascript:alert(1)', onclick: 'alert(1)', innerHTML: '<img src=x onerror=alert(1)>', style: 'color: red', children: 'x' } });
+  await set(page, { attrs: { href: 'javascript:alert(1)', srcset: '/a 1x, javascript:alert(1) 2x', onclick: 'alert(1)', innerHTML: '<img src=x onerror=alert(1)>', style: 'color: red', children: 'x' } });
   const { attributes } = await link(page);
   assert.equal(attributes.href, undefined, 'no unsafe URL');
+  assert.equal(attributes.srcset, undefined, 'no unsafe srcset candidate');
   assert.equal(attributes.onclick, undefined, 'no handler as text');
   assert.equal(attributes.style, undefined, 'no style text');
   assert.equal(await page.textContent('spread-demo a'), 'link', 'no markup');
-  assert.equal(messages.filter((message) => message.startsWith('error: zubra:')).length, 5, messages.join('\n'));
+  assert.equal(messages.filter((message) => message.startsWith('error: zubra:')).length, 6, messages.join('\n'));
 });

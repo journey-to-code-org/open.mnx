@@ -1843,7 +1843,8 @@ impl Context<'_> {
                 ),
             };
             if let Some(text) = &rendered {
-                if URL_ATTRIBUTES.contains(&name.to_ascii_lowercase().as_str()) {
+                let lower_name = name.to_ascii_lowercase();
+                if URL_ATTRIBUTES.contains(&lower_name.as_str()) || lower_name == "srcset" {
                     if text.trim().is_empty() {
                         continue;
                     }
@@ -1852,7 +1853,11 @@ impl Context<'_> {
                         value: AttributeValue::None,
                         span: *span,
                     };
-                    check_url(&as_attribute, text)?;
+                    if lower_name == "srcset" {
+                        check_srcset(&as_attribute, text)?;
+                    } else {
+                        check_url(&as_attribute, text)?;
+                    }
                 }
             }
             attributes.push(ir::Attribute {
@@ -1883,6 +1888,7 @@ impl Context<'_> {
         }
         let is_boolean = BOOLEAN_ATTRIBUTES.contains(&lower.as_str());
         let is_url = URL_ATTRIBUTES.contains(&lower.as_str());
+        let is_srcset = lower == "srcset";
         let value = match &attribute.value {
             AttributeValue::None => None,
             AttributeValue::Text(parts) => {
@@ -1895,6 +1901,13 @@ impl Context<'_> {
                     .any(|part| matches!(part, AstPart::Expression { .. }));
                 if is_url && dynamic {
                     check_url(attribute, &joined(&lowered))?;
+                }
+                if is_srcset && dynamic {
+                    let text = joined(&lowered);
+                    if text.trim().is_empty() {
+                        return Ok(None);
+                    }
+                    check_srcset(attribute, &text)?;
                 }
                 Some(lowered)
             }
@@ -1930,6 +1943,13 @@ impl Context<'_> {
                 };
                 if is_url {
                     check_url(attribute, &text)?;
+                }
+                if is_srcset {
+                    // No candidates yet (a prop's "" default): no attribute, as in the browser.
+                    if text.trim().is_empty() {
+                        return Ok(None);
+                    }
+                    check_srcset(attribute, &text)?;
                 }
                 Some(vec![Part::Escaped(text)])
             }
@@ -2096,11 +2116,10 @@ fn check_attribute_statically(attribute: &ast::Attribute) -> Result<(), Diagnost
         ));
     }
     if lower == "srcset" {
+        // A dynamic srcset is checked candidate by candidate once its value is known: when
+        // rendering on the server (lower_attribute) and in the browser (the runtime's isSafeSrcset).
         if dynamic {
-            return Err(Diagnostic::new(
-                attribute.span,
-                "dynamic srcset is not supported yet",
-            ));
+            return Ok(());
         }
         return validate_srcset(attribute);
     }
@@ -2151,6 +2170,28 @@ fn check_url(attribute: &ast::Attribute, value: &str) -> Result<(), Diagnostic> 
             format!("unsafe URL in `{}` attribute", attribute.name),
         )
         .with_help("allowed: relative URLs, http:, https:, mailto: and tel:"))
+    }
+}
+
+/// A srcset's value: every candidate's URL is safe. Empty candidates (a trailing comma) are
+/// skipped, as browsers do; a value with no candidate at all is rejected.
+pub fn is_safe_srcset(value: &str) -> bool {
+    let mut urls = value
+        .split(',')
+        .filter_map(|candidate| candidate.split_whitespace().next())
+        .peekable();
+    urls.peek().is_some() && urls.all(is_safe_url)
+}
+
+fn check_srcset(attribute: &ast::Attribute, value: &str) -> Result<(), Diagnostic> {
+    if is_safe_srcset(value) {
+        Ok(())
+    } else {
+        Err(Diagnostic::new(
+            attribute.span,
+            format!("unsafe or empty URL candidate in `{}`", attribute.name),
+        )
+        .with_help("each candidate's URL must be relative, http: or https:"))
     }
 }
 

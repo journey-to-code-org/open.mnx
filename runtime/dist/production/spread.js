@@ -2,7 +2,7 @@
 // {...spread} in compiled components: an object's entries as an element's attributes,
 // properties and listeners. Its own entry (`@zubra/runtime/spread`), which a compiled module imports
 // only when its template spreads, so components that don't, don't load it.
-import { $r, isSafeUrl } from './element.js';
+import { $r, isSafeSrcset, isSafeUrl } from './element.js';
 import { effect } from './effect.js';
 
 const see = (section) => ` (see https://github.com/journey-to-code-org/zubra#${section})`;
@@ -130,6 +130,13 @@ export function spread(part, node) {
         continue;
       }
       const text = String(value);
+      if (name.toLowerCase() === 'srcset') {
+        if (text.trim() === '' || !isSafeSrcset(text)) {
+          if (text.trim() !== '') console.error(`zubra: blocked an unsafe URL in "${name}"${see('safety')}:`, text);
+          node.removeAttribute(name);
+          continue;
+        }
+      }
       if (SPREAD_URLS.has(name.toLowerCase())) {
         if (text.trim() === '') {
           node.removeAttribute(name);

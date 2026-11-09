@@ -8,5 +8,5 @@ export {
   createContext, provide, inject, ContextRequestEvent, ContextProviderEvent,
   formValue, validity, onFormReset, onFormRestore, onFormDisabled,
   prevent, stop, selfOnly, submit, keys, model, hasSlot, hydrated, signal, from, raw,
-  isSafeUrl, $r, $t,
+  isSafeUrl, isSafeSrcset, $r, $t,
 } from './element.js';
