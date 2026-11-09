@@ -13,7 +13,7 @@ npm start                   # http://localhost:3000; open it in two browsers
 
 - **`standup-card.zb`** starts with `'use collection cards'`. Its `today` and `blocked` are the fields of a document keyed by its `doc` prop, kept in IndexedDB by `@zubra/sync`. Typing updates the card at once, works offline, and survives a reload; nothing in the component mentions a network.
 - **`let editing = presence(false)`** is set while the card's textarea has focus, and **`let others = peers()`** lists everyone else viewing the card. "Someone else is editing this" is derived from them. Presence is never stored.
-- **`server.js`** renders the page with `@zubra/server` (each card with its defaults, so the page is complete before JavaScript), serves `@zubra/sync`'s browser files and points the import map at them (`createZubra({ imports })`), and keeps the team's log with `createSyncServer({ log: await sqliteLog('standup.db') })`. The page's one line of glue is `connect()`.
+- **`server.js`** renders the page with `@zubra/server` (each card with its defaults, so the page is complete before JavaScript) and keeps the team's log with `createSyncServer({ log: await sqliteLog('standup.db') })`. `@zubra/server` serves `@zubra/sync` and maps it in the page by itself, because the cards use it. The page's one line of glue is `connect()`.
 
 ## The tests
 

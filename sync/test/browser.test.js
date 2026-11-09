@@ -365,3 +365,4 @@ test('an edit made while the document is still loading is kept, and saved', asyn
   await tab.waitForFunction(() => document.querySelector('.title').value === 'Typed before it loaded', null, { timeout: 5000 });
   await context.close();
 });
+

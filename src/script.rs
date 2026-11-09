@@ -548,6 +548,52 @@ pub fn union(types: impl IntoIterator<Item = String>) -> String {
     }
 }
 
+/// What to say about a directive Zubra doesn't know: what it probably meant, or why it isn't
+/// needed, and the two it does know.
+fn unknown_directive(text: &str, span: Span) -> Diagnostic {
+    const KNOWN: &str = "Zubra knows two directives: 'use collection <name>' first in a script, to keep its state on the device (@zubra/sync), and 'use server' first in an exported function, to run it on the server (@zubra/actions)";
+    let word = text
+        .strip_prefix("use ")
+        .unwrap_or(text)
+        .split_whitespace()
+        .next()
+        .unwrap_or_default();
+    const SERVER: &str = "'use server' goes first in an exported function's body, not the script: `export async function save(formData) { 'use server'; … }`";
+    let rest: Vec<&str> = text.split_whitespace().skip(2).collect();
+    let help = match word {
+        "server" => SERVER.to_owned(),
+        "client" => format!("a Zubra component already runs in the browser, so 'use client' isn't needed: remove it. {KNOWN}"),
+        _ if close_to(word, "collection") => {
+            let name = if rest.is_empty() { "<name>".to_owned() } else { rest.join(" ") };
+            format!("did you mean 'use collection {name}'?")
+        }
+        _ if close_to(word, "server") => format!("did you mean 'use server'? {SERVER}"),
+        _ => KNOWN.to_owned(),
+    };
+    Diagnostic::new(span, format!("unknown directive '{text}'")).with_help(help)
+}
+
+/// A typo away (at most two edits, for words of four letters or more).
+fn close_to(word: &str, known: &str) -> bool {
+    if word.len() < 4 || word == known {
+        return false;
+    }
+    let (a, b): (Vec<char>, Vec<char>) = (word.chars().collect(), known.chars().collect());
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut previous = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let here = row[j + 1];
+            row[j + 1] = (previous + usize::from(ca != cb))
+                .min(row[j] + 1)
+                .min(here + 1);
+            previous = here;
+        }
+    }
+    row[b.len()] <= 2
+}
+
 /// The script's own directives: `'use collection <name>'` (keyed by the `doc` prop, or by the props
 /// after `by`: `'use collection tasks by list, item'`). Any
 /// other `'use …'` is a mistake worth naming, not something to ignore.
@@ -563,14 +609,7 @@ fn directive(
             continue;
         }
         let Some(rest) = text.strip_prefix("use collection") else {
-            let help = if text == "use server" {
-                "'use server' goes first in an exported function's body: `export async function save(formData) { 'use server'; … }`"
-            } else {
-                "the script directives Zubra knows are 'use collection <name>' (@zubra/sync), and 'use server' inside an exported function"
-            };
-            return Err(
-                Diagnostic::new(span, format!("unknown directive '{text}'")).with_help(help)
-            );
+            return Err(unknown_directive(text, span));
         };
         if found.is_some() {
             return Err(Diagnostic::new(

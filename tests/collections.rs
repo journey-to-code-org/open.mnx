@@ -158,3 +158,32 @@ fn a_plain_element_says_it_cant_keep_a_collection() {
     );
     assert!(error.help.unwrap_or_default().contains("--emit js"));
 }
+
+#[test]
+fn unknown_directives_say_what_was_probably_meant() {
+    let help = |directive: &str| {
+        compile(
+            &format!("<script>'{directive}'; let x = 1</script>\n<x-y doc=\"\">{{x}}</x-y>"),
+            "{}",
+        )
+        .unwrap_err()
+        .help
+        .unwrap_or_default()
+    };
+    assert!(
+        help("use colection tasks").contains("did you mean 'use collection tasks'?"),
+        "{}",
+        help("use colection tasks")
+    );
+    assert!(help("use colection").contains("'use collection <name>'"));
+    assert!(help("use sever").contains("did you mean 'use server'?"));
+    assert!(help("use sever").contains("exported function"));
+    assert!(help("use client").contains("isn't needed: remove it"));
+    // Something unrelated: the two Zubra knows, and the packages behind them.
+    let other = help("use cache");
+    assert!(
+        other.contains("@zubra/sync") && other.contains("@zubra/actions"),
+        "{other}"
+    );
+    assert!(!other.contains("did you mean"), "{other}");
+}

@@ -31,6 +31,32 @@ function clock(client) {
   return { tick, see: (stamp) => tick(Number(stamp.slice(0, 15))) };
 }
 
+/**
+ * @internal The changes waiting to be pushed. A push takes a snapshot (`take`), and when the
+ * server has it, exactly those changes leave (`done`): by identity, not by count, so a change
+ * added while an earlier push was out is never dropped by it. Two pushes can overlap (the debounce
+ * and the poll loop); this is why that's safe.
+ */
+export function outboxOf(changes = [], persist = () => {}) {
+  let pending = changes;
+  return {
+    get size() {
+      return pending.length;
+    },
+    pending: () => pending.slice(),
+    add(change) {
+      pending.push(change);
+      persist(pending);
+    },
+    take: () => pending.slice(),
+    done(sent) {
+      const gone = new Set(sent);
+      pending = pending.filter((change) => !gone.has(change));
+      persist(pending);
+    },
+  };
+}
+
 const remember = (name, fallback) => {
   try { return localStorage.getItem(name) ?? fallback(); } catch { return fallback(); }
 };
@@ -49,8 +75,8 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   });
   const clocks = clock(client);
   let cursor = remember('zubra-sync:cursor', () => '0');
-  let outbox = JSON.parse(remember('zubra-sync:outbox', () => '[]'));
-  const save = () => keep('zubra-sync:outbox', JSON.stringify(outbox));
+  const outbox = outboxOf(JSON.parse(remember('zubra-sync:outbox', () => '[]')), (pending) =>
+    keep('zubra-sync:outbox', JSON.stringify(pending)));
 
   // Local writes: stamp each field, remember the stamp beside the document, queue it.
   const off = onWrite(async (collection, key, fields) => {
@@ -58,9 +84,8 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
     for (const [field, value] of Object.entries(fields)) {
       const stamp = clocks.tick();
       stamped[field] = stamp;
-      outbox.push({ collection, key, field, value, clock: stamp });
+      outbox.add({ collection, key, field, value, clock: stamp });
     }
-    save();
     const doc = (await currentStore().get(collection, key)) ?? {};
     await currentStore().set(collection, key, { [CLOCKS]: { ...doc[CLOCKS], ...stamped } });
     schedule();
@@ -73,8 +98,8 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   };
 
   async function flush() {
-    if (!outbox.length) return;
-    const sending = outbox.slice();
+    if (!outbox.size) return;
+    const sending = outbox.take();
     try {
       const response = await fetch(`${base}/push`, {
         method: 'POST',
@@ -82,8 +107,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
         body: JSON.stringify({ changes: sending }),
       });
       if (!response.ok) return;
-      outbox = outbox.slice(sending.length);
-      save();
+      outbox.done(sending);
     } catch {
       // Offline: the outbox stays (in localStorage too), and goes with the next flush.
     }
