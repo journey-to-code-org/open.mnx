@@ -3,7 +3,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -307,10 +307,17 @@ test('stream(): the script puts regions in place where the browser doesn\'t (a s
 });
 
 test("@zubra/sync is served and mapped by itself, when it's installed", async () => {
-  // The standup example has @zubra/sync installed next to its components.
-  const zubra = createZubra({ components: join(here, '../../examples/standup/components') });
+  // An app of its own: @zubra/sync in its node_modules (linked to this repository's), and a
+  // 'use collection' component.
+  const app = mkdtempSync(join(tmpdir(), 'zubra-with-sync-'));
+  mkdirSync(join(app, 'node_modules', '@zubra'), { recursive: true });
+  symlinkSync(join(here, '../../sync'), join(app, 'node_modules', '@zubra', 'sync'), 'dir');
+  mkdirSync(join(app, 'components'));
+  writeFileSync(join(app, 'components', 'note-card.zb'), "<script>'use collection notes'; let text = ''</script>\n<note-card doc=\"\">{text}</note-card>\n");
+  after(() => rmSync(app, { recursive: true, force: true }));
+  const zubra = createZubra({ components: join(app, 'components') });
   const page = zubra.page();
-  const html = page.finish(`<html><head></head><body>${page.render('standup-card', { doc: 'ada', name: 'Ada' })}</body></html>`);
+  const html = page.finish(`<html><head></head><body>${page.render('note-card', { doc: 'n1' })}</body></html>`);
   assert.match(html, /"@zubra\/sync":"\/_zubra\/sync\/index\.js"/);
   assert.match(html, /"@zubra\/sync\/connect":"\/_zubra\/sync\/connect\.js"/);
   for (const file of ['index.js', 'connect.js']) {
