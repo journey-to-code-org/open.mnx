@@ -58,6 +58,9 @@ before(async () => {
         answer.pipe(res);
       });
       res.on('close', () => upstream.destroy());
+      // A browser leaving mid-stream, or the binary stopping at the end of the run, cuts the
+      // upstream connection: that ends this response, it isn't a failure.
+      upstream.on('error', () => res.destroy());
       return req.pipe(upstream);
     }
     if (await sync.handle(req, res)) return;
