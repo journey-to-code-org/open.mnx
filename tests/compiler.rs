@@ -386,8 +386,15 @@ fn validates_srcset_and_srcdoc() {
         "<zb-pic s=\"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,\"><img srcset=\"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,\"><img srcset=\"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,\"></zb-pic>"
     );
     // No candidates yet (the "" default): no attribute.
-    assert_eq!(compile(source, "{}").unwrap(), "<zb-pic><img><img></zb-pic>");
-    for unsafe_value in ["/a 1x, javascript:alert(1) 2x", "data:image/png;base64,AAAA 1x", " , "] {
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<zb-pic><img><img></zb-pic>"
+    );
+    for unsafe_value in [
+        "/a 1x, javascript:alert(1) 2x",
+        "data:image/png;base64,AAAA 1x",
+        " , ",
+    ] {
         assert_error(
             source,
             &serde_json::to_string(&json!({ "s": unsafe_value })).unwrap(),
