@@ -368,7 +368,7 @@ fn rejects_unsafe_static_and_dynamic_urls() {
 }
 
 #[test]
-fn validates_srcset_and_rejects_dynamic_srcset_and_srcdoc() {
+fn validates_srcset_and_srcdoc() {
     assert!(compile(
         "<zb-pic><img srcset=\"/small.webp 1x, https://mnix.dev/large.webp 2x\"></zb-pic>",
         "{}"
@@ -379,10 +379,25 @@ fn validates_srcset_and_rejects_dynamic_srcset_and_srcdoc() {
         "{}",
         "unsafe or empty URL",
     );
+    // A dynamic srcset: each candidate is checked once its value is known.
+    let source = "<zb-pic s=\"\"><img srcset={s}><img srcset=\"{s}\"></zb-pic>";
+    assert_eq!(
+        compile(source, r#"{"s":"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,"}"#).unwrap(),
+        "<zb-pic s=\"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,\"><img srcset=\"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,\"><img srcset=\"/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,\"></zb-pic>"
+    );
+    // No candidates yet (the "" default): no attribute.
+    assert_eq!(compile(source, "{}").unwrap(), "<zb-pic><img><img></zb-pic>");
+    for unsafe_value in ["/a 1x, javascript:alert(1) 2x", "data:image/png;base64,AAAA 1x", " , "] {
+        assert_error(
+            source,
+            &serde_json::to_string(&json!({ "s": unsafe_value })).unwrap(),
+            "unsafe or empty URL candidate",
+        );
+    }
     assert_error(
-        "<zb-pic s=\"/a 1x\"><img srcset={s}></zb-pic>",
-        "{}",
-        "dynamic srcset",
+        "<zb-pic s={{}}><img {...s}></zb-pic>",
+        r#"{"s":{"srcset":"/a 1x, javascript:alert(1) 2x"}}"#,
+        "unsafe or empty URL candidate",
     );
     assert_error(
         "<zb-frame c=\"x\"><iframe srcdoc={c}></iframe></zb-frame>",

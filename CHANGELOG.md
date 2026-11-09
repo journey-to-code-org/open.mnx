@@ -2,6 +2,22 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.1.0 — 2026-11-09
+
+Dynamic `srcset`, for responsive images from data (a gallery, a CMS, a manifest).
+
+### Added
+
+- **`srcset={…}` and `srcset="… {expression} …"`** compile. Each candidate's URL is checked under the same rule as `src`: on the final value at build time for the HTML output, and on every update at runtime, where one unsafe candidate (`javascript:`, `data:`, `//host`) removes the whole attribute and is reported. An empty value (a prop's `""` default) leaves the attribute off, quietly. It used to be the compile error "dynamic srcset is not supported yet". The runtime exports the check as `isSafeSrcset`.
+
+### Fixed
+
+- **A spread checks `srcset` too.** `{...attrs}` with an unsafe `srcset` candidate is refused (in the HTML output, a compile error; at runtime, the attribute is left off and reported). Before, a spread wrote `srcset` unchecked.
+
+### Compatibility
+
+Output compiled by 5.1 runs on a 5.0 runtime: a 5.0 runtime sets a dynamic `srcset` without checking its candidates (browsers don't run `javascript:` from `srcset`, but update the runtime for the check).
+
 ## 5.0.3 — 2026-11-08
 
 A documentation site, a landing page, a logo, and the VS Code extension on the Marketplace. Two diagnostics say more, and the language server finds the compiler in your project. No API changes.

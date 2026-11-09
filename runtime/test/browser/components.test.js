@@ -10,6 +10,7 @@ useBrowser({
   header: join(repo, 'examples/header.zb'),
   counter: join(here, 'fixtures/counter.zb'),
   link: join(here, 'fixtures/link.zb'),
+  srcset: join(here, 'fixtures/srcset.zb'),
   greeting: join(here, 'fixtures/greeting.zb'),
   pair: join(here, 'fixtures/pair.zb'),
   typed: join(here, 'fixtures/typed.zb'),
@@ -258,6 +259,27 @@ test('mount/unmount hooks run on connect and disconnect; state survives a move',
 });
 
 // ---- safety and attributes -----------------------------------------------------------------
+
+test('a dynamic srcset is set when every candidate is safe, and refused when one is not', async () => {
+  const { page, messages } = await open('<zb-srcset></zb-srcset>', { modules: ['srcset'] });
+  const read = () => page.$$eval('zb-srcset img', (images) => images.map((image) => image.getAttribute('srcset')));
+  assert.deepEqual(await read(), [null, null], 'no candidates yet: no attribute');
+  const set = (value) => page.evaluate(async (value) => {
+    const el = document.querySelector('zb-srcset');
+    el.set = value;
+    await el.updateComplete;
+  }, value);
+  await set('/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,');
+  assert.deepEqual(await read(), Array(2).fill('/a-480.webp 480w, https://mnix.dev/a-960.webp 960w,'));
+  await set('/a.webp 1x, javascript:alert(1) 2x');
+  assert.deepEqual(await read(), [null, null], 'one unsafe candidate refuses the whole srcset');
+  assert.equal(messages.filter((message) => message.startsWith('error:') && message.includes('blocked an unsafe URL')).length, 2, messages.join('\n'));
+  await set('data:image/png;base64,AAAA 1x');
+  assert.deepEqual(await read(), [null, null]);
+  await set('/b.webp 2x');
+  assert.deepEqual(await read(), ['/b.webp 2x', '/b.webp 2x']);
+  await page.close();
+});
 
 test('blocks unsafe URLs at runtime and handles boolean and interpolated attributes', async () => {
   const { page, messages } = await open('<zb-link></zb-link>', { modules: ['link'] });
