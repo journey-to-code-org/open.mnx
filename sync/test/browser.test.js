@@ -73,6 +73,8 @@ before(async () => {
     res.setHeader('content-type', 'text/html');
     if (url.pathname === '/two') return res.end(page('<task-item doc="a"></task-item><task-item doc="b"></task-item>'));
     const doc = (url.searchParams.get('doc') ?? 'a').replace(/\W/g, '');
+    // A store that takes a while to answer, set up before the element starts.
+    if (url.pathname === '/slow') return res.end(page(`<script type="module">import { configure, indexedDBStore } from '/sync/index.js'; const store = indexedDBStore(); configure({ store: { get: (c, k) => new Promise((done) => setTimeout(done, 800)).then(() => store.get(c, k)), set: (c, k, f) => store.set(c, k, f) } });</script><task-item doc="${doc}"></task-item>`));
     // Live only: polling every minute, so anything sooner came over the event stream.
     if (url.pathname === '/live') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000 }));
     const connectTo = url.searchParams.has('rtc') ? { interval: 60_000, webrtc: true } : url.searchParams.has('connect') ? { interval: 60_000 } : false;
@@ -182,7 +184,15 @@ test('connected: another device gets the change through the log', async () => {
   await a.tab.fill('.title', 'Written on A');
   await a.tab.check('input[type=checkbox]');
   await title(b.tab, 'Written on A');
-  await b.tab.waitForSelector('.state:has-text("done")');
+  try {
+    await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
+  } catch (error) {
+    const log = await (await fetch(`${base}/_zb/sync/pull?since=0`)).json();
+    console.log('DEBUG log', JSON.stringify(log.changes.filter((c) => c.key === 'first')));
+    console.log('DEBUG A outbox', await a.tab.evaluate(() => localStorage.getItem('zubra-sync:outbox')), 'B cursor', await b.tab.evaluate(() => localStorage.getItem('zubra-sync:cursor')));
+    console.log('DEBUG A state', await a.tab.textContent('.state'));
+    throw error;
+  }
   // And it's in B's own store, with the clock it won by.
   const stored = await b.tab.evaluate(() => new Promise((done) => {
     const open = indexedDB.open('zubra-sync');
@@ -340,4 +350,18 @@ test('webrtc: a lost signal doesn\'t strand the pair; they start again', async (
   assert.equal(dropSignals, 0);
   await a.close();
   await b.close();
+});
+
+test('an edit made while the document is still loading is kept, and saved', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/slow?doc=early`);
+  await ready(tab);
+  await tab.fill('.title', 'Typed before it loaded'); // the store answers 800 ms later
+  await tab.waitForTimeout(1200);
+  assert.equal(await tab.inputValue('.title'), 'Typed before it loaded');
+  await tab.goto(`${base}/slow?doc=early`);
+  await ready(tab);
+  await tab.waitForFunction(() => document.querySelector('.title').value === 'Typed before it loaded', null, { timeout: 5000 });
+  await context.close();
 });

@@ -112,6 +112,8 @@ export function collection(name, keys, props, fields, presenceFields = null, pee
       applying = false;
     }
   };
+  /** Each field's current value, as JSON text. */
+  const values = () => Object.fromEntries(Object.entries(fields).map(([field, signal]) => [field, JSON.stringify(snapshot(signal.get()))]));
   const onRemote = (doc) => {
     apply(doc);
     last = JSON.stringify(Object.fromEntries(Object.keys(fields).map((field) => [field, snapshot(fields[field].get())])));
@@ -136,11 +138,19 @@ export function collection(name, keys, props, fields, presenceFields = null, pee
     if (key === null) return;
     join(key);
     let cancelled = false;
+    // What the fields hold as loading starts, to tell what someone changed while it loaded.
+    const before = Signal.subtle.untrack(values);
     theStore()
       .get(name, key)
-      .then((doc) => {
+      .then((doc = {}) => {
         if (cancelled) return;
-        onRemote(doc ?? {});
+        // An edit made before the document arrived is newer than it: keep the edit (and save
+        // it, below); take the document's values for the rest.
+        const now = values();
+        const edited = new Set(Object.keys(fields).filter((field) => now[field] !== before[field]));
+        apply(Object.fromEntries(Object.entries(doc).filter(([field]) => !edited.has(field))));
+        // `last` is what's stored, so the save effect writes exactly the edits.
+        last = JSON.stringify(Object.fromEntries(Object.keys(fields).map((field) => [field, field in doc ? snapshot(doc[field]) : JSON.parse(before[field])])));
         loaded.set(key);
       })
       .catch((error) => console.error(`@zubra/sync: couldn't load ${name}/${key}`, error));

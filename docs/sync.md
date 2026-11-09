@@ -42,7 +42,7 @@ The fields are the script's top-level `let`s, minus the ones wrapped in `ephemer
 
 - **The key is props.** `doc` by default; `'use collection rows by list, item'` keys by two props (`list/item`). A key prop the host doesn't declare is a compile error. It isn't `id`: that's the element's own DOM id, which must be unique on the page, and two elements may show the same document.
 - **A write is an assignment.** `completed = true`, `tags.push('x')`: the DOM updates now, the store a moment later. Nothing waits on a disk or a network.
-- **Loading never overwrites.** Until an element's document has loaded, it shows the defaults and saves nothing, so the defaults never replace stored state.
+- **Loading never overwrites, and nothing typed is lost.** Until an element's document has loaded, it shows the defaults, so the defaults never replace stored state. A field someone changed while it loaded keeps their change, which is then saved; the others take the stored values.
 - **Values are JSON.** Strings, numbers, booleans, `null`, arrays and plain objects (nested changes included). A `Date` is stored as its ISO string.
 - **Same document, same state.** Elements showing one document follow each other, in the page and in other tabs of the same site (BroadcastChannel).
 - **Merging is last-writer-wins, per field.** Two tabs writing the same field: the later write is the value. Different fields merge.
