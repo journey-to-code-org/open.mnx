@@ -263,6 +263,7 @@ fn respond(request: &Map<String, Value>) -> Value {
             crate::compile_declarations_for(source, file_name(&path), framework)
         }
         ("compile", "interface") => crate::compile_interface(source),
+        ("compile", "server") => crate::compile_server(source),
         ("compile", "manifest") => {
             let name = file_name(&path);
             let stem = crate::components::component_extension(name)
@@ -272,7 +273,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         }
         ("compile", other) => {
             return failure(&format!(
-            "unknown emit `{other}`; expected html, js, element, css, dts, manifest or interface"
+            "unknown emit `{other}`; expected html, js, element, css, dts, manifest, interface or server"
         ))
         }
         (other, _) => {
