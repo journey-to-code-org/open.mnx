@@ -41,6 +41,33 @@ These are the honest gaps:
 3. **Streaming is for slow data, not for pages that must work without JavaScript.** `@zubra/server` streams: a prop given as a promise renders as pending (the component's `zb-await` shows its pending content), and `page.stream(html)` sends the page first and each resolved region as its promise settles, in a `<template for>`. Chrome and Edge 150+ put the region in place themselves, even without JavaScript; in other browsers, and inside shadow roots, a short inline script does, and the element hydrates it. Where the browser can't, the pending content stays without JavaScript, so a page that has to be complete without it in every browser should await the data before rendering.
 4. **`Date` and `Intl` components are browser-only** on the server, by design: formatting a date on the server and the client can disagree, and a hydration mismatch is worse than an empty region. `zubra check --server` names them.
 
+## Hydration markers through minifiers and sanitizers
+
+The server's HTML carries the element's hydration markers as processing instructions: `<?zb [?>` … `<?zb ]?>` around a region, `<?zb [??>` for one left to the browser, `<?zb [!?>` for slot content, `<?zb ?>` before dynamic text. The element reads them to bind to the markup without re-rendering. Chrome and Edge 150+ parse each as a `ProcessingInstruction`; every other browser parses it as a comment (`<!--?zb [?-->`), and the runtime reads both. 5.0 moved to this form *from* comment markers because comments are what minifiers remove by default; processing instructions are rarer, and most tools pass them through.
+
+Not all do. `server/test/markers.test.js` runs real registry output through the tools a page is likely to meet, and this table is what it measures (versions in `server/package.json`):
+
+| Tool | Markers | What to do |
+|---|---|---|
+| html-minifier-terser (`removeComments`, `collapseWhitespace`) | kept | nothing |
+| @minify-html/node (defaults) | kept | nothing |
+| @swc/html | stripped by default | `preserveComments: [ZUBRA_MARKER_PATTERN]` (or `removeComments: false`) |
+| htmlnano (any preset) | stripped by default: its parser drops processing instructions | the posthtml parser option `directives: [ZUBRA_MARKER_DIRECTIVE]`, htmlnano's fourth argument |
+| DOMPurify | stripped | none that keeps only these (`ADD_TAGS: ['#comment']` keeps every comment) |
+| sanitize-html | stripped, with every tag and attribute allowed | none |
+
+`ZUBRA_MARKER_PATTERN` and `ZUBRA_MARKER_DIRECTIVE` come from `@zubra/compiler`, next to `ZUBRA_MARKER_COMMENT` for a 4.x server's comment markers, so the option is one import:
+
+```js
+import { ZUBRA_MARKER_PATTERN, ZUBRA_MARKER_DIRECTIVE } from '@zubra/compiler';
+await swc.minify(html, { preserveComments: [ZUBRA_MARKER_PATTERN] });
+await htmlnano.process(html, options, preset, { directives: [ZUBRA_MARKER_DIRECTIVE] });
+```
+
+Where a tool strips them anyway, the markup still hydrates: an element that finds its markup without markers puts them back by structure, walking its template against the DOM (a text anchor's text runs to the next element, a `zb-if` holds the branch the current values choose, a `zb-each` one row per item). The code that does this, `remark.js`, loads only when an element meets such markup, so a page whose pipeline keeps the markers never downloads it. Where the shape can't be placed for sure (`zb-await` regions, content projected into a child component), the element renders fresh with a warning naming the missing markers. Every registry component hydrates in place with every marker removed (`registry/test/stripped.test.js`).
+
+So the contract is: markers survive the common minifiers as shipped or with one option; sanitizers remove them and the element recovers; and the recovery is measured, not assumed. If your pipeline has a tool that isn't in the table, run its output through `document.body.innerHTML = html` in a browser and count `<?zb` (or `<!--?zb`): the same count in and out means the fast path.
+
 ## What this means in practice
 
 - **A plain server** (any language) gets complete, correct HTML for every component in the subset, with hydration that keeps focus and input state. This is the case Zubra was built for, and it's the smoothest.

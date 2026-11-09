@@ -507,9 +507,9 @@ fn emitted(call: &CallExpression<'_>, at: &impl Fn(u32) -> Span) -> Result<Emit,
             format!("event names are lowercase letters and digits, like the DOM's own (`input`, `selectionchange`); got `{name}`"),
         );
         return Err(if is_event_name(&fixed) {
-            error.with_help(format!("use `{fixed}`"))
+            error.with_help(format!("use `{fixed}`: a lowercase name is what `on{fixed}` attributes, Vue's `@{fixed}`, Angular's `({fixed})` and React 19 can all listen for; `valueChange`-style names reach only JavaScript listeners"))
         } else {
-            error
+            error.with_help("lowercase names are what HTML `on…` attributes and every framework's template syntax can listen for")
         });
     }
     if call.arguments.len() > 2 {

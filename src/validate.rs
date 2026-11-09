@@ -2353,7 +2353,7 @@ fn validate_custom_element(tag: &str, span: Span) -> Result<(), Diagnostic> {
             Diagnostic::new(span, format!("`{tag}` is not a valid custom-element name"));
         if !tag.contains('-') {
             diagnostic = diagnostic.with_help(format!(
-                "custom element names need a hyphen, e.g. `{}-element`",
+                "custom element names need a hyphen, e.g. `{}-element`: the HTML spec reserves hyphen-less names for built-in elements (https://html.spec.whatwg.org/#valid-custom-element-name)",
                 tag.to_ascii_lowercase()
             ));
         }

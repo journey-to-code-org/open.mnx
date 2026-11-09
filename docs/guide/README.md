@@ -38,6 +38,8 @@ Each step builds on the last, in about ten minutes each.
 - [Who Zubra is for](../who-this-is-for.md): where a compiled web component earns its place, and where your framework is the right tool.
 - [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms do; render props, framework context and Suspense don't.
 - [Server rendering, honestly](../server-rendering.md): what renders where, without JavaScript, and the gaps that remain.
+- [Compared with Lit and Stencil](../compared-with-lit-and-stencil.md): where each is the better choice, with measured sizes.
+- [TypeScript in `.zb` files](../typescript.md): what the compiler does with types, what it refuses and why, and what reaches the typings.
 - [Zubra on other people's pages](other-peoples-pages.md): embeds, extension content scripts, host isolation, tag names, and tables.
 - [Accessible widgets without a headless library](accessible-widgets.md): what Radix and shadcn/ui give React, from the platform, `@zubra/runtime/primitives` and Zag.js.
 - [Zubra with Tailwind, shadcn/ui, MUI and Bootstrap](styling-libraries.md): how components get the app's styles, light DOM and shadow DOM, with an example app for each.
