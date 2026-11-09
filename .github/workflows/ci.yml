@@ -129,7 +129,12 @@ jobs:
         working-directory: sync
       - run: npx playwright install --with-deps chromium
         working-directory: sync
+      # The same tests against the zubra-sync binary (protocol tests pick it up when it's built;
+      # test:binary puts it behind the browser tests' server).
+      - run: cargo build --locked -p zubra-sync
       - run: npm test
+        working-directory: sync
+      - run: npm run test:binary
         working-directory: sync
       - run: npm ci
         working-directory: compiler

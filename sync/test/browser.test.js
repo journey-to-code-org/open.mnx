@@ -8,7 +8,15 @@ import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { findCompiler } from '@zubra/server';
+import { request as forward } from 'node:http';
 import { createSyncServer } from '../src/server.js';
+import { startBinary } from './backends.js';
+
+// ZUBRA_SYNC_BACKEND=binary serves /_zb/sync from the zubra-sync binary instead, behind this
+// server as a reverse proxy (the deployment the binary's docs describe), so the same tests check
+// that the binary and @zubra/sync/server behave alike for real clients.
+const viaBinary = process.env.ZUBRA_SYNC_BACKEND === 'binary';
+let binary = null;
 
 findCompiler();
 const compiler = await import('@zubra/compiler');
@@ -31,8 +39,19 @@ let browser;
 let base;
 const sync = createSyncServer();
 before(async () => {
+  if (viaBinary) binary = await startBinary(['--keep-alive', '200']);
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (viaBinary && req.url.startsWith('/_zb/sync/')) {
+      const target = new URL(binary.base);
+      const upstream = forward({ host: target.hostname, port: target.port, path: req.url, method: req.method, headers: req.headers }, (answer) => {
+        res.writeHead(answer.statusCode, answer.headers);
+        res.flushHeaders();
+        answer.pipe(res);
+      });
+      res.on('close', () => upstream.destroy());
+      return req.pipe(upstream);
+    }
     if (await sync.handle(req, res)) return;
     const js = (text) => { res.setHeader('content-type', 'text/javascript'); res.end(text); };
     const file = (dir, rest) => {
@@ -59,7 +78,9 @@ before(async () => {
 });
 after(async () => {
   await browser?.close();
+  server?.closeAllConnections?.();
   server?.close();
+  binary?.close();
 });
 
 const ready = (page) => page.waitForFunction(() => customElements.get('task-item'));
