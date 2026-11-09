@@ -140,12 +140,21 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
           write('retry: 1000\n\n');
           // Read the backlog after subscribing, so nothing pushed in between is missed (a change
           // may come twice; applying one twice changes nothing).
-          const backlog = await log.after(since);
-          const visible = [];
-          for (const change of backlog.changes) {
-            if (await authorize({ request, collection: change.collection, key: change.key, write: false })) visible.push(change);
+          // Page by page: a log longer than one page is sent whole before anything live.
+          // (One event even when there's nothing, so the client learns the cursor; no empty event
+          // after the last full page.)
+          let from = since;
+          for (let first = true; ; first = false) {
+            const backlog = await log.after(from);
+            if (!backlog.changes.length && !first) break;
+            const visible = [];
+            for (const change of backlog.changes) {
+              if (await authorize({ request, collection: change.collection, key: change.key, write: false })) visible.push(change);
+            }
+            listener.send('changes', { changes: visible, cursor: backlog.cursor });
+            if (!backlog.changes.length || String(backlog.cursor) === String(from)) break;
+            from = backlog.cursor;
           }
-          listener.send('changes', { changes: visible, cursor: backlog.cursor });
           timer = setInterval(() => write(': keep-alive\n\n'), heartbeat);
           timer.unref?.();
         },
