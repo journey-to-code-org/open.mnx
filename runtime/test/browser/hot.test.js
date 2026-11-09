@@ -3,9 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { useBrowser, open, here, production } from './harness.js';
+import { useBrowser, open, here, production, runtimeOnly } from './harness.js';
 
-const skip = production && 'the production build has no hot reloading';
+const skip = (production && 'the production build has no hot reloading') || runtimeOnly;
 
 useBrowser({
   'hot-v1': join(here, 'fixtures/hot/v1.zb'),

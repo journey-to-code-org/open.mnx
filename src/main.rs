@@ -164,13 +164,14 @@ fn run() -> Result<(), String> {
                 &zubra::filesystem,
             ),
             "js" => zubra::compile_js_file(&source_path, &runtime),
+            "element" => zubra::compile_element_file(&source_path),
             "dts" => zubra::compile_declarations_for(&source, &name, framework),
             "manifest" => zubra::compile_manifest(&source, &module_path),
             "html-data" => zubra::compile_html_data(&source),
             "interface" => zubra::compile_interface(&source),
             _ => {
                 return Err(format!(
-                    "unknown --emit `{emit}`; expected html, js, css, dts, manifest, html-data or interface"
+                    "unknown --emit `{emit}`; expected html, js, element, css, dts, manifest, html-data or interface"
                 ))
             }
         }

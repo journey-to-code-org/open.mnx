@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { useBrowser, open, here, compiler, engine } from './harness.js';
+import { useBrowser, open, here, compiler, engine, runtimeOnly } from './harness.js';
 
 useBrowser({ bench: join(here, 'fixtures/bench.zb') });
 
@@ -59,7 +59,7 @@ test('js-framework-benchmark operations on 1,000 keyed rows', async (t) => {
   assert.ok(times.replace < times.create * 2.5, `replace (${times.replace}) vs create (${times.create})`);
 });
 
-test('hydrating server markup is cheaper than rendering it fresh, and keeps every node', async (t) => {
+test('hydrating server markup is cheaper than rendering it fresh, and keeps every node', { skip: runtimeOnly }, async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'zb-bench-'));
   const props = join(dir, 'props.json');
   writeFileSync(props, JSON.stringify({ rows: rows(ROWS) }));

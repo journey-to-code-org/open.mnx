@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, site } from './harness.js';
+import { useBrowser, open, compiler, here, site, runtimeOnly } from './harness.js';
 
 useBrowser({ todos: join(here, 'fixtures/todos.zb') });
 
@@ -82,7 +82,7 @@ test('duplicate keys at runtime are reported and still render', async () => {
   await page.close();
 });
 
-test('a hydrated keyed list stays keyed', async () => {
+test('a hydrated keyed list stays keyed', { skip: runtimeOnly }, async () => {
   const props = join(site, 'todos.props.json');
   writeFileSync(props, JSON.stringify({ todos: T(1, 2) }));
   const html = compiler(join(here, 'fixtures/todos.zb'), '--props', props);

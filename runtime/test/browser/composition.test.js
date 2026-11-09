@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, site } from './harness.js';
+import { useBrowser, open, compiler, here, site, runtimeOnly } from './harness.js';
 
 useBrowser({
   badge: join(here, 'fixtures/badge.zb'),
@@ -64,7 +64,7 @@ test('parent changes flow into child props and slotted content; keyed children m
   await page.close();
 });
 
-test('hydrates a parent and its children from nested server markup', async () => {
+test('hydrates a parent and its children from nested server markup', { skip: runtimeOnly }, async () => {
   const html = compiler(join(here, 'fixtures/inbox.zb'));
   assert.match(html, /<zb-badge class="row" data-who="Ada" label="Ada" count="3" info="\{&quot;color&quot;:&quot;red&quot;\}">/, 'the child is rendered inline, with its props on the host');
   assert.match(html, /<\?zb \[!\?><em slot="icon">\*<\/em><\?zb \]\?>/, 'slotted content is where the child puts it');

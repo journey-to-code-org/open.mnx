@@ -49,10 +49,21 @@ jobs:
         working-directory: runtime
         env:
           ZUBRA_RUNTIME: production
+      # The same suite on --emit element output: plain custom elements with no runtime. Tests of
+      # what only the runtime does (server hydration, hot reload) are skipped, and a component
+      # --emit element refuses is built with --emit js.
+      - run: npm run test:browser
+        working-directory: runtime
+        env:
+          ZUBRA_EMIT: element
       - run: npm run test:tools
         working-directory: runtime
       # The component registry: keyboard and screen-reader behaviour of each component, and its index.
       - run: node --test "registry/test/*.test.js"
+      # The registry again, as plain elements.
+      - run: node --test "registry/test/*.test.js"
+        env:
+          ZUBRA_EMIT: element
       - run: node registry/build-index.mjs --check
 
   engines:

@@ -184,6 +184,13 @@ fn respond(request: &Map<String, Value>) -> Value {
             }
             _ => return failure("`cssImport` and `cssImportInline` go together"),
         },
+        ("compile", "element") => {
+            let keep = request
+                .get("keepImports")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            crate::compile_element_with(source, &path, (!keep).then_some(".js"), &loader)
+        }
         ("compile", "html") => {
             let props = request
                 .get("props")
@@ -265,8 +272,8 @@ fn respond(request: &Map<String, Value>) -> Value {
         }
         ("compile", other) => {
             return failure(&format!(
-                "unknown emit `{other}`; expected html, js, css, dts, manifest or interface"
-            ))
+            "unknown emit `{other}`; expected html, js, element, css, dts, manifest or interface"
+        ))
         }
         (other, _) => {
             return failure(&format!(
