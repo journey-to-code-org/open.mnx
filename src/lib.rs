@@ -430,7 +430,7 @@ pub fn compile_js_options(
 }
 
 /// The component as a plain custom element, with no runtime to install (`--emit element`): the
-/// same definition as [`compile_js_file`]'s, built by a small `$define` inlined into the module.
+/// class you'd write by hand, with only the helpers the component uses (see `emit_element`).
 /// Shadow DOM, spreads, zb-await and runtime features beyond the basics are refused with a reason.
 pub fn compile_element_file(path: &str) -> Result<String, Diagnostic> {
     compile_element_with(&read(path)?, path, Some(".js"), &components::filesystem)

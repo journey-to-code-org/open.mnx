@@ -29,7 +29,7 @@ use crate::{
     validate::{self, needs_text_anchor, Interface, BOOLEAN_ATTRIBUTES, URL_ATTRIBUTES},
 };
 
-const VOID_ELEMENTS: &[&str] = &[
+pub(crate) const VOID_ELEMENTS: &[&str] = &[
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
     "track", "wbr",
 ];
@@ -385,7 +385,7 @@ const SPREAD_BINDER: &str = "$spread";
 /// The children `component` imports, as its emitter needs them.
 /// The checks the HTML backend runs on a child component's attributes, with the values known at
 /// build time (literals); values from props and state are checked in the browser.
-fn check_child(element: &ast::Element, info: &ChildInfo) -> Result<(), Diagnostic> {
+pub(crate) fn check_child(element: &ast::Element, info: &ChildInfo) -> Result<(), Diagnostic> {
     for attribute in &element.attributes {
         validate::check_child_event(&element.name, &info.interface, attribute)?;
         if validate::is_unknown_child_attribute(&info.interface, attribute) {
@@ -441,7 +441,9 @@ fn check_child(element: &ast::Element, info: &ChildInfo) -> Result<(), Diagnosti
     validate::check_child_required(&element.name, &info.interface, element)
 }
 
-fn child_infos(component: &ComponentAst) -> Result<Vec<(String, ChildInfo)>, Diagnostic> {
+pub(crate) fn child_infos(
+    component: &ComponentAst,
+) -> Result<Vec<(String, ChildInfo)>, Diagnostic> {
     component
         .children
         .iter()
@@ -554,10 +556,10 @@ fn node_span(node: &Node) -> Option<Span> {
 }
 
 /// What a parent needs to know about a child component it uses.
-struct ChildInfo {
-    interface: Interface,
-    props: Vec<String>,
-    shadow: bool,
+pub(crate) struct ChildInfo {
+    pub(crate) interface: Interface,
+    pub(crate) props: Vec<String>,
+    pub(crate) shadow: bool,
     /// Where each slot region is in the child's template (light DOM only), for hydrate paths.
     slot_paths: Vec<(String, Vec<usize>)>,
 }

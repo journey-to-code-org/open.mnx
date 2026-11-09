@@ -15,6 +15,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Changed
 
+- **`--emit element` writes the custom element you'd write by hand.** Until now it was the `--emit js` module with a small runtime (`$define`, about 750 lines) inlined, which worked but was hard to read. It's now one class that extends `HTMLElement`: `observedAttributes` and an `attributeChangedCallback` that parses each prop's type, a getter and setter per prop, `connectedCallback`, your `<script>` as written (props as `element.name`, state as `name.value`), the template's changing nodes looked up by position and named after their class, id or tag, and one `bind(read, write)` line per dynamic spot with the DOM call it makes. Keyed lists, conditionals, light-DOM slots and deep state are small commented helpers after the class, each written only when the component uses it. The output is smaller too: about 2 KB gzipped for a small element (was 5.5 KB) and 3.5 KB with slots (was 7 KB). What it covers and refuses is unchanged, and the runtime's browser suites and the registry's tests pass on it as before. A JSX component's script still reads its props through `$p` there.
 - **A slot inside `zb-then` or `zb-catch` is reported as such.** The error said "can't be inside zb-each" wherever the slot was; it now names the branch it's in and says to put the slot outside the `zb-await`.
 
 ## 5.3.0 — 2026-11-09

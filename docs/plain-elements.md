@@ -13,7 +13,18 @@ The module defines a `class extends HTMLElement` and registers it. It imports no
 
 ## What it is
 
-The same definition `--emit js` writes (props, template, styles, the script's setup) with the `@zubra/runtime` import replaced by a small `$define`, inlined, that turns it into the element. Because both outputs share the definition, they can't drift, and CI runs the runtime's browser suites and the registry's tests on both (`ZUBRA_EMIT=element npm run test:browser`).
+The custom element as you'd write it by hand, so you can read it to learn the platform. One class, top to bottom:
+
+- `static observedAttributes`, and `attributeChangedCallback` turning each attribute's text into its prop's type (`raw === null ? 0 : Number(raw)`);
+- each prop as a `get`/`set` pair over a private `#props` object, and the constructor taking over properties a framework set before the class was defined;
+- `connectedCallback` adopting the component's stylesheet and, the first time, running `#setup()`: your `<script>`, as you wrote it, with props read as `element.name` and state as `name.value` (`count.value++`);
+- the template as markup, cloned once per element, with the nodes that change found by position and named after their class, id or tag (`const less = content.children[0]`);
+- one line per dynamic spot: what it reads, and the DOM call that writes it (`bind(() => element.label, (value) => less.setAttribute("aria-label", value))`), and `addEventListener` for each event;
+- a microtask-batched `#update()`, and, for a form control, `attachInternals()` with `setFormValue`, `setValidity` and `formResetCallback`.
+
+What the platform doesn't do for light DOM is in small, commented helpers after the class, each written into the module only when the component uses it: keyed lists (`list`), conditionals (`when`), light-DOM slots, deep `state()`, and the URL checks. A component without slots has none of the slot code; one without lists has no `list`.
+
+The output is checked by behaviour, not by text: CI runs the runtime's browser suites and the registry's tests on both `--emit js` and `--emit element` (`ZUBRA_EMIT=element npm run test:browser`).
 
 It covers light-DOM components:
 - props as properties and observed attributes (parsed by the default's type), including properties set before the element was defined;
@@ -41,13 +52,18 @@ Not refused, but not done:
 
 ## Size, and which to use
 
-The slot machinery is left out of a component that has no slots.
+Each module holds only what its component uses, so plain output is small:
 
 | | gzipped |
 |---|---|
-| a small element (toggle-switch, quantity-stepper) | about 5.5 KB |
-| with lists, a ref and a form value (tag-input) | about 6 KB |
-| with slots (accordion-panel) | about 7 KB |
+| the README's copy button | about 1.6 KB |
+| a small element (toggle-switch, quantity-stepper) | about 2.2 KB |
+| with lists, a ref and a form value (tag-input) | about 3.7 KB |
+| with slots (accordion-panel) | about 3.5 KB |
 | `@zubra/runtime`, shared by every component on the page | about 13 KB, plus 1–2 KB per component |
 
-Each plain element carries its own copy of `$define`. For one to three components, plain output is smaller; past that, the shared runtime is. Use plain output to hand someone one file, to add a component to a page you don't build, or to publish a component with no dependencies. Use `--emit js` for an app.
+(Minified with esbuild, then `gzip -9`.) Each plain element carries its own copy of the helpers it uses. For a handful of components, plain output is smaller; past that, the shared runtime is. Use plain output to read what a component does, to hand someone one file, to add a component to a page you don't build, or to publish a component with no dependencies. Use `--emit js` for an app, and for server-rendered pages.
+
+## Not yet
+
+- A component written as JSX (`.zb.jsx`) still reads its props through a `$p` object in the plain element: the JSX front end lowers the script before the element emitter sees it. Its template is written out like any other.

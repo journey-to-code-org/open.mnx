@@ -34,11 +34,11 @@ The last row matters and is not an argument: Lit and Stencil have years of produ
 | Output | Gzipped |
 |---|---|
 | Lit: element + `lit` (LitElement, lit-html) | 6.2 KB |
-| Zubra `--emit element`: one file, no runtime | 5.2 KB |
+| Zubra `--emit element`: one file, no runtime | 1.6 KB |
 | Zubra `--emit js`: the component's module | 0.6 KB, plus |
 | `@zubra/runtime` (production build), shared by every component | 13.8 KB |
 
-(Lit's figure is already what's left after tree-shaking. `@lit/reactive-element` alone is smaller, but it has no templates, so it isn't the same component.) So for a page with one or two components, Lit and Zubra's plain output are the same size; for an app that loads the shared runtime, Zubra ships about 8 KB more than Lit does. That 8 KB is the hydration-in-place machinery, the Signals implementation (which steps aside when `globalThis.Signal` exists), light-DOM slots kept live under a framework, the deep-reactivity proxies, and the framework bridge. If you don't need those, Lit is the smaller choice, and so is `--emit element`.
+(Lit's figure is already what's left after tree-shaking. `@lit/reactive-element` alone is smaller, but it has no templates, so it isn't the same component.) So for a page with one or two components, Zubra's plain output is the smallest of the three; for an app that loads the shared runtime, Zubra ships about 8 KB more than Lit does. That 8 KB is the hydration-in-place machinery, the Signals implementation (which steps aside when `globalThis.Signal` exists), light-DOM slots kept live under a framework, the deep-reactivity proxies, and the framework bridge. If you don't need those, Lit is the smaller choice, and so is `--emit element`.
 
 **Templates type-checked against TypeScript.** With lit-analyzer (or its `ts-lit-plugin` in the editor), Lit checks each binding in an `html` template against the property's declared TypeScript type, before anything runs. Zubra checks a template's names (unknown ones, with a "did you mean"), and a child component's props at the call site against the types of the child's defaults, but it doesn't check template expressions against TypeScript types: that's the cost of keeping a type checker out of the compiler ([TypeScript in `.zb` files](typescript.md)).
 
@@ -66,7 +66,7 @@ What that costs is a short list in the parser (two names today) and a release of
 
 ## The escape hatch is a floor, not a trapdoor
 
-`--emit element` writes a component as one plain custom element with no runtime, from the same definition `--emit js` uses, and CI runs the browser suites on both outputs. It leaves out what needs the runtime (shadow DOM, server hydration, spreads, `zb-await`, hot reload) and refuses each with a reason. That isn't "activating the flag guts the framework"; it's the same component at the size of a hand-written element, for the cases where that's what you want: one file to hand someone, a widget on a page you don't build, a dependency-free publish. [Plain elements](plain-elements.md) has the full list of what each output does.
+`--emit element` writes a component as one plain custom element with no runtime, the class you'd write by hand, and CI runs the browser suites on both outputs. It leaves out what needs the runtime (shadow DOM, server hydration, spreads, `zb-await`, hot reload) and refuses each with a reason. That isn't "activating the flag guts the framework"; it's the same component at the size of a hand-written element, for the cases where that's what you want: one file to hand someone, a widget on a page you don't build, a dependency-free publish. [Plain elements](plain-elements.md) has the full list of what each output does.
 
 ## Choosing
 
