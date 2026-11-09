@@ -20,5 +20,5 @@ Read the skill before the task, not the source: each is written so an agent can 
 - Build: `cargo build --release`; the npm packages read `target/release/zubra` when `@zubra/compiler`'s WebAssembly build isn't present.
 - Tests: `cargo test` (compiler), `cd runtime && npm test && npm run test:browser` (needs Playwright's Chromium), `cd plugin && npm test`, `cd compiler && npm test`, `node skills/test/skills.test.js`. `.github/workflows/ci.yml` runs every suite.
 - Every behaviour is mutation-checked: when adding one, break it on purpose once and confirm a test fails.
-- Commits are authored by Mikey Nichols with no trailers. Versions are bumped with `scripts/bump-version.sh`, and each release gets a `CHANGELOG.md` entry.
+- Commits are authored by Mikey Nichols with no trailers. Versions are bumped with `scripts/bump-version.sh`, and each release gets a `CHANGELOG.md` entry. Merging the bump to `main` releases it (`.github/workflows/release.yml`: npm with provenance, the tag, the GitHub release); don't tag or publish by hand.
 - The plans and decision records live in the project's docs (`plan/`), not in the repository; the README's rules are the reference for what the compiler does.

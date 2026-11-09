@@ -1,0 +1,100 @@
+# Releases a version when it reaches main: when the version in runtime/package.json (set by
+# scripts/bump-version.sh in the release PR) has no tag yet, this publishes the six npm packages
+# with provenance (scripts/publish.mjs), then tags the commit and makes the GitHub release, with the
+# version's CHANGELOG.md section as its notes and the VS Code extension's .vsix attached.
+#
+# Pushes that don't change the version do nothing. It can be run again from the Actions tab: npm
+# packages already published are skipped, and the release step only runs while the tag is missing.
+#
+# npm authenticates as a trusted publisher (OIDC; no token), set up once per package on npmjs.com:
+# Settings → Trusted publishing → GitHub Actions, organization `journey-to-code-org`, repository
+# `zubra`, workflow `release.yml`, no environment. An NPM_TOKEN secret is used instead if there is one.
+# The extension goes to the Marketplace too when a VSCE_PAT secret is set.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One release at a time, and never cancelled halfway through a publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the tag and the release
+  id-token: write # npm's trusted publishing and provenance
+
+jobs:
+  release:
+    name: Publish and release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Is this a new version?
+        id: version
+        run: |
+          version=$(node -p "require('./runtime/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged: nothing to release."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Before publishing anything: a release can't go out without its notes.
+      - name: Release notes
+        if: steps.version.outputs.new == 'true'
+        run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" > "$RUNNER_TEMP/notes.md"
+      - uses: dtolnay/rust-toolchain@master
+        if: steps.version.outputs.new == 'true'
+        with:
+          toolchain: "1.97"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        if: steps.version.outputs.new == 'true'
+      # No registry-url: setup-node would then set NODE_AUTH_TOKEN, which overrides trusted publishing.
+      - uses: actions/setup-node@v4
+        if: steps.version.outputs.new == 'true'
+        with:
+          node-version: 22
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 comes with npm 10.
+      - run: npm install -g npm@11
+        if: steps.version.outputs.new == 'true'
+      - name: Use an npm token, if there is one
+        if: steps.version.outputs.new == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > "$HOME/.npmrc"
+          fi
+      - name: Publish to npm
+        if: steps.version.outputs.new == 'true'
+        run: node scripts/publish.mjs
+      - name: Package the VS Code extension
+        if: steps.version.outputs.new == 'true'
+        # It installs the language server just published; npm can take a minute to serve it.
+        run: for attempt in 1 2 3 4 5; do npm run package && exit 0; sleep 30; done; exit 1
+        working-directory: editors/vscode
+      - name: Tag and release
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" "editors/vscode/zubra-$VERSION.vsix" \
+            --target "$GITHUB_SHA" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
+      - name: Publish the extension to the Marketplace, if there's a token
+        if: steps.version.outputs.new == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VERSION: ${{ steps.version.outputs.version }}
+        working-directory: editors/vscode
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            npx --yes @vscode/vsce publish --packagePath "zubra-$VERSION.vsix"
+          else
+            echo "No VSCE_PAT secret: upload zubra-$VERSION.vsix from the release by hand."
+          fi
