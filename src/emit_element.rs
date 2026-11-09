@@ -102,6 +102,7 @@ pub fn emit(
             source_name,
             component_extension,
             style_imports: None,
+            devtools: None,
         },
     )?;
     if module.contains("bind: $spread") {

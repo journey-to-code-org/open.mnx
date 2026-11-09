@@ -6,6 +6,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
+- **`--devtools`** (and `devtools: true` in requests), for development builds: each part of the compiled module records where it was written in the `.zb` file (`at: [line, column]`), the definition records the file and its host tag's place (`source`), and `setup` hands the runtime the script's signals by name. It's what the browser DevTools panel reads; without the flag the output is unchanged, byte for byte.
 - **`service-status`, a registry component** (`npx zubra add service-status`): a service's status from a JSON endpoint, with "Checking…", the status and its message, the error with Retry, and Refresh that keeps the last answer showing. It's the registry's first `zb-await`, so the stripped-markers suite now covers a region the server leaves to the element. That suite now compares against the same markup with its markers kept (the same server nodes must survive), since a pending `zb-await` is re-rendered either way, and it fails if a component warns even with its markers.
 - **Server markup with an `zb-await` hydrates in place without its markers.** When a sanitizer has removed the `<?zb …?>` markers, `remark.js` now places an `zb-await` region by structure, as it does `zb-if` and `zb-each`: its `zb-then` block, for a value the server knew at build time, or its pending block, which the element renders afresh anyway. Until now such an element rendered entirely afresh, losing text typed and focus taken before JavaScript.
 
