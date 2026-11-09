@@ -17,8 +17,10 @@ const SOURCE: &str = r#"<script>
 </zb-counter>
 "#;
 
-fn compile(arguments: &[&str]) -> (bool, String, String) {
-    let dir = std::env::temp_dir().join(format!("zubra-devtools-{}", std::process::id()));
+/// Compile the fixture with `arguments`, in a directory of the test's own (`name`): the tests
+/// run in parallel, and a file shared between them could be read half written.
+fn compile(name: &str, arguments: &[&str]) -> (bool, String, String) {
+    let dir = std::env::temp_dir().join(format!("zubra-devtools-{name}-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("counter.zb");
     fs::write(&path, SOURCE).unwrap();
@@ -36,7 +38,7 @@ fn compile(arguments: &[&str]) -> (bool, String, String) {
 
 #[test]
 fn a_devtools_build_records_where_each_part_was_written() {
-    let (ok, js, stderr) = compile(&["--emit", "js", "--devtools"]);
+    let (ok, js, stderr) = compile("located", &["--emit", "js", "--devtools"]);
     assert!(ok, "{stderr}");
     // The listener and the text are on line 6; the region is line 7; the row's text, line 8.
     assert!(
@@ -53,7 +55,7 @@ fn a_devtools_build_records_where_each_part_was_written() {
 
 #[test]
 fn a_devtools_build_names_the_signals_and_the_file() {
-    let (ok, js, stderr) = compile(&["--emit", "js", "--devtools"]);
+    let (ok, js, stderr) = compile("named", &["--emit", "js", "--devtools"]);
     assert!(ok, "{stderr}");
     assert!(
         js.contains("counter.zb\", at: [5, 1] },\n"),
@@ -68,7 +70,7 @@ fn a_devtools_build_names_the_signals_and_the_file() {
 
 #[test]
 fn without_the_flag_none_of_it_is_emitted() {
-    let (ok, js, stderr) = compile(&["--emit", "js"]);
+    let (ok, js, stderr) = compile("plain", &["--emit", "js"]);
     assert!(ok, "{stderr}");
     assert!(!js.contains("at: ["), "{js}");
     assert!(!js.contains("$dev"), "{js}");
@@ -77,7 +79,7 @@ fn without_the_flag_none_of_it_is_emitted() {
 
 #[test]
 fn the_flag_applies_to_javascript_only() {
-    let (ok, _, stderr) = compile(&["--emit", "css", "--devtools"]);
+    let (ok, _, stderr) = compile("css", &["--emit", "css", "--devtools"]);
     assert!(!ok);
     assert!(
         stderr.contains("--devtools applies to --emit js"),
