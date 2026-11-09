@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, site } from './harness.js';
+import { useBrowser, open, compiler, here, site, runtimeOnly } from './harness.js';
 
 useBrowser({
   list: join(here, 'fixtures/list.zb'),
@@ -29,7 +29,7 @@ function serverHtml() {
 }
 
 for (const [name, form] of Object.entries(forms)) {
-  test(`hydrates in place from markers as ${name}`, async () => {
+  test(`hydrates in place from markers as ${name}`, { skip: runtimeOnly }, async () => {
     const html = form(serverHtml());
     if (name.startsWith('plain')) assert.doesNotMatch(html, /<\?zb|\?zb /);
     const { page, messages } = await open(html, {
@@ -63,7 +63,7 @@ for (const [name, form] of Object.entries(forms)) {
   });
 }
 
-test('an HTML minifier that removes comments leaves the markers, so the markup still hydrates in place', async () => {
+test('an HTML minifier that removes comments leaves the markers, so the markup still hydrates in place', { skip: runtimeOnly }, async () => {
   const html = serverHtml().replace(/<!--[^]*?-->/g, '');
   assert.match(html, /<\?zb \[\?>/);
   const { page, messages } = await open(html, {

@@ -8,6 +8,7 @@ mod ast;
 mod components;
 mod convert;
 mod diagnostic;
+mod emit_element;
 mod emit_interface;
 mod emit_js;
 mod events;
@@ -389,6 +390,30 @@ pub fn compile_js_with(
                 style_imports: None,
             },
         )
+    })
+}
+
+/// The component as a plain custom element, with no runtime to install (`--emit element`): the
+/// same definition as [`compile_js_file`]'s, built by a small `$define` inlined into the module.
+/// Shadow DOM, spreads, zb-await and runtime features beyond the basics are refused with a reason.
+pub fn compile_element_file(path: &str) -> Result<String, Diagnostic> {
+    compile_element_with(&read(path)?, path, Some(".js"), &components::filesystem)
+}
+
+/// [`compile_element_file`] for a source and loader.
+pub fn compile_element_with(
+    source: &str,
+    path: &str,
+    component_extension: Option<&str>,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
+    front(source, Some(path), Some(loader), |source| {
+        let component = load(source, path, Some(loader))?;
+        let source_name = std::path::Path::new(path).file_name().map_or_else(
+            || path.to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        emit_element::emit(&component, &source_name, component_extension)
     })
 }
 

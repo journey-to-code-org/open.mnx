@@ -25,6 +25,23 @@ export function compiler(...args) {
   return execFileSync(join(repo, 'target/debug/zubra'), ['compile', ...args], { encoding: 'utf8' });
 }
 
+// ZUBRA_EMIT=element compiles each component as a plain custom element (`--emit element`), so a
+// suite runs on both outputs; a component it refuses (shadow DOM, Zag…) stays on `--emit js`, and
+// `elementRefused` says which and why.
+export const emitElement = process.env.ZUBRA_EMIT === 'element';
+export const elementRefused = new Map();
+/** Skips a test of what only @zubra/runtime does (server hydration, hot reload) on --emit element output. */
+export const runtimeOnly = emitElement && '--emit element output has no server hydration or hot reload: these stay on @zubra/runtime';
+function compile(path) {
+  if (!emitElement) return compiler(path, '--emit', 'js');
+  try {
+    return execFileSync(join(repo, 'target/debug/zubra'), ['compile', path, '--emit', 'element'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (error) {
+    elementRefused.set(path, String(error.stderr).split('\n').find((line) => line.startsWith('error')) ?? 'refused');
+    return compiler(path, '--emit', 'js');
+  }
+}
+
 /**
  * Register setup and teardown. `components` maps module names to `.zb` paths; `files` maps
  * extra served paths to their contents (plain modules a component imports, …); `imports` adds
@@ -39,7 +56,7 @@ before(async () => {
   cpSync(join(here, production ? '../../dist/production' : '../../src'), join(site, 'runtime'), { recursive: true });
   for (const [path, contents] of Object.entries(files)) writeFileSync(join(site, path), contents);
   for (const [name, path] of Object.entries(components)) {
-    writeFileSync(join(site, `${name}.js`), compiler(path, '--emit', 'js'));
+    writeFileSync(join(site, `${name}.js`), compile(path));
   }
   server = createServer((request, response) => {
     const url = new URL(request.url, 'http://x');
@@ -88,7 +105,12 @@ export async function open(body, { modules = [], beforeModules = '' } = {}) {
   page.on('console', (message) => message.type() !== 'timeStamp' && messages.push(`${message.type()}: ${message.text()}`));
   page.on('pageerror', (error) => messages.push(`pageerror: ${error.message}`));
   await page.goto(origin + path);
-  await page.waitForFunction(() => window.ready === true);
+  try {
+    await page.waitForFunction(() => window.ready === true, null, { timeout: 15000 });
+  } catch (error) {
+    // Say why: a module that didn't load usually logged it.
+    throw new Error(`the page didn't start: ${messages.join(' | ') || error.message}`);
+  }
   return { page, messages };
 }
 

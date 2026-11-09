@@ -6,6 +6,10 @@
 // set the version, and the changelog has its entry). A package whose version is already on npm is
 // skipped, so it can be run again after a failure. --dry-run does everything but publish.
 //
+// In GitHub Actions (.github/workflows/release.yml, on every push to main), it runs the same way and
+// publishes with provenance: npm then shows each version's source commit and the workflow that built
+// it, linked to the repository. There, npm authenticates as a trusted publisher (no token).
+//
 // npm may open the browser to authenticate; the compiler is built first (it needs the WebAssembly
 // toolchain, and refuses to be packed without zubra.wasm). Afterwards the VS Code extension is
 // packaged with `npm run package` in editors/vscode, which installs the language server from npm.
@@ -16,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dry = process.argv.includes('--dry-run');
+const actions = process.env.GITHUB_ACTIONS === 'true';
 // A shell, because npm is a .cmd file on Windows, which Node won't start directly. The arguments are fixed strings.
 const npm = (args, cwd, stdio = 'inherit') => spawnSync('npm', args, { cwd, stdio, shell: true, encoding: 'utf8' });
 
@@ -35,7 +40,8 @@ const version = manifest('runtime').version;
 const mismatched = packages.filter(({ dir }) => manifest(dir).version !== version).map(({ dir }) => `${dir} is ${manifest(dir).version}`);
 if (mismatched.length) throw new Error(`publish: every package should be ${version}: ${mismatched.join(', ')}`);
 
-const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+// Actions checks out the pushed commit, not the branch: its ref says which branch it was pushed to.
+const branch = actions ? process.env.GITHUB_REF_NAME : execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
 const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).trim();
 if (!dry && branch !== 'main') throw new Error(`publish: run this on main (you're on ${branch}); merge the release PR and pull first`);
 if (!dry && dirty) throw new Error(`publish: the working tree has uncommitted changes:\n${dirty}`);
@@ -49,8 +55,8 @@ for (const { dir, build } of packages) {
   const cwd = join(repo, dir);
   if (build && npm(['run', 'build'], cwd).status !== 0) throw new Error(`publish: building ${name} failed`);
   console.log(`publish: ${name}@${version}`);
-  if (npm(['publish', '--access', 'public', ...(dry ? ['--dry-run'] : [])], cwd).status !== 0) {
+  if (npm(['publish', '--access', 'public', ...(actions ? ['--provenance'] : []), ...(dry ? ['--dry-run'] : [])], cwd).status !== 0) {
     throw new Error(`publish: ${name} failed; fix it and run this again (packages already on npm are skipped)`);
   }
 }
-console.log(`publish: done. Next: tag v${version}, then \`npm run package\` in editors/vscode and upload the .vsix.`);
+console.log(actions ? 'publish: done.' : `publish: done. The release workflow tags v${version} and makes the GitHub release when this is on main; by hand: tag v${version} on main, then \`npm run package\` in editors/vscode and upload the .vsix.`);

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, site } from './harness.js';
+import { useBrowser, open, compiler, here, site, runtimeOnly } from './harness.js';
 
 useBrowser({
   card: join(here, 'fixtures/card.zb'),
@@ -75,7 +75,7 @@ test('content for a slot that does not exist is reported', async () => {
   await page.close();
 });
 
-test('hydrates supplied slot content as-is and binds the fallback of empty slots', async () => {
+test('hydrates supplied slot content as-is and binds the fallback of empty slots', { skip: runtimeOnly }, async () => {
   const slots = join(site, 'card.slots.json');
   writeFileSync(slots, JSON.stringify({ title: '<h2>Server title</h2>' }));
   const html = compiler(join(here, 'fixtures/card.zb'), '--slots', slots);

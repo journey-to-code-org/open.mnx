@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { useBrowser, open, here, compiler } from './harness.js';
+import { useBrowser, open, here, compiler, runtimeOnly } from './harness.js';
 
 const fixture = join(here, 'fixtures/conditions.zb');
 useBrowser({ conditions: fixture });
@@ -40,7 +40,7 @@ test('attribute conditions and markup in braces switch as their state changes', 
   await page.close();
 });
 
-test('server markup with both forms hydrates in place', async () => {
+test('server markup with both forms hydrates in place', { skip: runtimeOnly }, async () => {
   const html = compiler(fixture, '--emit', 'html');
   const { page, messages } = await open(html, {
     beforeModules: "window.kept = [...document.querySelectorAll('zb-conditions *')];",
