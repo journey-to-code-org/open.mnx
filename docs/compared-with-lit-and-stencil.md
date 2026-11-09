@@ -44,7 +44,7 @@ The last row matters and is not an argument: Lit and Stencil have years of produ
 
 **Plain JavaScript, no restrictions.** Lit's templates are JavaScript expressions; anything goes. Zubra's `{expr}` is any JavaScript expression too, but the compiler evaluates a deterministic subset on the server and leaves the rest to the browser, and it tells you which is which (`zubra check --server`). That is a constraint you feel.
 
-**Ecosystem.** `@lit/context`, `@lit/task`, `@lit-labs/ssr`, localization, and the components built on Lit (Shoelace/Web Awesome, Spectrum, Material). Zubra interoperates (the Context Protocol is shared, so `@lit/context` values reach `inject()`), but it has a 25-component registry, not an ecosystem.
+**Ecosystem.** `@lit/context`, `@lit/task`, `@lit-labs/ssr`, localization, and the components built on Lit (Shoelace/Web Awesome, Spectrum, Material). Zubra interoperates (the Context Protocol is shared, so `@lit/context` values reach `inject()`), but it has a 26-component registry, not an ecosystem.
 
 ## What Zubra does that neither does
 

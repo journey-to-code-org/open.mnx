@@ -1,0 +1,54 @@
+<!--
+  A service's status, fetched from `src`: a JSON endpoint that answers
+  `{ "status": "operational" | "degraded" | "down", "message"?: string }`. Shows "Checking…"
+  while it loads, the status (and its message) once it has, and the error with a Retry button
+  if it can't. Refresh checks again, keeping the last answer showing meanwhile. Changes are
+  announced politely.
+  @fires statusload - A status loaded; `detail` is the answer.
+-->
+<script>
+  import { resource, emit } from '@zubra/runtime'
+  const LABELS = { operational: "Operational", degraded: "Degraded", down: "Down" }
+  const check = resource(async ({ signal }) => {
+    if (!src) return null
+    const response = await fetch(src, { signal, headers: { accept: "application/json" } })
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim())
+    const answer = await response.json()
+    emit("statusload", answer)
+    return answer
+  })
+</script>
+<style>
+  :host { display: inline-flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; font: inherit; }
+  .name { font-weight: 600; }
+  .state { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted, #667085); }
+  .operational .dot { background: var(--up, #12805c); }
+  .degraded .dot { background: var(--warn, #b54708); }
+  .down .dot, .error .dot { background: var(--danger, #d92d20); }
+  .message { color: var(--muted, #667085); }
+  :host(:state(loading)) .state { opacity: 0.6; }
+  button { font: inherit; }
+</style>
+<service-status src="" label="Service">
+  <span class="name" aria-hidden="true">{label}</span>
+  <span role="status" aria-label={`${label} status`}>
+    <zb-await value={check} keep>
+      <span class="state pending"><span class="dot" aria-hidden="true"></span>Checking…</span>
+      <zb-then as="answer">
+        <zb-if test={answer}>
+          <span class="state {answer.status}"><span class="dot" aria-hidden="true"></span>{LABELS[answer.status] ?? answer.status}</span>
+          <span class="message" zb-if={answer.message}>{answer.message}</span>
+        <zb-else>
+          <span class="state"><span class="dot" aria-hidden="true"></span>No source</span>
+        </zb-else>
+        </zb-if>
+      </zb-then>
+      <zb-catch as="error">
+        <span class="state error"><span class="dot" aria-hidden="true"></span>Couldn't check: {error.message}</span>
+        <button type="button" onclick={retry}>Retry</button>
+      </zb-catch>
+    </zb-await>
+  </span>
+  <button type="button" onclick={() => check.refresh()} disabled={!src}>Refresh</button>
+</service-status>

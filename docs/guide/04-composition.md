@@ -60,6 +60,6 @@ Components render into **light DOM** by default: their markup is part of the pag
 
 ## Ready-made components, and publishing your own
 
-`npx zubra add modal-dialog` copies a component from the registry into your project: twenty-five accessible components, from form controls and charts to tabs, menus and a dialog. When yours are ready to share, `npx zubra build --lib src/components` makes them a package that works in every framework (the README's "Sharing components" section).
+`npx zubra add modal-dialog` copies a component from the registry into your project: twenty-six accessible components, from form controls and charts to tabs, menus and a dialog. When yours are ready to share, `npx zubra build --lib src/components` makes them a package that works in every framework (the README's "Sharing components" section).
 
 **Next:** [Forms](05-forms.md)

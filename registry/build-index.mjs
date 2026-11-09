@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const CATEGORIES = {
   input: ['tag-input', 'date-range', 'money-input', 'star-rating', 'toggle-switch', 'choice-cards', 'color-swatches', 'quantity-stepper', 'segmented-control'],
-  display: ['donut-chart', 'spark-line', 'line-chart', 'progress-ring', 'streak-grid', 'flip-card', 'step-indicator'],
+  display: ['donut-chart', 'spark-line', 'line-chart', 'progress-ring', 'streak-grid', 'flip-card', 'step-indicator', 'service-status'],
   app: ['kanban-column', 'chat-message', 'message-composer', 'modal-dialog'],
   widget: ['accordion-panel', 'tool-tip', 'tab-list', 'dropdown-menu', 'combo-box'],
 };

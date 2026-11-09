@@ -19,9 +19,9 @@ useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../componen
 const FRESH = {};
 
 test('stripped server markup: every registry component hydrates in place, or is listed with its reason', { skip: runtimeOnly }, async (t) => {
-  const results = {};
-  for (const name of names) {
-    const html = compiler(join(here, '../components', `${name}.zb`), '--partial').replace(/<\?zb [^]*?\?>/g, '');
+  // In place means the same server nodes survive as when the markers are kept: a region the
+  // server left to the element (a pending zb-await) is rendered by it either way.
+  const survivors = async (html, name) => {
     const { page, messages } = await open(html, {
       beforeModules: `window.kept = [...document.body.querySelectorAll('*')].filter((node) => node.localName !== 'script');`,
       modules: [name],
@@ -30,12 +30,21 @@ test('stripped server markup: every registry component hydrates in place, or is 
       await new Promise((resolve) => setTimeout(resolve, 20));
       await Promise.all([...document.querySelectorAll('*')].filter((el) => el.updateComplete).map((el) => el.updateComplete));
     });
-    const kept = await page.evaluate(() => window.kept.every((node) => node.isConnected));
+    const kept = await page.evaluate(() => window.kept.map((node) => node.isConnected));
+    await page.close();
     // (Only zubra's own messages: a component's defaults alone can be meaningless, like a date
     // grid with no dates.)
-    const zubra = messages.filter((message) => message.includes('zubra:'));
-    results[name] = kept && !zubra.length ? 'in place' : `fresh (${zubra[0] ?? 'nodes replaced'})`;
-    await page.close();
+    return { kept, zubra: messages.filter((message) => message.includes('zubra:')) };
+  };
+  const results = {};
+  for (const name of names) {
+    const marked = compiler(join(here, '../components', `${name}.zb`), '--partial');
+    const withMarkers = await survivors(marked, name);
+    // With its markers, every component hydrates without a word.
+    assert.deepEqual(withMarkers.zubra, [], `${name} with its markers`);
+    const stripped = await survivors(marked.replace(/<\?zb [^]*?\?>/g, ''), name);
+    const same = stripped.kept.length === withMarkers.kept.length && stripped.kept.every((connected, i) => connected === withMarkers.kept[i]);
+    results[name] = same && !stripped.zubra.length ? 'in place' : `fresh (${stripped.zubra[0] ?? 'nodes replaced'})`;
   }
   t.diagnostic(Object.entries(results).map(([name, how]) => `${name}: ${how}`).join(', '));
   const fresh = Object.keys(results).filter((name) => results[name] !== 'in place');
