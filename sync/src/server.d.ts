@@ -22,4 +22,10 @@ export function createSyncServer(options?: {
   authorize?: (from: { request: Request; collection: string; key: string; write: boolean }) => boolean | Promise<boolean>;
   /** Other origins allowed to push. */
   origins?: string[];
-}): { fetch(request: Request): Promise<Response | null> };
+  /** How often the live stream sends a keep-alive comment (ms, default 15000). */
+  heartbeat?: number;
+}): {
+  fetch(request: Request): Promise<Response | null>;
+  /** Node's http: answers sync requests (streaming the live ones) and resolves true, else false. */
+  handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): Promise<boolean>;
+};

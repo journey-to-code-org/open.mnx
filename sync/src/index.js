@@ -20,6 +20,13 @@ import { effect, onUnmount, Signal } from '@zubra/runtime';
 
 /** `let editing = ephemeral(false)`: state the collection doesn't store. */
 export const ephemeral = (value) => value;
+/**
+ * `let cursor = presence({ x: 0, y: 0 })`: state shared live with the document's other viewers
+ * (other tabs; other devices when connected), never stored. The compiler passes it on.
+ */
+export const presence = (value) => value;
+/** `let others = peers()`: the document's other viewers' presence, `[{ peer, ...state }]`. */
+export const peers = () => [];
 
 let store = null;
 /** Use another store (`{ get(collection, key), set(collection, key, fields) }`), before elements start. */
@@ -45,7 +52,36 @@ export const currentStore = () => theStore();
 const bound = new Map();
 const docId = (collection, key) => `${collection}\u0000${key}`;
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('zubra-sync');
-channel?.addEventListener('message', ({ data }) => deliver(data.collection, data.key, data.fields, null));
+channel?.addEventListener('message', ({ data }) =>
+  data.kind === 'presence' ? receivePresence(data) : deliver(data.collection, data.key, data.fields, null));
+
+// Presence: each tab is one peer per document ("room"). What it sends goes to the other tabs
+// (BroadcastChannel) and, through a connection, to other devices; nothing is stored.
+const tab = Math.random().toString(36).slice(2, 10);
+const rooms = new Map(); // room → Set of (peer, state) handlers
+const presenceSenders = new Set();
+const joined = new Set(); // rooms this tab has presence in, to leave on pagehide
+/** @internal Called with `{ room, peer, state }` for each presence this tab sends (state null: left). */
+export const onPresence = (fn) => (presenceSenders.add(fn), () => presenceSenders.delete(fn));
+/** @internal This tab's peer id. */
+export const peerId = () => tab;
+/** @internal Presence from elsewhere. */
+export function receivePresence({ room, peer, state }) {
+  if (peer === tab) return;
+  for (const handler of rooms.get(room) ?? []) handler(peer, state);
+}
+function sendPresence(room, state) {
+  const message = { room, peer: tab, state };
+  if (state === null) joined.delete(room);
+  else joined.add(room);
+  channel?.postMessage({ kind: 'presence', ...message });
+  for (const send of presenceSenders) send(message);
+}
+if (typeof addEventListener === 'function') {
+  addEventListener('pagehide', () => {
+    for (const room of [...joined]) sendPresence(room, null);
+  });
+}
 function deliver(collection, key, fields, from) {
   for (const apply of bound.get(docId(collection, key)) ?? []) if (apply !== from) apply(fields);
 }
@@ -57,7 +93,7 @@ const snapshot = (value) => (value === undefined ? null : JSON.parse(JSON.string
  * Bind `fields` (the component's state signals, by name) to the document keyed by the `keys`
  * props in `collection`. Called by compiled components.
  */
-export function collection(name, keys, props, fields) {
+export function collection(name, keys, props, fields, presenceFields = null, peersSignal = null) {
   const keyOf = () => {
     const parts = keys.map((key) => props[key]);
     return parts.every((part) => part !== undefined && part !== null && part !== '') ? parts.join('/') : null;
@@ -130,6 +166,79 @@ export function collection(name, keys, props, fields) {
   });
 
   onUnmount(() => current !== null && leave(current));
+  if (presenceFields || peersSignal) live(name, keyOf, presenceFields ?? {}, peersSignal);
+}
+
+const PRUNE = 30_000; // a peer not heard from for this long has gone (a crash, a closed laptop)
+const HEARTBEAT = 10_000;
+
+/** Send this element's presence to its document's room, and keep `peers` up to date. */
+function live(name, keyOf, fields, peersSignal) {
+  const others = new Map(); // peer → { state, seen }
+  const publish = () =>
+    peersSignal?.set([...others.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([peer, { state }]) => ({ ...state, peer })));
+  const sending = Object.keys(fields).length > 0;
+  const mine = () => Object.fromEntries(Object.entries(fields).map(([field, signal]) => [field, snapshot(signal.get())]));
+  let room = null;
+  let latest = null;
+  let queued = false;
+  const flush = () => {
+    queued = false;
+    if (room !== null && latest !== null) sendPresence(room, latest);
+  };
+  const queue = () => {
+    if (queued) return;
+    queued = true;
+    // At most once a frame: a pointer moves far more often than anyone can see.
+    (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16))(flush);
+  };
+  const onPeer = (peer, state) => {
+    const known = others.has(peer);
+    if (state === null) others.delete(peer);
+    else others.set(peer, { state, seen: Date.now() });
+    publish();
+    // Someone new: tell them where we are, so they don't wait for our next move.
+    if (!known && state !== null && sending) queue();
+  };
+
+  effect(() => {
+    const key = keyOf();
+    const next = key === null ? null : `${name}/${key}`;
+    const state = sending ? mine() : null;
+    if (next !== room) {
+      if (room !== null) {
+        rooms.get(room)?.delete(onPeer);
+        if (sending) sendPresence(room, null);
+        others.clear();
+        publish();
+      }
+      room = next;
+      if (room !== null) {
+        if (!rooms.has(room)) rooms.set(room, new Set());
+        rooms.get(room).add(onPeer);
+      }
+    }
+    if (room !== null && sending) {
+      latest = state;
+      queue();
+    }
+  });
+
+  const timer = setInterval(() => {
+    if (sending && room !== null && latest !== null) sendPresence(room, latest);
+    const now = Date.now();
+    let pruned = false;
+    for (const [peer, { seen }] of others) if (now - seen > PRUNE) pruned = others.delete(peer) || pruned;
+    if (pruned) publish();
+  }, HEARTBEAT);
+
+  onUnmount(() => {
+    clearInterval(timer);
+    if (room !== null) {
+      rooms.get(room)?.delete(onPeer);
+      if (sending) sendPresence(room, null);
+    }
+  });
 }
 
 /** A store in memory: for servers, tests, and browsers without IndexedDB. */

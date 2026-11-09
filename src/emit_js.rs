@@ -283,15 +283,28 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         let fields: Vec<&str> = script
             .state
             .iter()
-            .filter(|name| !component.script.ephemeral.contains(name))
+            .filter(|name| {
+                !component.script.ephemeral.contains(name)
+                    && !component.script.presence.contains(name)
+                    && component.script.peers.as_ref() != Some(*name)
+            })
             .map(String::as_str)
             .collect();
-        out.push_str(&format!(
-            "    {COLLECTION}({}, {}, $p, {{ {} }});\n",
+        let mut call = format!(
+            "{COLLECTION}({}, {}, $p, {{ {} }}",
             json(&collection.name),
             serde_json::to_string(&collection.keys).unwrap_or_default(),
             fields.join(", ")
-        ));
+        );
+        // Presence and peers only when the script uses them, so tier 0 stays one call.
+        if !component.script.presence.is_empty() || component.script.peers.is_some() {
+            call.push_str(&format!(
+                ", {{ {} }}, {}",
+                component.script.presence.join(", "),
+                component.script.peers.as_deref().unwrap_or("null")
+            ));
+        }
+        out.push_str(&format!("    {call});\n"));
     }
     out.push_str("    return [\n");
     for part in &emitter.parts {

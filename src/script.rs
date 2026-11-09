@@ -69,6 +69,8 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     let mut hydrated_names: Vec<String> = Vec::new();
     // `ephemeral` imported from @zubra/sync (its local names).
     let mut ephemeral_names: Vec<String> = Vec::new();
+    let mut presence_names: Vec<String> = Vec::new();
+    let mut peers_names: Vec<String> = Vec::new();
     let mut calls: Vec<(usize, String)> = Vec::new();
     // `from` imported from @zubra/runtime, and `let x = from(arg)` bindings: (binding, callee,
     // the argument's text, whether it's a `let`, where it is).
@@ -175,6 +177,13 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         {
                             ephemeral_names.push(named.local.name.to_string());
                         }
+                        if import.source.value.as_str() == Some(SYNC) {
+                            match named.imported.name().as_str() {
+                                "presence" => presence_names.push(named.local.name.to_string()),
+                                "peers" => peers_names.push(named.local.name.to_string()),
+                                _ => {}
+                            }
+                        }
                         if import.source.value.as_str() == Some(RUNTIME)
                             && named.imported.name().as_str() == "hydrated"
                         {
@@ -250,7 +259,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     }
     script.body = body;
     // `hydrated()` is false until the element starts, so on the server it's `false`.
-    for (index, text) in calls {
+    for (index, text) in calls.clone() {
         let call = text.split_whitespace().collect::<String>();
         if hydrated_names
             .iter()
@@ -265,6 +274,29 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             script.bindings[*index].init = expression::parse(argument).ok();
             script.ephemeral.push(script.bindings[*index].name.clone());
         }
+        // `let cursor = presence(v)`: shared live, not stored; on the server it's `v`.
+        if presence_names.contains(callee) {
+            script.bindings[*index].init = expression::parse(argument).ok();
+            script.presence.push(script.bindings[*index].name.clone());
+        }
+    }
+    // `let others = peers()`: nobody else is there on the server.
+    for (index, text) in &calls {
+        let Some(callee) = text.strip_suffix("()") else {
+            continue;
+        };
+        if !peers_names.iter().any(|name| name == callee.trim()) {
+            continue;
+        }
+        let binding = &mut script.bindings[*index];
+        if script.peers.is_some() {
+            return Err(Diagnostic::new(
+                binding.span,
+                "`peers()` once per component is enough",
+            ));
+        }
+        binding.init = expression::parse("[]").ok();
+        script.peers = Some(binding.name.clone());
     }
     // `let x = from(prop)` starts as `prop`, so on the server it's the argument's value.
     for (index, callee, argument, mutable, offset) in linked {

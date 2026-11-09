@@ -108,3 +108,38 @@ fn mistakes_are_named() {
         twice.message
     );
 }
+
+const BOARD: &str = r#"<script>
+  'use collection boards';
+  import { presence, peers } from '@zubra/sync';
+  let strokes = [];
+  let cursor = presence({ x: 3, y: 4 });
+  let others = peers();
+</script>
+<board-view doc="">{strokes.length} {cursor.x} {others.length}</board-view>"#;
+
+#[test]
+fn presence_and_peers_are_passed_apart_from_the_stored_fields() {
+    let js = compile_js(BOARD, "@zubra/runtime", "board-view.zb").unwrap();
+    assert!(
+        js.contains(r#"$collection("boards", ["doc"], $p, { strokes }, { cursor }, others);"#),
+        "{js}"
+    );
+    // On the server: presence starts at its value, and nobody else is there.
+    let html = compile(BOARD, r#"{"doc":"b1"}"#).unwrap();
+    assert!(html.contains("0 3 0"), "{html}");
+}
+
+#[test]
+fn peers_is_once_per_component() {
+    let error = compile(
+        "<script>'use collection b'; import { peers } from '@zubra/sync'; let a = peers(); let b = peers();</script>\n<x-y doc=\"\"></x-y>",
+        "{}",
+    )
+    .unwrap_err();
+    assert!(
+        error.message.contains("once per component"),
+        "{}",
+        error.message
+    );
+}
