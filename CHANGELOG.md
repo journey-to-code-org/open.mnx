@@ -15,6 +15,8 @@ Zubra Sync, tier 0: component state that lives on the device.
 - **A live channel**: `GET /_zb/sync/live` streams changes as they're pushed (server-sent events); `connect()` uses it and polls only while it's down. `createSyncServer().handle(req, res)` serves it on Node.
 - **Presence**: `let cursor = presence(v)` is shared live with the document's other viewers and never stored; `let others = peers()` is the array of them, `{ peer, ...presence }`. Across tabs with no server (BroadcastChannel), and across devices through `connect()` (`POST /_zb/sync/presence` and the live stream). At most one message a frame, a heartbeat, a 30-second timeout, and a goodbye on `pagehide` or a dropped connection. The server renders `presence()` values and an empty `peers()`.
 - **`sqliteLog(path)`** from `@zubra/sync/sqlite`: the log in a SQLite file, through `node:sqlite` or `bun:sqlite`. The live stream now sends a backlog longer than one page whole before anything live.
+- **`createZubra({ imports })`** in `@zubra/server`: more import map entries, for packages components import beyond `@zubra/runtime` (`@zubra/sync`, say).
+- **`examples/standup`**: a local-first team board on plain Node: `'use collection'` cards, presence, offline edits, a SQLite log, tested with two browsers.
 
 ### Changed
 
