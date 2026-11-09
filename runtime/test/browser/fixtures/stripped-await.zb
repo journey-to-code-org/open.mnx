@@ -1,8 +1,11 @@
-<!-- An zb-await can't be placed without its markers: it renders fresh, with the warning. -->
+<!-- An zb-await without its markers: placed by structure (5.2). A promise isn't known on the
+     server, so the region holds the pending block; the element renders it afresh anyway. -->
 <script>
   const data = Promise.resolve("done")
 </script>
 <zb-stripped-await>
   <p>Data</p>
+  <input class="note">
   <zb-await value={data}><span>waiting</span><zb-then as="value"><span>{value}</span></zb-then></zb-await>
+  <footer>End</footer>
 </zb-stripped-await>

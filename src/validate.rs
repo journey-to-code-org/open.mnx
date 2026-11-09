@@ -87,6 +87,11 @@ enum Local {
     Runtime,
 }
 
+/// Markers in the template's name scopes, naming the directive that pushed each.
+const SCOPE_EACH: &str = "#each";
+const SCOPE_THEN: &str = "#then";
+const SCOPE_CATCH: &str = "#catch";
+
 struct Prop {
     name: String,
     attribute: String,
@@ -804,6 +809,7 @@ impl Context<'_> {
             .iter()
             .flatten()
             .map(String::as_str)
+            .filter(|name| !name.starts_with('#'))
             .chain(self.props.iter().map(|prop| prop.name.as_str()))
             .chain(self.locals.iter().map(|(name, _)| name.as_str()))
             .collect()
@@ -876,6 +882,8 @@ impl Context<'_> {
         Ok(())
     }
 
+    // Scopes pushed by directives carry a marker naming the directive, so an error inside one can
+    // name it. (`#` can't start an identifier, so these never resolve a name.)
     fn resolve_nodes(
         &self,
         nodes: &[ast::Node],
@@ -931,7 +939,13 @@ impl Context<'_> {
                     ..
                 } => {
                     self.resolve_expression(items, *items_span, scopes)?;
-                    scopes.push(bound_names(item).into_iter().chain(index.clone()).collect());
+                    scopes.push(
+                        bound_names(item)
+                            .into_iter()
+                            .chain(index.clone())
+                            .chain([SCOPE_EACH.to_owned()])
+                            .collect(),
+                    );
                     let result = self
                         .resolve_lets(lets, scopes)
                         .and_then(|()| match key {
@@ -945,11 +959,26 @@ impl Context<'_> {
                     result?;
                 }
                 ast::Node::Slot { fallback, span, .. } => {
-                    if !scopes.is_empty() {
-                        return Err(Diagnostic::new(
-                            *span,
-                            "zb-slot can't be inside zb-each: slotted content can only be in one place",
-                        ));
+                    // The innermost directive that binds names (and so may render its content
+                    // more than once, or later than the element starts).
+                    if let Some(inside) = scopes
+                        .last()
+                        .and_then(|scope| scope.iter().find(|name| name.starts_with('#')))
+                    {
+                        return Err(if inside == SCOPE_EACH {
+                            Diagnostic::new(
+                                *span,
+                                "zb-slot can't be inside zb-each: slotted content can only be in one place",
+                            )
+                            .with_help("put the slot outside the list, or pass each row's content as a prop")
+                        } else {
+                            let branch = &inside[1..];
+                            Diagnostic::new(
+                                *span,
+                                format!("zb-slot can't be inside zb-{branch}: slotted content is placed when the element starts, before the value settles"),
+                            )
+                            .with_help(format!("put the slot outside zb-await (beside it, or around it), or render the slotted markup inside zb-{branch} from a prop"))
+                        });
                     }
                     self.resolve_nodes(fallback, scopes)?;
                 }
@@ -987,6 +1016,7 @@ impl Context<'_> {
                         if caught {
                             names.push("retry".to_owned());
                         }
+                        names.push(if caught { SCOPE_CATCH } else { SCOPE_THEN }.to_owned());
                         scopes.push(names);
                         let result = self
                             .resolve_lets(&branch.lets, scopes)

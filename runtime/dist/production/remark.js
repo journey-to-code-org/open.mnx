@@ -10,10 +10,12 @@
 // - an zb-if region holds the branch the current values choose, and an zb-each region one row
 //   per item, each with the shape of its block (checked element by element);
 // - a light-DOM slot region is the rest of its range, when nothing follows it there; its
-//   content is the fallback if it has the fallback's shape, and supplied content otherwise.
-// Anything else (an zb-await, content projected into a child component, a region the server
-// left to the browser, other than one left empty) can't be placed for sure, and the element
-// renders afresh as before.
+//   content is the fallback if it has the fallback's shape, and supplied content otherwise;
+// - an zb-await region holds its zb-then block, for a value known at build time, or its pending
+//   block, which the element renders afresh anyway (so only where the region ends matters).
+// Anything else (content projected into a child component, a region the server left to the
+// browser, other than one left empty or a pending zb-await) can't be placed for sure, and the
+// element renders afresh as before.
 
 const TEXT = 3;
 const COMMENT = 8;
@@ -152,8 +154,40 @@ export function remark(root, template, parts, { blueprint, isOpen, isClose, read
           insert(parent, null, ']');
         }
         cursor = null;
+      } else if (part.await) {
+        // zb-await: the server rendered the zb-then block for a value it knew at build time (a
+        // plain value here too), or the pending block in a region it left to the element, which
+        // the element renders afresh anyway (`[?`): only its extent has to be found, by the
+        // pending block's shape. Failing both, an empty region left to the element, as above.
+        const saved = edits.length;
+        const start = cursor;
+        const value = untrack(() => $r(part.await()));
+        const thenable = (item) => item != null && typeof $r(item)?.then === 'function';
+        const settled = !(Array.isArray(value) ? value.some(thenable) : thenable(value));
+        const attempts = [];
+        if (settled && part.blocks[1]) attempts.push(['[', part.blocks[1], [new State(value), new State(() => {})]]);
+        if (part.blocks[0]) attempts.push(['[?', part.blocks[0], []]);
+        let placed = false;
+        for (const [open, chosen, args] of attempts) {
+          try {
+            insert(parent, cursor, open);
+            cursor = block(chosen, args);
+            insert(parent, cursor, ']');
+            placed = true;
+            break;
+          } catch (error) {
+            if (error !== fail) throw error;
+            edits.length = saved;
+            cursor = start;
+          }
+        }
+        if (!placed) {
+          if (!followsRegion(t, skipText(cursor))) throw fail;
+          insert(parent, cursor, '[?');
+          insert(parent, cursor, ']');
+        }
       } else {
-        throw fail; // zb-await
+        throw fail;
       }
       // Past the template's matching close.
       let depth = 0;
