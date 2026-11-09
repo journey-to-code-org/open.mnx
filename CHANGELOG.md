@@ -2,6 +2,11 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **`--emit element`: a component as a plain custom element, with no runtime to install.** One module, no imports, built from the same definition as `--emit js`. It covers light-DOM components: props, every template part, `zb-if`, `zb-each`, light-DOM slots kept live under React, Vue, Svelte and Lit, `state`/`computed`/`effect`, lifecycle, form association and scoped styles. Shadow DOM, spreads, `zb-await` and runtime extras such as `resource` and `@zubra/runtime/zag` are refused with a reason. Server hydration and hot reload stay with `@zubra/runtime`. About 5.5 KB gzipped for a small element (the slot code is left out when there are no slots), 7 KB with slots. Also in `zubra request` (`"emit": "element"`) and so in `@zubra/compiler`. CI runs the runtime's browser suites and the registry's tests on both outputs. See `docs/plain-elements.md`.
 ## 5.1.2 — 2026-11-09
 
 ### Fixed

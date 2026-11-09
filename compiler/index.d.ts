@@ -21,7 +21,7 @@ export interface Response {
 
 export interface Options {
   command?: 'compile' | 'check';
-  emit?: 'html' | 'js' | 'css' | 'dts' | 'manifest' | 'html-data' | 'interface';
+  emit?: 'html' | 'js' | 'element' | 'css' | 'dts' | 'manifest' | 'html-data' | 'interface';
   runtime?: string;
   keepImports?: boolean;
   noImports?: boolean;
