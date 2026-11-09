@@ -2,6 +2,16 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.1.2 — 2026-11-09
+
+### Fixed
+
+- **A light-DOM component's own fallback lost its styles after slotted content changed.** When content was added to or removed from any slot, every node in every rendered slot region was marked as slotted (`data-zb-slotted`), the fallbacks included. A component's styles stop at slotted content, so a fallback showing again (`<zb-slot name="title"><h2>{heading}</h2></zb-slot>`) was no longer styled by its component. Only provided content is marked now.
+
+### Tests
+
+- The styles test that checked "a utility class beats the component's styles" passed only because of that bug: the fallback heading had lost the component's rule. The page in that test now declares the layer order first, as Tailwind's output does, and the test also checks that the fallback keeps its own colour. Found while building `--emit element`, whose element runtime didn't have the bug.
+
 ## 5.1.1 — 2026-11-09
 
 ### Fixed
