@@ -5,6 +5,9 @@
 #
 # Pushes that don't change the version do nothing. It can be run again from the Actions tab: npm
 # packages already published are skipped, and the release step only runs while the tag is missing.
+# Everything is built from, and tagged on, the commit that set the version, not the commit that
+# triggered the run: when a release fails partway and a later push finishes it, the packages, the
+# .vsix and the tag still all come from the release itself.
 #
 # No tokens: npm and the VS Code Marketplace both trust this workflow (OIDC), set up once.
 # - npm, per package on npmjs.com: Settings → Trusted publishing → GitHub Actions, organization
@@ -35,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # to find the commit that set the version
       - name: Is this a new version?
         id: version
         run: |
@@ -43,9 +48,21 @@ jobs:
           if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
             echo "v$version is already tagged: nothing to release."
             echo "new=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "new=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "new=true" >> "$GITHUB_OUTPUT"
+          # The commit that set the version: walking back along main (first parents) through the
+          # commits that changed runtime/package.json, the oldest one still at this version.
+          release=
+          for sha in $(git log --first-parent --format=%H -- runtime/package.json); do
+            [ "$(git show "$sha:runtime/package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")" = "$version" ] || break
+            release=$sha
+          done
+          echo "Releasing $version from ${release:?no commit on main has version $version}."
+          echo "sha=$release" >> "$GITHUB_OUTPUT"
+      - name: Build from the release commit
+        if: steps.version.outputs.new == 'true'
+        run: git checkout --quiet "${{ steps.version.outputs.sha }}"
       # Before publishing anything: a release can't go out without its notes.
       - name: Release notes
         if: steps.version.outputs.new == 'true'
@@ -86,9 +103,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ steps.version.outputs.sha }}
         run: |
           gh release create "v$VERSION" "editors/vscode/zubra-$VERSION.vsix" \
-            --target "$GITHUB_SHA" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
+            --target "$SHA" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
       # The Marketplace's trusted publishing (OIDC, like npm's): a policy on the JourneytoCode
       # publisher names this repository and release.yml, so there's no token to store.
       - name: Publish the extension to the Marketplace
