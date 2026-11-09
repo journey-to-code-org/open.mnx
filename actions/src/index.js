@@ -103,7 +103,17 @@ export async function createActions({
       failed = true;
       value = { error: 'Something went wrong' };
     }
-    if (value instanceof Response) return value;
+    if (value instanceof Response) {
+      // A redirect after success: the enhanced path is told where to go rather than following it,
+      // so the page navigates once, with the location's #fragment kept (fetch drops it).
+      const location = value.headers.get('location');
+      if (wantsJson && location && value.status >= 300 && value.status < 400) {
+        const headers = new Headers({ 'zb-location': location });
+        for (const cookie of value.headers.getSetCookie()) headers.append('set-cookie', cookie);
+        return new Response(null, { status: 204, headers });
+      }
+      return value;
+    }
     if (wantsJson) {
       return new Response(JSON.stringify(value ?? null), {
         status: failed ? 500 : 200,

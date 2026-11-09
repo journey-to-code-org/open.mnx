@@ -14,7 +14,7 @@
   }
   export async function away() {
     'use server';
-    return Response.redirect('http://localhost/elsewhere', 303);
+    return Response.redirect('http://localhost/elsewhere#done', 303);
   }
 </script>
 

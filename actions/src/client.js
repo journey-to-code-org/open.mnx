@@ -30,6 +30,11 @@ async function submit(event) {
   let detail;
   try {
     const response = await fetch(action, { method: 'POST', body: formData, headers: { accept: 'application/json' } });
+    const next = response.headers.get('zb-location');
+    if (next) {
+      location.assign(next);
+      return;
+    }
     if (response.redirected) {
       location.assign(response.url);
       return;
