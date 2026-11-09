@@ -129,6 +129,9 @@ test('with JavaScript: the server markup is hydrated in place, then J/K/Enter, l
   await page.check('reply-composer input[name=internal]');
   await page.press('reply-composer textarea', 'Control+Enter');
   await page.waitForURL(/#latest$/);
+  // With JavaScript the reply is sent with fetch and the page reloads at #latest; the URL can
+  // change a moment before the reload starts, so wait for the reply itself.
+  await page.waitForSelector('ticket-thread li.internal p:has-text("Found it")');
   assert.deepEqual((await text(page, 'ticket-thread li.internal p')), ['Found it: a Safari-only CSS bug.']);
 
   // The priority picker highlights as it changes, and the update form saves it.
