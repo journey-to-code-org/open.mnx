@@ -45,6 +45,10 @@ export interface Request extends Options {
 
 /** The text of a 4.x server's hydration-marker comments, for tools that remove comments: keep these. (5.0 writes processing instructions, which they keep.) */
 export declare const ZUBRA_MARKER_COMMENT: RegExp;
+/** For @swc/html's `preserveComments`: keeps the `<?zb …?>` hydration markers it would otherwise strip. */
+export declare const ZUBRA_MARKER_PATTERN: string;
+/** For posthtml's parser `directives` (htmlnano's fourth argument): keeps the `<?zb …?>` hydration markers its parser would otherwise drop. */
+export declare const ZUBRA_MARKER_DIRECTIVE: Readonly<{ name: '?zb'; start: '<'; end: '>' }>;
 export declare function available(): boolean;
 export declare function request(request: Request): Response;
 export declare function sources(path: string, files?: Record<string, string>): Record<string, string>;

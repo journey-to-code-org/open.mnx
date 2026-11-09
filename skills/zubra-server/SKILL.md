@@ -35,7 +35,7 @@ Give a prop as a promise: `page.render('reviews', { items: fetchReviews() })`. T
 
 ## Hydration markers
 
-The server HTML carries processing-instruction markers (`<?zb [?>`, `<?zb ]?>`, `<?zb ?>`). Minifiers (with `removeComments`), htmx and the HTML parser keep them, so there's nothing to configure. A sanitizer that drops them makes the element restore them by structure (slower, one warning for `zb-await` and projected content). Markup from a 4.x server has comment markers (`<!--[-->`) instead: keep those with `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]` (from `@zubra/compiler`) in html-minifier-terser.
+The server HTML carries processing-instruction markers (`<?zb [?>`, `<?zb ]?>`, `<?zb ?>`). htmx and the HTML parser keep them; so do html-minifier-terser (with `removeComments`) and @minify-html/node, with nothing to configure. Two minifiers strip them by default and keep them with one option: @swc/html with `preserveComments: [ZUBRA_MARKER_PATTERN]`, htmlnano with the posthtml parser option `directives: [ZUBRA_MARKER_DIRECTIVE]` (both from `@zubra/compiler`). Sanitizers (DOMPurify, sanitize-html) drop them; the element then restores them by structure (slower, one warning for `zb-await` and projected content). `docs/server-rendering.md` has the measured table. Markup from a 4.x server has comment markers (`<!--[-->`) instead: keep those with `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]` (from `@zubra/compiler`) in html-minifier-terser.
 
 ## Reference
 

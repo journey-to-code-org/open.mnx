@@ -72,6 +72,37 @@ fn declared_types_reach_the_typings_and_manifest() {
 }
 
 #[test]
+fn type_only_exports_are_erasable() {
+    // `export interface`, `export type` and `export type { … }` declare no value, so the
+    // no-exports rule doesn't apply: they're removed, and reach the typings exported once.
+    let source = "<script lang=\"ts\">\n  import type { Option } from './types'\n  export interface Picked { id: string }\n  export type Size = 'small' | 'large';\n  export type { Option }\n  declare const size: Size\n  const n: number = 1\n</script>\n<zb-x size=\"small\"><p>{n}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(!js.contains("Picked") && !js.contains("Size ="), "{js}");
+    let dts = compile_declarations(source, "x.zb").unwrap();
+    assert_eq!(
+        dts.matches("export interface Picked { id: string }")
+            .count(),
+        1,
+        "{dts}"
+    );
+    assert_eq!(
+        dts.matches("export type Size = 'small' | 'large'").count(),
+        1,
+        "{dts}"
+    );
+    assert_eq!(dts.matches("export type { Option }").count(), 1, "{dts}");
+    assert!(dts.contains("  size: Size;"), "{dts}");
+    // A value export is still refused.
+    let error = compile_js(
+        "<script lang=\"ts\">\n  export const x: number = 1\n</script>\n<zb-x><p>x</p></zb-x>",
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert!(error.message.contains("can't export"), "{}", error.message);
+}
+
+#[test]
 fn errors_point_into_the_typescript_source() {
     // A non-erasable construct, on line 4.
     let source = "<script lang=\"ts\">\n  const a: number = 1\n\n  enum Color { Red }\n</script>\n<zb-x><p>x</p></zb-x>";
@@ -82,7 +113,15 @@ fn errors_point_into_the_typescript_source() {
     // A compiler check after stripping (an event name), still at the right place.
     let source = "<script lang=\"ts\">\n  import { emit } from '@zubra/runtime'\n  const n: number = 1\n  emit<number>('valueChange', n)\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
-    assert_eq!(error.help.as_deref(), Some("use `valuechange`"));
+    assert!(
+        error
+            .help
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("use `valuechange`"),
+        "{:?}",
+        error.help
+    );
     assert_eq!((error.span.line, error.span.column), (4, 3));
 
     let source = "<script lang=\"ts\">\n  const a: = 1\n</script>\n<zb-x><p>x</p></zb-x>";

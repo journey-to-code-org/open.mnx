@@ -20,6 +20,17 @@ import { dirname, resolve } from 'node:path';
  */
 export const ZUBRA_MARKER_COMMENT = /^[[\]?!]*$/;
 
+/**
+ * For minifiers that strip the processing-instruction markers (`<?zb [?>`) unless told otherwise.
+ * Most keep them as shipped (html-minifier-terser, @minify-html/node); these two need one option,
+ * measured in server/test/markers.test.js:
+ * - @swc/html: `minify(html, { preserveComments: [ZUBRA_MARKER_PATTERN] })`;
+ * - htmlnano (and any posthtml pipeline): the parser option `{ directives: [ZUBRA_MARKER_DIRECTIVE] }`,
+ *   htmlnano's fourth argument.
+ */
+export const ZUBRA_MARKER_PATTERN = '^\\?zb';
+export const ZUBRA_MARKER_DIRECTIVE = Object.freeze({ name: '?zb', start: '<', end: '>' });
+
 const wasmUrl = new URL('./zubra.wasm', import.meta.url);
 let exports = null;
 

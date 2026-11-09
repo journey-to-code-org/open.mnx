@@ -16,12 +16,13 @@ use std::collections::HashMap;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    CallExpression, Class, ClassElement, Expression, FormalParameter, Function, FunctionType,
-    ImportDeclaration, ImportDeclarationSpecifier, MethodDefinitionType, PropertyDefinitionType,
-    Statement, TSAsExpression, TSEnumDeclaration, TSExternalModuleDeclaration, TSGlobalDeclaration,
-    TSInterfaceDeclaration, TSNamespaceDeclaration, TSNonNullExpression, TSSatisfiesExpression,
-    TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeAssertion, TSTypeParameterDeclaration,
-    TSTypeParameterInstantiation, VariableDeclaration, VariableDeclarator,
+    CallExpression, Class, ClassElement, Declaration, Expression, FormalParameter, Function,
+    FunctionType, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
+    MethodDefinitionType, PropertyDefinitionType, Statement, TSAsExpression, TSEnumDeclaration,
+    TSExternalModuleDeclaration, TSGlobalDeclaration, TSInterfaceDeclaration,
+    TSNamespaceDeclaration, TSNonNullExpression, TSSatisfiesExpression, TSTypeAliasDeclaration,
+    TSTypeAnnotation, TSTypeAssertion, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
+    VariableDeclaration, VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
@@ -67,10 +68,12 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
     };
     stripper.visit_program(&parsed.program);
     if let Some((offset, message, help)) = stripper.error {
+        // Types are removed, never compiled (the "erasable syntax only" rule); each refusal says
+        // what to write and where the rule is explained.
         let error = Diagnostic::new(at(offset), message);
         return Err(match help {
-            Some(help) => error.with_help(help),
-            None => error,
+            Some(help) => error.with_help(format!("{help}; see docs/typescript.md")),
+            None => error.with_help("see docs/typescript.md"),
         });
     }
     let mut bytes = source.as_bytes().to_vec();
@@ -97,7 +100,7 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
             at(offset),
             format!("this TypeScript can't be reduced to JavaScript by removing its types: {}", error.message),
         )
-        .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`)"));
+        .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`); docs/typescript.md has the rule"));
     }
     Ok((stripped, stripper.types))
 }
@@ -277,12 +280,39 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_statement(&mut self, it: &Statement<'a>) {
-        if let Statement::TSImportEqualsDeclaration(declaration) = it {
-            return self.fail(
-                declaration.span.start,
-                "`import x = require(…)` isn't supported",
-                Some("use `import x from \"…\"`"),
-            );
+        match it {
+            Statement::TSImportEqualsDeclaration(declaration) => {
+                return self.fail(
+                    declaration.span.start,
+                    "`import x = require(…)` isn't supported",
+                    Some("use `import x from \"…\"`"),
+                );
+            }
+            // `export type T = …` and `export interface I { … }` are type-only, so they're
+            // erasable: the declaration goes to the typings (exported, as every declaration is)
+            // and the whole statement, `export` included, is blanked. (A component script
+            // exports no values; that check runs on the JavaScript left after stripping.)
+            Statement::ExportDeclaration(export)
+                if matches!(
+                    export.declaration,
+                    Declaration::TSTypeAliasDeclaration(_) | Declaration::TSInterfaceDeclaration(_)
+                ) =>
+            {
+                walk::walk_declaration(self, &export.declaration);
+                self.blank(export.span);
+                return;
+            }
+            // `export type { A, B }`: re-exported names, kept for the typings.
+            Statement::ExportNamedDeclaration(export)
+                if export.export_kind == ImportOrExportKind::Type =>
+            {
+                self.types
+                    .declarations
+                    .push(self.text(export.span).trim_end_matches(';').to_owned());
+                self.blank(export.span);
+                return;
+            }
+            _ => {}
         }
         walk::walk_statement(self, it);
     }
@@ -610,7 +640,8 @@ mod tests {
                 "{source}: {}",
                 error.message
             );
-            assert!(error.help.is_some(), "{source}");
+            let help = error.help.as_deref().unwrap_or_default();
+            assert!(help.ends_with("see docs/typescript.md"), "{source}: {help}");
             assert_eq!(error.span.line, line, "{source}");
         }
         let error = strip("const = 1", Span::new(1, 1)).unwrap_err();
