@@ -12,4 +12,4 @@ Local-first state for Zubra components. `'use collection tasks'` at the top of a
 <task-item doc="">…</task-item>
 ```
 
-`<task-item doc="t42">` is the document `tasks/t42`. This is tier 0 of the design (one device, no server); see [docs/sync.md](https://github.com/journey-to-code-org/zubra/blob/main/docs/sync.md).
+`<task-item doc="t42">` is the document `tasks/t42`. To share documents between devices, `connect()` from `@zubra/sync/connect` and serve the log with `createSyncServer()` from `@zubra/sync/server`; components don't change. see [docs/sync.md](https://github.com/journey-to-code-org/zubra/blob/main/docs/sync.md).

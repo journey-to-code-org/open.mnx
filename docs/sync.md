@@ -55,6 +55,34 @@ import { configure, memoryStore } from '@zubra/sync';
 configure({ store: { get: async (collection, key) => doc, set: async (collection, key, fields) => {} } });
 ```
 
-## What this isn't yet
+## Sharing between devices
 
-This is tier 0 of the design: one device, no server. Syncing to other devices or people (a shared log, a transport, presence) is the next step, and it adds configuration, not component changes.
+Tier 0 keeps a document on one device. To share it, start a connection on the page and serve the log:
+
+```js
+// in the page
+import { connect } from '@zubra/sync/connect';
+connect({ url: '/_zb/sync' });
+```
+
+```js
+// on the server (a fetch handler: Node through a small adapter, Bun, Deno, workers)
+import { createSyncServer } from '@zubra/sync/server';
+const sync = createSyncServer({ authorize: ({ request, collection, key, write }) => true });
+const response = await sync.fetch(request); // null if it isn't a sync request
+```
+
+Components don't change. The protocol is plain HTTP, so any server can keep the log:
+
+| | |
+|---|---|
+| `POST /_zb/sync/push` | `{ "changes": [Change] }` → `{ "ok": true }` |
+| `GET /_zb/sync/pull?since=<cursor>` | `{ "changes": [Change], "cursor": … }` |
+| `Change` | `{ "collection", "key", "field", "value", "clock" }` |
+
+- **The device is the source of truth.** A write lands in the local store first. The connection stamps each changed field with a hybrid logical clock (`<ms>-<counter>-<device>`), queues it (in `localStorage`, so a reload doesn't lose it) and pushes it when it can. Offline, it waits.
+- **The server keeps a log, in order, and doesn't merge.** Every device applies the same rule to the same changes: for each field, the change with the later clock wins. So they converge, whichever order the changes arrive in. The clock of each field's winning write is stored beside the document (`$clocks`).
+- **`authorize`** decides who may write a document and who sees its changes. The log is in memory by default; `log: { append(changes), after(cursor) }` stores it anywhere.
+- Cross-site pushes are refused, like actions.
+
+Pulling is polling (every 2 seconds by default, and when the browser comes back online). A live channel (SSE or WebSocket), presence and a WebRTC transport are the next steps in the design.
