@@ -3,7 +3,7 @@
 # Usage: scripts/bump-version.sh 3.1.0
 set -e
 v="$1"; [ -n "$v" ] || { echo "usage: $0 <version>" >&2; exit 1; }
-for f in compiler/package.json create/package.json plugin/package.json runtime/package.json server/package.json actions/package.json sync/package.json editors/language-server/package.json editors/vscode/package.json; do
+for f in compiler/package.json create/package.json plugin/package.json runtime/package.json server/package.json actions/package.json sync/package.json editors/language-server/package.json editors/vscode/package.json editors/devtools/manifest.json editors/devtools/package.json; do
   sed -i -E "0,/\"version\": \"[0-9.]+\"/s//\"version\": \"$v\"/" "$f"
 done
 sed -i -E "0,/^version = \"[0-9.]+\"/s//version = \"$v\"/" Cargo.toml

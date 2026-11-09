@@ -28,6 +28,15 @@ let scheduled = null;      // promise for the pending microtask flush
 let flushing = false;
 const effectOf = new WeakMap();
 
+// @dev
+/**
+ * For the DevTools hook (devtools.js), in development only: `label` is what the effect being
+ * created binds (element.js sets it around each binding), and `flushed` hears which effects each
+ * flush re-ran.
+ */
+export const dev = { label: null, flushed: null };
+// @dev-end
+
 const watcher = new Signal.subtle.Watcher(() => {
   scheduled ??= new Promise((resolve) => queueMicrotask(() => {
     try { flush(); } finally { scheduled = null; resolve(); }
@@ -113,6 +122,9 @@ class Effect extends Owner {
     super(parent);
     this.id = ++nextId;
     this.cleanup = undefined;
+    // @dev
+    this.label = dev.label;
+    // @dev-end
     this.computed = new Signal.Computed(() => {
       this.disposeChildren();
       this.runCleanup();
@@ -209,11 +221,19 @@ export function root(fn) {
 export function flush() {
   if (flushing) return;
   flushing = true;
+  // @dev
+  const ran = [];
+  // @dev-end
   try {
     for (let round = 0; ; round++) {
       const pending = watcher.getPending();
       watcher.watch(); // re-arm before running, so writes made by effects schedule another round
-      if (pending.length === 0) return;
+      if (pending.length === 0) {
+        // @dev
+        if (ran.length) dev.flushed?.(ran);
+        // @dev-end
+        return;
+      }
       if (round >= MAX_ROUNDS) {
         report(new Error('zubra: effects keep re-triggering each other; stopped after 100 rounds'));
         return;
@@ -222,6 +242,9 @@ export function flush() {
       for (const e of effects) {
         if (e.disposed || e.paused) continue;
         try { e.run(); } catch (error) { report(error); }
+        // @dev
+        ran.push(e);
+        // @dev-end
       }
     }
   } finally {

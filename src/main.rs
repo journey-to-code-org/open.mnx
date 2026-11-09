@@ -61,7 +61,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -76,6 +76,7 @@ fn run() -> Result<(), String> {
     let mut runtime = "@zubra/runtime".to_owned();
     let mut module_path = None;
     let mut keep_imports = false;
+    let mut devtools = false;
     let mut no_imports = false;
     let mut css_import = None;
     let mut css_import_inline = None;
@@ -87,6 +88,8 @@ fn run() -> Result<(), String> {
             "--module-path" => module_path = arguments.next(),
             // For bundler plugins: leave `./x.zb` imports for the bundler to resolve.
             "--keep-imports" => keep_imports = true,
+            // For development builds: what the browser DevTools panel reads (--emit js).
+            "--devtools" => devtools = true,
             // For --emit css: this component's stylesheet only (a bundler loads the others).
             "--no-imports" => no_imports = true,
             // For bundler plugins: import the <style> through the bundler instead of inlining it.
@@ -141,29 +144,33 @@ fn run() -> Result<(), String> {
             });
             format!("{stem}.js")
         });
+        if devtools && emit != "js" {
+            return Err(format!(
+                "--devtools applies to --emit js, not --emit {emit}"
+            ));
+        }
         let output = match emit.as_str() {
-            "js" if css_import.is_some() || css_import_inline.is_some() => {
-                match (&css_import, &css_import_inline) {
-                    (Some(stylesheet), Some(inline)) => zubra::compile_js_for_bundler(
-                        &source,
-                        &source_path,
-                        &runtime,
-                        zubra::StyleImports { stylesheet, inline },
-                        &zubra::filesystem,
-                    ),
+            "js" => {
+                let style_imports = match (&css_import, &css_import_inline) {
+                    (Some(stylesheet), Some(inline)) => Some(zubra::StyleImports { stylesheet, inline }),
+                    (None, None) => None,
                     _ => return Err("--css-import and --css-import-inline go together".into()),
-                }
+                };
+                zubra::compile_js_options(
+                    &source,
+                    &source_path,
+                    &zubra::JsOptions {
+                        runtime: &runtime,
+                        // A bundler resolves `.zb` imports itself.
+                        component_extension: (!keep_imports && style_imports.is_none()).then_some(".js"),
+                        style_imports,
+                        devtools,
+                    },
+                    &zubra::filesystem,
+                )
             }
             "css" if no_imports => zubra::compile_css(&source),
             "css" => zubra::compile_css_file(&source_path),
-            "js" if keep_imports => zubra::compile_js_with(
-                &source,
-                &source_path,
-                &runtime,
-                None,
-                &zubra::filesystem,
-            ),
-            "js" => zubra::compile_js_file(&source_path, &runtime),
             "element" => zubra::compile_element_file(&source_path),
             "dts" => zubra::compile_declarations_for(&source, &name, framework),
             "manifest" => zubra::compile_manifest(&source, &module_path),

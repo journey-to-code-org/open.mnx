@@ -103,6 +103,8 @@ In Vite's dev server, editing a component **updates it in place**: the elements 
 
 Components that import the edited one are recompiled too. Other bundlers' watch modes (Rollup, webpack) recompile on change.
 
+The dev server also compiles each component for the **Zubra DevTools** (`--devtools`): select a node in the browser's Elements panel and the Zubra pane shows its component's `.zb` file and line, its props and state, and each binding's line and the signals it reads (see `editors/devtools`). Builds carry none of it.
+
 ## Tests
 
 `npm test` builds real React, Vue and plain Vite apps, runs them in Chromium, type-checks the generated typings with TypeScript, and checks the dev server, `build --watch` and error reporting. It needs a Rust toolchain (the compiler is built from this repository) and Playwright with Chromium.
