@@ -29,6 +29,7 @@ Give a prop as a promise: `page.render('reviews', { items: fetchReviews() })`. T
 - Light-DOM components keep native inputs, links and forms in the page, so they work as they are.
 - `<select value>` and `<textarea value>` render the chosen value.
 - Under the bridge, a `form-associated` component with a `name` gets a hidden input with its server value, so the form submits; the user can't edit that value before hydration.
+- Components that import another package (`@zubra/sync` for `'use collection'`) need it in the import map: `createZubra({ imports: { '@zubra/sync': '/sync/index.js' } })`, with the app serving those files. `createSyncServer()` from `@zubra/sync/server` (`handle(req, res)` on Node) keeps the shared log; `examples/standup` shows the whole setup.
 - `hydrated()` and `:state(hydrated)` show a fallback (an Apply button) only until the element is live.
 
 ## Hydration markers

@@ -316,6 +316,28 @@ jobs:
       - run: npm test
         working-directory: examples/hypermedia/hono-bikes
 
+  standup:
+    name: Local-first example (standup, @zubra/sync)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/standup/package-lock.json
+      - run: cargo build --locked
+      - run: npm ci
+        working-directory: examples/standup
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/standup
+      - run: npm test
+        working-directory: examples/standup
+
   clients:
     name: Extension and desktop examples (${{ matrix.app }})
     runs-on: ubuntu-latest

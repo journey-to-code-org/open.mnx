@@ -1,0 +1,22 @@
+{
+  "name": "zubra-example-standup",
+  "private": true,
+  "type": "module",
+  "description": "A team standup board with 'use collection': cards edited by everyone at once, offline included, with presence. Plain Node.js, @zubra/server and @zubra/sync with a SQLite log.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@zubra/compiler": "file:../../compiler",
+    "@zubra/runtime": "file:../../runtime",
+    "@zubra/server": "file:../../server",
+    "@zubra/sync": "file:../../sync"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

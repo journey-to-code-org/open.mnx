@@ -23,6 +23,9 @@ Projects that use Zubra 2 the way an app would, each with its own README:
 - **[`hypermedia/`](hypermedia/)**: a bike shop's inventory in Hono and htmx, on Node.js or
   Bun. htmx swaps server-rendered fragments in, and the Zubra elements in them hydrate where they
   land.
+- **[`standup/`](standup/)**, the local-first one: a team standup board whose cards keep their
+  state on the device with `'use collection'`, sync through a SQLite log on a plain Node server,
+  work offline, and show who else is editing a card.
 - **[`extension/`](extension/)**: a Chrome extension (Manifest V3) with Zubra components in its
   popup, its options page, and a widget on other people's pages.
 - **[`desktop/`](desktop/)**: a focus timer in Electron, with a sandboxed renderer under a strict

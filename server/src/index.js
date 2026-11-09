@@ -36,9 +36,10 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
  * `components`: the folder of `.zb` (and `.zb.jsx`/`.zb.tsx`) files. `prefix`: the URL path
  * the browser modules are served under. `cache`: keep compiled output (turn it off in
  * development to pick up edits). `production`: serve the runtime's production build, without hot
- * reloading (by default when `NODE_ENV` is `production`).
+ * reloading (by default when `NODE_ENV` is `production`). `imports`: more import map entries,
+ * for packages the components import that aren't `@zubra/runtime` (`{ '@zubra/sync': '/sync/index.js' }`).
  */
-export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production' } = {}) {
+export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', imports = {} } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
   const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
@@ -91,7 +92,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
     return response.output;
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js` } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, ...imports } })}</script>`;
   const head = (names) => {
     const styles = names.map(css).join('\n');
     return `${styles ? `<style data-zb-components>${styles}</style>\n` : ''}${importMap()}`;

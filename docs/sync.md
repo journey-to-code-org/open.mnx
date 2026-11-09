@@ -1,6 +1,6 @@
 # Sync: component state that lives on the device
 
-`'use collection <name>'` at the top of a component's script keeps its state in a local store. The page needs `@zubra/sync` (an import map entry, or a bundler).
+`'use collection <name>'` at the top of a component's script keeps its state in a local store. The page needs `@zubra/sync` (a bundler, or an import map entry: with `@zubra/server`, `createZubra({ imports: { '@zubra/sync': '/sync/index.js' } })`).
 
 ```html
 <!-- task-item.zb -->
@@ -23,6 +23,8 @@
 ```html
 <task-item doc="t42"></task-item>   <!-- the document tasks/t42 -->
 ```
+
+`examples/standup` is a whole app built this way: a plain Node server, a SQLite log, offline edits and presence, tested with two browsers.
 
 ## What the compiler writes
 

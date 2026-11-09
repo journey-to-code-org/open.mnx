@@ -39,6 +39,13 @@ async function open(url, { javascript = true, before } = {}) {
 }
 const layout = (body) => `<!doctype html><html><head><meta charset="utf-8"><title>t</title></head><body>${body}</body></html>`;
 
+test('imports adds import map entries for other packages the components import', () => {
+  const zubra = createZubra({ components, imports: { '@zubra/sync': '/sync/index.js' } });
+  const html = zubra.page().finish('<html><head></head><body></body></html>');
+  assert.match(html, /"@zubra\/runtime":"\/_zubra\/runtime\/index\.js"/);
+  assert.match(html, /"@zubra\/sync":"\/sync\/index\.js"/);
+});
+
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
   assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list', 'review-panel']);
