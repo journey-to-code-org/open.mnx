@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { useBrowser, open, compiler } from '../../runtime/test/browser/harness.js';
+import { useBrowser, open, compiler, runtimeOnly } from '../../runtime/test/browser/harness.js';
 import * as zag from './zag.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18,7 +18,7 @@ useBrowser(Object.fromEntries(names.map((name) => [name, join(here, '../componen
 // in place.
 const FRESH = {};
 
-test('stripped server markup: every registry component hydrates in place, or is listed with its reason', async (t) => {
+test('stripped server markup: every registry component hydrates in place, or is listed with its reason', { skip: runtimeOnly }, async (t) => {
   const results = {};
   for (const name of names) {
     const html = compiler(join(here, '../components', `${name}.zb`), '--partial').replace(/<\?zb [^]*?\?>/g, '');

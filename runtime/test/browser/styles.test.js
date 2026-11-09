@@ -49,8 +49,11 @@ test("a component's styles apply to its own elements and stop at content slotted
 });
 
 test('content added and removed later is marked and unmarked; utilities and page CSS override', async () => {
+  // The layer order first, as Tailwind's output puts it: the page's `utilities` layer comes
+  // after the component's `components` layer.
   const { page } = await open(
     `<style>
+      @layer theme, base, components, utilities;
       @layer utilities { .u-green { color: rgb(0, 128, 0) } }
       .page-blue { color: rgb(0, 0, 255) }
     </style>
@@ -69,6 +72,8 @@ test('content added and removed later is marked and unmarked; utilities and page
   await page.evaluate(() => document.querySelector('zb-styled-card').removeChild(window.added));
   await settle(page);
   assert.equal(await page.evaluate(() => window.added.hasAttribute('data-zb-slotted')), false, "our mark doesn't stay on the caller's element");
+  assert.equal(await page.evaluate(() => document.querySelector('zb-styled-card h2').hasAttribute('data-zb-slotted')), false, 'the fallback that shows again is still its own');
+  assert.equal(await color(page, 'zb-styled-card h2'), RED, 'so its own style applies');
 
   // The component's own h2 is red; a utility class (the `utilities` layer) and unlayered page CSS win.
   await page.evaluate(() => document.querySelector('zb-styled-card h2').classList.add('u-green'));

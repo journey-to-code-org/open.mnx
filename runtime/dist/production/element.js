@@ -1024,10 +1024,11 @@ function routeChildren(host, context, slots, tag) {
       for (const node of actual) if (node.nodeType === 1 && slotName(node) !== slot.name) insert(node, null);
       show(slot);
     }
-    // Content a parent adds inside a slot itself (its zb-if or zb-each there) is slotted too.
+    // Content a parent adds inside a slot itself (its zb-if or zb-each there) is slotted too;
+    // a fallback showing there is the component's own, so it stays unmarked.
     if (context.slotted) {
       for (const slot of context.slots.values()) {
-        if (!slot.region) continue;
+        if (!slot.region?.provided) continue;
         for (let node = slot.region.open.nextSibling; node && node !== slot.region.close; node = node.nextSibling) {
           mark(node, context.slotted);
         }

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, repo, site } from './harness.js';
+import { useBrowser, open, compiler, here, repo, site, runtimeOnly } from './harness.js';
 
 useBrowser({
   filters: join(here, 'fixtures/live-filters.zb'),
@@ -85,7 +85,7 @@ test('keeps properties set before the element was defined', async () => {
 
 // ---- hydration -----------------------------------------------------------------------------
 
-test('hydrates server markup in place, keeping every node', async () => {
+test('hydrates server markup in place, keeping every node', { skip: runtimeOnly }, async () => {
   const props = join(site, 'header.props.json');
   writeFileSync(props, JSON.stringify({ title: 'From the server', data: { sample: 's1', sampleTwo: 's2' } }));
   const html = compiler(join(repo, 'examples/header.zb'), '--props', props);
@@ -149,7 +149,7 @@ test('a fresh element with anchored text renders it too', async () => {
   await page.close();
 });
 
-test('markup that does not match the template is re-rendered, with a warning', async () => {
+test('markup that does not match the template is re-rendered, with a warning', { skip: runtimeOnly }, async () => {
   const { page, messages } = await open('<zb-header><p>stale markup</p></zb-header>', { modules: ['header'] });
   assert.equal(await page.$eval('zb-header h1', (h1) => h1.textContent), 'Mikey Nichols');
   assert.equal(await page.$('zb-header > p'), null);
@@ -157,7 +157,7 @@ test('markup that does not match the template is re-rendered, with a warning', a
   await page.close();
 });
 
-test('markup whose parts would line up but whose shape differs is re-rendered too', async () => {
+test('markup whose parts would line up but whose shape differs is re-rendered too', { skip: runtimeOnly }, async () => {
   // Every part finds a <button> at its path, but the server never rendered the extra <p>.
   const { page, messages } = await open('<zb-counter><button type="button">x</button><p>extra</p></zb-counter>', { modules: ['counter'] });
   assert.equal(await page.$('zb-counter > p'), null);
@@ -336,7 +336,7 @@ test('inline JavaScript in the template: calls, handlers that close over list it
   await page.close();
 });
 
-test('partially server-rendered markup: the element fills in what only the browser could compute', async () => {
+test('partially server-rendered markup: the element fills in what only the browser could compute', { skip: runtimeOnly }, async () => {
   // --partial renders the JavaScript the server can compute (the filtered list, format(), the
   // upper-casing), and leaves the rest (a state signal's .get()) empty for the element.
   const html = compiler(join(here, 'fixtures/inline.zb'), '--partial');
@@ -579,7 +579,7 @@ const strip = (html) => html.replace(/<!--[^]*?-->|<\?zb[^]*?>/g, '');
 // Every node of the server markup, kept by the page before the element starts.
 const keepNodes = (selector) => `window.kept = [...document.querySelectorAll(${JSON.stringify(selector)})].flatMap((host) => [...host.querySelectorAll('*')]);`;
 
-test('server markup whose comments were stripped hydrates in place: anchors, zb-if, zb-each and slots are put back by structure', async () => {
+test('server markup whose comments were stripped hydrates in place: anchors, zb-if, zb-each and slots are put back by structure', { skip: runtimeOnly }, async () => {
   const html = strip(compiler(join(here, 'fixtures/stripped-card.zb')));
   assert.doesNotMatch(html, /<!--|<\?zb/);
   const { page, messages } = await open(html, { modules: ['stripped'], beforeModules: keepNodes('zb-stripped') });
@@ -606,7 +606,7 @@ test('server markup whose comments were stripped hydrates in place: anchors, zb-
   await page.close();
 });
 
-test('stripped markup with content given to a slot keeps that content', async () => {
+test('stripped markup with content given to a slot keeps that content', { skip: runtimeOnly }, async () => {
   writeFileSync(join(site, 'stripped-slots.json'), JSON.stringify({ default: '<span class="note">Bring cups</span>' }));
   const html = strip(compiler(join(here, 'fixtures/stripped-card.zb'), '--slots', join(site, 'stripped-slots.json'), '--slots-html'));
   assert.match(html, /<footer><span class="note"[^>]*>Bring cups<\/span><\/footer>/);

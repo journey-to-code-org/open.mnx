@@ -143,3 +143,18 @@ fn peers_is_once_per_component() {
         error.message
     );
 }
+
+#[test]
+fn a_plain_element_says_it_cant_keep_a_collection() {
+    let error =
+        zubra::compile_element_with(TASK, "task-item.zb", Some(".js"), &|_: &str, _: &str| {
+            Err("no imports".to_owned())
+        })
+        .unwrap_err();
+    assert!(
+        error.message.contains("doesn't support 'use collection'"),
+        "{}",
+        error.message
+    );
+    assert!(error.help.unwrap_or_default().contains("--emit js"));
+}

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { useBrowser, open, here, compiler } from './harness.js';
+import { useBrowser, open, here, compiler, runtimeOnly } from './harness.js';
 
 const fixture = join(here, 'fixtures/switch-let.zb');
 useBrowser({ 'switch-let': fixture });
@@ -31,7 +31,7 @@ test('let: values follow their row; zb-switch follows its value', async () => {
   await page.close();
 });
 
-test('server markup with let: and zb-switch hydrates in place', async () => {
+test('server markup with let: and zb-switch hydrates in place', { skip: runtimeOnly }, async () => {
   const props = JSON.stringify({ cart: [{ id: 1, price: 3, qty: 2 }], status: 'shipped' });
   const { writeFileSync, mkdtempSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
