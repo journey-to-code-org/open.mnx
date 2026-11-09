@@ -23,6 +23,7 @@ Zubra Actions and Zubra Sync: a component's form can post to a server function, 
 - **`zubra-sync`**, a binary (`sync-server/`, `cargo build -p zubra-sync`): the sync protocol, live stream and presence included, with SQLite built in and no Node.js. Same table as `sqliteLog()`; CORS for `--origin`s. The protocol and browser tests run against it too.
 - **`@zubra/server` serves `@zubra/sync` by itself** when it's installed, and maps `@zubra/sync` and `@zubra/sync/connect` in the page, so `'use collection'` needs no setup. When it isn't installed, the page fails as it's built, naming the component and `npm install @zubra/sync`; `@zubra/unplugin` says the same at build time. `createZubra({ imports })` adds import map entries for other packages.
 - **`examples/standup`**: a local-first team board on plain Node: `'use collection'` cards, presence, offline edits, a SQLite log, tested with two browsers.
+- **The playground and the docs show both.** Two playground examples, "State on the device" (a note kept in IndexedDB through a reload, shared by every preview) and "A server function" (submitting says what would be posted), a **Server** tab with `--emit server`'s output, and `#example=<name>` links. Guide chapters 9, [Forms that post to the server](docs/guide/09-server-actions.md), and 10, [State that lives on the device](docs/guide/10-local-state.md); the actions and sync pages in the docs site's navigation; and a section on the landing page.
 
 ### Changed
 

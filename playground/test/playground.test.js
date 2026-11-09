@@ -140,6 +140,61 @@ test('the examples: slots with hasSlot, a list with directives, a spread, and co
   await page.close();
 });
 
+test("'use collection': the note is kept on the device, through a reload", async () => {
+  const { page, errors } = await openPlayground();
+  await page.selectOption('#example', 'sync');
+  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('@zubra/sync'));
+  const pad = await frame(page, 'html');
+  await pad.waitForFunction(() => document.querySelector('note-pad p')?.textContent === '0 words');
+  await pad.fill('note-pad textarea', 'kept on the device');
+  await pad.waitForFunction(() => document.querySelector('note-pad p').textContent.startsWith('4 words'));
+  // Ephemeral: focus shows, and isn't what's stored.
+  assert.match(await pad.textContent('note-pad p'), /editing/);
+  // Stored: wait for IndexedDB to have it, then reload.
+  await pad.waitForFunction(() => new Promise((resolve) => {
+    const open = indexedDB.open('zubra-sync', 1);
+    open.onsuccess = () => {
+      const get = open.result.transaction('docs').objectStore('docs').get(['notes', 'playground']);
+      get.onsuccess = () => { open.result.close(); resolve(get.result?.text === 'kept on the device'); };
+      get.onerror = () => resolve(false);
+    };
+    open.onerror = () => resolve(false);
+  }), null, { polling: 100 });
+
+  await page.reload();
+  await page.waitForFunction(() => window.playgroundReady === true);
+  await page.selectOption('#example', 'sync');
+  const again = await frame(page, 'html');
+  await again.waitForFunction(() => document.querySelector('note-pad textarea')?.value === 'kept on the device');
+  assert.equal(await again.textContent('note-pad p'), '4 words');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test("'use server': the Server tab has the function, and a submit says what would be posted", async () => {
+  // The guide links here by name.
+  const { page, errors } = await openPlayground('#example=actions');
+  assert.equal(await page.inputValue('#example'), 'actions');
+  await page.waitForFunction(() => document.querySelector('#out-server').textContent.includes('export async function subscribe(formData)'));
+  await page.selectOption('#example', 'counter');
+  await page.click('[data-tab=server]');
+  await page.waitForFunction(() => document.querySelector('#out-server').textContent.includes("No 'use server' functions"));
+  await page.selectOption('#example', 'actions');
+  await page.waitForFunction(() => document.querySelector('#out-server').textContent.includes('export async function subscribe(formData)'));
+  const js = await page.textContent('#out-js');
+  assert.match(js, /const subscribe = "\/_zb\/action\/newsletter-signup\/subscribe"/);
+  assert.doesNotMatch(js, /doesn't look like an email/);
+  await page.click('[data-tab=preview]');
+  const form = await frame(page, 'html');
+  await form.fill('newsletter-signup input', 'ada@example.com');
+  await form.click('newsletter-signup button');
+  await form.waitForSelector('.zb-playground-post');
+  assert.match(await form.textContent('.zb-playground-post'), /^POST \/_zb\/action\/newsletter-signup\/subscribe \(email=ada@example\.com\)/);
+  assert.equal(form.url(), 'about:srcdoc', 'the page stayed');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 test('the source and the output are coloured, and the docs link goes to the docs site', async () => {
   const { page, errors } = await openPlayground();
   // The editor's text is drawn by a <pre> behind the textarea; it has the same text, in coloured spans.

@@ -93,11 +93,29 @@ description: "Zubra compiles a file of HTML, a script and styles into a standard
   </div>
 </section>
 
+<section class="wrap" id="beyond">
+  <h2>Beyond the browser, if you want it</h2>
+  <p class="section-lede">Two packages that sit beside the compiler. A component uses them with one line, and the compiler writes the rest.</p>
+  <div class="uses">
+    <div>
+      <h3>Forms that post to the server</h3>
+      {{ "export async function subscribe(formData) {\n  'use server'\n  // runs on the server only\n}\n\n<form action={subscribe}>…</form>" | highlight("javascript") | safe }}
+      <p class="note">The function never reaches the browser: its name becomes a URL, and the form posts there with or without JavaScript. <a href="{{ '/docs/actions/' | url }}"><code>@zubra/actions</code></a></p>
+    </div>
+    <div>
+      <h3>State that lives on the device</h3>
+      {{ "'use collection notes'\nlet text = ''   // kept in IndexedDB" | highlight("javascript") | safe }}
+      <p class="note">Survives a reload, follows across tabs, and shares between devices through a log on any server. <a href="{{ '/docs/sync/' | url }}"><code>@zubra/sync</code></a></p>
+    </div>
+  </div>
+  <p class="more">Both run in the <a href="{{ '/playground/#example=sync' | url }}">playground</a>, and the guide has a chapter on each.</p>
+</section>
+
 <section class="wrap start" id="start">
   <h2>Start in a minute</h2>
   <ol class="start-steps">
     <li><code>npm create zubra@latest my-app</code><span>Pick a framework, or none. You get a working app with one component, a dev server that updates components in place, and a browser test.</span></li>
-    <li><a href="{{ '/docs/' | url }}">Follow the guide</a><span>Eight short pages: props and state, templates, events, slots, forms, async data, the server, and reading the output.</span></li>
+    <li><a href="{{ '/docs/' | url }}">Follow the guide</a><span>Ten short pages: props and state, templates, events, slots, forms, async data, the server, reading the output, server functions, and state on the device.</span></li>
     <li><a href="{{ site.marketplace }}">Install the VS Code extension</a><span>Highlighting for <code>.zb</code> files, the compiler's errors as you type, and completion and hover for your components. <a href="{{ '/docs/editor-support/' | url }}">Other editors work through the language server.</a></span></li>
     <li><a href="{{ '/playground/' | url }}">Or try it in the browser</a><span>The playground compiles in the page and runs your component in plain HTML, React and Vue side by side.</span></li>
   </ol>

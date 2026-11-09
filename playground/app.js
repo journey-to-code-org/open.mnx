@@ -142,6 +142,69 @@ const EXAMPLES = {
 </cart-summary>
 `,
   },
+  sync: {
+    label: 'State on the device (Sync)',
+    page: '<note-pad doc="playground"></note-pad>',
+    source: `<!--
+  'use collection notes' keeps this component's state on the device (IndexedDB, through
+  @zubra/sync), as the document keyed by its doc prop. Type something, then reload the page:
+  it's still there. Every preview shows the same document, so they follow each other as you
+  type, and so would this playground in another tab. No server is involved.
+-->
+<script>
+  'use collection notes'
+  import { ephemeral } from '@zubra/sync'
+
+  let text = ""                    // stored
+  let focused = ephemeral(false)   // state, but not stored
+  const words = text.trim() ? text.trim().split(/\\s+/).length : 0
+</script>
+<style>
+  :host { display: block; margin: 0.5rem; font: 15px system-ui; }
+  textarea { width: 100%; min-height: 5rem; font: inherit; }
+  p { margin: 0.25rem 0; color: #667; }
+</style>
+<note-pad doc="scratch">
+  <textarea aria-label="Note" value={text}
+    oninput={(event) => (text = event.target.value)}
+    onfocus={() => (focused = true)} onblur={() => (focused = false)}></textarea>
+  <p>{words} {words === 1 ? "word" : "words"}{focused ? " · editing" : ""}</p>
+</note-pad>
+`,
+  },
+  actions: {
+    label: 'A server function (Actions)',
+    page: '<newsletter-signup></newsletter-signup>',
+    source: `<!--
+  A 'use server' function runs on the server only. In the JavaScript tab its name is just a URL,
+  and the form posts there with or without JavaScript; the Server tab is what @zubra/actions
+  serves. The playground has no server, so submitting shows what would be sent.
+-->
+<script>
+  let message = ""
+
+  export async function subscribe(formData) {
+    'use server'
+    const email = String(formData.get("email") ?? "")
+    if (!email.includes("@")) return { error: "That doesn't look like an email address" }
+    // await db.subscribers.add(email)  (anything here stays on the server)
+    return { ok: true }
+  }
+</script>
+<style>
+  :host { display: block; margin: 0.5rem; font: 15px system-ui; }
+  form { display: flex; gap: 0.5rem; }
+  input, button { font: inherit; padding: 0.3rem 0.6rem; }
+</style>
+<newsletter-signup>
+  <form action={subscribe} onaction={(event) => (message = event.detail.value?.error ?? "Thanks for subscribing!")}>
+    <input name="email" type="email" required aria-label="Email" placeholder="you@example.com">
+    <button>Subscribe</button>
+  </form>
+  <p>{message}</p>
+</newsletter-signup>
+`,
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -217,6 +280,7 @@ const compile = (compiler, text, emit, extra = {}) =>
 // ---- previews -------------------------------------------------------------------------------
 
 const runtimeUrl = new URL('runtime/', location.href).href;
+const syncUrl = new URL('sync/', location.href).href;
 const vendorUrl = new URL('vendor/', location.href).href;
 let frameworks = []; // the framework previews this site was built with (vendor/frameworks.json)
 
@@ -228,6 +292,8 @@ const importMap = () => JSON.stringify({
     '@zubra/runtime/': runtimeUrl,
     '@zubra/runtime/react': `${runtimeUrl}react.js`,
     '@zubra/runtime/vue': `${runtimeUrl}vue.js`,
+    '@zubra/sync': `${syncUrl}index.js`,
+    '@zubra/sync/connect': `${syncUrl}connect.js`,
     react: `${vendorUrl}react.js`,
     'react-dom/client': `${vendorUrl}react.js`,
     vue: `${vendorUrl}vue.js`,
@@ -243,6 +309,22 @@ const document_ = (body, script) => `<!doctype html><meta charset="utf-8">
 <body>${body}</body>
 <script type="module">
 window.addEventListener('error', (event) => parent.postMessage({ zubraPreviewError: String(event.message) }, '*'));
+// A form that posts to a 'use server' function has no server here: say what would be sent.
+document.addEventListener('submit', (event) => {
+  const form = event.target;
+  const action = event.submitter?.getAttribute('formaction') ?? form.getAttribute('action') ?? '';
+  if (!action.startsWith('/_zb/action/')) return;
+  event.preventDefault();
+  const fields = [...new FormData(form, event.submitter ?? undefined)].map(([name, value]) => \`\${name}=\${value}\`).join('&');
+  let note = form.parentNode.querySelector('.zb-playground-post');
+  if (!note) {
+    note = document.createElement('p');
+    note.className = 'zb-playground-post';
+    note.style.cssText = 'margin: 0.5rem; padding: 0.5rem 0.75rem; border-left: 3px solid #36c; background: #f3f5fb; font: 13px ui-monospace, monospace';
+    form.after(note);
+  }
+  note.textContent = \`POST \${action} (\${fields || 'no fields'}). With @zubra/actions on a server, the function runs there, and its result comes back as the form's "action" event.\`;
+}, true);
 ${script}
 window.previewReady = true;
 </script>`;
@@ -314,7 +396,12 @@ async function main() {
   for (const [key, example] of Object.entries(EXAMPLES)) select.add(new Option(example.label, key));
 
   let initial = EXAMPLES.counter;
-  if (location.hash.length > 1) {
+  // #example=<name> opens one of the examples (the guide links to them this way).
+  const named = /^#example=(\w+)$/.exec(location.hash)?.[1];
+  if (named && Object.hasOwn(EXAMPLES, named)) {
+    initial = EXAMPLES[named];
+    select.value = named;
+  } else if (location.hash.length > 1) {
     try {
       initial = await decode(location.hash.slice(1));
       select.value = '';
@@ -345,11 +432,12 @@ async function main() {
   async function update() {
     const mine = ++run;
     const text = source.value;
-    const [js, html, dts, manifest] = await Promise.all([
+    const [js, html, dts, manifest, server] = await Promise.all([
       compile(compiler, text, 'js'),
       compile(compiler, text, 'html', { partial: true }),
       compile(compiler, text, 'dts'),
       compile(compiler, text, 'manifest'),
+      compile(compiler, text, 'server'),
     ]);
     if (mine !== run) return; // a newer edit is on its way
     const error = $('#error');
@@ -365,6 +453,9 @@ async function main() {
     show('#out-html', html.ok ? html.output : html.error, 'html');
     show('#out-dts', dts.ok ? dts.output : dts.error, 'js');
     show('#out-manifest', manifest.ok ? manifest.output : manifest.error, 'js');
+    // The server half: what @zubra/actions serves, when the component has 'use server' functions.
+    const hasServer = server.ok && /^export (async )?function /m.test(server.output);
+    show('#out-server', hasServer ? server.output : "// No 'use server' functions in this component.\n// Export one, and its code shows here instead of in the browser module:\n//\n//   export async function save(formData) { 'use server'; … }", 'js');
     showPreviews(js.output);
     status.textContent = `Compiled (${compiler.kind})`;
     const hash = await encode({ source: text, page: page.value });

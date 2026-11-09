@@ -12,6 +12,12 @@ export default [
     { file: 'docs/guide/06-async-data.md', label: 'Async data' },
     { file: 'docs/guide/07-server-rendering.md', label: 'Server rendering' },
     { file: 'docs/guide/08-read-the-output.md', label: 'Read the output' },
+    { file: 'docs/guide/09-server-actions.md', label: 'Forms that post to the server' },
+    { file: 'docs/guide/10-local-state.md', label: 'State on the device' },
+  ] },
+  { group: 'Beyond the browser', pages: [
+    { file: 'docs/actions.md', label: 'Actions (`@zubra/actions`)' },
+    { file: 'docs/sync.md', label: 'Sync (`@zubra/sync`)' },
   ] },
   { group: 'Coming from a framework', pages: [
     { file: 'docs/guide/for-react-developers.md', label: 'React developers' },

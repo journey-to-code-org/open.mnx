@@ -3,7 +3,7 @@
 //   node playground/build.mjs [--out <dir>] [--no-frameworks] [--require-wasm]
 //
 // - the page, its script and styles;
-// - @zubra/runtime's source, as the previews import it;
+// - @zubra/runtime's source, as the previews import it, and @zubra/sync's;
 // - compiler/zubra.wasm (from `npm run build` in compiler/), when it's there;
 // - React and Vue as ES modules for their previews, from examples/frameworks' node_modules
 //   (`npm ci` there), unless --no-frameworks.
@@ -22,6 +22,8 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'vendor'), { recursive: true });
 for (const file of ['index.html', 'app.js', 'highlight.js', 'style.css']) cpSync(join(here, file), join(out, file));
 cpSync(join(repo, 'runtime/src'), join(out, 'runtime'), { recursive: true });
+// @zubra/sync, for components that start with 'use collection' (the "State on the device" example).
+cpSync(join(repo, 'sync/src'), join(out, 'sync'), { recursive: true, filter: (from) => !/(\.d\.ts|server\.js|sqlite\.js)$/.test(from) });
 
 const wasm = join(repo, 'compiler/zubra.wasm');
 if (existsSync(wasm)) cpSync(wasm, join(out, 'zubra.wasm'));
