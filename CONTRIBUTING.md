@@ -12,7 +12,7 @@ Open an issue and include the smallest `.zb` file that shows it, the output of `
 
 - Every behaviour is mutation-checked: break the change on purpose once and confirm a test fails.
 - Keep a pull request to one change, and mention it in `CHANGELOG.md` if users would notice it.
-- Versions are bumped by the maintainer with `scripts/bump-version.sh`.
+- Versions are bumped by the maintainer with `scripts/bump-version.sh`, in a release PR that also dates the version's `CHANGELOG.md` section. When it's merged, `.github/workflows/release.yml` publishes the npm packages with provenance, tags the commit, and makes the GitHub release from that section, with the VS Code extension attached.
 
 By contributing you agree your work is released under the repository's licence (`LICENSE`).
 
