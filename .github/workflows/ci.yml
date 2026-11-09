@@ -447,7 +447,7 @@ jobs:
       - run: node --test "playground/test/*.test.js"
 
   editors:
-    name: Editor support (language server, VS Code grammar)
+    name: Editor support (language server, VS Code grammar, DevTools extension)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -467,6 +467,10 @@ jobs:
         working-directory: editors/vscode
       - run: npm test
         working-directory: editors/vscode
+      # The DevTools extension: the manifest and the pane's rendering (the pane against a live page
+      # runs with the runtime's browser suite).
+      - run: npm test
+        working-directory: editors/devtools
 
   skills:
     name: Skills (examples compile, copies in sync)

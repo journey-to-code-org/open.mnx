@@ -631,7 +631,7 @@ The result is compiled as part of the conversion, and a compile error is shown a
 ## Editors and tooling without Rust
 
 - **`@zubra/compiler`** (`compiler/`) is the compiler built to WebAssembly, for Node: the same output and errors as the CLI, with no Rust toolchain. `@zubra/unplugin` uses it automatically when it's installed.
-- **Editor support** (`editors/`): a language server (diagnostics as you type, completion, hover, go to definition) and a VS Code extension with syntax highlighting, [on the Marketplace](https://marketplace.visualstudio.com/items?itemName=JourneytoCode.zubra) (`code --install-extension JourneytoCode.zubra`). See [docs/editor-support.md](docs/editor-support.md) and `editors/README.md`.
+- **Editor support** (`editors/`): a language server (diagnostics as you type, completion, hover, go to definition) and a VS Code extension with syntax highlighting, [on the Marketplace](https://marketplace.visualstudio.com/items?itemName=JourneytoCode.zubra) (`code --install-extension JourneytoCode.zubra`). See [docs/editor-support.md](docs/editor-support.md) and `editors/README.md`. In the browser, the **Zubra DevTools** pane maps a selected node to its `.zb` line and shows the signals each binding reads ([editors/devtools](editors/devtools/README.md)).
 - **`--emit html-data`** writes VS Code HTML custom data, for completing Zubra elements in plain `.html` files.
 
 ## One file, no runtime: `--emit element`
@@ -691,7 +691,7 @@ Browser support: `docs/browser-support.md`.
 - `runtime/`: `@zubra/runtime`, with the React, Vue and Angular adapters and the server registry.
 - `plugin/`: `@zubra/unplugin`, with the Astro integration.
 - `compiler/`: `@zubra/compiler`, the compiler as WebAssembly; `wasm/` is its Rust shim.
-- `editors/`: the language server and the VS Code extension.
+- `editors/`: the language server, the VS Code extension and the browser DevTools extension.
 - `create/`: `create-zubra`, the starter (`npm create zubra`), with a template per framework.
 - `playground/`: the in-browser playground.
 - `demos/`: the demo gallery: `demos/build.mjs` builds the landing page, the documentation site, the playground and every static example under one base path, `.github/workflows/pages.yml` publishes it to GitHub Pages, and `demos/shots/` holds every example's screenshot (`demos/screenshots.mjs` for the static ones; the others' tests take theirs with `ZUBRA_SHOTS`).

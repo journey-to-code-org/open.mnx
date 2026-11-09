@@ -20,6 +20,10 @@ Highlighting works on its own. The rest needs the compiler, which the extension 
 
 A project made with `npm create zubra@latest` already has `@zubra/compiler`.
 
+## In the browser: Zubra DevTools
+
+A pane in the Elements panel of Chrome, Edge and Firefox. Select a node: it shows the component's `.zb` file and line (click to open it in your editor), its props and state by name, and each binding as the DOM operation it performs, with its line and the signals it reads; and after a change, what was written and which bindings re-ran. It reads the development build `@zubra/unplugin` makes in Vite's dev server; production builds carry none of it. Install and details: [editors/devtools](../editors/devtools/README.md).
+
 ## Other editors
 
 The extension is a thin client for `@zubra/language-server`. Run it with `zubra-language-server --stdio` from Neovim, Helix, Zed, Sublime LSP or any other editor that speaks LSP. It uses the compiler named in `initializationOptions.compiler` if there is one; otherwise `@zubra/compiler` when it's installed, then the command in the `ZUBRA_COMPILER` environment variable, then `zubra` on the `PATH`.
