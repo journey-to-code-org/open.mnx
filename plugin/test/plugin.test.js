@@ -396,7 +396,7 @@ test('the WebAssembly compiler in the dev server: compiled for the DevTools too'
   const server = await createViteServer({ root, configFile: false, logLevel: 'silent', plugins: [zubra()], server: { port: 0, host: '127.0.0.1' } });
   await server.listen();
   try {
-    const module = await (await fetch(`${server.resolvedUrls.local[0]}components/rating.zb`)).text();
+    const module = await (await fetch(`${server.resolvedUrls.local[0]}components/rating.zb?zubra=element&import`)).text();
     assert.match(module, /at: \[\d+, \d+\]/);
     assert.ok(module.includes(`source: { file: ${JSON.stringify(join(root, 'components/rating.zb'))}`));
   } finally {
