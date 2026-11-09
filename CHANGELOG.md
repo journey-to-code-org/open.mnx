@@ -4,10 +4,13 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
-Zubra Sync, tier 0: component state that lives on the device.
+Zubra Actions and Zubra Sync: a component's form can post to a server function, with or without JavaScript, and a component's state can live on the device, shared across tabs and devices.
 
 ### Added
 
+- **`export async function save(formData) { 'use server'; … }`** in a component script. The function, and the imports only it uses, never reach the browser: its name becomes the URL of its endpoint (`/_zb/action/<tag>/<name>`), and `<form action={save}>` (or `<button formaction={save}>`) gets that URL as a literal `action` with `method="post"`, in the server HTML and the template alike. Any other `export` is still an error.
+- **`--emit server`** (and `emit: "server"` in requests): the server half of a component, its server functions with the imports they need, and `actions`, a map from URL to function.
+- **`@zubra/actions`**, a new package that serves them. A post with `Accept: application/json` gets the return value as JSON; the browser's own post gets `303 See Other` back to the page, with the result in a one-use cookie that `actions.result(request)` reads. Cross-site posts are refused, a thrown error is a generic 500, and a returned `Response` passes through. `actions.script()` adds a small module that sends those forms with `fetch` instead, sets `aria-busy` while they're in flight, and fires `beforeaction` (cancelable) and `action` on the form. A fetch-style core (`fetch(request)`), Node's `handle(req, res)`, and Hono, Express and Fastify adapters.
 - **`'use collection <name>'`** at the top of a component script. Its top-level `let`s become the fields of a document keyed by the `doc` prop (or the props after `by`: `'use collection rows by list, item'`), and the compiled module calls `@zubra/sync` with them. A key prop the host doesn't declare is a compile error.
 - **`ephemeral(value)`** from `@zubra/sync`: state that isn't stored. The server renders its value.
 - **`@zubra/sync`**, a new package: keeps those documents in IndexedDB (in memory without it). Writes are signal assignments, saved behind the UI; an element saves nothing until its document has loaded; elements and tabs showing the same document follow each other (BroadcastChannel). Last-writer-wins per field. `configure({ store })` takes another store.

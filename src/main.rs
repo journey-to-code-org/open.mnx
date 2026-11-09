@@ -61,7 +61,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -169,9 +169,10 @@ fn run() -> Result<(), String> {
             "manifest" => zubra::compile_manifest(&source, &module_path),
             "html-data" => zubra::compile_html_data(&source),
             "interface" => zubra::compile_interface(&source),
+            "server" => zubra::compile_server(&source),
             _ => {
                 return Err(format!(
-                    "unknown --emit `{emit}`; expected html, js, element, css, dts, manifest, html-data or interface"
+                    "unknown --emit `{emit}`; expected html, js, element, css, dts, manifest, html-data, interface or server"
                 ))
             }
         }

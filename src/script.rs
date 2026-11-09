@@ -23,7 +23,7 @@ use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{Binding, ComponentImport, Emit, Import, Script},
+    ast::{Binding, ComponentImport, Emit, Import, Script, ServerExport},
     diagnostic::{Diagnostic, Span},
     expression,
     scanner::span_after,
@@ -64,6 +64,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     };
     script.collection = directive(&parsed.program.directives, &at)?;
     let mut import_ranges = Vec::new();
+    // `'use server'` functions: where they are, and every name they reference.
+    let mut import_locals: Vec<Vec<String>> = Vec::new();
+    let mut server_ranges: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut server_references: std::collections::HashSet<String> = Default::default();
     // `hydrated` imported from @zubra/runtime (its local names), and bindings initialized with a
     // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
     let mut hydrated_names: Vec<String> = Vec::new();
@@ -213,6 +217,44 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                     specifier_range,
                 });
                 import_ranges.push(range);
+                import_locals.push(
+                    import
+                        .specifiers
+                        .iter()
+                        .flatten()
+                        .map(|specifier| specifier.name().to_string())
+                        .collect::<Vec<_>>(),
+                );
+            }
+            Statement::ExportDeclaration(export) if server_function(export).is_some() => {
+                let function = server_function(export).expect("checked by the guard");
+                let name = function
+                    .id
+                    .as_ref()
+                    .map(|id| id.name.to_string())
+                    .unwrap_or_default();
+                if script
+                    .server_exports
+                    .iter()
+                    .any(|existing: &ServerExport| existing.name == name)
+                {
+                    return Err(Diagnostic::new(
+                        at(function.span.start),
+                        format!("`{name}` is exported twice"),
+                    ));
+                }
+                let mut references = References::default();
+                references.visit_function(function, oxc_syntax::scope::ScopeFlags::empty());
+                server_references.extend(references.names);
+                let range = export.span.start as usize..export.span.end as usize;
+                script.server_exports.push(ServerExport {
+                    name,
+                    text: source[function.span.start as usize..function.span.end as usize]
+                        .to_owned(),
+                    offset: range.start,
+                    span: at(function.span.start),
+                });
+                server_ranges.push(range);
             }
             Statement::ExportNamedDeclaration(_)
             | Statement::ExportDeclaration(_)
@@ -221,7 +263,8 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                 return Err(Diagnostic::new(
                     at(statement.span().start),
                     "a component script can't export; declare a prop on the host tag instead, or move shared code to a module and import it",
-                ));
+                )
+                .with_help("only a function marked 'use server' can be exported: `export async function save(formData) { 'use server'; … }`"));
             }
             Statement::ExportDefaultDeclaration(export) => {
                 return Err(Diagnostic::new(
@@ -247,10 +290,56 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         }
         script.emits = finder.emits;
     }
+    // Imports the server functions use go to the server module; an import that nothing else in
+    // the script uses leaves the browser module (`import { db } from './db.js'` must not ship).
+    if !script.server_exports.is_empty() {
+        let mut elsewhere = References::default();
+        for statement in &parsed.program.body {
+            let range = statement.span().start as usize..statement.span().end as usize;
+            if !matches!(statement, Statement::ImportDeclaration(_))
+                && !server_ranges.contains(&range)
+            {
+                elsewhere.visit_statement(statement);
+            }
+        }
+        let mut kept = Vec::new();
+        for (import, local_names) in std::mem::take(&mut script.imports)
+            .into_iter()
+            .zip(import_locals)
+        {
+            let for_server = local_names
+                .iter()
+                .any(|name| server_references.contains(name));
+            let for_browser = !for_server
+                || local_names
+                    .iter()
+                    .any(|name| elsewhere.names.contains(name));
+            if for_server && !crate::components::is_component(&import.specifier) {
+                script.server_imports.push(import.text.clone());
+            }
+            if for_browser {
+                kept.push(import);
+            } else {
+                script
+                    .runtime_names
+                    .retain(|name| !local_names.contains(name));
+                // Its types stay out of the browser's typings too.
+                let quoted = [
+                    format!("'{}'", import.specifier),
+                    format!("\"{}\"", import.specifier),
+                ];
+                script
+                    .type_imports
+                    .retain(|text| !quoted.iter().any(|quoted| text.contains(quoted.as_str())));
+            }
+        }
+        script.imports = kept;
+    }
     // The body without its imports. Removed imports become blank space of the same shape, so
-    // line numbers in the emitted setup function still match the source.
+    // line numbers in the emitted setup function still match the source. Server functions are
+    // blanked the same way.
     let mut body = source.to_owned();
-    for range in import_ranges.iter().rev() {
+    for range in import_ranges.iter().chain(server_ranges.iter()) {
         let blank: String = source[range.clone()]
             .chars()
             .map(|character| if character == '\n' { '\n' } else { ' ' })
@@ -713,5 +802,31 @@ mod tests {
             .unwrap_err()
             .message
             .contains("default export"));
+    }
+}
+
+/// The function an `export` declares, when it's marked `'use server'`.
+pub(crate) fn server_function<'a>(
+    export: &'a oxc_ast::ast::ExportDeclaration<'a>,
+) -> Option<&'a oxc_ast::ast::Function<'a>> {
+    let oxc_ast::ast::Declaration::FunctionDeclaration(function) = &export.declaration else {
+        return None;
+    };
+    let body = function.body.as_ref()?;
+    body.directives
+        .iter()
+        .any(|directive| directive.directive.as_str() == "use server")
+        .then_some(&**function)
+}
+
+/// Every identifier a piece of the script reads.
+#[derive(Default)]
+struct References {
+    names: std::collections::HashSet<String>,
+}
+
+impl<'a> Visit<'a> for References {
+    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        self.names.insert(identifier.name.to_string());
     }
 }

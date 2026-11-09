@@ -106,6 +106,11 @@ pub struct Script {
     /// `declare const value: T` in a TypeScript script: the prop's type, by prop name, and
     /// where it's declared.
     pub prop_types: Vec<(String, String, Span)>,
+    /// `export async function name() { 'use server'; … }`: functions that run on the server
+    /// only. They are removed from the browser module and replaced by their endpoint's URL.
+    pub server_exports: Vec<ServerExport>,
+    /// The `import` statements the server functions need (for `--emit server`).
+    pub server_imports: Vec<String>,
     /// `'use collection tasks'` at the top of the script: its top-level `let`s are the fields of
     /// a document in a local store, kept by `@zubra/sync`.
     pub collection: Option<Collection>,
@@ -116,6 +121,24 @@ pub struct Script {
     pub presence: Vec<String>,
     /// `let others = peers()`: the other viewers' presence, as an array.
     pub peers: Option<String>,
+}
+
+/// An exported function marked `'use server'`. Its body never reaches the browser: the browser
+/// module (and the server HTML) see a string, the URL of its endpoint, and a form whose
+/// `action` is the function posts there. `@zubra/actions` serves the endpoint.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ServerExport {
+    pub name: String,
+    /// The declaration without `export` (`async function login(formData) { … }`).
+    pub text: String,
+    /// Where the declaration was in the script's text (the body keeps blank space there).
+    pub offset: usize,
+    pub span: Span,
+}
+
+/// The URL a server function is served at: `/_zb/action/<tag>/<name>`.
+pub fn action_url(tag: &str, name: &str) -> String {
+    format!("/_zb/action/{tag}/{name}")
 }
 
 /// `'use collection <name>'`, or `'use collection <name> by <prop>, <prop>'`.

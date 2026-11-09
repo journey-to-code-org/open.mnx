@@ -401,9 +401,19 @@ In the HTML output, `<select value={…}>` marks the matching `<option selected>
 
 The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone.
 
+**Server functions.** A script may export a function marked `'use server'`, and only such a function. It never reaches the browser: its name becomes its endpoint's URL, and `<form action={save}>` (or `formaction={save}`) becomes a plain `action="/_zb/action/<tag>/save" method="post"`, so the form works without JavaScript. Imports only the function uses leave the browser module too. `--emit server` writes the server half, and `@zubra/actions` serves it; its script turns those posts into `fetch` requests and fires `action` on the form with the result. `docs/actions.md` has the contract.
+
+```html
+<script>
+  let saved = false
+  export async function save(formData) { 'use server'; await db.save(formData.get('note')); return { ok: true } }
+</script>
+<note-form><form action={save} onaction={(event) => (saved = event.detail.value?.ok)}>…</form></note-form>
+```
+
 **State on the device.** `'use collection tasks'` at the top of a script keeps its top-level `let`s in IndexedDB (through `@zubra/sync`), as the document keyed by the `doc` prop: `<task-item doc="t42">` is `tasks/t42`. Assignments update the page at once and the store behind it; the state survives reloads, works offline, and other elements and tabs showing the same document follow. `let editing = ephemeral(false)` is state that isn't stored. `docs/sync.md` has the rules. It needs `@zubra/sync` installed; a bundler or `@zubra/server` picks it up from there, and if it's missing the error says which component needs it and what to run.
 
-**Directives.** Zubra knows two: `'use collection <name>'` first in a script (`@zubra/sync`), and `'use server'` first in an exported function (`@zubra/actions`, in progress). Anything else written as a directive is an error that says what was probably meant: `'use colection'` gets "did you mean 'use collection'", and `'use client'` is explained as unneeded, since every component already runs in the browser.
+**Directives.** Zubra knows two: `'use collection <name>'` first in a script (`@zubra/sync`), and `'use server'` first in an exported function (`@zubra/actions`). Anything else written as a directive is an error that says what was probably meant: `'use colection'` gets "did you mean 'use collection'", and `'use client'` is explained as unneeded, since every component already runs in the browser.
 
 ## Context
 

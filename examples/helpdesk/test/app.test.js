@@ -129,6 +129,9 @@ test('with JavaScript: the server markup is hydrated in place, then J/K/Enter, l
   await page.check('reply-composer input[name=internal]');
   await page.press('reply-composer textarea', 'Control+Enter');
   await page.waitForURL(/#latest$/);
+  // With JavaScript the reply is sent with fetch and the page reloads at #latest; the URL can
+  // change a moment before the reload starts, so wait for the reply itself.
+  await page.waitForSelector('ticket-thread li.internal p:has-text("Found it")');
   assert.deepEqual((await text(page, 'ticket-thread li.internal p')), ['Found it: a Safari-only CSS bug.']);
 
   // The priority picker highlights as it changes, and the update form saves it.
@@ -214,5 +217,27 @@ test('the dashboard streams its recent activity: the page first, the list as the
   assert.ok(items.length >= 3 && items.length <= 8, `${items.length} recent messages`);
   assert.equal(await page.locator('recent-activity .pending').count(), 0);
   assert.deepEqual(messages, []);
+  await close();
+});
+
+test('the reply box posts to a server function: it checks the ticket, and its code stays on the server', async () => {
+  const { page, close } = await as('u-lena', { js: false });
+  // The ticket id is a form field, so the function checks it: 1002 isn't Lena's.
+  const response = await page.request.post(`${base}/_zb/action/reply-composer/reply`, {
+    form: { ticket: '1002', body: 'Not my ticket' },
+    headers: { accept: 'application/json' },
+  });
+  assert.deepEqual(await response.json(), { error: 'No such ticket' });
+  assert.ok(!(await store.getTicket(1002)).messages.some((message) => message.body === 'Not my ticket'));
+  // A post from another site is refused before the function runs.
+  const forged = await page.request.post(`${base}/_zb/action/reply-composer/reply`, {
+    form: { ticket: '1001', body: 'Forged' },
+    headers: { origin: 'https://evil.example' },
+  });
+  assert.equal(forged.status(), 403);
+  // The browser module has the URL, not the function or the store code it calls.
+  const module = await (await page.request.get(`${base}/_zubra/components/reply-composer.js`)).text();
+  assert.match(module, /\/_zb\/action\/reply-composer\/reply/);
+  assert.doesNotMatch(module, /replies\.js|addReply|use server/);
   await close();
 });
