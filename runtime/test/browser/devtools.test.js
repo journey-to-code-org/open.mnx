@@ -70,6 +70,7 @@ test('the last update says what was written and which bindings re-ran', { skip }
   await page.click('button.inc');
   const after = await inspect('dt-panel p');
   assert.equal(after.lastUpdate.number, before.lastUpdate.number + 1);
+  assert.equal(await page.evaluate(() => globalThis.__ZUBRA_DEVTOOLS__.updates), after.lastUpdate.number, 'the counter the pane polls');
   assert.deepEqual(after.lastUpdate.written, ['count']);
   assert.equal(onNode(after)[0].ranLast, true, 'the <p> showed doubled, which changed');
   assert.equal(after.bindings.find((binding) => binding.target === '<li.done>' || binding.operation.startsWith('classList')).ranLast, false, 'the rows did not');

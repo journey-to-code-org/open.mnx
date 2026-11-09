@@ -262,10 +262,11 @@ export function open(file, line = 1, column = 1) {
   return fetch(`/__open-in-editor?file=${encodeURIComponent(`${file}:${line}:${column}`)}`).then((response) => response.ok, () => false);
 }
 
-Object.assign(globalThis.__ZUBRA_DEVTOOLS__, {
-  ready: true,
-  inspect,
-  open,
+// (defineProperties, not Object.assign, which would copy the getter's value once.)
+Object.defineProperties(globalThis.__ZUBRA_DEVTOOLS__, {
+  ready: { value: true, enumerable: true },
+  inspect: { value: inspect, enumerable: true },
+  open: { value: open, enumerable: true },
   /** Counts flushes since connecting: the pane re-reads when it changes. */
-  get updates() { return updates; },
+  updates: { get: () => updates, enumerable: true },
 });
