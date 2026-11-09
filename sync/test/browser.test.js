@@ -18,6 +18,7 @@ import { startBinary } from './backends.js';
 const viaBinary = process.env.ZUBRA_SYNC_BACKEND === 'binary';
 let binary = null;
 let presencePosts = 0;
+let dropSignals = 0; // a test can lose the next few signaling messages on purpose
 
 findCompiler();
 const compiler = await import('@zubra/compiler');
@@ -44,6 +45,11 @@ before(async () => {
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (req.url.startsWith('/_zb/sync/presence')) presencePosts += 1;
+    if (req.url.startsWith('/_zb/sync/signal') && dropSignals > 0) {
+      dropSignals -= 1;
+      req.resume();
+      return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+    }
     if (viaBinary && req.url.startsWith('/_zb/sync/')) {
       const target = new URL(binary.base);
       const upstream = forward({ host: target.hostname, port: target.port, path: req.url, method: req.method, headers: req.headers }, (answer) => {
@@ -298,7 +304,7 @@ test('webrtc: once two devices have a data channel, presence stops going through
   await point(two, 5, 5);
   await one.waitForSelector('.other:has-text("5,5")', { timeout: 5000 });
   // The channel opens (both ends).
-  for (const tab of [one, two]) await tab.waitForFunction(() => window.link.direct().length === 1, null, { timeout: 10_000 });
+  for (const tab of [one, two]) await tab.waitForFunction(() => window.link.direct().length === 1, null, { timeout: 30_000 });
   presencePosts = 0;
   for (let step = 1; step <= 20; step += 1) {
     await point(one, 20 + step * 2, 30 + step * 2);
@@ -309,6 +315,29 @@ test('webrtc: once two devices have a data channel, presence stops going through
   // A goodbye still goes through the server.
   await one.close();
   await two.waitForSelector('.count:has-text("0")', { timeout: 5000 });
+  await a.close();
+  await b.close();
+});
+
+test('webrtc: a lost signal doesn\'t strand the pair; they start again', async () => {
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  dropSignals = 1; // the first signal (the offer) never arrives
+  const one = await board(a, 'b6', 'rtc');
+  const two = await board(b, 'b6', 'rtc');
+  // Keep moving (presence through the server is what brings each side back to the pair).
+  let moving = true;
+  const wiggle = (async () => {
+    for (let step = 0; moving; step += 1) {
+      await point(one, 10 + (step % 50), 10);
+      await point(two, 10, 10 + (step % 50));
+      await one.waitForTimeout(150);
+    }
+  })();
+  for (const tab of [one, two]) await tab.waitForFunction(() => window.link.direct().length === 1, null, { timeout: 30_000 });
+  moving = false;
+  await wiggle;
+  assert.equal(dropSignals, 0);
   await a.close();
   await b.close();
 });

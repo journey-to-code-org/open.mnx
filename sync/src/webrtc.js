@@ -14,20 +14,29 @@
  * `{ receiveSignal, sawPeer, lostPeer, send(message) → true if every peer in the room got it
  * directly, close }`. `deliver(message)` gets presence that arrives over a channel.
  */
+const RETRY = 4000;
+
 export function mesh({ self, signal, deliver, iceServers = [] }) {
   const peers = new Map(); // peer → { connection, channel, rooms: Set }
   const rooms = new Map(); // room → Set of peers seen in it
 
   const open = (peer) => peers.get(peer)?.channel?.readyState === 'open';
 
-  function link(peer, room) {
+  function link(peer, room, fresh = false) {
     let entry = peers.get(peer);
+    // A channel that hasn't opened in a while won't: a signal went missing (the other side's
+    // stream was reconnecting) or ICE failed. Start again; the next presence through the server
+    // brings us here, on either side.
+    if (entry && fresh && !open(peer) && Date.now() - entry.started > RETRY) {
+      drop(peer);
+      entry = null;
+    }
     if (entry) {
       entry.rooms.add(room);
       return entry;
     }
     const connection = new RTCPeerConnection({ iceServers });
-    entry = { connection, channel: null, rooms: new Set([room]), pending: [] };
+    entry = { connection, channel: null, rooms: new Set([room]), pending: [], started: Date.now() };
     peers.set(peer, entry);
     connection.addEventListener('icecandidate', ({ candidate }) => {
       if (candidate) signal(room, peer, { candidate: candidate.toJSON() });
@@ -68,6 +77,8 @@ export function mesh({ self, signal, deliver, iceServers = [] }) {
 
   async function receiveSignal({ room, from, data }) {
     if (from === self) return;
+    // A new offer means the other side started again: so do we.
+    if (data.description?.type === 'offer' && peers.get(from)?.connection.remoteDescription) drop(from);
     const entry = link(from, room);
     const { connection } = entry;
     try {
@@ -102,7 +113,7 @@ export function mesh({ self, signal, deliver, iceServers = [] }) {
         return;
       }
       rooms.get(room).add(peer);
-      link(peer, room);
+      link(peer, room, true);
     },
     /** Send presence over the open channels; true if that reached everyone known in the room. */
     send(message) {
