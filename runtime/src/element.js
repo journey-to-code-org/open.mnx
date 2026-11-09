@@ -892,13 +892,24 @@ const isContent = (node) => node.nodeType === 1 || (node.nodeType === TEXT && no
  * The slot for each of `nodes` (an element's children, in order). Comments and whitespace are
  * frameworks' markers (Lit's parts, Svelte's anchors): a comment goes with the content after it
  * and whitespace with the content before it, so a framework's range stays together in one slot.
+ * Empty text nodes come in pairs (Vue brackets each fragment, a v-for, with two): both go with
+ * the content between them, since Vue moves that content through the start anchor's parent.
  */
 function assignSlots(nodes) {
   const named = nodes.map((node) => (isContent(node) ? slotName(node) : null));
-  const after = (i) => { for (let j = i + 1; j < nodes.length; j++) if (named[j]) return named[j]; return null; };
-  const before = (i) => { for (let j = i - 1; j >= 0; j--) if (named[j]) return named[j]; return null; };
+  // The slot of the nearest content after (step 1) or before (step -1) node i.
+  const near = (i, step) => { for (let j = i + step; nodes[j]; j += step) if (named[j]) return named[j]; return null; };
+  // An empty text node right before content opens a range; otherwise it closes the last one,
+  // and both take the slot of the first content between them.
+  const open = [];
+  nodes.forEach((node, i) => {
+    if (node.nodeType !== TEXT || node.data) return;
+    if (!open.length || named[i + 1] && nodes[i + 1].data == null) return open.push(i);
+    const start = open.pop();
+    named[start] = named[i] = named.slice(start + 1, i).find(Boolean);
+  });
   return nodes.map((node, i) => named[i]
-    ?? (node.nodeType === COMMENT ? after(i) ?? before(i) : before(i) ?? after(i))
+    ?? (node.nodeType === COMMENT ? near(i, 1) ?? near(i, -1) : near(i, -1) ?? near(i, 1))
     ?? 'default');
 }
 let nativeText, nativeHTML; // looked up on first use, so the module loads without a DOM
