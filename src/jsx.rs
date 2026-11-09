@@ -440,6 +440,13 @@ fn lower_uncached(
                 ));
             }
             Statement::EmptyStatement(_) => {}
+            // A 'use server' function goes into the component's script as it is; the script
+            // reader takes it out of the browser module (actions).
+            Statement::ExportDeclaration(export)
+                if crate::script::server_function(export).is_some() =>
+            {
+                helpers.push(span.start as usize..span.end as usize);
+            }
             Statement::ExportNamedDeclaration(_) | Statement::ExportAllDeclaration(_) => {
                 return Err(error_at(
                     source,

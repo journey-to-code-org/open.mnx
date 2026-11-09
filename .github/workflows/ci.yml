@@ -108,7 +108,7 @@ jobs:
         working-directory: examples/frameworks
 
   plugin:
-    name: Build plugin (Vite, React, Vue) and @zubra/server
+    name: Build plugin (Vite, React, Vue), @zubra/server and @zubra/actions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -135,6 +135,14 @@ jobs:
         working-directory: server
       - run: npm test
         working-directory: server
+      # @zubra/actions ('use server' functions: the contract, the adapters, and the same form
+      # with and without JavaScript in Chromium).
+      - run: npm ci
+        working-directory: actions
+      - run: npx playwright install --with-deps chromium
+        working-directory: actions
+      - run: npm test
+        working-directory: actions
       - run: npm ci
         working-directory: compiler
       - run: node --test test/server-evaluation.test.js

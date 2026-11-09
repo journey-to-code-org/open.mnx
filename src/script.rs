@@ -306,6 +306,14 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                 script
                     .runtime_names
                     .retain(|name| !local_names.contains(name));
+                // Its types stay out of the browser's typings too.
+                let quoted = [
+                    format!("'{}'", import.specifier),
+                    format!("\"{}\"", import.specifier),
+                ];
+                script
+                    .type_imports
+                    .retain(|text| !quoted.iter().any(|quoted| text.contains(quoted.as_str())));
             }
         }
         script.imports = kept;
@@ -643,7 +651,7 @@ mod tests {
 }
 
 /// The function an `export` declares, when it's marked `'use server'`.
-fn server_function<'a>(
+pub(crate) fn server_function<'a>(
     export: &'a oxc_ast::ast::ExportDeclaration<'a>,
 ) -> Option<&'a oxc_ast::ast::Function<'a>> {
     let oxc_ast::ast::Declaration::FunctionDeclaration(function) = &export.declaration else {

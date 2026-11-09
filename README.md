@@ -401,6 +401,16 @@ In the HTML output, `<select value={…}>` marks the matching `<option selected>
 
 The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone.
 
+**Server functions.** A script may export a function marked `'use server'`, and only such a function. It never reaches the browser: its name becomes its endpoint's URL, and `<form action={save}>` (or `formaction={save}`) becomes a plain `action="/_zb/action/<tag>/save" method="post"`, so the form works without JavaScript. Imports only the function uses leave the browser module too. `--emit server` writes the server half, and `@zubra/actions` serves it; its script turns those posts into `fetch` requests and fires `action` on the form with the result. `docs/actions.md` has the contract.
+
+```html
+<script>
+  let saved = false
+  export async function save(formData) { 'use server'; await db.save(formData.get('note')); return { ok: true } }
+</script>
+<note-form><form action={save} onaction={(event) => (saved = event.detail.value?.ok)}>…</form></note-form>
+```
+
 ## Context
 
 `createContext(default)`, `provide(context, value)` and `inject(context)` follow the Web Components Community Group [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md). `inject` returns a signal that follows the nearest provider above the element. A consumer defined before its provider still connects; one that's moved asks again; one that's removed unsubscribes. Because the protocol is plain DOM events, Zubra components share context with other implementations such as Lit's `@lit/context`.

@@ -624,6 +624,10 @@ const BUILT_IN_PROPERTIES: &[(&str, &str)] = &[
 /// need, the functions themselves, and `actions`, which maps each function's URL to it. A
 /// component without server functions emits a module with an empty `actions`.
 pub fn compile_server(source: &str) -> Result<String, Diagnostic> {
+    front(source, None, None, server_module)
+}
+
+fn server_module(source: &str) -> Result<String, Diagnostic> {
     let component = parser::parse(source)?;
     let script = &component.script;
     let mut out = format!(
