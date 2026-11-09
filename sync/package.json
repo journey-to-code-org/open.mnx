@@ -9,6 +9,14 @@
     ".": {
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
+    },
+    "./connect": {
+      "types": "./src/connect.d.ts",
+      "default": "./src/connect.js"
+    },
+    "./server": {
+      "types": "./src/server.d.ts",
+      "default": "./src/server.js"
     }
   },
   "scripts": {

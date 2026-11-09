@@ -28,6 +28,19 @@ export function configure(options = {}) {
 }
 const theStore = () => (store ??= typeof indexedDB === 'undefined' ? memoryStore() : indexedDBStore());
 
+// What a connection (connect.js) listens to: every local save, with the fields it changed.
+const writers = new Set();
+/** @internal Called with `(collection, key, fields)` on each local save. */
+export const onWrite = (fn) => (writers.add(fn), () => writers.delete(fn));
+/** @internal A change from elsewhere: store it, and show it in this tab and the others. */
+export async function receive(collection, key, fields) {
+  await theStore().set(collection, key, fields);
+  deliver(collection, key, fields, null);
+  channel?.postMessage({ collection, key, fields });
+}
+/** @internal The store in use. */
+export const currentStore = () => theStore();
+
 // Every bound element, by document, so a write reaches the others (this tab and, below, others).
 const bound = new Map();
 const docId = (collection, key) => `${collection}\u0000${key}`;
@@ -105,7 +118,10 @@ export function collection(name, keys, props, fields) {
     if (key === null || loaded.get() !== key || applying) return;
     const text = JSON.stringify(doc);
     if (text === last) return;
+    const before = last === null ? {} : JSON.parse(last);
     last = text;
+    const changed = Object.fromEntries(Object.entries(doc).filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(before[field])));
+    for (const write of writers) write(name, key, changed);
     theStore()
       .set(name, key, doc)
       .catch((error) => console.error(`@zubra/sync: couldn't save ${name}/${key}`, error));
