@@ -82,7 +82,8 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 
 - **The device is the source of truth.** A write lands in the local store first. The connection stamps each changed field with a hybrid logical clock (`<ms>-<counter>-<device>`), queues it (in `localStorage`, so a reload doesn't lose it) and pushes it when it can. Offline, it waits.
 - **The server keeps a log, in order, and doesn't merge.** Every device applies the same rule to the same changes: for each field, the change with the later clock wins. So they converge, whichever order the changes arrive in. The clock of each field's winning write is stored beside the document (`$clocks`).
-- **`authorize`** decides who may write a document and who sees its changes. The log is in memory by default; `log: { append(changes), after(cursor) }` stores it anywhere.
+- **`authorize`** decides who may write a document and who sees its changes.
+- **The log** is in memory by default. `sqliteLog(path)` from `@zubra/sync/sqlite` keeps it in a SQLite file through the runtime's own SQLite (`node:sqlite` on Node 22.5+, `bun:sqlite` on Bun), so it survives a restart with nothing to install. Any `{ append(changes), after(cursor, limit) }` works too.
 - Cross-site pushes are refused, like actions.
 
 Changes arrive over a live channel: `GET /_zb/sync/live?since=<cursor>` is a server-sent event stream of `changes` as they're pushed (and `presence`, below). While it's open there's nothing to poll; when it drops, the connection polls (every 2 seconds by default, and when the browser comes back online) and reopens it from the current cursor. `connect({ live: false })` polls only. A server with several processes needs a shared log and a pub/sub between them; the reference server's subscribers are its own process's.

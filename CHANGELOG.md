@@ -14,6 +14,7 @@ Zubra Sync, tier 0: component state that lives on the device.
 - **`@zubra/sync/connect`** and **`@zubra/sync/server`**: share documents between devices through a log over plain HTTP (`POST …/push`, `GET …/pull?since=`). Each changed field is stamped with a hybrid logical clock and queued until the network allows; every device applies last-writer-wins per field to the same changes, so they converge. The server keeps the log in order (in memory by default, or any `{ append, after }`), with `authorize()` for writes and reads.
 - **A live channel**: `GET /_zb/sync/live` streams changes as they're pushed (server-sent events); `connect()` uses it and polls only while it's down. `createSyncServer().handle(req, res)` serves it on Node.
 - **Presence**: `let cursor = presence(v)` is shared live with the document's other viewers and never stored; `let others = peers()` is the array of them, `{ peer, ...presence }`. Across tabs with no server (BroadcastChannel), and across devices through `connect()` (`POST /_zb/sync/presence` and the live stream). At most one message a frame, a heartbeat, a 30-second timeout, and a goodbye on `pagehide` or a dropped connection. The server renders `presence()` values and an empty `peers()`.
+- **`sqliteLog(path)`** from `@zubra/sync/sqlite`: the log in a SQLite file, through `node:sqlite` or `bun:sqlite`. The live stream now sends a backlog longer than one page whole before anything live.
 
 ### Changed
 
