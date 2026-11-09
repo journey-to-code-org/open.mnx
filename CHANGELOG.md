@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.1.1 — 2026-11-09
+
+### Fixed
+
+- **Vue could break reordering a light-DOM component's slotted list.** Vue brackets a `v-for` (any fragment) with two empty text nodes and moves rows through the start anchor's real parent. When the fragment came right after content for a named slot (`<nav slot="side">` then `<p v-for>`), the start anchor joined the named slot, because whitespace goes with the content before it. A keyed reorder then threw "The node before which the new node is to be inserted is not a child of this node", and the rows kept their old order. Empty text nodes now pair up, and both go with the content between them. Whitespace (Svelte) and comments (Lit) keep their rules. Found by Zubra UI's slot test, which runs React and Vue apps that add, remove, reorder and rename slotted children.
+
 ## 5.1.0 — 2026-11-09
 
 Dynamic `srcset`, for responsive images from data (a gallery, a CMS, a manifest).

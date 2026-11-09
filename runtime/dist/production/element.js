@@ -877,12 +877,29 @@ const isContent = (node) => node.nodeType === 1 || (node.nodeType === TEXT && no
  * The slot for each of `nodes` (an element's children, in order). Comments and whitespace are
  * frameworks' markers (Lit's parts, Svelte's anchors): a comment goes with the content after it
  * and whitespace with the content before it, so a framework's range stays together in one slot.
+ * Empty text nodes come in pairs (Vue brackets each fragment, a v-for, with two): both go with
+ * the content between them, since Vue moves that content through the start anchor's parent.
  */
 function assignSlots(nodes) {
   const named = nodes.map((node) => (isContent(node) ? slotName(node) : null));
   const after = (i) => { for (let j = i + 1; j < nodes.length; j++) if (named[j]) return named[j]; return null; };
   const before = (i) => { for (let j = i - 1; j >= 0; j--) if (named[j]) return named[j]; return null; };
+  const bracket = new Map();
+  const open = [];
+  nodes.forEach((node, i) => {
+    if (node.nodeType !== TEXT || node.data !== '') return;
+    // An empty text node right before content opens a range; otherwise it closes the last one.
+    if (open.length && (named[i + 1] == null || nodes[i + 1]?.nodeType === TEXT)) {
+      const start = open.pop();
+      let inside = null;
+      for (let j = start + 1; j < i && !inside; j++) inside = named[j];
+      if (inside) { bracket.set(start, inside); bracket.set(i, inside); }
+    } else {
+      open.push(i);
+    }
+  });
   return nodes.map((node, i) => named[i]
+    ?? bracket.get(i)
     ?? (node.nodeType === COMMENT ? after(i) ?? before(i) : before(i) ?? after(i))
     ?? 'default');
 }

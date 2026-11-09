@@ -317,6 +317,32 @@ test("content inserted next to another slot's marker moves to its own slot (Svel
   await page.close();
 });
 
+test("a framework's empty-text anchors stay with the content they bracket, so it can reorder through their parent (Vue's fragments)", async () => {
+  // Vue brackets a v-for (any fragment) with two empty text nodes, and moves rows through the
+  // start anchor's real parent. After a named slot's content, the start anchor used to join that
+  // slot (whitespace goes with what's before it), so the reorder threw.
+  const { page, messages } = await open('<zb-card><h2 slot="title">T</h2></zb-card>', {
+    beforeModules: `
+      const card = document.querySelector('zb-card');
+      window.start = document.createTextNode('');
+      window.end = document.createTextNode('');
+      window.rows = ['1', '2', '3'].map((text) => Object.assign(document.createElement('p'), { textContent: text }));
+      card.append(window.start, ...window.rows, window.end);`,
+    modules: ['card'],
+  });
+  let card = await readCard(page);
+  assert.equal(card.header, '<h2 slot="title">T</h2>');
+  assert.equal(card.section, '<p>1</p><p>2</p><p>3</p>');
+  assert.equal(await page.evaluate(() => window.start.parentNode === window.rows[0].parentNode && window.end.parentNode === window.rows[0].parentNode), true, 'both anchors are with the rows');
+  card = await change(page, () => {
+    const [one, , three] = window.rows;
+    window.start.parentNode.insertBefore(three, one); // as Vue moves a keyed row
+  });
+  assert.equal(card.section, '<p>3</p><p>1</p><p>2</p>', 'and the new order stands');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test('markers and whitespace alone leave a slot empty', async () => {
   const { page } = await open('<zb-card>\n  <!--marker-->\n</zb-card>', { modules: ['card'] });
   assert.deepEqual(await readCard(page), { header: '<h2>Card</h2>', section: '<p>No content</p>', footer: 'Card footer' });
