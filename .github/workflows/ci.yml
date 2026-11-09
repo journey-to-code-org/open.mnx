@@ -124,6 +124,13 @@ jobs:
         working-directory: server
       - run: npm test
         working-directory: server
+      # @zubra/sync ('use collection': reloads, documents, elements and tabs, in Chromium).
+      - run: npm ci
+        working-directory: sync
+      - run: npx playwright install --with-deps chromium
+        working-directory: sync
+      - run: npm test
+        working-directory: sync
       - run: npm ci
         working-directory: compiler
       - run: node --test test/server-evaluation.test.js

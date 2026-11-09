@@ -277,6 +277,22 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             ));
         }
     }
+    // 'use collection': the state's fields are a document in a local store (@zubra/sync), keyed
+    // by props; `ephemeral()` state stays out.
+    if let Some(collection) = &component.script.collection {
+        let fields: Vec<&str> = script
+            .state
+            .iter()
+            .filter(|name| !component.script.ephemeral.contains(name))
+            .map(String::as_str)
+            .collect();
+        out.push_str(&format!(
+            "    {COLLECTION}({}, {}, $p, {{ {} }});\n",
+            json(&collection.name),
+            serde_json::to_string(&collection.keys).unwrap_or_default(),
+            fields.join(", ")
+        ));
+    }
     out.push_str("    return [\n");
     for part in &emitter.parts {
         out.push_str("      ");
@@ -284,6 +300,16 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         out.push_str(",\n");
     }
     out.push_str("    ];\n  },\n});\n");
+    if component.script.collection.is_some() {
+        let header_end = out.find('\n').map_or(0, |at| at + 1);
+        out.insert_str(
+            header_end,
+            &format!(
+                "import {{ collection as {COLLECTION} }} from {};\n",
+                json(crate::script::SYNC)
+            ),
+        );
+    }
     // A spread's binder comes from `@zubra/runtime/spread`, imported only when the template uses one.
     if out.contains(&format!("bind: {SPREAD_BINDER}")) {
         let header_end = out.find('\n').map_or(0, |at| at + 1);
@@ -304,6 +330,9 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     }
     Ok(out)
 }
+
+/// The local name of `@zubra/sync`'s binder in compiled modules.
+const COLLECTION: &str = "$collection";
 
 /// The local name of `@zubra/runtime/spread`'s binder in compiled modules.
 const SPREAD_BINDER: &str = "$spread";

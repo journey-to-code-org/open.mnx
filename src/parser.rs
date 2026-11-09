@@ -169,6 +169,19 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         }
     }
 
+    // A collection's documents are keyed by props, so they must be props.
+    if let Some(collection) = &script.collection {
+        for key in &collection.keys {
+            if !props.iter().any(|prop| &prop.name == key) {
+                return Err(Diagnostic::new(
+                    collection.span,
+                    format!("'use collection {}' keys documents by the prop `{key}`, which the host doesn't declare", collection.name),
+                )
+                .with_help(format!("add it to the host tag: `{}=\"\"`", kebab_attribute(key))));
+            }
+        }
+    }
+
     // Events emitted from the template's runtime expressions count too.
     if let Some(emit) = script.emit.clone() {
         let mut found = Ok(Vec::new());

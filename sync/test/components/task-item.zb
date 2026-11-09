@@ -1,0 +1,18 @@
+<script>
+  'use collection tasks';
+  import { ephemeral } from '@zubra/sync';
+
+  let completed = false;
+  let title = 'Untitled';
+  let tags = [];
+  let editing = ephemeral(false);
+</script>
+<task-item doc="">
+  <input type="checkbox" checked={completed} onchange={(event) => (completed = event.target.checked)} />
+  <input class="title" value={title} oninput={(event) => (title = event.target.value)} />
+  <button class="tag" onclick={() => tags.push('t' + tags.length)}>Tag</button>
+  <button class="edit" onclick={() => (editing = !editing)}>Edit</button>
+  <b class="state">{completed ? 'done' : 'todo'}</b>
+  <i class="editing">{editing ? 'editing' : 'viewing'}</i>
+  <u class="tags">{tags.join(',')}</u>
+</task-item>
