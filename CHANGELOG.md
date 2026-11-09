@@ -2,7 +2,7 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.3.0 — 2026-11-09
 
 Zubra Actions and Zubra Sync: a component's form can post to a server function, with or without JavaScript, and a component's state can live on the device, shared across tabs and devices.
 
@@ -27,7 +27,7 @@ Zubra Actions and Zubra Sync: a component's form can post to a server function, 
 
 ### Changed
 
-- **An unknown directive in a component script is an error, with a hint**: a likely typo gets "did you mean" (`'use colection tasks'` → `'use collection tasks'`), `'use client'` is explained as unneeded, `'use server'` at the top of a script is pointed at exported functions, and anything else lists the two directives Zubra knows and the package behind each. `'use strict'` is still allowed.
+- **An unknown directive in a component script gets a warning, with a hint**: a likely typo gets "did you mean" (`'use colection tasks'` → `'use collection tasks'`), `'use client'` is explained as unneeded, `'use server'` at the top of a script is pointed at exported functions, and anything else lists the two directives Zubra knows and the package behind each. `'use strict'` is still allowed. It still compiles, as it did (a stray directive was ignored before); 6.0 makes it an error.
 
 ### Fixed
 

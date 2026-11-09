@@ -1,4 +1,4 @@
-// Publishes the six npm packages for the current version, in the order they depend on each other:
+// Publishes the eight npm packages for the current version, in the order they depend on each other:
 //
 //   node scripts/publish.mjs [--dry-run]
 //
@@ -25,7 +25,12 @@ const actions = process.env.GITHUB_ACTIONS === 'true';
 const npm = (args, cwd, stdio = 'inherit') => spawnSync('npm', args, { cwd, stdio, shell: true, encoding: 'utf8' });
 
 // The order matters: the plugin and the server need the runtime and the compiler, and create-zubra's
-// templates need all of them. The compiler is built first.
+// templates need all of them. The compiler is built first. @zubra/sync needs the runtime, and
+// @zubra/actions the compiler and the server.
+//
+// A package's first version can't come from here in CI: npm sets up trusted publishing only for a
+// package that exists. Publish it once by hand (`npm publish --access public` in its directory, on
+// main), set up trusted publishing for it, and run the release workflow again.
 const packages = [
   { dir: 'runtime' },
   { dir: 'compiler', build: true },
@@ -33,6 +38,9 @@ const packages = [
   { dir: 'plugin' },
   { dir: 'editors/language-server' },
   { dir: 'create' },
+  // The siblings, last: nothing above needs them, so if one fails, the rest are already out.
+  { dir: 'sync' },
+  { dir: 'actions' },
 ];
 
 const manifest = (dir) => JSON.parse(readFileSync(join(repo, dir, 'package.json'), 'utf8'));

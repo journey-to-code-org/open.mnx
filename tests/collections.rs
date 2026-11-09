@@ -71,22 +71,6 @@ fn mistakes_are_named() {
         "{}",
         missing.message
     );
-    let unknown = compile("<script>'use client'</script>\n<x-y></x-y>", "{}").unwrap_err();
-    assert!(
-        unknown.message.contains("unknown directive 'use client'"),
-        "{}",
-        unknown.message
-    );
-    let misplaced = compile("<script>'use server'</script>\n<x-y></x-y>", "{}").unwrap_err();
-    assert!(
-        misplaced
-            .help
-            .as_deref()
-            .unwrap_or_default()
-            .contains("exported function"),
-        "{:?}",
-        misplaced.help
-    );
     let unnamed = compile(
         "<script>'use collection'</script>\n<x-y doc=\"\"></x-y>",
         "{}",
@@ -159,17 +143,36 @@ fn a_plain_element_says_it_cant_keep_a_collection() {
     assert!(error.help.unwrap_or_default().contains("--emit js"));
 }
 
+/// The warning an unknown directive gets. It still compiles: in 5.2 a stray `'use …'` was
+/// ignored, so in 5.x it's a warning (6.0 makes it an error).
+fn directive_warning(directive: &str) -> zubra::Diagnostic {
+    let source = format!("<script>'{directive}'; let x = 1</script>\n<x-y doc=\"\">{{x}}</x-y>");
+    compile(&source, "{}").expect("an unknown directive still compiles in 5.x");
+    let warnings = zubra::warnings(&source);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    warnings.into_iter().next().unwrap()
+}
+
 #[test]
-fn unknown_directives_say_what_was_probably_meant() {
-    let help = |directive: &str| {
-        compile(
-            &format!("<script>'{directive}'; let x = 1</script>\n<x-y doc=\"\">{{x}}</x-y>"),
-            "{}",
-        )
-        .unwrap_err()
+fn an_unknown_directive_compiles_with_a_warning() {
+    let warning = directive_warning("use client");
+    assert!(
+        warning.message.contains("unknown directive 'use client'"),
+        "{}",
+        warning.message
+    );
+    // 'use server' belongs in an exported function, not at the top of the script.
+    assert!(directive_warning("use server")
         .help
         .unwrap_or_default()
-    };
+        .contains("exported function"));
+    // 'use strict' is allowed, and warns about nothing.
+    assert!(zubra::warnings("<script>'use strict'; let x = 1</script>\n<x-y>{x}</x-y>").is_empty());
+}
+
+#[test]
+fn unknown_directives_say_what_was_probably_meant() {
+    let help = |directive: &str| directive_warning(directive).help.unwrap_or_default();
     assert!(
         help("use colection tasks").contains("did you mean 'use collection tasks'?"),
         "{}",
