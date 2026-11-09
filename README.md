@@ -413,7 +413,7 @@ In the HTML output, `<select value={…}>` marks the matching `<option selected>
 
 The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone.
 
-**Server functions.** A script may export a function marked `'use server'`, and only such a function. It never reaches the browser: its name becomes its endpoint's URL, and `<form action={save}>` (or `formaction={save}`) becomes a plain `action="/_zb/action/<tag>/save" method="post"`, so the form works without JavaScript. Imports only the function uses leave the browser module too. `--emit server` writes the server half, and `@zubra/actions` serves it; its script turns those posts into `fetch` requests and fires `action` on the form with the result. `docs/actions.md` has the contract.
+**Server functions.** A script may export a function marked `'use server'`, and only such a function (type-only exports in `<script lang="ts">`, `export interface` and `export type`, declare no value and are allowed; they reach the typings). It never reaches the browser: its name becomes its endpoint's URL, and `<form action={save}>` (or `formaction={save}`) becomes a plain `action="/_zb/action/<tag>/save" method="post"`, so the form works without JavaScript. Imports only the function uses leave the browser module too. `--emit server` writes the server half, and `@zubra/actions` serves it; its script turns those posts into `fetch` requests and fires `action` on the form with the result. `docs/actions.md` has the contract.
 
 ```html
 <script>
@@ -443,7 +443,7 @@ The markers are processing instructions: `<?zb [?>` and `<?zb ]?>` around a regi
 - Chrome and Edge 150+ parse each as a `ProcessingInstruction` node;
 - other browsers parse it as a comment (`<!--?zb [?-->`), which the runtime reads the same way.
 
-HTML minifiers mostly keep them: html-minifier-terser and @minify-html/node as shipped, @swc/html and htmlnano with one option each. Sanitizers (DOMPurify, sanitize-html) remove them. `server/test/markers.test.js` measures each, and [Server rendering, honestly](docs/server-rendering.md#hydration-markers-through-minifiers-and-sanitizers) has the table with the options.
+HTML minifiers mostly keep them: html-minifier-terser and @minify-html/node as shipped, @swc/html and htmlnano with one option each (`ZUBRA_MARKER_PATTERN` and `ZUBRA_MARKER_DIRECTIVE` from `@zubra/compiler`). Sanitizers (DOMPurify, sanitize-html) remove them. `server/test/markers.test.js` measures each, and [Server rendering, honestly](docs/server-rendering.md#hydration-markers-through-minifiers-and-sanitizers) has the table with the options.
 
 A tool that removes them costs one extra script. An element whose markup lost every marker puts them back by structure and hydrates in place anyway. It walks its template against the markup:
 - a text anchor's text runs up to the next element;

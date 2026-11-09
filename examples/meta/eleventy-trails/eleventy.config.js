@@ -7,7 +7,8 @@
 //   _site/_zubra/.
 //
 // MINIFY=1 minifies the HTML. zubra's hydration markers are processing instructions (`<?zb [?>`),
-// which minifiers keep: nothing to configure.
+// which html-minifier-terser keeps with nothing to configure. (@swc/html and htmlnano need one
+// option each; docs/server-rendering.md has the measured table.)
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createZubra } from '@zubra/server';

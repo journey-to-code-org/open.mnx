@@ -31,13 +31,13 @@ The types aren't thrown away. Three things in the script carry their type text i
 2. **`declare const name: Type`** types a prop whose default can't say enough, or a required prop (which otherwise is `unknown`): `declare const size: 'small' | 'large'`. A `declare const` that names no prop is an error.
 3. **`emit<Detail>("name", detail)`** types the event: the typings get `CustomEvent<Detail>` where a plain `emit("name", variable)` would get `CustomEvent<unknown>` (a literal's shape is inferred: `emit("select", { id: 1 })` is `CustomEvent<{ id: number }>`).
 
-The script's own `type` and `interface` declarations are **exported from the generated `.d.ts`** (don't write `export` on them: a component script exports nothing but a `'use server'` function, and the typings export every declaration on their own), and its imports are **re-emitted as `import type`**, so a type the interface mentions resolves wherever the typings are used.
+The script's own `type` and `interface` declarations are **exported from the generated `.d.ts`**, with or without `export` written on them (`export interface`, `export type` and `export type { … }` are type-only, so the no-exports rule for component scripts doesn't apply to them), and its imports are **re-emitted as `import type`**, so a type the interface mentions resolves wherever the typings are used.
 
 ```html
 <script lang="ts">
   import { emit } from '@zubra/runtime'
   import type { Option } from './types'
-  interface Picked { id: string; index: number }
+  export interface Picked { id: string; index: number }
 
   const optionsDefault: Option[] = []       // a prop's default takes another name: `options` is the prop
   declare const size: 'small' | 'large'

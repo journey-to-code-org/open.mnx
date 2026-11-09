@@ -16,12 +16,13 @@ use std::collections::HashMap;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    CallExpression, Class, ClassElement, Expression, FormalParameter, Function, FunctionType,
-    ImportDeclaration, ImportDeclarationSpecifier, MethodDefinitionType, PropertyDefinitionType,
-    Statement, TSAsExpression, TSEnumDeclaration, TSExternalModuleDeclaration, TSGlobalDeclaration,
-    TSInterfaceDeclaration, TSNamespaceDeclaration, TSNonNullExpression, TSSatisfiesExpression,
-    TSTypeAliasDeclaration, TSTypeAnnotation, TSTypeAssertion, TSTypeParameterDeclaration,
-    TSTypeParameterInstantiation, VariableDeclaration, VariableDeclarator,
+    CallExpression, Class, ClassElement, Declaration, Expression, FormalParameter, Function,
+    FunctionType, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
+    MethodDefinitionType, PropertyDefinitionType, Statement, TSAsExpression, TSEnumDeclaration,
+    TSExternalModuleDeclaration, TSGlobalDeclaration, TSInterfaceDeclaration,
+    TSNamespaceDeclaration, TSNonNullExpression, TSSatisfiesExpression, TSTypeAliasDeclaration,
+    TSTypeAnnotation, TSTypeAssertion, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
+    VariableDeclaration, VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
@@ -279,12 +280,39 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_statement(&mut self, it: &Statement<'a>) {
-        if let Statement::TSImportEqualsDeclaration(declaration) = it {
-            return self.fail(
-                declaration.span.start,
-                "`import x = require(…)` isn't supported",
-                Some("use `import x from \"…\"`"),
-            );
+        match it {
+            Statement::TSImportEqualsDeclaration(declaration) => {
+                return self.fail(
+                    declaration.span.start,
+                    "`import x = require(…)` isn't supported",
+                    Some("use `import x from \"…\"`"),
+                );
+            }
+            // `export type T = …` and `export interface I { … }` are type-only, so they're
+            // erasable: the declaration goes to the typings (exported, as every declaration is)
+            // and the whole statement, `export` included, is blanked. (A component script
+            // exports no values; that check runs on the JavaScript left after stripping.)
+            Statement::ExportDeclaration(export)
+                if matches!(
+                    export.declaration,
+                    Declaration::TSTypeAliasDeclaration(_) | Declaration::TSInterfaceDeclaration(_)
+                ) =>
+            {
+                walk::walk_declaration(self, &export.declaration);
+                self.blank(export.span);
+                return;
+            }
+            // `export type { A, B }`: re-exported names, kept for the typings.
+            Statement::ExportNamedDeclaration(export)
+                if export.export_kind == ImportOrExportKind::Type =>
+            {
+                self.types
+                    .declarations
+                    .push(self.text(export.span).trim_end_matches(';').to_owned());
+                self.blank(export.span);
+                return;
+            }
+            _ => {}
         }
         walk::walk_statement(self, it);
     }

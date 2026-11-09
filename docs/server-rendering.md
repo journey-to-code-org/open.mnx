@@ -51,10 +51,18 @@ Not all do. `server/test/markers.test.js` runs real registry output through the 
 |---|---|---|
 | html-minifier-terser (`removeComments`, `collapseWhitespace`) | kept | nothing |
 | @minify-html/node (defaults) | kept | nothing |
-| @swc/html | stripped by default | `preserveComments: ['^\\?zb']` (or `removeComments: false`) |
-| htmlnano (any preset) | stripped by default: its parser drops processing instructions | the posthtml parser option `directives: [{ name: '?zb', start: '<', end: '>' }]` |
+| @swc/html | stripped by default | `preserveComments: [ZUBRA_MARKER_PATTERN]` (or `removeComments: false`) |
+| htmlnano (any preset) | stripped by default: its parser drops processing instructions | the posthtml parser option `directives: [ZUBRA_MARKER_DIRECTIVE]`, htmlnano's fourth argument |
 | DOMPurify | stripped | none that keeps only these (`ADD_TAGS: ['#comment']` keeps every comment) |
 | sanitize-html | stripped, with every tag and attribute allowed | none |
+
+`ZUBRA_MARKER_PATTERN` and `ZUBRA_MARKER_DIRECTIVE` come from `@zubra/compiler`, next to `ZUBRA_MARKER_COMMENT` for a 4.x server's comment markers, so the option is one import:
+
+```js
+import { ZUBRA_MARKER_PATTERN, ZUBRA_MARKER_DIRECTIVE } from '@zubra/compiler';
+await swc.minify(html, { preserveComments: [ZUBRA_MARKER_PATTERN] });
+await htmlnano.process(html, options, preset, { directives: [ZUBRA_MARKER_DIRECTIVE] });
+```
 
 Where a tool strips them anyway, the markup still hydrates: an element that finds its markup without markers puts them back by structure, walking its template against the DOM (a text anchor's text runs to the next element, a `zb-if` holds the branch the current values choose, a `zb-each` one row per item). The code that does this, `remark.js`, loads only when an element meets such markup, so a page whose pipeline keeps the markers never downloads it. Where the shape can't be placed for sure (`zb-await` regions, content projected into a child component), the element renders fresh with a warning naming the missing markers. Every registry component hydrates in place with every marker removed (`registry/test/stripped.test.js`).
 

@@ -18,7 +18,7 @@ import { findCompiler } from '../src/compiler.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const registry = join(here, '../../registry/components');
 findCompiler();
-const { renderToString } = await import('@zubra/compiler');
+const { renderToString, ZUBRA_MARKER_PATTERN, ZUBRA_MARKER_DIRECTIVE } = await import('@zubra/compiler');
 
 const MARKER = /<\?zb[^>]*\?>|<!--\?zb[^>]*-->/g;
 const count = (html) => (html.match(MARKER) ?? []).length;
@@ -44,17 +44,17 @@ const tools = {
   },
   '@swc/html': {
     expect: 'CONFIGURE',
-    note: "defaults strip them as comments; `preserveComments: ['^\\\\?zb']` (or `removeComments: false`) keeps them",
-    run: async (html) => (await (await import('@swc/html')).minify(Buffer.from(html), { preserveComments: ['^\\?zb'] })).code,
+    note: 'defaults strip them as comments; `preserveComments: [ZUBRA_MARKER_PATTERN]` from @zubra/compiler (or `removeComments: false`) keeps them',
+    run: async (html) => (await (await import('@swc/html')).minify(Buffer.from(html), { preserveComments: [ZUBRA_MARKER_PATTERN] })).code,
     unconfigured: async (html) => (await (await import('@swc/html')).minify(Buffer.from(html), {})).code,
   },
   htmlnano: {
     expect: 'CONFIGURE',
-    note: "its parser drops them; the posthtml option `directives: [{ name: '?zb', start: '<', end: '>' }]` keeps them",
+    note: 'its parser drops them; the posthtml parser option `directives: [ZUBRA_MARKER_DIRECTIVE]` from @zubra/compiler keeps them',
     run: async (html) => {
       const htmlnano = (await import('htmlnano')).default;
       const options = { minifyCss: false, minifySvg: false };
-      return (await htmlnano.process(html, options, htmlnano.presets.max, { directives: [{ name: '?zb', start: '<', end: '>' }] })).html;
+      return (await htmlnano.process(html, options, htmlnano.presets.max, { directives: [ZUBRA_MARKER_DIRECTIVE] })).html;
     },
     unconfigured: async (html) => {
       const htmlnano = (await import('htmlnano')).default;

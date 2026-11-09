@@ -35,7 +35,7 @@ Every one of these would have been a per-port bug, found or not found per port. 
 | An empty URL prop (`href=""` before the app set it) logged an unsafe-URL error | left off quietly |
 | Vue's `v-model` needs `modelValue`/`update:modelValue`; Angular listens for `valueChange`, not `valuechange` | the Vue wrapper maps the model pair; `ZubraModel` bridges Angular forms |
 | React's `className`/`htmlFor` become `classname`/`htmlfor` attributes under React 18 | the React wrapper maps them |
-| htmx and html-minifier stripped comment markers | the markers are processing instructions, which they keep; where a tool strips them anyway, the element restores them by structure |
+| htmx and html-minifier stripped comment markers | the markers are processing instructions, which they keep (two other minifiers need one option each, measured in `server/test/markers.test.js`); where a tool strips them anyway, the element restores them by structure |
 | Solid's `prop:` values never reach the server HTML | the plugin writes `zb-props` in server builds |
 
 Ten framework-specific behaviours; zero per-component work. The instructor's point that "the bug may still be Angular-specific" is right, and this is where such bugs live: in one file per framework.
