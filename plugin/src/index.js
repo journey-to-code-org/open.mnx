@@ -148,6 +148,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       const flag = args[i];
       if (flag === '--keep-imports') request.keepImports = true;
       else if (flag === '--no-imports') request.noImports = true;
+      else if (flag === '--devtools') request.devtools = true;
       else {
         const key = { '--emit': 'emit', '--framework': 'framework', '--runtime': 'runtime', '--css-import': 'cssImport', '--css-import-inline': 'cssImportInline' }[flag];
         if (!key) throw new Error(`zubra: unexpected compiler flag ${flag}`);

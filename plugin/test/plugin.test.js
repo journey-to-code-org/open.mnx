@@ -383,6 +383,28 @@ test('without a CLI, the WebAssembly compiler (@zubra/compiler) builds the app',
   }
 });
 
+test('the WebAssembly compiler in the dev server: compiled for the DevTools too', async (t) => {
+  const { available } = await import('@zubra/compiler').catch(() => ({ available: () => false }));
+  if (!available()) {
+    if (process.env.ZUBRA_REQUIRE_WASM) throw new Error('ZUBRA_REQUIRE_WASM is set but @zubra/compiler has no zubra.wasm');
+    return t.skip('@zubra/compiler has no zubra.wasm (npm run build in compiler/)');
+  }
+  const { createServer: createViteServer } = await import('vite');
+  const saved = process.env.ZUBRA_COMPILER;
+  delete process.env.ZUBRA_COMPILER;
+  const root = app('plain');
+  const server = await createViteServer({ root, configFile: false, logLevel: 'silent', plugins: [zubra()], server: { port: 0, host: '127.0.0.1' } });
+  await server.listen();
+  try {
+    const module = await (await fetch(`${server.resolvedUrls.local[0]}components/rating.zb`)).text();
+    assert.match(module, /at: \[\d+, \d+\]/);
+    assert.ok(module.includes(`source: { file: ${JSON.stringify(join(root, 'components/rating.zb'))}`));
+  } finally {
+    await server.close();
+    if (saved !== undefined) process.env.ZUBRA_COMPILER = saved;
+  }
+});
+
 // Frameworks that use custom elements directly: the same component, the same checks.
 for (const name of ['svelte', 'solid', 'lit']) {
   test(`${name}: props as properties, events, two-way updates and framework-managed slot content`, async () => {
