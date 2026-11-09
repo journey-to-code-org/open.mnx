@@ -7,6 +7,15 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 ### Added
 
 - **`--emit element`: a component as a plain custom element, with no runtime to install.** One module, no imports, built from the same definition as `--emit js`. It covers light-DOM components: props, every template part, `zb-if`, `zb-each`, light-DOM slots kept live under React, Vue, Svelte and Lit, `state`/`computed`/`effect`, lifecycle, form association and scoped styles. Shadow DOM, spreads, `zb-await` and runtime extras such as `resource` and `@zubra/runtime/zag` are refused with a reason. Server hydration and hot reload stay with `@zubra/runtime`. About 5.5 KB gzipped for a small element (the slot code is left out when there are no slots), 7 KB with slots. Also in `zubra request` (`"emit": "element"`) and so in `@zubra/compiler`. CI runs the runtime's browser suites and the registry's tests on both outputs. See `docs/plain-elements.md`.
+## 5.1.2 — 2026-11-09
+
+### Fixed
+
+- **A light-DOM component's own fallback lost its styles after slotted content changed.** When content was added to or removed from any slot, every node in every rendered slot region was marked as slotted (`data-zb-slotted`), the fallbacks included. A component's styles stop at slotted content, so a fallback showing again (`<zb-slot name="title"><h2>{heading}</h2></zb-slot>`) was no longer styled by its component. Only provided content is marked now.
+
+### Tests
+
+- The styles test that checked "a utility class beats the component's styles" passed only because of that bug: the fallback heading had lost the component's rule. The page in that test now declares the layer order first, as Tailwind's output does, and the test also checks that the fallback keeps its own colour. Found while building `--emit element`, whose element runtime didn't have the bug.
 
 ## 5.1.1 — 2026-11-09
 
