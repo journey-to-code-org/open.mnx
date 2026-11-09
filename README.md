@@ -20,7 +20,7 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 | `@zubra/server` | Components in Express, Fastify, Hono or any template engine; the SSR bridge for meta-frameworks | A JavaScript server renders pages |
 | `@zubra/actions` | `'use server'` functions over plain form POST | A component owns a form endpoint |
 | `@zubra/sync` | `'use collection'`: state kept in IndexedDB, synced across tabs and devices | A component's state must survive reloads or work offline |
-| `create-zubra`, the VS Code extension, the registry | A starter, editor support, 25 components to copy | Convenience |
+| `create-zubra`, the VS Code extension, the registry | A starter, editor support, 26 components to copy | Convenience |
 
 Each sibling exists because a component feature wanted it (`docs/actions.md`, `docs/sync.md` say which), and each is a separate install that the compiler reports by name when a component uses a directive it serves. The compiler knows those two directives itself rather than through a plugin hook, so that the CLI, `zubra serve` and servers in other languages compile a `.zb` file exactly as a bundler does; [Compared with Lit and Stencil](docs/compared-with-lit-and-stencil.md#why-the-compiler-knows-use-server-and-use-collection-by-name) has the reasoning. A compiler alone, with `zubra compile --emit element`, is one file and no dependency.
 
@@ -451,7 +451,7 @@ A tool that removes them costs one extra script. An element whose markup lost ev
 - a light-DOM slot that ends its range holds the rest (its fallback, if it has the fallback's shape);
 - an `zb-await` holds its `zb-then` block for a value the server knew at build time, or its pending block, which the element renders afresh anyway (so only where the region ends has to be found).
 
-The code that does this (`remark.js`) is loaded only when an element meets such markup. Where the shape can't be placed for sure (content projected into a child component, or markup that isn't the template's), the element renders fresh, with a warning that the markers are missing. Every registry component hydrates in place this way (`registry/test/stripped.test.js`), and so do pending and settled `zb-await`s (`runtime/test/browser/components.test.js`), keeping text typed and focus taken before JavaScript.
+The code that does this (`remark.js`) is loaded only when an element meets such markup. Where the shape can't be placed for sure (content projected into a child component, or markup that isn't the template's), the element renders fresh, with a warning that the markers are missing. Every registry component hydrates in place this way (`registry/test/stripped.test.js`, `service-status` with its pending `zb-await` included), and so do settled `zb-await`s (`runtime/test/browser/components.test.js`), keeping text typed and focus taken before JavaScript.
 
 ### In frameworks that hydrate
 
@@ -576,7 +576,7 @@ The package needs no bundler or Zubra tooling on the consumer's side:
 
 `buildLibrary(dir, options)` from `@zubra/compiler/library` does the same from a script. `examples/frameworks/ui/` is one, built from the registry, and the React and Vue example apps import it like a package from npm.
 
-**Start from the registry.** `npx zubra add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty-five, from form controls and charts to tabs, menus, tooltips and a combobox, each tested from the keyboard and by role and accessible name. `npx zubra add --list` lists them; `registry/README.md` has the details and the theme properties. For the widgets Radix and shadcn/ui give React apps (menus, tabs, tooltips, comboboxes), see [Accessible widgets without a headless library](docs/guide/accessible-widgets.md): the platform, two keyboard primitives in `@zubra/runtime/primitives`, and Zag.js through `@zubra/runtime/zag`.
+**Start from the registry.** `npx zubra add tag-input` copies an accessible component from `registry/` into `src/components/`, and it's yours to change. There are twenty-six, from form controls and charts to tabs, menus, tooltips, a combobox and a live status check, each tested from the keyboard and by role and accessible name. `npx zubra add --list` lists them; `registry/README.md` has the details and the theme properties. For the widgets Radix and shadcn/ui give React apps (menus, tabs, tooltips, comboboxes), see [Accessible widgets without a headless library](docs/guide/accessible-widgets.md): the platform, two keyboard primitives in `@zubra/runtime/primitives`, and Zag.js through `@zubra/runtime/zag`.
 
 **Storybook.** With `@storybook/web-components`, give Storybook the manifest and it fills each story's controls and docs (attributes, properties, events, slots, descriptions) from it:
 

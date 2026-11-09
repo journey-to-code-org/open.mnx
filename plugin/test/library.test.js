@@ -94,7 +94,7 @@ test('the package: an element module per component, React and Vue entries, typin
   const manifest = JSON.parse(readFileSync(join(lib, 'custom-elements.json'), 'utf8'));
   assert.equal(manifest.schemaVersion, '2.1.0');
   const tags = manifest.modules.flatMap((module) => module.declarations.map((declaration) => declaration.tagName));
-  assert.equal(tags.length, 24);
+  assert.equal(tags.length, 25);
   for (const module of manifest.modules) assert.ok(existsSync(join(lib, module.path)), module.path);
   assert.match(readFileSync(join(lib, 'index.js'), 'utf8'), /export \{ default as QuantityStepper \} from "\.\/quantity-stepper\.js";/);
   // React's entries are client components, importable from React Server Components (Next.js).

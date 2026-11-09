@@ -158,6 +158,15 @@
       "dependencies": []
     },
     {
+      "name": "service-status",
+      "category": "display",
+      "description": "A service's status, fetched from `src`: a JSON endpoint that answers `{ \"status\": \"operational\" | \"degraded\" | \"down\", \"message\"?: string }`. Shows \"Checking…\" while it loads, the status (and its message) once it has, and the error with a Retry button if it can't. Refresh checks again, keeping the last answer showing meanwhile. Changes are announced politely.",
+      "files": [
+        "service-status.zb"
+      ],
+      "dependencies": []
+    },
+    {
       "name": "spark-line",
       "category": "display",
       "description": "A small line of recent values, green when it ends higher than it started, red when lower.",

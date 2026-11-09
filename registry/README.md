@@ -1,6 +1,6 @@
 # The Zubra component registry
 
-Twenty-five accessible components to copy into your project:
+Twenty-six accessible components to copy into your project:
 
 ```sh
 npx zubra add tag-input modal-dialog         # into src/components/ (--dir elsewhere)
@@ -11,7 +11,7 @@ npx zubra add --list
 
 | Inputs | Display | App pieces | Widgets |
 |---|---|---|---|
-| `tag-input`, `date-range`, `money-input`, `star-rating`, `toggle-switch`, `choice-cards`, `color-swatches`, `quantity-stepper`, `segmented-control` | `donut-chart`, `spark-line`, `line-chart`, `progress-ring`, `streak-grid`, `flip-card`, `step-indicator` | `kanban-column`, `chat-message`, `message-composer`, `modal-dialog` | `accordion-panel`, `tool-tip`, `tab-list`, `dropdown-menu`, `combo-box` |
+| `tag-input`, `date-range`, `money-input`, `star-rating`, `toggle-switch`, `choice-cards`, `color-swatches`, `quantity-stepper`, `segmented-control` | `donut-chart`, `spark-line`, `line-chart`, `progress-ring`, `streak-grid`, `flip-card`, `step-indicator`, `service-status` | `kanban-column`, `chat-message`, `message-composer`, `modal-dialog` | `accordion-panel`, `tool-tip`, `tab-list`, `dropdown-menu`, `combo-box` |
 
 The widgets are the pieces Radix and shadcn/ui give React apps, built on the platform (`<details>`, `popover`, anchor positioning) and `@zubra/runtime/primitives`. `combo-box` uses Zag.js through `@zubra/runtime/zag`. It imports `@zag-js/vanilla` and `@zag-js/combobox`, and `zubra add` says to install them (`index.json` lists them under `packages`). [Accessible widgets without a headless library](../docs/guide/accessible-widgets.md) maps the rest.
 
@@ -19,7 +19,9 @@ Each component's comment says what it does, its props, slots and events (`index.
 
 ## Accessibility
 
-Every component is tested in Chromium (`test/components.test.js`) the way assistive technology meets it: found by its role and accessible name, used from the keyboard (radio groups, tab lists and menus with arrow keys and one tab stop, typing to jump in a menu, Space and Enter on switches and toggle buttons, a dialog and a menu that move focus in and back, Escape to close), and checked for the state it announces (`aria-checked`, `aria-pressed`, `aria-current`, `aria-expanded`).
+Every component is tested in Chromium (`test/components.test.js`) the way assistive technology meets it: found by its role and accessible name, used from the keyboard (radio groups, tab lists and menus with arrow keys and one tab stop, typing to jump in a menu, Space and Enter on switches and toggle buttons, a dialog and a menu that move focus in and back, Escape to close), and checked for the state it announces (`aria-checked`, `aria-pressed`, `aria-current`, `aria-expanded`, and `service-status`'s live region).
+
+Every component also hydrates server markup in place when a sanitizer has stripped its hydration markers (`test/stripped.test.js`): the same server nodes survive as with the markers kept. `service-status` is the one built on `zb-await`, so it covers a region the server leaves to the element.
 
 ## Theming
 
@@ -35,6 +37,7 @@ Colours come from CSS custom properties, each with a default, so the components 
 | `--habit`, `--level-0` | `streak-grid` | `#16a34a`, `#ebedf0` |
 | `--chip`, `--chip-ink`, `--column`, `--column-over` | `kanban-column` | `#eceefe`, `#3a3f9e`, `#f3f4f7`, `#e8ebff` |
 | `--mention`, `--mention-wash` | `chat-message` | `#8a5a00`, `#fff4cc` |
+| `--warn` | `service-status`'s degraded state (operational is `--up`, down is `--danger`) | `#b54708` |
 
 ## Adding one
 
