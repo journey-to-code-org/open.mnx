@@ -511,8 +511,9 @@ fn collect_stylesheets(
 
 // ---- tools ----------------------------------------------------------------------------------
 
-/// Things that compile but may not do what was meant: a prop that shadows a built-in property
-/// of every element (`hidden` hides the host; `title` also shows a tooltip).
+/// Things that compile but may not do what was meant: a `'use …'` directive Zubra doesn't know,
+/// and a prop that shadows a built-in property of every element (`hidden` hides the host; `title`
+/// also shows a tooltip).
 pub fn warnings(source: &str) -> Vec<Diagnostic> {
     let parsed = if jsx::looks_like_jsx(source) {
         // A JSX component's props are its parameters; their names are checked the same way.
@@ -532,9 +533,11 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
         return Vec::new();
     };
     let warnings: Vec<Diagnostic> = component
-        .props
+        .script
+        .unknown_directives
         .iter()
-        .filter_map(|prop| {
+        .cloned()
+        .chain(component.props.iter().filter_map(|prop| {
             let (_, effect) = BUILT_IN_PROPERTIES
                 .iter()
                 .find(|(name, _)| *name == prop.name)?;
@@ -551,7 +554,7 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
                     prop.name
                 )),
             )
-        })
+        }))
         .map(|diagnostic| match &lowered {
             Some(lowered) => lowered.remap(source, diagnostic),
             None => diagnostic,

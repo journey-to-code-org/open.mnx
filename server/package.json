@@ -1,6 +1,6 @@
 {
   "name": "@zubra/server",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "description": "Zubra on the server: render components into any template engine's pages, serve their browser modules, and give frameworks' HTML its components' shadow roots.",
   "type": "module",
   "main": "./src/index.js",
@@ -27,8 +27,8 @@
     "test": "node --test \"test/*.test.js\""
   },
   "peerDependencies": {
-    "@zubra/compiler": "^5.2.0",
-    "@zubra/runtime": "^5.2.0"
+    "@zubra/compiler": "^5.3.0",
+    "@zubra/runtime": "^5.3.0"
   },
   "devDependencies": {
     "@minify-html/node": "0.18.1",

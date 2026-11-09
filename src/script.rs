@@ -62,7 +62,9 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             .collect(),
         ..Script::default()
     };
-    script.collection = directive(&parsed.program.directives, &at)?;
+    let (collection, unknown) = directive(&parsed.program.directives, &at)?;
+    script.collection = collection;
+    script.unknown_directives = unknown;
     let mut import_ranges = Vec::new();
     // `'use server'` functions: where they are, and every name they reference.
     let mut import_locals: Vec<Vec<String>> = Vec::new();
@@ -685,12 +687,15 @@ fn close_to(word: &str, known: &str) -> bool {
 
 /// The script's own directives: `'use collection <name>'` (keyed by the `doc` prop, or by the props
 /// after `by`: `'use collection tasks by list, item'`). Any
-/// other `'use …'` is a mistake worth naming, not something to ignore.
+/// other `'use …'` is a mistake worth naming, not something to ignore: it comes back as a warning
+/// (an error from 6.0; in 5.2 it was ignored, so it still compiles).
+#[allow(clippy::type_complexity)]
 fn directive(
     directives: &[oxc_ast::ast::Directive<'_>],
     at: &dyn Fn(u32) -> Span,
-) -> Result<Option<crate::ast::Collection>, Diagnostic> {
+) -> Result<(Option<crate::ast::Collection>, Vec<Diagnostic>), Diagnostic> {
     let mut found = None;
+    let mut unknown = Vec::new();
     for directive in directives {
         let text = directive.directive.as_str().trim();
         let span = at(directive.span.start);
@@ -698,7 +703,8 @@ fn directive(
             continue;
         }
         let Some(rest) = text.strip_prefix("use collection") else {
-            return Err(unknown_directive(text, span));
+            unknown.push(unknown_directive(text, span));
+            continue;
         };
         if found.is_some() {
             return Err(Diagnostic::new(
@@ -740,7 +746,7 @@ fn directive(
             span,
         });
     }
-    Ok(found)
+    Ok((found, unknown))
 }
 
 #[cfg(test)]

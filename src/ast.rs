@@ -121,6 +121,10 @@ pub struct Script {
     pub presence: Vec<String>,
     /// `let others = peers()`: the other viewers' presence, as an array.
     pub peers: Option<String>,
+    /// `'use …'` directives Zubra doesn't know (`'use client'`, `'use colection tasks'`): warnings
+    /// with a hint. They did nothing before 5.3, so in 5.x they compile, as they did; 6.0 makes
+    /// them errors.
+    pub unknown_directives: Vec<crate::diagnostic::Diagnostic>,
 }
 
 /// An exported function marked `'use server'`. Its body never reaches the browser: the browser

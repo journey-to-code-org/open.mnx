@@ -425,7 +425,7 @@ The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated)
 
 **State on the device.** `'use collection tasks'` at the top of a script keeps its top-level `let`s in IndexedDB (through `@zubra/sync`), as the document keyed by the `doc` prop: `<task-item doc="t42">` is `tasks/t42`. Assignments update the page at once and the store behind it; the state survives reloads, works offline, and other elements and tabs showing the same document follow. `let editing = ephemeral(false)` is state that isn't stored. `docs/sync.md` has the rules. It needs `@zubra/sync` installed; a bundler or `@zubra/server` picks it up from there, and if it's missing the error says which component needs it and what to run.
 
-**Directives.** Zubra knows two: `'use collection <name>'` first in a script (`@zubra/sync`), and `'use server'` first in an exported function (`@zubra/actions`). Anything else written as a directive is an error that says what was probably meant: `'use colection'` gets "did you mean 'use collection'", and `'use client'` is explained as unneeded, since every component already runs in the browser.
+**Directives.** Zubra knows two: `'use collection <name>'` first in a script (`@zubra/sync`), and `'use server'` first in an exported function (`@zubra/actions`). Anything else written as a directive gets a warning that says what was probably meant: `'use colection'` gets "did you mean 'use collection'", and `'use client'` is explained as unneeded, since every component already runs in the browser. Until 5.3 a stray directive was ignored, so in 5.x it still compiles; 6.0 makes it an error.
 
 ## Context
 
