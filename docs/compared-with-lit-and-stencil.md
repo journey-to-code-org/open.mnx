@@ -21,13 +21,15 @@ The last row matters and is not an argument: Lit and Stencil have years of produ
 
 **Generated native packages.** Stencil's output proxies look and behave like components the framework wrote itself: idiomatic imports, framework-native typings, no runtime adapter in the bundle, and a framework upgrade that breaks the proxy breaks it at build time. Zubra's adapter is one runtime module that every component shares. The trade-off is maintenance scale: Stencil maintains N generated outputs per component; Zubra maintains one adapter per framework and generates only typings and thin wrappers. For a team shipping to exactly React and Angular, Stencil's native output is the smoother consumer experience. For a library whose consumers' frameworks it can't predict, one adapter that absorbs a framework quirk once (the ten the matrix has absorbed are in [One source, N consumers](standards/one-source-n-consumers.md)) is less to maintain.
 
+**A smaller blast radius.** Stencil's framework packages are generated code, fixed when the library is built. Zubra's components in a React app all go through one adapter (`@zubra/runtime/react`; Vue has its own), so a regression in it reaches every Zubra component in every React app that upgrades the runtime, at once. The matrix in CI (`examples/frameworks/`, `examples/meta/`) exists to catch that before a release, but it is a real difference in where a bug can land.
+
 **Full TypeScript.** Stencil owns the TypeScript compiler, so enums, namespaces, decorators and the whole language work, and the generated framework packages have exact types. Zubra deliberately keeps `tsc` out of the compile path; [TypeScript in `.zb` files](typescript.md) says what that costs.
 
 **Lazy loading built in.** Stencil's default output loads each component's code on first use. Zubra's modules are plain ES modules; a bundler can split them, but nothing does it for you.
 
 ## Where Lit is better
 
-**Smallest footprint for a few elements, and no file format to learn.** A Lit element is a JavaScript class; the template is a tagged literal in it. There's no compiler, no `.zb`, no editor extension, and the whole of Lit is small. Measured on this README's copy button (esbuild `--minify`, `gzip -9`, Lit 3.3.3):
+**Smallest footprint for a few elements, and no file format to learn.** A Lit element is a JavaScript class; the template is a tagged literal in it. There's no compiler, no `.zb`, no editor extension, and the whole of Lit is small. Measured on this README's copy button (bundled and tree-shaken with esbuild `--bundle --minify`, then `gzip -9`; Lit 3.3.3):
 
 | Output | Gzipped |
 |---|---|
@@ -36,7 +38,9 @@ The last row matters and is not an argument: Lit and Stencil have years of produ
 | Zubra `--emit js`: the component's module | 0.6 KB, plus |
 | `@zubra/runtime` (production build), shared by every component | 13.8 KB |
 
-So for a page with one or two components, Lit and Zubra's plain output are the same size; for an app that loads the shared runtime, Zubra ships about 8 KB more than Lit does. That 8 KB is the hydration-in-place machinery, the Signals implementation (which steps aside when `globalThis.Signal` exists), light-DOM slots kept live under a framework, the deep-reactivity proxies, and the framework bridge. If you don't need those, Lit is the smaller choice, and so is `--emit element`.
+(Lit's figure is already what's left after tree-shaking. `@lit/reactive-element` alone is smaller, but it has no templates, so it isn't the same component.) So for a page with one or two components, Lit and Zubra's plain output are the same size; for an app that loads the shared runtime, Zubra ships about 8 KB more than Lit does. That 8 KB is the hydration-in-place machinery, the Signals implementation (which steps aside when `globalThis.Signal` exists), light-DOM slots kept live under a framework, the deep-reactivity proxies, and the framework bridge. If you don't need those, Lit is the smaller choice, and so is `--emit element`.
+
+**Templates type-checked against TypeScript.** With lit-analyzer (or its `ts-lit-plugin` in the editor), Lit checks each binding in an `html` template against the property's declared TypeScript type, before anything runs. Zubra checks a template's names (unknown ones, with a "did you mean"), and a child component's props at the call site against the types of the child's defaults, but it doesn't check template expressions against TypeScript types: that's the cost of keeping a type checker out of the compiler ([TypeScript in `.zb` files](typescript.md)).
 
 **Plain JavaScript, no restrictions.** Lit's templates are JavaScript expressions; anything goes. Zubra's `{expr}` is any JavaScript expression too, but the compiler evaluates a deterministic subset on the server and leaves the rest to the browser, and it tells you which is which (`zubra check --server`). That is a constraint you feel.
 
