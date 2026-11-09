@@ -2,6 +2,20 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+Zubra Sync, tier 0: component state that lives on the device.
+
+### Added
+
+- **`'use collection <name>'`** at the top of a component script. Its top-level `let`s become the fields of a document keyed by the `doc` prop (or the props after `by`: `'use collection rows by list, item'`), and the compiled module calls `@zubra/sync` with them. A key prop the host doesn't declare is a compile error.
+- **`ephemeral(value)`** from `@zubra/sync`: state that isn't stored. The server renders its value.
+- **`@zubra/sync`**, a new package: keeps those documents in IndexedDB (in memory without it). Writes are signal assignments, saved behind the UI; an element saves nothing until its document has loaded; elements and tabs showing the same document follow each other (BroadcastChannel). Last-writer-wins per field. `configure({ store })` takes another store.
+
+### Changed
+
+- **An unknown directive in a component script is an error** (`'use client'`, or `'use server'` at the top of the script, with a hint where it goes). `'use strict'` is still allowed.
+
 ## 5.1.1 — 2026-11-09
 
 ### Fixed
