@@ -22,29 +22,18 @@ const module = (name) => {
   if (!response.ok) throw new Error(response.error);
   return response.output;
 };
-const page = (body, connected = false) => `<!doctype html><html><head><meta charset="utf-8">
+const page = (body, connected = false, component = 'task-item') => `<!doctype html><html><head><meta charset="utf-8">
 <script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': '/runtime/index.js', '@zubra/sync': '/sync/index.js' } })}</script>
-</head><body>${body}<script type="module">import '/components/task-item.js';</script>${connected ? `<script type="module">import { connect } from '/sync/connect.js'; window.link = connect({ interval: 100 });</script>` : ''}</body></html>`;
+</head><body>${body}<script type="module">import '/components/${component}.js';</script>${connected ? `<script type="module">import { connect } from '/sync/connect.js'; window.link = connect(${JSON.stringify(connected === true ? { interval: 100, live: false } : connected)});</script>` : ''}</body></html>`;
 
 let server;
 let browser;
 let base;
 const sync = createSyncServer();
-/** A Node request as a fetch Request (enough for the tests). */
-const toRequest = async (req) => {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const body = req.method === 'GET' ? undefined : Buffer.concat(chunks);
-  return new Request(`http://${req.headers.host}${req.url}`, { method: req.method, headers: req.headers, body });
-};
 before(async () => {
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
-    if (url.pathname.startsWith('/_zb/sync/')) {
-      const response = await sync.fetch(await toRequest(req));
-      res.writeHead(response.status, Object.fromEntries(response.headers));
-      return res.end(await response.text());
-    }
+    if (await sync.handle(req, res)) return;
     const js = (text) => { res.setHeader('content-type', 'text/javascript'); res.end(text); };
     const file = (dir, rest) => {
       const path = normalize(join(dir, rest));
@@ -53,9 +42,13 @@ before(async () => {
     };
     if (url.pathname.startsWith('/runtime/')) return file(runtimeDir, url.pathname.slice('/runtime/'.length));
     if (url.pathname.startsWith('/sync/')) return file(syncDir, url.pathname.slice('/sync/'.length));
-    if (url.pathname === '/components/task-item.js') return js(module('task-item'));
+    if (url.pathname.startsWith('/components/')) return js(module(url.pathname.slice('/components/'.length).replace(/\.js$/, '')));
     res.setHeader('content-type', 'text/html');
     if (url.pathname === '/two') return res.end(page('<task-item doc="a"></task-item><task-item doc="b"></task-item>'));
+    const doc = (url.searchParams.get('doc') ?? 'a').replace(/\W/g, '');
+    // Live only: polling every minute, so anything sooner came over the event stream.
+    if (url.pathname === '/live') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000 }));
+    if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, url.searchParams.has('connect') ? { interval: 60_000 } : false, 'board-view'));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
     res.end(page('<task-item doc="a"></task-item>'));
@@ -196,4 +189,74 @@ test('connected: a device that was offline catches up both ways, and concurrent 
   await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
   await a.context.close();
   await b.context.close();
+});
+
+test('live: a change arrives over the event stream, without waiting for a poll', async () => {
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  const one = await a.newPage();
+  const two = await b.newPage();
+  await one.goto(`${base}/live?doc=third`);
+  await two.goto(`${base}/live?doc=third`);
+  await ready(one);
+  await ready(two);
+  await two.waitForTimeout(300); // let both streams open
+  await one.fill('.title', 'Over the stream');
+  await title(two, 'Over the stream');
+  await a.close();
+  await b.close();
+});
+
+const board = async (context, doc, connect = false) => {
+  const tab = await context.newPage();
+  await tab.goto(`${base}/board?doc=${doc}${connect ? '&connect' : ''}`);
+  await tab.waitForFunction(() => customElements.get('board-view'));
+  return tab;
+};
+const point = async (tab, x, y) => {
+  const box = await tab.locator('.pad').boundingBox();
+  await tab.mouse.move(box.x + x, box.y + y);
+};
+
+test('presence: other tabs see where you are, and see you leave; nothing is stored', async () => {
+  const context = await browser.newContext();
+  const one = await board(context, 'b1');
+  const two = await board(context, 'b1');
+  await point(one, 40, 30);
+  await two.waitForSelector('.other:has-text("40,30")');
+  assert.equal(await two.textContent('.count'), '1');
+  await point(two, 10, 20);
+  await one.waitForSelector('.other:has-text("10,20")');
+  assert.equal(await one.textContent('.count'), '1'); // itself isn't a peer
+  // Another document's room is another room.
+  const elsewhere = await board(context, 'b2');
+  await elsewhere.waitForTimeout(200);
+  assert.equal(await elsewhere.textContent('.count'), '0');
+  await two.click('.stroke');
+  await two.waitForTimeout(150);
+  await one.close();
+  await two.waitForSelector('.count:has-text("0")');
+  const stored = await two.evaluate(() => new Promise((done) => {
+    const open = indexedDB.open('zubra-sync');
+    open.onsuccess = () => {
+      const request = open.result.transaction('docs').objectStore('docs').get(['boards', 'b1']);
+      request.onsuccess = () => done(request.result);
+    };
+  }));
+  assert.deepEqual(Object.keys(stored ?? {}).sort(), ['strokes']);
+  await context.close();
+});
+
+test('presence: other devices too, through the server, and a closed tab leaves', async () => {
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  const one = await board(a, 'b3', true);
+  const two = await board(b, 'b3', true);
+  await one.waitForTimeout(300);
+  await point(one, 55, 66);
+  await two.waitForSelector('.other:has-text("55,66")', { timeout: 5000 });
+  await one.close();
+  await two.waitForSelector('.count:has-text("0")', { timeout: 5000 });
+  await a.close();
+  await b.close();
 });

@@ -111,6 +111,11 @@ pub struct Script {
     pub collection: Option<Collection>,
     /// `let editing = ephemeral(false)` (from `@zubra/sync`): state that isn't stored.
     pub ephemeral: Vec<String>,
+    /// `let cursor = presence({ x: 0, y: 0 })`: state shared live with the document's other
+    /// viewers, never stored.
+    pub presence: Vec<String>,
+    /// `let others = peers()`: the other viewers' presence, as an array.
+    pub peers: Option<String>,
 }
 
 /// `'use collection <name>'`, or `'use collection <name> by <prop>, <prop>'`.

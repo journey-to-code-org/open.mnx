@@ -85,4 +85,35 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 - **`authorize`** decides who may write a document and who sees its changes. The log is in memory by default; `log: { append(changes), after(cursor) }` stores it anywhere.
 - Cross-site pushes are refused, like actions.
 
-Pulling is polling (every 2 seconds by default, and when the browser comes back online). A live channel (SSE or WebSocket), presence and a WebRTC transport are the next steps in the design.
+Changes arrive over a live channel: `GET /_zb/sync/live?since=<cursor>` is a server-sent event stream of `changes` as they're pushed (and `presence`, below). While it's open there's nothing to poll; when it drops, the connection polls (every 2 seconds by default, and when the browser comes back online) and reopens it from the current cursor. `connect({ live: false })` polls only. A server with several processes needs a shared log and a pub/sub between them; the reference server's subscribers are its own process's.
+
+## Presence: who else is here
+
+Some state should be seen by the other viewers of a document but never stored: where their cursor is, what they've selected, that they're typing.
+
+```html
+<!-- board-view.zb -->
+<script>
+  'use collection boards';
+  import { presence, peers } from '@zubra/sync';
+
+  let strokes = [];                          // stored
+  let cursor = presence({ x: 0, y: 0 });     // shared live, never stored
+  let others = peers();                      // everyone else's presence
+</script>
+
+<board-view doc="">
+  <div class="pad" onpointermove={(event) => (cursor = { x: event.offsetX, y: event.offsetY })}></div>
+  <zb-each items={others} as="other" key={other.peer}>
+    <span class="cursor" style={`left: ${other.cursor.x}px; top: ${other.cursor.y}px`}></span>
+  </zb-each>
+</board-view>
+```
+
+- **A room is a document.** The board `boards/b1`'s viewers see each other; another document's don't.
+- **`peers()` is an array** of the other viewers, `{ peer, ...presence }`: each one's id and its presence fields by name (`other.cursor` above). Each tab is one peer; your own tab isn't in it. On the server it's empty, and a `presence()` value renders as its starting value.
+- **Without a server**, presence reaches the other tabs of the same site (BroadcastChannel). **With `connect()`**, it reaches other devices too: `POST /_zb/sync/presence { room, peer, state }`, and the live stream's `presence` events.
+- **It's cheap on purpose.** At most one message a frame, however fast the pointer moves; a heartbeat every 10 seconds; a viewer not heard from for 30 seconds has gone. Closing a tab says goodbye (`pagehide`), and the server says it for a device whose connection drops.
+- **Nothing is stored**, on the device or the server. `authorize` decides who may join a room (`write: true`) and who sees its presence (`write: false`).
+
+A WebRTC transport, so presence can go device to device, is the next step in the design.
