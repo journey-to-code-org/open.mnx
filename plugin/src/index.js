@@ -293,7 +293,10 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       }
       let output;
       try {
-        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles);
+        // In Vite's dev server, what the browser DevTools panel reads: each part's place in the
+        // `.zb` file and the script's signals by name (the runtime's development build reads them).
+        const devtools = dev && meta.framework === 'vite' && !server ? ['--devtools'] : [];
+        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles, ...devtools);
       } catch (error) {
         return fail(this, error, path);
       }

@@ -236,6 +236,18 @@ test('dev server: components compile on demand; editing one updates it in place,
     const before = (await inbox()).match(/hydrate: \[[\d, ]+\]/)?.[0];
     assert.ok(before, 'the parent has a hydrate path into the child');
 
+    // A development build is what the DevTools panel reads: located parts, the file, the names.
+    const module = await inbox();
+    assert.match(module, /at: \[\d+, \d+\]/);
+    assert.ok(module.includes(`source: { file: ${JSON.stringify(join(root, 'components/inbox.zb'))}`), 'the absolute path, for Open in editor');
+    const inspected = await page.evaluate(async () => {
+      globalThis.__ZUBRA_DEVTOOLS__.connect();
+      while (!globalThis.__ZUBRA_DEVTOOLS__.ready) await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = globalThis.__ZUBRA_DEVTOOLS__.inspect(document.querySelector('zb-card:not(#from-html) footer'));
+      return { tag: result.component.tag, file: result.component.file, located: result.bindings.some((binding) => binding.here && binding.at) };
+    });
+    assert.deepEqual(inspected, { tag: 'zb-card', file: join(root, 'components/card.zb'), located: true });
+
     // Edit the card: the live elements get the new template, without a page reload.
     await page.evaluate(() => { window.stale = true; });
     const card = join(root, 'components/card.zb');
@@ -303,6 +315,11 @@ test('build --watch: editing a child component rebuilds the components that use 
     await built();
     const before = hydratePath();
     assert.ok(before);
+    // A build isn't compiled for the DevTools: no locations, no file, no names. (The runtime's
+    // production build, which a build resolves, has no hook: runtime/test/browser/devtools.test.js.)
+    const { readdirSync } = require('node:fs');
+    const shipped = readdirSync(join(outDir, 'assets')).filter((name) => name.endsWith('.js')).map((name) => readFileSync(join(outDir, 'assets', name), 'utf8')).join('\n');
+    assert.doesNotMatch(shipped, /\bat: \[\d+, \d+\]|source: \{ file:|\$dev\?\.\(/);
     const badge = join(root, 'components/badge.zb');
     const next = built();
     writeFileSync(badge, readFileSync(badge, 'utf8').replace('<span class="badge"', '<div class="wrap"></div><span class="badge"'));
