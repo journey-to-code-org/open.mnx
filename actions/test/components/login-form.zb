@@ -1,0 +1,27 @@
+<script>
+  import { users } from '../users.js';
+
+  let message = '';
+  export async function login(formData) {
+    'use server';
+    const email = formData.get('email');
+    if (!users.includes(email)) return { error: 'Invalid login' };
+    return { ok: true, email };
+  }
+  export async function crash() {
+    'use server';
+    throw new Error('secret detail');
+  }
+  export async function away() {
+    'use server';
+    return Response.redirect('http://localhost/elsewhere', 303);
+  }
+</script>
+
+<login-form>
+  <form action={login} onaction={(event) => (message = event.detail.value?.error ?? 'Welcome ' + event.detail.value.email)}>
+    <input name="email" type="email" />
+    <button type="submit">Log in</button>
+    <p class="message">{message}</p>
+  </form>
+</login-form>

@@ -1,0 +1,50 @@
+{
+  "name": "@zubra/actions",
+  "version": "5.1.1",
+  "description": "Serve Zubra components' 'use server' functions over plain form posts, enhanced to fetch when JavaScript loads.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./client": {
+      "types": "./src/client.d.ts",
+      "default": "./src/client.js"
+    },
+    "./express": "./src/express.js",
+    "./fastify": "./src/fastify.js",
+    "./hono": "./src/hono.js"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "peerDependencies": {
+    "@zubra/compiler": "^5.1.0",
+    "@zubra/server": "^5.1.0"
+  },
+  "devDependencies": {
+    "@zubra/compiler": "file:../compiler",
+    "@zubra/runtime": "file:../runtime",
+    "@zubra/server": "file:../server",
+    "express": "5.3.0",
+    "fastify": "5.12.8",
+    "hono": "4.13.17",
+    "playwright": "1.63.0"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
+    "directory": "actions"
+  }
+}

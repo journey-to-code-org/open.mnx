@@ -2,6 +2,16 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+Zubra Actions: a component's form can post to a server function, with or without JavaScript.
+
+### Added
+
+- **`export async function save(formData) { 'use server'; … }`** in a component script. The function, and the imports only it uses, never reach the browser: its name becomes the URL of its endpoint (`/_zb/action/<tag>/<name>`), and `<form action={save}>` (or `<button formaction={save}>`) gets that URL as a literal `action` with `method="post"`, in the server HTML and the template alike. Any other `export` is still an error.
+- **`--emit server`** (and `emit: "server"` in requests): the server half of a component, its server functions with the imports they need, and `actions`, a map from URL to function.
+- **`@zubra/actions`**, a new package that serves them. A post with `Accept: application/json` gets the return value as JSON; the browser's own post gets `303 See Other` back to the page, with the result in a one-use cookie that `actions.result(request)` reads. Cross-site posts are refused, a thrown error is a generic 500, and a returned `Response` passes through. `actions.script()` adds a small module that sends those forms with `fetch` instead, sets `aria-busy` while they're in flight, and fires `beforeaction` (cancelable) and `action` on the form. A fetch-style core (`fetch(request)`), Node's `handle(req, res)`, and Hono, Express and Fastify adapters.
+
 ## 5.2.0 — 2026-11-09
 
 Plain custom elements: a component as one file with no runtime to install.
@@ -9,6 +19,7 @@ Plain custom elements: a component as one file with no runtime to install.
 ### Added
 
 - **`--emit element`: a component as a plain custom element, with no runtime to install.** One module, no imports, built from the same definition as `--emit js`. It covers light-DOM components: props, every template part, `zb-if`, `zb-each`, light-DOM slots kept live under React, Vue, Svelte and Lit, `state`/`computed`/`effect`, lifecycle, form association and scoped styles. Shadow DOM, spreads, `zb-await` and runtime extras such as `resource` and `@zubra/runtime/zag` are refused with a reason. Server hydration and hot reload stay with `@zubra/runtime`. About 5.5 KB gzipped for a small element (the slot code is left out when there are no slots), 7 KB with slots. Also in `zubra request` (`"emit": "element"`) and `@zubra/compiler`. CI runs the runtime's browser suites and the registry's tests on both outputs. See `docs/plain-elements.md`.
+
 ## 5.1.2 — 2026-11-09
 
 ### Fixed
