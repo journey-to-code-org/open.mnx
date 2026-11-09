@@ -882,25 +882,19 @@ const isContent = (node) => node.nodeType === 1 || (node.nodeType === TEXT && no
  */
 function assignSlots(nodes) {
   const named = nodes.map((node) => (isContent(node) ? slotName(node) : null));
-  const after = (i) => { for (let j = i + 1; j < nodes.length; j++) if (named[j]) return named[j]; return null; };
-  const before = (i) => { for (let j = i - 1; j >= 0; j--) if (named[j]) return named[j]; return null; };
-  const bracket = new Map();
+  // The slot of the nearest content after (step 1) or before (step -1) node i.
+  const near = (i, step) => { for (let j = i + step; nodes[j]; j += step) if (named[j]) return named[j]; return null; };
+  // An empty text node right before content opens a range; otherwise it closes the last one,
+  // and both take the slot of the first content between them.
   const open = [];
   nodes.forEach((node, i) => {
-    if (node.nodeType !== TEXT || node.data !== '') return;
-    // An empty text node right before content opens a range; otherwise it closes the last one.
-    if (open.length && (named[i + 1] == null || nodes[i + 1]?.nodeType === TEXT)) {
-      const start = open.pop();
-      let inside = null;
-      for (let j = start + 1; j < i && !inside; j++) inside = named[j];
-      if (inside) { bracket.set(start, inside); bracket.set(i, inside); }
-    } else {
-      open.push(i);
-    }
+    if (node.nodeType !== TEXT || node.data) return;
+    if (!open.length || named[i + 1] && nodes[i + 1].data == null) return open.push(i);
+    const start = open.pop();
+    named[start] = named[i] = named.slice(start + 1, i).find(Boolean);
   });
   return nodes.map((node, i) => named[i]
-    ?? bracket.get(i)
-    ?? (node.nodeType === COMMENT ? after(i) ?? before(i) : before(i) ?? after(i))
+    ?? (node.nodeType === COMMENT ? near(i, 1) ?? near(i, -1) : near(i, -1) ?? near(i, 1))
     ?? 'default');
 }
 let nativeText, nativeHTML; // looked up on first use, so the module loads without a DOM
