@@ -7,6 +7,7 @@
 mod ast;
 mod components;
 mod convert;
+mod convert_element;
 mod diagnostic;
 mod emit_element;
 mod emit_interface;
@@ -78,6 +79,21 @@ fn front<T>(
 /// (`zubra convert --as zubra` writes it as the converted file.)
 pub fn lower_jsx(source: &str, path: &str) -> Result<String, Diagnostic> {
     jsx::lower_readable(source, path)
+}
+
+/// `zubra convert my-element.js`: a custom element class (the shape `--emit element` writes,
+/// edited or written that way by hand) back to a `.zb` component.
+pub fn convert_element(source: &str, path: &str) -> Result<convert::Conversion, Diagnostic> {
+    convert_element::convert_element(source, path, &components::filesystem)
+}
+
+/// [`convert_element`] with a loader for the components it imports.
+pub fn convert_element_with(
+    source: &str,
+    path: &str,
+    loader: Loader<'_>,
+) -> Result<convert::Conversion, Diagnostic> {
+    convert_element::convert_element(source, path, loader)
 }
 
 /// `zubra convert --as zubra`: the conversion's JSX component as a readable `.zb` file. The

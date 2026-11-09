@@ -617,6 +617,8 @@ The body of a Zubra component runs once per element, so the hooks become what th
 | `<Child onClose={onClose}>` (a received event prop, passed on) | `onClose={(event) => onClose(event)}`, since an event prop fires the event |
 | `onChange` on a text field, `onDoubleClick` | `onInput`, `onDblClick` (the DOM's events) |
 
+`zubra convert` also goes the other way: given a custom element class in the shape `--emit element` writes (one you compiled and then changed, or one written by hand the same way), `zubra convert my-element.js` writes the `.zb` component it means. Every component `--emit element` accepts comes back to a `.zb` file that compiles to the same element. See [Plain elements](docs/plain-elements.md#back-to-zb-zubra-convert).
+
 Preact's hooks (`preact/hooks`) convert the same way. Comments and formatting are kept, since only what changes is rewritten. What it can't convert, it reports, with advice, and it exits with status 1:
 - custom hooks, a context created in another module, an exported context (a component file exports only its component), `<Context.Provider>`;
 - props taken as one object rather than destructured;
@@ -656,7 +658,7 @@ zubra compile <component.zb> [--emit html|js|element|css|dts|manifest|html-data|
                              [--runtime <module>] [--keep-imports] [--no-imports] [--framework react|vue|svelte|solid|none]
                              [--css-import <specifier> --css-import-inline <specifier>]
                              [--module-path <path>] [--output <file>]
-zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]
+zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]
 zubra request < request.json
 zubra serve
 ```
