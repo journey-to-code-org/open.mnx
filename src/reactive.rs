@@ -85,6 +85,32 @@ pub const UPDATE: &str = "__zubraUpdate";
 /// the output starts with a parenthesis that could join the previous statement).
 pub const HELPERS: &str = "function __zubraAssign(signal, value) { signal.set(value); return value }\nfunction __zubraUpdate(signal, delta, prefix) { const old = signal.get(); signal.set(old + delta); return prefix ? old + delta : old }\n";
 
+/// How compiled code spells props and state. `@zubra/runtime` output reads props through `$p`
+/// and state with `.get()`/`.set()`; `--emit element` output, written to be read, uses a named
+/// element (`element.value`) and `.value` (`count.value++`).
+#[derive(Clone, Copy, Debug)]
+pub struct Lowering<'a> {
+    /// What the script reads props from: `$p`, or the element's name.
+    pub props: &'a str,
+    /// Two-way props, whose writes from the script go through the element's private `#prop`
+    /// accessor (which fires `<prop>change`). Only with `value`.
+    pub models: &'a [String],
+    /// The local names that make state and derived values.
+    pub state: &'a str,
+    pub computed: &'a str,
+    /// `.value` (read and assigned) instead of `.get()` and `.set()`.
+    pub value: bool,
+}
+
+/// What `@zubra/runtime` output uses.
+pub const RUNTIME_LOWERING: Lowering<'static> = Lowering {
+    props: "$p",
+    models: &[],
+    state: STATE,
+    computed: COMPUTED,
+    value: false,
+};
+
 /// What a component-level name is.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
@@ -115,6 +141,10 @@ pub trait Names {
     /// function, so the state can follow it.
     fn is_from(&self, _name: &str) -> bool {
         false
+    }
+    /// How props and state are spelled (see [`Lowering`]).
+    fn lowering(&self) -> &Lowering<'_> {
+        &RUNTIME_LOWERING
     }
 }
 
@@ -234,7 +264,7 @@ pub fn rewrite_statement_with(
                                 }
                             }
                             let span = init.span();
-                            rewriter.insert(span.start, format!("{STATE}("));
+                            rewriter.insert(span.start, format!("{}(", names.lowering().state));
                             rewriter.visit_expression(init);
                             rewriter.insert(span.end, ")".to_owned());
                         }
@@ -244,7 +274,8 @@ pub fn rewrite_statement_with(
                                 .type_annotation
                                 .as_ref()
                                 .map_or(end, |annotation| annotation.span.end);
-                            rewriter.insert(end, format!(" = {STATE}(undefined)"));
+                            rewriter
+                                .insert(end, format!(" = {}(undefined)", names.lowering().state));
                         }
                     }
                 }
@@ -257,7 +288,8 @@ pub fn rewrite_statement_with(
                     let derived = derived(&declarator.id);
                     let span = init.span();
                     if derived {
-                        rewriter.insert(span.start, format!("{COMPUTED}(() => ("));
+                        rewriter
+                            .insert(span.start, format!("{}(() => (", names.lowering().computed));
                     }
                     rewriter.visit_expression(init);
                     if derived {
@@ -326,8 +358,11 @@ impl<'n, N: Names> Rewriter<'n, N> {
     fn read(&mut self, identifier: &IdentifierReference<'_>) -> Option<String> {
         let name = identifier.name.as_str();
         match self.names.kind(identifier)? {
-            Kind::Prop(prop) => self.names.in_script().then(|| format!("$p.{prop}")),
-            Kind::State | Kind::Derived => Some(format!("{name}.get()")),
+            Kind::Prop(prop) => self
+                .names
+                .in_script()
+                .then(|| format!("{}.{prop}", self.names.lowering().props)),
+            Kind::State | Kind::Derived => Some(self.signal_read(name)),
             // A signal reads like a value, in the template and (since 3.0) in the script.
             // `.get()`/`.set()` written out stay, and `signal(count)` is the signal itself.
             Kind::Signal => {
@@ -346,7 +381,7 @@ impl<'n, N: Names> Rewriter<'n, N> {
                             })
                     })
                     && rest.starts_with(')');
-                (!explicit && !passed).then(|| format!("{name}.get()"))
+                (!explicit && !passed).then(|| self.signal_read(name))
             }
             Kind::Callback(_) => {
                 self.fail(
@@ -362,6 +397,15 @@ impl<'n, N: Names> Rewriter<'n, N> {
                 );
                 None
             }
+        }
+    }
+
+    /// Reading a signal's value.
+    fn signal_read(&self, name: &str) -> String {
+        if self.names.lowering().value {
+            format!("{name}.value")
+        } else {
+            format!("{name}.get()")
         }
     }
 
@@ -393,7 +437,14 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
                     format!("`{}` can't be assigned", identifier.name),
                 ),
                 Some(Kind::Prop(prop)) if self.names.in_script() => {
-                    let text = format!("$p.{prop}");
+                    let lowering = self.names.lowering();
+                    // A two-way prop written by the component itself: its private accessor.
+                    let private = if lowering.value && lowering.models.contains(&prop) {
+                        "#"
+                    } else {
+                        ""
+                    };
+                    let text = format!("{}.{private}{prop}", lowering.props);
                     self.replace(identifier.span.start, identifier.span.end, text);
                 }
                 _ => {}
@@ -445,6 +496,13 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
             return walk::walk_assignment_expression(self, assignment);
         };
         let name = name.to_owned();
+        if self.names.lowering().value {
+            // `count = 1`, `count += 1` as they are, on `count.value`.
+            let target = assignment.left.span();
+            self.replace(target.start, target.end, format!("{name}.value"));
+            self.visit_expression(&assignment.right);
+            return;
+        }
         let operator = match assignment.operator {
             AssignmentOperator::Assign => None,
             AssignmentOperator::Addition => Some("+"),
@@ -483,6 +541,11 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
             return walk::walk_update_expression(self, update);
         }
         let name = identifier.name.as_str();
+        if self.names.lowering().value {
+            let text = format!("{name}.value");
+            self.replace(identifier.span.start, identifier.span.end, text);
+            return;
+        }
         let delta = if update.operator == UpdateOperator::Increment {
             "1"
         } else {
@@ -508,6 +571,7 @@ pub struct ScriptCode {
 }
 
 struct ScriptNames<'s> {
+    lowering: Lowering<'s>,
     source: &'s str,
     scoping: &'s oxc_semantic::Scoping,
     kinds: std::collections::HashMap<oxc_syntax::symbol::SymbolId, Kind>,
@@ -517,6 +581,9 @@ struct ScriptNames<'s> {
 }
 
 impl Names for ScriptNames<'_> {
+    fn lowering(&self) -> &Lowering<'_> {
+        &self.lowering
+    }
     fn is_from(&self, name: &str) -> bool {
         self.from.iter().any(|from| from == name)
     }
@@ -562,6 +629,19 @@ pub fn rewrite_script(
     from: &[String],
     start: crate::diagnostic::Span,
 ) -> Result<ScriptCode, Diagnostic> {
+    rewrite_script_with(body, props, makers, imported, from, start, RUNTIME_LOWERING)
+}
+
+/// [`rewrite_script`], spelling props and state as `lowering` says.
+pub fn rewrite_script_with(
+    body: &str,
+    props: &[String],
+    makers: &[String],
+    imported: &[String],
+    from: &[String],
+    start: crate::diagnostic::Span,
+    lowering: Lowering<'_>,
+) -> Result<ScriptCode, Diagnostic> {
     let allocator = oxc_allocator::Allocator::default();
     let parsed = oxc_parser::Parser::new(&allocator, body, oxc_span::SourceType::mjs()).parse();
     let semantic = oxc_semantic::SemanticBuilder::new()
@@ -569,6 +649,7 @@ pub fn rewrite_script(
         .build(&parsed.program)
         .semantic;
     let mut names = ScriptNames {
+        lowering,
         source: body,
         scoping: semantic.scoping(),
         kinds: std::collections::HashMap::new(),
@@ -663,6 +744,7 @@ pub fn rewrite_script(
 }
 
 struct TemplateNames<'s> {
+    lowering: Lowering<'s>,
     source: &'s str,
     scoping: &'s oxc_semantic::Scoping,
     state: &'s [String],
@@ -671,6 +753,9 @@ struct TemplateNames<'s> {
 }
 
 impl Names for TemplateNames<'_> {
+    fn lowering(&self) -> &Lowering<'_> {
+        &self.lowering
+    }
     fn kind(&self, identifier: &IdentifierReference<'_>) -> Option<Kind> {
         let reference = self.scoping.get_reference(identifier.reference_id());
         if reference.symbol_id().is_some() {
@@ -711,6 +796,17 @@ pub fn rewrite_template_expression(
     derived: &[String],
     signals: &[String],
 ) -> Result<Option<String>, String> {
+    rewrite_template_expression_with(source, state, derived, signals, RUNTIME_LOWERING)
+}
+
+/// [`rewrite_template_expression`], spelling state as `lowering` says.
+pub fn rewrite_template_expression_with(
+    source: &str,
+    state: &[String],
+    derived: &[String],
+    signals: &[String],
+    lowering: Lowering<'_>,
+) -> Result<Option<String>, String> {
     let wrapped = format!("({source}\n)");
     let allocator = oxc_allocator::Allocator::default();
     let parsed = oxc_parser::Parser::new(&allocator, &wrapped, oxc_span::SourceType::mjs()).parse();
@@ -719,6 +815,7 @@ pub fn rewrite_template_expression(
         .build(&parsed.program)
         .semantic;
     let names = TemplateNames {
+        lowering,
         source: &wrapped,
         scoping: semantic.scoping(),
         state,

@@ -15,6 +15,8 @@ If you've never written a custom element by hand, start with [the README's hand-
 
 The last row matters. **The compiled module contains no class.** It hands a description to `$define`, and one class definition in the runtime turns that description into a custom element. That's why modules are small, and why the platform's rules are in two places: the module says *what* this component is, and `defineElement` says *how* any component behaves as a custom element.
 
+**To see it all in one place, compile with `--emit element`.** That writes the same component as the class you'd write by hand: `observedAttributes`, `attributeChangedCallback`, a getter and setter per prop, `connectedCallback`, your script as you wrote it, the template's nodes looked up and named, and each binding as the DOM call it makes. Every rule below is in that one file, for your component. ([Plain elements](../plain-elements.md) describes it.)
+
 ## One component, line by line
 
 ```html

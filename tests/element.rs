@@ -49,14 +49,86 @@ fn an_element_has_no_runtime_import_and_defines_itself() {
         "{module}"
     );
     assert!(
-        module.contains("function $define("),
-        "the element runtime is inlined"
-    );
-    assert!(
-        module.contains("const derived = computed;"),
+        module.contains("const derived = createComputed;"),
         "an aliased import is a local name: {module}"
     );
-    assert!(module.contains("x-counter"), "{module}");
+    assert!(
+        module.contains("customElements.define(tag, XCounter)"),
+        "{module}"
+    );
+}
+
+/// The output is the custom element as you'd write it: a class over HTMLElement, its props as
+/// accessors and observed attributes, its nodes found and named, its updates as DOM calls.
+#[test]
+fn the_output_is_a_standard_custom_element() {
+    let module = element(
+        "standard",
+        r#"<script>
+  let count = 0
+  function add() {
+    count += step
+  }
+</script>
+<x-counter step={1} label="Count">
+  <button class="add" aria-label={label} onclick={add}>+</button>
+  <output>{count}</output>
+</x-counter>"#,
+    )
+    .unwrap();
+    for expected in [
+        "export class XCounter extends HTMLElement {",
+        "static observedAttributes = [\"step\", \"label\"];",
+        "attributeChangedCallback(name, previous, raw) {",
+        "this.step = raw === null ? 1 : Number(raw);",
+        "get step() {",
+        "set step(value) {",
+        "connectedCallback() {",
+        // The script, as written: props are the element's, state is `.value`.
+        "count.value += element.step",
+        // Nodes by position, named for what they are (`add` is the script's, so the button is `add2`).
+        "const add2 = content.children[0];",
+        "add2.addEventListener(\"click\", add);",
+        "const output = content.children[1];",
+        "(output.textContent = value)",
+        "(value) => attribute(add2, \"aria-label\", value)",
+        "customElements.define(tag, XCounter)",
+    ] {
+        assert!(module.contains(expected), "`{expected}` in:\n{module}");
+    }
+    for runtime in [
+        "$define",
+        "$p",
+        "$r(",
+        "$t(",
+        "from \"@zubra/runtime\"",
+        "__zubra",
+    ] {
+        assert!(!module.contains(runtime), "no `{runtime}` in:\n{module}");
+    }
+}
+
+/// Names the component uses are never shadowed: the generated ones step aside.
+#[test]
+fn generated_names_never_take_the_components_own() {
+    let module = element(
+        "names",
+        r#"<script>
+  import { host } from '@zubra/runtime'
+  const element = host()
+  function bind() { return 1 }
+  const content = "c"
+</script>
+<x-a label="hi"><p title={content}>{label} {bind()}</p></x-a>"#,
+    )
+    .unwrap();
+    assert!(module.contains("const element2 = this;"), "{module}");
+    assert!(module.contains("function $bind("), "{module}");
+    assert!(module.contains("const content2 = clone("), "{module}");
+    assert!(
+        !module.replace("@zubra/", "").contains('@'),
+        "no helper placeholder is left: {module}"
+    );
 }
 
 #[test]
@@ -108,7 +180,7 @@ fn the_command_line_and_request_api_emit_it() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("function $define("));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("extends HTMLElement"));
 
     use std::io::Write;
     let mut child = Command::new(env!("CARGO_BIN_EXE_zubra"))
@@ -129,25 +201,27 @@ fn the_command_line_and_request_api_emit_it() {
     assert!(response["output"]
         .as_str()
         .unwrap()
-        .contains("function $define("));
+        .contains("extends HTMLElement"));
 }
 
 #[test]
 fn the_slot_machinery_is_left_out_of_a_component_without_slots() {
     let plain = element("noslots", "<x-a><p>hi</p></x-a>").unwrap();
     assert!(
-        !plain.contains("$assignSlots") && !plain.contains("@slots"),
+        !plain.contains("assignSlots") && !plain.contains("#slotRegion") && !plain.contains("@@"),
         "{plain}"
     );
     let slotted = element("slots", "<x-a><p><zb-slot></zb-slot></p></x-a>").unwrap();
-    assert!(slotted.contains("function $assignSlots(") && !slotted.contains("@slots"));
+    assert!(
+        slotted.contains("function assignSlots(")
+            && slotted.contains("#slotRegion(")
+            && !slotted.contains("@@"),
+        "{slotted}"
+    );
     let asks = element(
         "hasslot",
         "<script>\n  import { hasSlot } from '@zubra/runtime'\n  const given = hasSlot('x')\n</script>\n<x-a><p>{given}</p></x-a>",
     )
     .unwrap();
-    assert!(
-        asks.contains("function $assignSlots("),
-        "hasSlot() needs it"
-    );
+    assert!(asks.contains("function assignSlots("), "hasSlot() needs it");
 }
