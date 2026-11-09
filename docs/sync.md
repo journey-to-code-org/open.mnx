@@ -90,6 +90,10 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 
 Changes arrive over a live channel: `GET /_zb/sync/live?since=<cursor>` is a server-sent event stream of `changes` as they're pushed (and `presence`, below). While it's open there's nothing to poll; when it drops, the connection polls (every 2 seconds by default, and when the browser comes back online) and reopens it from the current cursor. `connect({ live: false })` polls only. A server with several processes needs a shared log and a pub/sub between them; the reference server's subscribers are its own process's.
 
+### Without Node: the `zubra-sync` binary
+
+`sync-server/` in the repository builds `zubra-sync`, the same protocol as one binary with SQLite built in: `zubra-sync --db sync.db --port 4000`. It reads and writes the same table as `sqliteLog()`, so a log can move between them. It has no notion of users, so put it behind your app at `/_zb/sync` (a reverse proxy after the app's sign-in), or allow a page's origin with `--origin` on a trusted network. The same protocol and browser tests run against it.
+
 ## Presence: who else is here
 
 Some state should be seen by the other viewers of a document but never stored: where their cursor is, what they've selected, that they're typing.

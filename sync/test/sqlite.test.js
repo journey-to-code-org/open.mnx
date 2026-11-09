@@ -56,3 +56,30 @@ test('the live stream sends a backlog longer than one page before anything live'
   await reader.cancel();
   log.close();
 });
+
+import { binaryPath, startBinary } from './backends.js';
+
+test('the binary reads and extends the same SQLite file as sqliteLog()', { skip: !binaryPath && 'zubra-sync not built' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-sync-'));
+  const path = join(dir, 'shared.db');
+  try {
+    const log = await sqliteLog(path);
+    await log.append([change('title', 'From Node', '000000000000001-00000-a'), change('tags', ['x', { y: 1 }], '000000000000001-00001-a')]);
+    log.close();
+    const binary = await startBinary(['--db', path]);
+    try {
+      const pulled = await (await fetch(`${binary.base}/_zb/sync/pull?since=0`)).json();
+      assert.deepEqual(pulled.changes.map((c) => c.value), ['From Node', ['x', { y: 1 }]]);
+      assert.equal(pulled.cursor, 2);
+      const pushed = await fetch(`${binary.base}/_zb/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ changes: [change('done', true, '000000000000002-00000-b')] }) });
+      assert.equal(pushed.status, 200);
+    } finally {
+      binary.close();
+    }
+    const reopened = await sqliteLog(path);
+    assert.deepEqual((await reopened.after(0)).changes.map((c) => c.value), ['From Node', ['x', { y: 1 }], true]);
+    reopened.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
