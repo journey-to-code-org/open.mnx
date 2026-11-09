@@ -213,9 +213,15 @@ fn rejects_duplicate_props_attributes_and_invalid_host_names() {
     assert!(no_hyphen
         .message
         .contains("not a valid custom-element name"));
-    assert_eq!(
-        no_hyphen.help.as_deref(),
-        Some("custom element names need a hyphen, e.g. `header-element`")
+    let help = no_hyphen.help.as_deref().unwrap_or_default();
+    assert!(
+        help.starts_with("custom element names need a hyphen, e.g. `header-element`"),
+        "{help}"
+    );
+    // The rule is the platform's, and the error says so.
+    assert!(
+        help.contains("https://html.spec.whatwg.org/#valid-custom-element-name"),
+        "{help}"
     );
     let reserved = error(
         "<script></script>\n\n<xml-widget><p>Text</p></xml-widget>",

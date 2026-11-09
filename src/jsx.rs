@@ -484,7 +484,7 @@ fn lower_uncached(
             id.span.start,
             format!("`{name}` would be <{tag}>, but a custom element's name needs a hyphen"),
         )
-        .with_help(format!("name it with two words, e.g. `Zb{name}`")));
+        .with_help(format!("name it with two words, e.g. `Zb{name}`: the HTML spec reserves hyphen-less names for built-in elements (https://html.spec.whatwg.org/#valid-custom-element-name)")));
     }
     if function.r#async || function.generator {
         return Err(error_at(

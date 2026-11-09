@@ -82,7 +82,15 @@ fn errors_point_into_the_typescript_source() {
     // A compiler check after stripping (an event name), still at the right place.
     let source = "<script lang=\"ts\">\n  import { emit } from '@zubra/runtime'\n  const n: number = 1\n  emit<number>('valueChange', n)\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
-    assert_eq!(error.help.as_deref(), Some("use `valuechange`"));
+    assert!(
+        error
+            .help
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("use `valuechange`"),
+        "{:?}",
+        error.help
+    );
     assert_eq!((error.span.line, error.span.column), (4, 3));
 
     let source = "<script lang=\"ts\">\n  const a: = 1\n</script>\n<zb-x><p>x</p></zb-x>";

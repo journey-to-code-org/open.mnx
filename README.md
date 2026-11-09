@@ -10,7 +10,19 @@ The runtime is built on what the web platform is standardizing: the TC39 Signals
 
 **Start here:** `npm create zubra@latest` writes a working app for your framework (or none), with a dev server that updates components in place. The [playground](https://journey-to-code-org.github.io/zubra/playground/) runs Zubra in your browser, the [demo gallery](https://journey-to-code-org.github.io/zubra/) has a live app for every framework, and [the guide](docs/guide/README.md) is a tutorial, with pages for React, Vue and Svelte developers. The same pages, with this README as the reference, are [the documentation site](https://journey-to-code-org.github.io/zubra/docs/).
 
-**Status: 5.x.** The `.zb` and JSX formats, the CLI and the runtime's public API are stable: no breaking changes before 6.0. See `CHANGELOG.md`.
+**Status: 5.x.** The major version counts breaking changes to the `.zb` format, the CLI and the runtime's public API, not years in use: 4.0 was the rename from the project's working name, 5.0 moved the hydration markers to processing instructions. Within 5.x all three are stable, with no breaking changes before 6.0. See `CHANGELOG.md`, and [Compared with Lit and Stencil](docs/compared-with-lit-and-stencil.md) for where Zubra stands against the two toolchains most teams already use.
+
+**What Zubra is, and what it isn't.** Zubra is the compiler and its runtime: `.zb` in, elements, server HTML, typings and framework wrappers out. Everything else in this repository is optional and separate, and nothing in the compiler needs it:
+
+| Package | What it adds | Needed when |
+|---|---|---|
+| `@zubra/unplugin` | `.zb` imports in Vite, Rollup, webpack, esbuild, Rspack; React and Vue wrappers; Astro | Your app has a bundler |
+| `@zubra/server` | Components in Express, Fastify, Hono or any template engine; the SSR bridge for meta-frameworks | A JavaScript server renders pages |
+| `@zubra/actions` | `'use server'` functions over plain form POST | A component owns a form endpoint |
+| `@zubra/sync` | `'use collection'`: state kept in IndexedDB, synced across tabs and devices | A component's state must survive reloads or work offline |
+| `create-zubra`, the VS Code extension, the registry | A starter, editor support, 25 components to copy | Convenience |
+
+Each sibling exists because a component feature wanted it (`docs/actions.md`, `docs/sync.md` say which), and each is a separate install that the compiler reports by name when a component uses a directive it serves. A compiler alone, with `zubra compile --emit element`, is one file and no dependency.
 
 ```html
 <!-- copy-button.zb -->
@@ -113,7 +125,7 @@ The reactivity is the point, not a feature. `let` is state, and the template is 
 
 Nothing re-renders: `count++` updates one text node. The script runs once per element, the way Solid and Svelte 5 work, on the TC39 Signals API.
 
-**Who it's for.** One component with more than one consumer: a component library or design system used from more than one framework, components handed to other people's stacks, anything that has to live in a CMS, an older app or a static site, and servers that aren't JavaScript. If one app on one framework is the only consumer, you don't need it; [Who Zubra is for](docs/who-this-is-for.md) says why, and [What crosses the boundary](docs/what-crosses-the-boundary.md) says which components fit through an element and which belong in the framework. Astro lets frameworks coexist on a page; Zubra lets one component be used by all of them.
+**Who it's for.** One component with more than one consumer: a component library or design system used from more than one framework, components handed to other people's stacks, anything that has to live in a CMS, an older app or a static site, and servers that aren't JavaScript. If one app on one framework is the only consumer, you don't need it; [Who Zubra is for](docs/who-this-is-for.md) says why, and [What crosses the boundary](docs/what-crosses-the-boundary.md) says which components fit through an element and which belong in the framework. Astro lets frameworks coexist on a page; Zubra lets one component be used by all of them. If you're weighing it against Lit or Stencil, [Compared with Lit and Stencil](docs/compared-with-lit-and-stencil.md) says where each is the better choice.
 
 ## Writing a component
 
@@ -121,7 +133,7 @@ Nothing re-renders: `count++` updates one text node. The script runs once per el
 - **The host is the root**: the template can have any number of top-level nodes.
 - **Defaults computed in the browser.** A prop whose default uses a value the server can't compute (`since={start}` with `const start = Date.now()`, or anything reading `window`, `document`, `Intl`, `Math.random()` or a `function` declared in the script) gets it per element, after the script runs, unless the prop was given by an attribute or property. The HTML output needs that prop from `--props` (or from the parent), and says so.
 - **`<script>` is real JavaScript** (parsed with oxc), run once per element. Top-level `const`/`let` initializers that the server can evaluate (see What the server can render: props, other such bindings, arrow functions defined in the script, the deterministic built-ins) are also evaluated at build time for the HTML output. A top-level `let` is state, and props are names (see Script, state and hooks). Using a runtime-only value in static HTML is a compile error that says so (or, with `--partial`, left for the element).
-- **`<script lang="ts">`** is TypeScript, reduced to JavaScript by removing its types in place, so every line and column stays where it was and errors point into your source. Only erasable syntax is accepted, as with Node's type stripping or TypeScript's `erasableSyntaxOnly`. `enum`, `namespace`, parameter properties, `<T>x` assertions and `import x = require()` are errors that say what to write instead. The types aren't lost: a prop whose default is an annotated binding (`const options: Option[] = …`, then `options={options}`) has that type, `emit<Picked>("pick", …)` types the event's `detail`, and the script's `type`/`interface` declarations are exported from the generated typings.
+- **`<script lang="ts">`** is TypeScript, reduced to JavaScript by removing its types in place, so every line and column stays where it was and errors point into your source. Only erasable syntax is accepted, as with Node's type stripping or TypeScript's `erasableSyntaxOnly`. `enum`, `namespace`, parameter properties, `<T>x` assertions and `import x = require()` are errors that say what to write instead ([TypeScript in `.zb` files](docs/typescript.md) has the whole rule and what it costs). The types aren't lost: a prop whose default is an annotated binding (`const options: Option[] = …`, then `options={options}`) has that type, `emit<Picked>("pick", …)` types the event's `detail`, and the script's `type`/`interface` declarations are exported from the generated typings.
 - **`{expr}`** works in text, in quoted attributes (`class="card {kind}"`, always a string) and as a whole attribute value (`data={value}`, any type). Any JavaScript expression works, and the HTML output evaluates the ones whose answer is the same everywhere: literals, arrays and objects, member and index access (with `?.`), arithmetic, comparisons (`==`/`!=` are strict), `&&` `||` `??` and `? :` with JavaScript's truthiness, template literals, arrow functions defined in the script and arrow callbacks (`{items.filter((item) => item.done).length}`), and the deterministic built-ins in What the server can render. Signals read in the template (`{count}`) are reactive.
 - **The rest runs in the browser only**: a `function` declared in the script (`{format(price)}`; write `const format = (…) => …` to render it on the server), `new`, `Date`, `Intl`, `Math.random()`, `toLocaleString()`, `window`, `document`, and anything else outside that subset. Names mean what they mean in the script: a signal `const` reads as its value (`{count * 2}`), and props and list items read as they do anywhere else. A template can assign to props only (`onclick={() => { open = !open }}`), and `emit()` in a template declares its event like one in the script. Without `--partial`, the HTML output reports a browser-only part it would have to render as an error, and `zubra check --server` lists them all. Handlers are never rendered, so inline handlers like `onclick={() => remove(item.id)}` don't count.
 - **Names resolve** to loop variables, then props, then script bindings. Every reference is checked in every branch, including branches a build won't render, and unknown names get a "did you mean" suggestion. Errors point at the source line with a caret.
@@ -427,11 +439,13 @@ The HTML output is the server rendering: static, deterministic, escaped markup. 
 
 ### Hydration markers
 
-The markers are processing instructions: `<?zb [?>` and `<?zb ]?>` around a region, `<?zb [??>` for a region left to the browser, `<?zb [!?>` for supplied slot content, and `<?zb ?>` before dynamic text. HTML minifiers, `Document.parseHTMLUnsafe()` (which htmx uses) and the HTML parser keep them:
+The markers are processing instructions: `<?zb [?>` and `<?zb ]?>` around a region, `<?zb [??>` for a region left to the browser, `<?zb [!?>` for supplied slot content, and `<?zb ?>` before dynamic text. `Document.parseHTMLUnsafe()` (which htmx uses) and the HTML parser keep them:
 - Chrome and Edge 150+ parse each as a `ProcessingInstruction` node;
 - other browsers parse it as a comment (`<!--?zb [?-->`), which the runtime reads the same way.
 
-A tool that removes them anyway (a sanitizer that drops processing instructions) costs nothing either. An element whose markup lost every marker puts them back by structure and hydrates in place anyway. It walks its template against the markup:
+HTML minifiers mostly keep them: html-minifier-terser and @minify-html/node as shipped, @swc/html and htmlnano with one option each. Sanitizers (DOMPurify, sanitize-html) remove them. `server/test/markers.test.js` measures each, and [Server rendering, honestly](docs/server-rendering.md#hydration-markers-through-minifiers-and-sanitizers) has the table with the options.
+
+A tool that removes them costs one extra script. An element whose markup lost every marker puts them back by structure and hydrates in place anyway. It walks its template against the markup:
 - a text anchor's text runs up to the next element;
 - an `zb-if` holds the branch the current values choose, and an `zb-each` one row per item, checked element by element;
 - a light-DOM slot that ends its range holds the rest (its fallback, if it has the fallback's shape).

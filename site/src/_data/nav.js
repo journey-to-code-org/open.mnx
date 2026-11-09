@@ -22,6 +22,8 @@ export default [
     { file: 'docs/who-this-is-for.md', label: 'Who Zubra is for' },
     { file: 'docs/what-crosses-the-boundary.md', label: 'What crosses the boundary' },
     { file: 'docs/server-rendering.md', label: 'Server rendering, honestly' },
+    { file: 'docs/compared-with-lit-and-stencil.md', label: 'Compared with Lit and Stencil' },
+    { file: 'docs/typescript.md', label: 'TypeScript in .zb files' },
     { file: 'docs/guide/other-peoples-pages.md', label: 'On other people’s pages' },
     { file: 'docs/guide/accessible-widgets.md', label: 'Accessible widgets' },
     { file: 'docs/guide/styling-libraries.md', label: 'Styling libraries' },

@@ -63,7 +63,8 @@ pub fn events(
             return Err(Diagnostic::new(
                 component.tag_span,
                 format!("`@fires {name}`: event names are lowercase letters and digits"),
-            ));
+            )
+            .with_help("lowercase names are what HTML `on…` attributes and every framework's template syntax can listen for"));
         }
         let Some(event) = events.iter_mut().find(|event| event.name == name) else {
             let error = Diagnostic::new(

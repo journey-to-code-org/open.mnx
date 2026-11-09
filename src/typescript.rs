@@ -67,10 +67,12 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
     };
     stripper.visit_program(&parsed.program);
     if let Some((offset, message, help)) = stripper.error {
+        // Types are removed, never compiled (the "erasable syntax only" rule); each refusal says
+        // what to write and where the rule is explained.
         let error = Diagnostic::new(at(offset), message);
         return Err(match help {
-            Some(help) => error.with_help(help),
-            None => error,
+            Some(help) => error.with_help(format!("{help}; see docs/typescript.md")),
+            None => error.with_help("see docs/typescript.md"),
         });
     }
     let mut bytes = source.as_bytes().to_vec();
@@ -97,7 +99,7 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
             at(offset),
             format!("this TypeScript can't be reduced to JavaScript by removing its types: {}", error.message),
         )
-        .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`)"));
+        .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`); docs/typescript.md has the rule"));
     }
     Ok((stripped, stripper.types))
 }
@@ -610,7 +612,8 @@ mod tests {
                 "{source}: {}",
                 error.message
             );
-            assert!(error.help.is_some(), "{source}");
+            let help = error.help.as_deref().unwrap_or_default();
+            assert!(help.ends_with("see docs/typescript.md"), "{source}: {help}");
             assert_eq!(error.span.line, line, "{source}");
         }
         let error = strip("const = 1", Span::new(1, 1)).unwrap_err();

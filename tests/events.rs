@@ -84,16 +84,26 @@ fn a_component_without_events_declares_no_event_map() {
 fn event_names_follow_the_platform_convention() {
     let error = js(&with_script("  emit('valueChange', 1)")).unwrap_err();
     assert!(error.message.contains("lowercase"), "{}", error.message);
-    assert_eq!(error.help.as_deref(), Some("use `valuechange`"));
-    assert_eq!(error.span.line, 3);
-    assert_eq!(
-        js(&with_script("  emit('item-select')"))
-            .unwrap_err()
-            .help
-            .as_deref(),
-        Some("use `itemselect`")
+    // The help names the fix, and says whose rule it is: what every framework's template
+    // syntax (and HTML's `on…` attributes) can listen for.
+    let help = error.help.as_deref().unwrap_or_default();
+    assert!(help.starts_with("use `valuechange`: "), "{help}");
+    assert!(
+        help.contains("`onvaluechange`") && help.contains("Vue") && help.contains("Angular"),
+        "{help}"
     );
-    assert!(js(&with_script("  emit('1x')")).unwrap_err().help.is_none());
+    assert_eq!(error.span.line, 3);
+    let help = js(&with_script("  emit('item-select')"))
+        .unwrap_err()
+        .help
+        .unwrap_or_default();
+    assert!(help.starts_with("use `itemselect`: "), "{help}");
+    // No fix to offer, but still the reason.
+    let help = js(&with_script("  emit('1x')"))
+        .unwrap_err()
+        .help
+        .unwrap_or_default();
+    assert!(help.contains("template syntax"), "{help}");
 }
 
 #[test]
@@ -164,6 +174,20 @@ fn fires_tags_must_match_the_events_the_code_fires() {
         error.message
     );
     assert_eq!(error.span.line, 7, "at the emit call");
+
+    // An `@fires` name follows the same rule as an emitted one, with the same reason.
+    let cased = DOCUMENTED.replace("@fires valuechange", "@fires valueChange");
+    let error = js(&cased).unwrap_err();
+    assert!(error.message.contains("lowercase"), "{}", error.message);
+    assert!(
+        error
+            .help
+            .as_deref()
+            .unwrap_or_default()
+            .contains("template syntax"),
+        "{:?}",
+        error.help
+    );
 
     // Without any @fires, nothing needs documenting.
     let plain = "<!-- Described, but no @fires. -->\n<script>\n  import { emit } from '@zubra/runtime'\n  emit('open')\n</script>\n<zb-x><p>x</p></zb-x>";
