@@ -30,6 +30,11 @@ async function submit(event) {
   let detail;
   try {
     const response = await fetch(action, { method: 'POST', body: formData, headers: { accept: 'application/json' } });
+    const next = response.headers.get('zb-location');
+    if (next) {
+      go(next);
+      return;
+    }
     if (response.redirected) {
       location.assign(response.url);
       return;
@@ -43,6 +48,18 @@ async function submit(event) {
     form.removeAttribute('aria-busy');
   }
   form.dispatchEvent(new CustomEvent('action', { bubbles: true, detail }));
+}
+
+/**
+ * Navigate after a redirect. Back to this same page with only a different #fragment (the usual
+ * "post, then show the page again") is a hash change to the browser, which doesn't reload: reload,
+ * so the page shows what the post changed.
+ */
+function go(next) {
+  const url = new URL(next, location.href);
+  const same = url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;
+  location.assign(url);
+  if (same) location.reload();
 }
 
 /** Enhance the forms under `root` (the document already is; pass a shadow root for its forms). */

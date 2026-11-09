@@ -6,6 +6,7 @@ import ejs from 'ejs';
 import express from 'express';
 import { sessions } from './auth.js';
 import { zubra } from '@zubra/server/express';
+import { actions } from '@zubra/actions/express';
 import { SLA_HOURS } from './store/seed.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,11 +29,15 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
   const auth = sessions();
 
   app.disable('x-powered-by');
-  app.use(express.urlencoded({ extended: false }));
   app.use(express.static(join(here, '../public')));
   // Components rendered into the views, and their modules and @zubra/runtime served under /_zubra.
   app.use(zubra({ components: join(here, '../components'), cache }));
   app.use(auth.middleware(store));
+  // The components' 'use server' functions (the reply box's), with the signed-in user and the
+  // store. Before the body parser: an action reads its own body.
+  const served = actions({ components: join(here, '../components'), context: ({ req }) => ({ user: req.user, store, now }) });
+  app.use((req, res, next) => served.then((middleware) => middleware(req, res, next), next));
+  app.use(express.urlencoded({ extended: false }));
 
   /**
    * Render `view` inside the layout; `finish()` then adds the CSS of the components the page
@@ -40,7 +45,7 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
    */
   async function page(res, view, locals = {}, status = 200) {
     const components = res.locals.zubra;
-    const data = { ...res.locals, ...locals, zubra: components.render, user: res.locals.user };
+    const data = { ...res.locals, ...locals, zubra: components.render, user: res.locals.user, actionsScript: (await served).actions.script() };
     const body = await ejs.renderFile(join(VIEWS, `${view}.ejs`), data, { async: false });
     const html = await ejs.renderFile(join(VIEWS, 'layout.ejs'), { ...data, body });
     res.status(status).type('html');
@@ -192,21 +197,6 @@ export function createApp({ store, cache = true, now = () => Date.now() }) {
       assigneeId: ticket.assignee ?? '',
       updated: req.query.updated === '1',
     });
-  });
-
-  app.post('/tickets/:id/replies', requireUser, async (req, res, next) => {
-    const id = Number(req.params.id);
-    const ticket = await store.getTicket(id);
-    if (!ticket || !visible(req, ticket)) return next();
-    const body = String(req.body.body ?? '').trim();
-    if (!body) return res.redirect(303, `/tickets/${id}`);
-    const agent = req.user.role === 'agent';
-    const internal = agent && req.body.internal === 'on';
-    const at = now();
-    // A public reply from the support side waits on the customer; one from the customer reopens.
-    const status = internal ? ticket.status : agent ? 'pending' : 'open';
-    await store.addMessage(id, { id: `m${at.toString(36)}${Math.random().toString(36).slice(2, 6)}`, author: req.user.id, body: body.slice(0, 4000), at, internal }, { status });
-    res.redirect(303, `/tickets/${id}#latest`);
   });
 
   app.post('/tickets/:id', requireUser, requireAgent, async (req, res, next) => {

@@ -8,7 +8,7 @@ import { createActions } from './index.js';
 export async function actions(options) {
   const instance = await createActions(options);
   const middleware = async (c, next) => {
-    const response = await instance.fetch(c.req.raw);
+    const response = await instance.fetch(c.req.raw, { c });
     if (response) return response;
     c.set('zubraAction', instance.result(c.req.raw, (name, value) => c.header(name, value, { append: true })));
     await next();

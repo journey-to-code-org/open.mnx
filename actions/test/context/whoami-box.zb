@@ -1,0 +1,7 @@
+<script>
+  export async function whoami(formData, { user, request }) {
+    'use server';
+    return { user, note: formData.get('note'), method: request.method };
+  }
+</script>
+<whoami-box><form action={whoami}><input name="note"><button>Who</button></form></whoami-box>

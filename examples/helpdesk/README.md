@@ -14,6 +14,7 @@ It's an ordinary Node server app: Express routes, EJS templates, MongoDB. The in
 | **Hydrated, not re-rendered** | The browser loads each component's module and binds it to the markup that's already there. The test checks that a table row is the same DOM node before and after. |
 | **Works without JavaScript** | The components render native form elements in light DOM (radio buttons, selects, a textarea), so filing a ticket, replying, filtering and updating all work as plain HTML forms. The test runs the whole flow with JavaScript turned off. |
 | **Then better with it** | J/K/Enter moves through the queue. Filters apply as you choose them. The reply box counts characters, waits for text and sends on Ctrl+Enter. Priorities highlight as you pick them. SLA timers keep counting. |
+| **A server function, not a route** | The reply box owns its form, and the form posts to `reply`, an `export async function reply(formData, context) { 'use server'; … }` in `reply-composer.zb`. `@zubra/actions` serves it with the signed-in user and the store (`context`), and the browser module gets only its URL. The function checks the ticket id from the form like any input, then redirects back to the thread: a plain post and 303 without JavaScript, a `fetch` and one navigation with it. |
 | **No bundler** | `/_zubra/components/<name>.js` is each component compiled on request, and an import map points `@zubra/runtime` at the runtime's own modules (both served by `@zubra/server`). A page loads only the components it rendered. |
 | **Components you own** | The dashboard's donut chart and spark line came from the registry: `npx zubra add donut-chart spark-line --dir components`. |
 
@@ -44,6 +45,7 @@ server.js              starts the app with a store
 src/app.js             routes; renders a view, then the layout, and finish() adds the CSS and modules
                        it used (@zubra/server/express: res.locals.zubra)
 src/auth.js            sign-in as a signed cookie
+src/replies.js         adding a reply (called by the reply box's 'use server' function)
 src/store/             memory.js and mongo.js, one interface (seed.js has the demo data)
 views/*.ejs            the pages
 components/*.zb       status-badge, priority-picker, sla-timer, ticket-table, filter-bar,

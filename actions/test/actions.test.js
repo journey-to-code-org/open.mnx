@@ -74,7 +74,13 @@ test('a thrown error is a generic 500, never the message', async () => {
 test('a returned Response passes through', async () => {
   const response = await post('http://localhost/_zb/action/login-form/away', {});
   assert.equal(response.status, 303);
-  assert.equal(response.headers.get('location'), 'http://localhost/elsewhere');
+  assert.equal(response.headers.get('location'), 'http://localhost/elsewhere#done');
+});
+
+test('a returned redirect tells the enhanced path where to go, #fragment and all', async () => {
+  const response = await post('http://localhost/_zb/action/login-form/away', {}, { accept: 'application/json' });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('zb-location'), 'http://localhost/elsewhere#done');
 });
 
 test('the client script is served, and the page gets a tag for it', async () => {

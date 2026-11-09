@@ -10,10 +10,10 @@
     </p>
     <% if (updated) { %><p class="notice" role="status">Ticket updated.</p><% } %>
     <%- zubra('ticket-thread', { messages }) %>
-    <form method="post" action="/tickets/<%= ticket.id %>/replies" class="reply" id="latest">
+    <section class="reply" id="latest">
       <h2>Reply</h2>
-      <%- zubra('reply-composer', { agent, label: agent ? 'Reply to the customer' : 'Your reply' }) %>
-    </form>
+      <%- zubra('reply-composer', { ticket: ticket.id, agent, label: agent ? 'Reply to the customer' : 'Your reply' }) %>
+    </section>
   </div>
   <% if (agent) { %>
   <aside class="side">
