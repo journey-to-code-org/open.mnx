@@ -24,6 +24,8 @@ Each step builds on the last, in about ten minutes each.
 6. [Async data](06-async-data.md): loading, errors and refetching, without effects.
 7. [Server rendering](07-server-rendering.md): HTML first, hydrated in place.
 8. [Read the output](08-read-the-output.md): what Zubra compiles to, and the platform rule behind each part.
+9. [Forms that post to the server](09-server-actions.md): `'use server'` functions, with or without JavaScript (`@zubra/actions`).
+10. [State that lives on the device](10-local-state.md): `'use collection'`, stored in the browser and shared when you want (`@zubra/sync`).
 
 ## Coming from a framework
 
