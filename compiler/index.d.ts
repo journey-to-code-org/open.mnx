@@ -24,6 +24,8 @@ export interface Options {
   emit?: 'html' | 'js' | 'element' | 'css' | 'dts' | 'manifest' | 'html-data' | 'interface';
   runtime?: string;
   keepImports?: boolean;
+  /** For development builds (`emit: 'js'`): what the browser DevTools panel reads. */
+  devtools?: boolean;
   noImports?: boolean;
   cssImport?: string;
   cssImportInline?: string;

@@ -1,0 +1,3 @@
+<dt-badge value={0}>
+  <span>{value}</span>
+</dt-badge>

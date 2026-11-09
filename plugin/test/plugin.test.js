@@ -236,6 +236,18 @@ test('dev server: components compile on demand; editing one updates it in place,
     const before = (await inbox()).match(/hydrate: \[[\d, ]+\]/)?.[0];
     assert.ok(before, 'the parent has a hydrate path into the child');
 
+    // A development build is what the DevTools panel reads: located parts, the file, the names.
+    const module = await inbox();
+    assert.match(module, /at: \[\d+, \d+\]/);
+    assert.ok(module.includes(`source: { file: ${JSON.stringify(join(root, 'components/inbox.zb'))}`), 'the absolute path, for Open in editor');
+    const inspected = await page.evaluate(async () => {
+      globalThis.__ZUBRA_DEVTOOLS__.connect();
+      while (!globalThis.__ZUBRA_DEVTOOLS__.ready) await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = globalThis.__ZUBRA_DEVTOOLS__.inspect(document.querySelector('zb-card:not(#from-html) footer'));
+      return { tag: result.component.tag, file: result.component.file, located: result.bindings.some((binding) => binding.here && binding.at) };
+    });
+    assert.deepEqual(inspected, { tag: 'zb-card', file: join(root, 'components/card.zb'), located: true });
+
     // Edit the card: the live elements get the new template, without a page reload.
     await page.evaluate(() => { window.stale = true; });
     const card = join(root, 'components/card.zb');
@@ -303,6 +315,11 @@ test('build --watch: editing a child component rebuilds the components that use 
     await built();
     const before = hydratePath();
     assert.ok(before);
+    // A build isn't compiled for the DevTools: no locations, no file, no names. (The runtime's
+    // production build, which a build resolves, has no hook: runtime/test/browser/devtools.test.js.)
+    const { readdirSync } = require('node:fs');
+    const shipped = readdirSync(join(outDir, 'assets')).filter((name) => name.endsWith('.js')).map((name) => readFileSync(join(outDir, 'assets', name), 'utf8')).join('\n');
+    assert.doesNotMatch(shipped, /\bat: \[\d+, \d+\]|source: \{ file:|\$dev\?\.\(/);
     const badge = join(root, 'components/badge.zb');
     const next = built();
     writeFileSync(badge, readFileSync(badge, 'utf8').replace('<span class="badge"', '<div class="wrap"></div><span class="badge"'));
@@ -362,6 +379,28 @@ test('without a CLI, the WebAssembly compiler (@zubra/compiler) builds the app',
     assert.deepEqual(messages, []);
     await page.close();
   } finally {
+    if (saved !== undefined) process.env.ZUBRA_COMPILER = saved;
+  }
+});
+
+test('the WebAssembly compiler in the dev server: compiled for the DevTools too', async (t) => {
+  const { available } = await import('@zubra/compiler').catch(() => ({ available: () => false }));
+  if (!available()) {
+    if (process.env.ZUBRA_REQUIRE_WASM) throw new Error('ZUBRA_REQUIRE_WASM is set but @zubra/compiler has no zubra.wasm');
+    return t.skip('@zubra/compiler has no zubra.wasm (npm run build in compiler/)');
+  }
+  const { createServer: createViteServer } = await import('vite');
+  const saved = process.env.ZUBRA_COMPILER;
+  delete process.env.ZUBRA_COMPILER;
+  const root = app('plain');
+  const server = await createViteServer({ root, configFile: false, logLevel: 'silent', plugins: [zubra()], server: { port: 0, host: '127.0.0.1' } });
+  await server.listen();
+  try {
+    const module = await (await fetch(`${server.resolvedUrls.local[0]}components/rating.zb?zubra=element&import`)).text();
+    assert.match(module, /at: \[\d+, \d+\]/);
+    assert.ok(module.includes(`source: { file: ${JSON.stringify(join(root, 'components/rating.zb'))}`));
+  } finally {
+    await server.close();
     if (saved !== undefined) process.env.ZUBRA_COMPILER = saved;
   }
 });

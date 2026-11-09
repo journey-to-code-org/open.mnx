@@ -148,6 +148,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       const flag = args[i];
       if (flag === '--keep-imports') request.keepImports = true;
       else if (flag === '--no-imports') request.noImports = true;
+      else if (flag === '--devtools') request.devtools = true;
       else {
         const key = { '--emit': 'emit', '--framework': 'framework', '--runtime': 'runtime', '--css-import': 'cssImport', '--css-import-inline': 'cssImportInline' }[flag];
         if (!key) throw new Error(`zubra: unexpected compiler flag ${flag}`);
@@ -293,7 +294,10 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       }
       let output;
       try {
-        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles);
+        // In Vite's dev server, what the browser DevTools panel reads: each part's place in the
+        // `.zb` file and the script's signals by name (the runtime's development build reads them).
+        const devtools = dev && meta.framework === 'vite' && !server ? ['--devtools'] : [];
+        output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles, ...devtools);
       } catch (error) {
         return fail(this, error, path);
       }
