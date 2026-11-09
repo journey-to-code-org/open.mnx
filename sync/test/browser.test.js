@@ -17,6 +17,7 @@ import { startBinary } from './backends.js';
 // that the binary and @zubra/sync/server behave alike for real clients.
 const viaBinary = process.env.ZUBRA_SYNC_BACKEND === 'binary';
 let binary = null;
+let presencePosts = 0;
 
 findCompiler();
 const compiler = await import('@zubra/compiler');
@@ -42,6 +43,7 @@ before(async () => {
   if (viaBinary) binary = await startBinary(['--keep-alive', '200']);
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (req.url.startsWith('/_zb/sync/presence')) presencePosts += 1;
     if (viaBinary && req.url.startsWith('/_zb/sync/')) {
       const target = new URL(binary.base);
       const upstream = forward({ host: target.hostname, port: target.port, path: req.url, method: req.method, headers: req.headers }, (answer) => {
@@ -67,14 +69,17 @@ before(async () => {
     const doc = (url.searchParams.get('doc') ?? 'a').replace(/\W/g, '');
     // Live only: polling every minute, so anything sooner came over the event stream.
     if (url.pathname === '/live') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000 }));
-    if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, url.searchParams.has('connect') ? { interval: 60_000 } : false, 'board-view'));
+    const connectTo = url.searchParams.has('rtc') ? { interval: 60_000, webrtc: true } : url.searchParams.has('connect') ? { interval: 60_000 } : false;
+    if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, connectTo, 'board-view'));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
     res.end(page('<task-item doc="a"></task-item>'));
   });
   await new Promise((done) => server.listen(0, done));
   base = `http://localhost:${server.address().port}`;
-  browser = await chromium.launch();
+  // Real local addresses in ICE candidates (Chromium hides them behind mDNS names by default,
+  // which a test machine may not resolve).
+  browser = await chromium.launch({ args: ['--disable-features=WebRtcHideLocalIpsWithMdns'] });
 });
 after(async () => {
   await browser?.close();
@@ -230,7 +235,7 @@ test('live: a change arrives over the event stream, without waiting for a poll',
 
 const board = async (context, doc, connect = false) => {
   const tab = await context.newPage();
-  await tab.goto(`${base}/board?doc=${doc}${connect ? '&connect' : ''}`);
+  await tab.goto(`${base}/board?doc=${doc}${connect === 'rtc' ? '&rtc' : connect ? '&connect' : ''}`);
   await tab.waitForFunction(() => customElements.get('board-view'));
   return tab;
 };
@@ -276,6 +281,32 @@ test('presence: other devices too, through the server, and a closed tab leaves',
   await one.waitForTimeout(300);
   await point(one, 55, 66);
   await two.waitForSelector('.other:has-text("55,66")', { timeout: 5000 });
+  await one.close();
+  await two.waitForSelector('.count:has-text("0")', { timeout: 5000 });
+  await a.close();
+  await b.close();
+});
+
+test('webrtc: once two devices have a data channel, presence stops going through the server', async () => {
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  const one = await board(a, 'b5', 'rtc');
+  const two = await board(b, 'b5', 'rtc');
+  await one.waitForTimeout(300);
+  await point(one, 10, 10); // the introduction goes through the server, and starts the channel
+  await two.waitForSelector('.other:has-text("10,10")', { timeout: 5000 });
+  await point(two, 5, 5);
+  await one.waitForSelector('.other:has-text("5,5")', { timeout: 5000 });
+  // The channel opens (both ends).
+  for (const tab of [one, two]) await tab.waitForFunction(() => window.link.direct().length === 1, null, { timeout: 10_000 });
+  presencePosts = 0;
+  for (let step = 1; step <= 20; step += 1) {
+    await point(one, 20 + step * 2, 30 + step * 2);
+    await one.waitForTimeout(20);
+  }
+  await two.waitForSelector('.other:has-text("60,70")', { timeout: 5000 });
+  assert.ok(presencePosts <= 1, `${presencePosts} presence posts went through the server`);
+  // A goodbye still goes through the server.
   await one.close();
   await two.waitForSelector('.count:has-text("0")', { timeout: 5000 });
   await a.close();

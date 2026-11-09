@@ -313,6 +313,34 @@ fn handle(state: &State, mut request: Request) {
             broadcast(state, "presence", &clean, Some(&peer));
             respond_json(request, extra, 200, json!({ "ok": true }));
         }
+        (Method::Post, "/signal") => {
+            // WebRTC signaling for one peer, passed on to that peer's live stream.
+            if !origin_allowed(state, &request) {
+                return respond_json(
+                    request,
+                    extra,
+                    403,
+                    json!({ "error": "Cross-site writes are refused" }),
+                );
+            }
+            let Some(message) = read_json(&mut request).filter(valid_signal) else {
+                return respond_json(
+                    request,
+                    extra,
+                    400,
+                    json!({ "error": "Expected { room, from, to, data: {…} }" }),
+                );
+            };
+            let to = message["to"].as_str().unwrap_or_default().to_owned();
+            let clean = json!({ "room": message["room"], "from": message["from"], "to": to, "data": message["data"] });
+            let text = event("signal", &clean);
+            for listener in state.listeners.lock().expect("listeners").iter() {
+                if listener.peer == to {
+                    let _ = listener.events.send(text.clone());
+                }
+            }
+            respond_json(request, extra, 200, json!({ "ok": true }));
+        }
         (Method::Get, "/live") => live(state, request, &url, extra),
         _ => respond_json(request, extra, 404, json!({ "error": "Not found" })),
     }
@@ -366,6 +394,27 @@ fn valid_presence(message: &Value) -> bool {
     let state = message.get("state").unwrap_or(&Value::Null);
     let state_ok = (state.is_null() || state.is_object()) && state.to_string().len() <= 4096;
     room_ok && peer_ok && state_ok
+}
+
+fn peer_ok(value: Option<&Value>) -> bool {
+    value.and_then(Value::as_str).is_some_and(|peer| {
+        !peer.is_empty()
+            && peer.len() <= 40
+            && peer
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    })
+}
+
+fn valid_signal(message: &Value) -> bool {
+    let room_ok = message
+        .get("room")
+        .and_then(Value::as_str)
+        .is_some_and(|room| room.find('/').is_some_and(|at| at > 0));
+    let data_ok = message
+        .get("data")
+        .is_some_and(|data| data.is_object() && data.to_string().len() <= 16384);
+    room_ok && peer_ok(message.get("from")) && peer_ok(message.get("to")) && data_ok
 }
 
 fn append(state: &State, changes: &[Value]) -> rusqlite::Result<i64> {

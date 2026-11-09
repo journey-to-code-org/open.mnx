@@ -100,6 +100,27 @@ test(`${backend.name}: presence: reaches the other viewers, not the sender; a dr
   sync.close();
 });
 
+test(`${backend.name}: signaling reaches only the peer it's for`, { timeout: 5000 }, async () => {
+  const sync = await backend.start();
+  const send = (message, headers = {}) =>
+    sync.fetch(new Request('http://localhost/_zb/sync/signal', { method: 'POST', body: JSON.stringify(message), headers: { 'content-type': 'application/json', ...headers } }));
+  const target = events(await live(sync, 'p2'));
+  const bystander = events(await live(sync, 'p3'));
+  await target.next();
+  await bystander.next();
+  const offer = { room: 'boards/b1', from: 'p1', to: 'p2', data: { description: { type: 'offer', sdp: 'v=0' } } };
+  assert.equal((await send(offer)).status, 200);
+  assert.deepEqual((await target.next()).value, { event: 'signal', data: offer });
+  assert.equal((await send({ ...offer, to: 'p3' })).status, 200);
+  assert.deepEqual((await bystander.next()).value.data.to, 'p3'); // p3's first event is its own, not p2's
+  assert.equal((await send({ ...offer, data: 'not an object' })).status, 400);
+  assert.equal((await send({ ...offer, to: 'bad peer!' })).status, 400);
+  assert.equal((await send(offer, { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' })).status, 403);
+  await target.return();
+  await bystander.return();
+  sync.close();
+});
+
 test(`${backend.name}: presence: malformed messages are refused`, async () => {
   const sync = await backend.start();
   assert.equal((await say(sync, { room: 'nocollection', peer: 'p1', state: {} })).status, 400);
