@@ -112,6 +112,27 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       await broadcastPresence(clean);
       return json(200, { ok: true });
     }
+    if (url.pathname === `${base}/signal` && request.method === 'POST') {
+      // WebRTC signaling: an offer, answer or ICE candidate for one peer in a room, delivered on
+      // that peer's live stream. The server only passes it on.
+      if (!sameOrigin(request)) return json(403, { error: 'Cross-site writes are refused' });
+      let message;
+      try {
+        message = await request.json();
+      } catch {
+        return json(400, { error: 'Expected JSON' });
+      }
+      const room = typeof message?.room === 'string' ? roomOf(message.room) : null;
+      const peerOk = (peer) => typeof peer === 'string' && /^[\w-]{1,40}$/.test(peer);
+      const dataOk = message?.data && typeof message.data === 'object' && !Array.isArray(message.data) && JSON.stringify(message.data).length <= 16384;
+      if (!room || !peerOk(message.from) || !peerOk(message.to) || !dataOk) {
+        return json(400, { error: 'Expected { room, from, to, data: {…} }' });
+      }
+      if (!(await authorize({ request, ...room, write: true }))) return json(403, { error: 'Not yours to join' });
+      const clean = { room: message.room, from: message.from, to: message.to, data: message.data };
+      for (const listener of listeners) if (listener.peer === clean.to) listener.send('signal', clean);
+      return json(200, { ok: true });
+    }
     if (url.pathname === `${base}/live` && request.method === 'GET') {
       const peer = url.searchParams.get('peer') ?? '';
       if (!/^[\w-]{0,40}$/.test(peer)) return json(400, { error: 'Bad peer id' });

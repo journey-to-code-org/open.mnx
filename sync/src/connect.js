@@ -14,6 +14,7 @@
 // Merging is last-writer-wins per field, by clock. A device that was offline pushes what it
 // wrote when it's back; whichever write has the later clock wins, on every device alike.
 import { onWrite, receive, currentStore, onPresence, receivePresence, peerId } from './index.js';
+import { mesh } from './webrtc.js';
 
 const CLOCKS = '$clocks';
 const pad = (number, width) => String(number).padStart(width, '0');
@@ -39,7 +40,7 @@ const keep = (name, value) => { try { localStorage.setItem(name, value); } catch
  * Start sharing. `url`: where the log is (`/_zb/sync`). `interval`: how often to pull, in ms
  * (default 2000). Returns `{ flush, pull, stop }`.
  */
-export function connect({ url = '/_zb/sync', interval = 2000, live = true } = {}) {
+export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrtc = false } = {}) {
   const base = url.replace(/\/$/, '');
   const client = remember('zubra-sync:client', () => {
     const id = Math.random().toString(36).slice(2, 10);
@@ -142,7 +143,12 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true } = {}
     source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}`);
     source.addEventListener('open', () => (open = true));
     source.addEventListener('changes', (event) => apply(JSON.parse(event.data)));
-    source.addEventListener('presence', (event) => receivePresence(JSON.parse(event.data)));
+    source.addEventListener('presence', (event) => {
+      const message = JSON.parse(event.data);
+      rtc?.sawPeer(message.room, message.peer, message.state);
+      receivePresence(message);
+    });
+    source.addEventListener('signal', (event) => rtc?.receiveSignal(JSON.parse(event.data)));
     source.addEventListener('error', () => {
       // Reconnect from the current cursor (EventSource would reuse the first one).
       open = false;
@@ -154,7 +160,25 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true } = {}
   };
 
   // Presence goes straight out, unqueued: an old cursor position is worth nothing later.
+  // With webrtc, presence goes over data channels to the peers that have one; the server carries
+  // it only while someone in the room doesn't (and always carries goodbyes).
+  const rtc =
+    webrtc && typeof RTCPeerConnection !== 'undefined'
+      ? mesh({
+          self: peerId(),
+          iceServers: webrtc.iceServers ?? [],
+          deliver: receivePresence,
+          signal: (room, to, data) =>
+            fetch(`${base}/signal`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ room, from: peerId(), to, data }),
+            }).catch(() => {}),
+        })
+      : null;
+
   const offPresence = onPresence((message) => {
+    if (rtc?.send(message) && message.state !== null) return;
     fetch(`${base}/presence`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -171,10 +195,13 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true } = {}
   return {
     flush,
     pull,
+    /** The peers presence goes to directly (webrtc), by peer id. */
+    direct: () => rtc?.direct() ?? [],
     stop() {
       stopped = true;
       off();
       offPresence();
+      rtc?.close();
       source?.close();
       clearTimeout(retry);
       clearInterval(loop);

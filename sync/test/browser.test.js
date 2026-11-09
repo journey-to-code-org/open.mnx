@@ -17,6 +17,8 @@ import { startBinary } from './backends.js';
 // that the binary and @zubra/sync/server behave alike for real clients.
 const viaBinary = process.env.ZUBRA_SYNC_BACKEND === 'binary';
 let binary = null;
+let presencePosts = 0;
+let dropSignals = 0; // a test can lose the next few signaling messages on purpose
 
 findCompiler();
 const compiler = await import('@zubra/compiler');
@@ -42,6 +44,12 @@ before(async () => {
   if (viaBinary) binary = await startBinary(['--keep-alive', '200']);
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (req.url.startsWith('/_zb/sync/presence')) presencePosts += 1;
+    if (req.url.startsWith('/_zb/sync/signal') && dropSignals > 0) {
+      dropSignals -= 1;
+      req.resume();
+      return res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+    }
     if (viaBinary && req.url.startsWith('/_zb/sync/')) {
       const target = new URL(binary.base);
       const upstream = forward({ host: target.hostname, port: target.port, path: req.url, method: req.method, headers: req.headers }, (answer) => {
@@ -65,16 +73,21 @@ before(async () => {
     res.setHeader('content-type', 'text/html');
     if (url.pathname === '/two') return res.end(page('<task-item doc="a"></task-item><task-item doc="b"></task-item>'));
     const doc = (url.searchParams.get('doc') ?? 'a').replace(/\W/g, '');
+    // A store that takes a while to answer, set up before the element starts.
+    if (url.pathname === '/slow') return res.end(page(`<script type="module">import { configure, indexedDBStore } from '/sync/index.js'; const store = indexedDBStore(); configure({ store: { get: (c, k) => new Promise((done) => setTimeout(done, 800)).then(() => store.get(c, k)), set: (c, k, f) => store.set(c, k, f) } });</script><task-item doc="${doc}"></task-item>`));
     // Live only: polling every minute, so anything sooner came over the event stream.
     if (url.pathname === '/live') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000 }));
-    if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, url.searchParams.has('connect') ? { interval: 60_000 } : false, 'board-view'));
+    const connectTo = url.searchParams.has('rtc') ? { interval: 60_000, webrtc: true } : url.searchParams.has('connect') ? { interval: 60_000 } : false;
+    if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, connectTo, 'board-view'));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
     res.end(page('<task-item doc="a"></task-item>'));
   });
   await new Promise((done) => server.listen(0, done));
   base = `http://localhost:${server.address().port}`;
-  browser = await chromium.launch();
+  // Real local addresses in ICE candidates (Chromium hides them behind mDNS names by default,
+  // which a test machine may not resolve).
+  browser = await chromium.launch({ args: ['--disable-features=WebRtcHideLocalIpsWithMdns'] });
 });
 after(async () => {
   await browser?.close();
@@ -171,7 +184,15 @@ test('connected: another device gets the change through the log', async () => {
   await a.tab.fill('.title', 'Written on A');
   await a.tab.check('input[type=checkbox]');
   await title(b.tab, 'Written on A');
-  await b.tab.waitForSelector('.state:has-text("done")');
+  try {
+    await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
+  } catch (error) {
+    const log = await (await fetch(`${base}/_zb/sync/pull?since=0`)).json();
+    console.log('DEBUG log', JSON.stringify(log.changes.filter((c) => c.key === 'first')));
+    console.log('DEBUG A outbox', await a.tab.evaluate(() => localStorage.getItem('zubra-sync:outbox')), 'B cursor', await b.tab.evaluate(() => localStorage.getItem('zubra-sync:cursor')));
+    console.log('DEBUG A state', await a.tab.textContent('.state'));
+    throw error;
+  }
   // And it's in B's own store, with the clock it won by.
   const stored = await b.tab.evaluate(() => new Promise((done) => {
     const open = indexedDB.open('zubra-sync');
@@ -230,7 +251,7 @@ test('live: a change arrives over the event stream, without waiting for a poll',
 
 const board = async (context, doc, connect = false) => {
   const tab = await context.newPage();
-  await tab.goto(`${base}/board?doc=${doc}${connect ? '&connect' : ''}`);
+  await tab.goto(`${base}/board?doc=${doc}${connect === 'rtc' ? '&rtc' : connect ? '&connect' : ''}`);
   await tab.waitForFunction(() => customElements.get('board-view'));
   return tab;
 };
@@ -280,4 +301,67 @@ test('presence: other devices too, through the server, and a closed tab leaves',
   await two.waitForSelector('.count:has-text("0")', { timeout: 5000 });
   await a.close();
   await b.close();
+});
+
+test('webrtc: once two devices have a data channel, presence stops going through the server', async () => {
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  const one = await board(a, 'b5', 'rtc');
+  const two = await board(b, 'b5', 'rtc');
+  await one.waitForTimeout(300);
+  await point(one, 10, 10); // the introduction goes through the server, and starts the channel
+  await two.waitForSelector('.other:has-text("10,10")', { timeout: 5000 });
+  await point(two, 5, 5);
+  await one.waitForSelector('.other:has-text("5,5")', { timeout: 5000 });
+  // The channel opens (both ends).
+  for (const tab of [one, two]) await tab.waitForFunction(() => window.link.direct().length === 1, null, { timeout: 30_000 });
+  presencePosts = 0;
+  for (let step = 1; step <= 20; step += 1) {
+    await point(one, 20 + step * 2, 30 + step * 2);
+    await one.waitForTimeout(20);
+  }
+  await two.waitForSelector('.other:has-text("60,70")', { timeout: 5000 });
+  assert.ok(presencePosts <= 1, `${presencePosts} presence posts went through the server`);
+  // A goodbye still goes through the server.
+  await one.close();
+  await two.waitForSelector('.count:has-text("0")', { timeout: 5000 });
+  await a.close();
+  await b.close();
+});
+
+test('webrtc: a lost signal doesn\'t strand the pair; they start again', async () => {
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  dropSignals = 1; // the first signal (the offer) never arrives
+  const one = await board(a, 'b6', 'rtc');
+  const two = await board(b, 'b6', 'rtc');
+  // Keep moving (presence through the server is what brings each side back to the pair).
+  let moving = true;
+  const wiggle = (async () => {
+    for (let step = 0; moving; step += 1) {
+      await point(one, 10 + (step % 50), 10);
+      await point(two, 10, 10 + (step % 50));
+      await one.waitForTimeout(150);
+    }
+  })();
+  for (const tab of [one, two]) await tab.waitForFunction(() => window.link.direct().length === 1, null, { timeout: 30_000 });
+  moving = false;
+  await wiggle;
+  assert.equal(dropSignals, 0);
+  await a.close();
+  await b.close();
+});
+
+test('an edit made while the document is still loading is kept, and saved', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/slow?doc=early`);
+  await ready(tab);
+  await tab.fill('.title', 'Typed before it loaded'); // the store answers 800 ms later
+  await tab.waitForTimeout(1200);
+  assert.equal(await tab.inputValue('.title'), 'Typed before it loaded');
+  await tab.goto(`${base}/slow?doc=early`);
+  await ready(tab);
+  await tab.waitForFunction(() => document.querySelector('.title').value === 'Typed before it loaded', null, { timeout: 5000 });
+  await context.close();
 });

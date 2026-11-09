@@ -8,8 +8,15 @@ export function connect(options?: {
   interval?: number;
   /** Open the live event stream (default true). */
   live?: boolean;
+  /**
+   * Send presence over WebRTC data channels to the peers that can be reached directly; the
+   * server carries introductions, goodbyes, signaling, and presence to anyone else.
+   */
+  webrtc?: boolean | { iceServers?: RTCIceServer[] };
 }): {
   flush(): Promise<void>;
   pull(): Promise<void>;
+  /** The peers presence currently goes to directly (webrtc). */
+  direct(): string[];
   stop(): void;
 };
