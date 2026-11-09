@@ -6,10 +6,12 @@
 # Pushes that don't change the version do nothing. It can be run again from the Actions tab: npm
 # packages already published are skipped, and the release step only runs while the tag is missing.
 #
-# npm authenticates as a trusted publisher (OIDC; no token), set up once per package on npmjs.com:
-# Settings → Trusted publishing → GitHub Actions, organization `journey-to-code-org`, repository
-# `zubra`, workflow `release.yml`, no environment. An NPM_TOKEN secret is used instead if there is one.
-# The extension goes to the Marketplace too when a VSCE_PAT secret is set.
+# No tokens: npm and the VS Code Marketplace both trust this workflow (OIDC), set up once.
+# - npm, per package on npmjs.com: Settings → Trusted publishing → GitHub Actions, organization
+#   `journey-to-code-org`, repository `zubra`, workflow `release.yml`, no environment; allowed
+#   actions: `npm publish` (not dist-tag). An NPM_TOKEN secret is used instead if there is one.
+# - The Marketplace, on the JourneytoCode publisher: Trusted Publishing, the same repository and
+#   workflow.
 name: Release
 
 on:
@@ -24,7 +26,7 @@ concurrency:
 
 permissions:
   contents: write # the tag and the release
-  id-token: write # npm's trusted publishing and provenance
+  id-token: write # trusted publishing (npm and the Marketplace) and npm's provenance
 
 jobs:
   release:
@@ -86,15 +88,11 @@ jobs:
         run: |
           gh release create "v$VERSION" "editors/vscode/zubra-$VERSION.vsix" \
             --target "$GITHUB_SHA" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
-      - name: Publish the extension to the Marketplace, if there's a token
+      # The Marketplace's trusted publishing (OIDC, like npm's): a policy on the JourneytoCode
+      # publisher names this repository and release.yml, so there's no token to store.
+      - name: Publish the extension to the Marketplace
         if: steps.version.outputs.new == 'true'
         env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
           VERSION: ${{ steps.version.outputs.version }}
         working-directory: editors/vscode
-        run: |
-          if [ -n "$VSCE_PAT" ]; then
-            npx --yes @vscode/vsce publish --packagePath "zubra-$VERSION.vsix"
-          else
-            echo "No VSCE_PAT secret: upload zubra-$VERSION.vsix from the release by hand."
-          fi
+        run: npx --yes @vscode/vsce publish --oidc --packagePath "zubra-$VERSION.vsix"
