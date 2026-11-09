@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useBrowser, open, compiler, here, site } from './harness.js';
+import { useBrowser, open, compiler, here, site, runtimeOnly } from './harness.js';
 
 useBrowser({
   list: join(here, 'fixtures/list.zb'),
@@ -102,7 +102,7 @@ test('text directly inside a row renders through anchors', async () => {
   await page.close();
 });
 
-test('hydrates server-rendered regions without replacing their nodes', async () => {
+test('hydrates server-rendered regions without replacing their nodes', { skip: runtimeOnly }, async () => {
   const props = join(site, 'list.props.json');
   writeFileSync(props, JSON.stringify({ items: ['s1', 's2', 's3'], heading: 'Server' }));
   const html = compiler(join(here, 'fixtures/list.zb'), '--props', props);
@@ -127,7 +127,7 @@ test('hydrates server-rendered regions without replacing their nodes', async () 
   await page.close();
 });
 
-test('hydrates a server-rendered else branch and anchored row text', async () => {
+test('hydrates a server-rendered else branch and anchored row text', { skip: runtimeOnly }, async () => {
   const props = join(site, 'people.props.json');
   writeFileSync(props, JSON.stringify({ tags: ['a', 'b'] }));
   const peopleHtml = compiler(join(here, 'fixtures/people.zb'), '--props', props);
@@ -157,7 +157,7 @@ test('hydrates a server-rendered else branch and anchored row text', async () =>
   await page.close();
 });
 
-test('a server list that does not match its items is re-rendered with a warning', async () => {
+test('a server list that does not match its items is re-rendered with a warning', { skip: runtimeOnly }, async () => {
   const html = compiler(join(here, 'fixtures/list.zb'));   // two rows
   const { page, messages } = await open(html, {
     beforeModules: `document.querySelector('zb-list').items = ['only one'];`,
