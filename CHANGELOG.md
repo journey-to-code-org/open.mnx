@@ -28,6 +28,10 @@ Zubra Actions and Zubra Sync: a component's form can post to a server function, 
 
 - **An unknown directive in a component script is an error, with a hint**: a likely typo gets "did you mean" (`'use colection tasks'` → `'use collection tasks'`), `'use client'` is explained as unneeded, `'use server'` at the top of a script is pointed at exported functions, and anything else lists the two directives Zubra knows and the package behind each. `'use strict'` is still allowed.
 
+### Fixed
+
+- **Text alone given to a light-DOM element whose template starts with a condition was lost.** `<x-button>Save</x-button>`, with a template of `<a zb-if={href}>…</a><button zb-else>…</button>`, showed the slot's fallback. The page's text matched the whitespace around the template's condition, so the element took its own children for server markup whose markers had been stripped, and "restored" them. Static text in the template now has to match the markup's words for that to happen. Found building Zubra UI's `action-button`.
+
 ## 5.2.0 — 2026-11-09
 
 Plain custom elements: a component as one file with no runtime to install.
