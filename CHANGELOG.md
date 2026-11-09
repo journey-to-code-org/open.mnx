@@ -2,6 +2,17 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **`service-status`, a registry component** (`npx zubra add service-status`): a service's status from a JSON endpoint, with "Checking…", the status and its message, the error with Retry, and Refresh that keeps the last answer showing. It's the registry's first `zb-await`, so the stripped-markers suite now covers a region the server leaves to the element. That suite now compares against the same markup with its markers kept (the same server nodes must survive), since a pending `zb-await` is re-rendered either way, and it fails if a component warns even with its markers.
+- **Server markup with an `zb-await` hydrates in place without its markers.** When a sanitizer has removed the `<?zb …?>` markers, `remark.js` now places an `zb-await` region by structure, as it does `zb-if` and `zb-each`: its `zb-then` block, for a value the server knew at build time, or its pending block, which the element renders afresh anyway. Until now such an element rendered entirely afresh, losing text typed and focus taken before JavaScript.
+
+### Changed
+
+- **A slot inside `zb-then` or `zb-catch` is reported as such.** The error said "can't be inside zb-each" wherever the slot was; it now names the branch it's in and says to put the slot outside the `zb-await`.
+
 ## 5.3.0 — 2026-11-09
 
 Zubra Actions and Zubra Sync: a component's form can post to a server function, with or without JavaScript, and a component's state can live on the device, shared across tabs and devices.
@@ -30,12 +41,9 @@ Zubra Actions and Zubra Sync: a component's form can post to a server function, 
 - **`ZUBRA_MARKER_PATTERN` and `ZUBRA_MARKER_DIRECTIVE`** from `@zubra/compiler`, for the two minifiers that strip the hydration markers unless told otherwise: `preserveComments: [ZUBRA_MARKER_PATTERN]` for @swc/html, and the posthtml parser option `directives: [ZUBRA_MARKER_DIRECTIVE]` for htmlnano. The markers test uses them, so they can't drift from what the tools accept.
 - **The README says what Zubra is and isn't**: the compiler and runtime are the project; `@zubra/unplugin`, `@zubra/server`, `@zubra/actions`, `@zubra/sync`, the starter, the editor extension and the registry are optional, separate installs, in one table that says when each is needed. The status line explains what the major version counts.
 
-- **`service-status`, a registry component** (`npx zubra add service-status`): a service's status from a JSON endpoint, with "Checking…", the status and its message, the error with Retry, and Refresh that keeps the last answer showing. It's the registry's first `zb-await`, so the stripped-markers suite now covers a region the server leaves to the element. That suite now compares against the same markup with its markers kept (the same server nodes must survive), since a pending `zb-await` is re-rendered either way, and it fails if a component warns even with its markers.
-- **Server markup with an `zb-await` hydrates in place without its markers.** When a sanitizer has removed the `<?zb …?>` markers, `remark.js` now places an `zb-await` region by structure, as it does `zb-if` and `zb-each`: its `zb-then` block, for a value the server knew at build time, or its pending block, which the element renders afresh anyway. Until now such an element rendered entirely afresh, losing text typed and focus taken before JavaScript.
 
 ### Changed
 
-- **A slot inside `zb-then` or `zb-catch` is reported as such.** The error said "can't be inside zb-each" wherever the slot was; it now names the branch it's in and says to put the slot outside the `zb-await`.
 - **Compile errors cite the rule they enforce.** A hyphen-less element name points at the HTML spec's definition of a valid custom element name; a `valueChange`-style event name says that a lowercase name is what `on…` attributes, Vue's `@…`, Angular's `(…)` and React 19 can all listen for; each TypeScript refusal points at `docs/typescript.md`. (The README claimed minifiers keep the hydration markers; it now says which do, which need an option, and that sanitizers don't.)
 - **An unknown directive in a component script gets a warning, with a hint**: a likely typo gets "did you mean" (`'use colection tasks'` → `'use collection tasks'`), `'use client'` is explained as unneeded, `'use server'` at the top of a script is pointed at exported functions, and anything else lists the two directives Zubra knows and the package behind each. `'use strict'` is still allowed. It still compiles, as it did (a stray directive was ignored before); 6.0 makes it an error.
 
