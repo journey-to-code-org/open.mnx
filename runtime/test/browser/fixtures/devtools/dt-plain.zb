@@ -1,0 +1,6 @@
+<script>
+  let on = false
+</script>
+<dt-plain>
+  <button onclick={() => (on = !on)}>{on ? "on" : "off"}</button>
+</dt-plain>

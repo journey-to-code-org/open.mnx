@@ -44,7 +44,8 @@ function compile(path) {
 
 /**
  * Register setup and teardown. `components` maps module names to `.zb` paths; `files` maps
- * extra served paths to their contents (plain modules a component imports, …); `imports` adds
+ * extra served paths to their contents (plain modules a component imports, …; or a function
+ * returning them, called after the compiler is built); `imports` adds
  * to the pages' import map (bare specifiers for those modules).
  */
 export function useBrowser(components, files = {}, imports = {}) {
@@ -54,7 +55,8 @@ before(async () => {
   site = mkdtempSync(join(tmpdir(), 'zb-browser-'));
   // ZUBRA_RUNTIME=production runs the suite against the production build (no hot reloading).
   cpSync(join(here, production ? '../../dist/production' : '../../src'), join(site, 'runtime'), { recursive: true });
-  for (const [path, contents] of Object.entries(files)) writeFileSync(join(site, path), contents);
+  // (A function is called once the compiler is built: a module compiled with other flags.)
+  for (const [path, contents] of Object.entries(files)) writeFileSync(join(site, path), typeof contents === 'function' ? contents() : contents);
   for (const [name, path] of Object.entries(components)) {
     writeFileSync(join(site, `${name}.js`), compile(path));
   }
