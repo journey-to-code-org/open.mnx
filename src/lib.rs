@@ -407,12 +407,24 @@ pub fn compile_element_with(
     component_extension: Option<&str>,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
+    let source_name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    // A JSX component, lowered with its script readable (`let` state and props by name, as
+    // `zubra convert --as zubra` writes it), so the element reads like any other: props as
+    // `element.name`, state as `name.value`. What that lowering can't do yet goes the usual way.
+    if jsx::is_jsx(path) {
+        if let Ok(readable) = jsx::lower_for_element(source, path, Some(loader)) {
+            if let Ok(module) = load(&readable, path, Some(loader)).and_then(|component| {
+                emit_element::emit(&component, &source_name, component_extension)
+            }) {
+                return Ok(module);
+            }
+        }
+    }
     front(source, Some(path), Some(loader), |source| {
         let component = load(source, path, Some(loader))?;
-        let source_name = std::path::Path::new(path).file_name().map_or_else(
-            || path.to_owned(),
-            |name| name.to_string_lossy().into_owned(),
-        );
         emit_element::emit(&component, &source_name, component_extension)
     })
 }

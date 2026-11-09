@@ -64,6 +64,4 @@ Each module holds only what its component uses, so plain output is small:
 
 (Minified with esbuild, then `gzip -9`.) Each plain element carries its own copy of the helpers it uses. For a handful of components, plain output is smaller; past that, the shared runtime is. Use plain output to read what a component does, to hand someone one file, to add a component to a page you don't build, or to publish a component with no dependencies. Use `--emit js` for an app, and for server-rendered pages.
 
-## Not yet
-
-- A component written as JSX (`.zb.jsx`) still reads its props through a `$p` object in the plain element: the JSX front end lowers the script before the element emitter sees it. Its template is written out like any other.
+A component written as JSX (`.zb.jsx`, `.zb.tsx`) reads the same way: its script is written out as `zubra convert --as zubra` would write it, with props as `element.name` and state as `name.value`, and its text keeps JSX's whitespace rule.
