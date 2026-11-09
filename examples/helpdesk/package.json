@@ -10,6 +10,7 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
+    "@zubra/actions": "file:../../actions",
     "@zubra/compiler": "file:../../compiler",
     "@zubra/runtime": "file:../../runtime",
     "@zubra/server": "file:../../server",
