@@ -17,12 +17,12 @@ Zubra Sync, tier 0: component state that lives on the device.
 - **`sqliteLog(path)`** from `@zubra/sync/sqlite`: the log in a SQLite file, through `node:sqlite` or `bun:sqlite`. The live stream now sends a backlog longer than one page whole before anything live.
 - **`connect({ webrtc: true })`**: presence over WebRTC data channels between viewers of a room, once they've met; the server carries introductions, goodbyes and signaling (`POST /_zb/sync/signal`, a `signal` event on the target's live stream), and presence to anyone without a channel. ICE servers are configurable; TURN is the app's. Both servers support signaling.
 - **`zubra-sync`**, a binary (`sync-server/`, `cargo build -p zubra-sync`): the sync protocol, live stream and presence included, with SQLite built in and no Node.js. Same table as `sqliteLog()`; CORS for `--origin`s. The protocol and browser tests run against it too.
-- **`createZubra({ imports })`** in `@zubra/server`: more import map entries, for packages components import beyond `@zubra/runtime` (`@zubra/sync`, say).
+- **`@zubra/server` serves `@zubra/sync` by itself** when it's installed, and maps `@zubra/sync` and `@zubra/sync/connect` in the page, so `'use collection'` needs no setup. When it isn't installed, the page fails as it's built, naming the component and `npm install @zubra/sync`; `@zubra/unplugin` says the same at build time. `createZubra({ imports })` adds import map entries for other packages.
 - **`examples/standup`**: a local-first team board on plain Node: `'use collection'` cards, presence, offline edits, a SQLite log, tested with two browsers.
 
 ### Changed
 
-- **An unknown directive in a component script is an error** (`'use client'`, or `'use server'` at the top of the script, with a hint where it goes). `'use strict'` is still allowed.
+- **An unknown directive in a component script is an error, with a hint**: a likely typo gets "did you mean" (`'use colection tasks'` → `'use collection tasks'`), `'use client'` is explained as unneeded, `'use server'` at the top of a script is pointed at exported functions, and anything else lists the two directives Zubra knows and the package behind each. `'use strict'` is still allowed.
 
 ## 5.2.0 — 2026-11-09
 

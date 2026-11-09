@@ -1,6 +1,6 @@
 # Sync: component state that lives on the device
 
-`'use collection <name>'` at the top of a component's script keeps its state in a local store. The page needs `@zubra/sync` (a bundler, or an import map entry: with `@zubra/server`, `createZubra({ imports: { '@zubra/sync': '/sync/index.js' } })`).
+`'use collection <name>'` at the top of a component's script keeps its state in a local store. It needs `@zubra/sync` installed (`npm install @zubra/sync`). With a bundler, that's all. With `@zubra/server`, too: it finds the package, serves it, and adds it to the page's import map, so `import { connect } from '@zubra/sync/connect'` works in a page as written. If it isn't installed, the build or the page says so, naming the component and the command to run.
 
 ```html
 <!-- task-item.zb -->

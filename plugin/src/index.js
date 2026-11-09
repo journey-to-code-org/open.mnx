@@ -26,6 +26,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { addProps, zubraImports } from './props.js';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
+import { createRequire } from 'node:module';
 
 const VARIANTS = ['element', 'react', 'vue'];
 /** A component file: `.zb`, or a JSX component (`.zb.jsx` / `.zb.tsx`). */
@@ -297,6 +298,15 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         return fail(this, error, path);
       }
       if (output.warnings) this.warn(output.warnings);
+      // 'use collection' compiles to an import of @zubra/sync: say what to install, rather than
+      // leave the bundler to report an unresolved import.
+      if (output.code.includes('from "@zubra/sync"')) {
+        try {
+          createRequire(path).resolve('@zubra/sync');
+        } catch {
+          return fail(this, new Error(`${relativePath(path)} starts with 'use collection', which needs @zubra/sync. Install it: npm install @zubra/sync`), path);
+        }
+      }
       if (server) return serverRendering ? output.code + serverRenderer(path, compilerModule, runtime) : output.code;
       return dev && meta.framework === 'vite' ? hot(output.code) : output.code;
     },

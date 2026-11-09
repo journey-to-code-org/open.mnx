@@ -3,6 +3,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { createZubra } from '../src/index.js';
@@ -301,5 +303,33 @@ test('stream(): the script puts regions in place where the browser doesn\'t (a s
     assert.equal(await page.evaluate(() => window.swapped), true, 'in place before the elements started');
     assert.deepEqual(page.errors, []);
     await page.done();
+  }
+});
+
+test("@zubra/sync is served and mapped by itself, when it's installed", async () => {
+  // The standup example has @zubra/sync installed next to its components.
+  const zubra = createZubra({ components: join(here, '../../examples/standup/components') });
+  const page = zubra.page();
+  const html = page.finish(`<html><head></head><body>${page.render('standup-card', { doc: 'ada', name: 'Ada' })}</body></html>`);
+  assert.match(html, /"@zubra\/sync":"\/_zubra\/sync\/index\.js"/);
+  assert.match(html, /"@zubra\/sync\/connect":"\/_zubra\/sync\/connect\.js"/);
+  for (const file of ['index.js', 'connect.js']) {
+    const response = await zubra.fetch(new Request(`http://localhost/_zubra/sync/${file}`));
+    assert.equal(response.status, 200, file);
+    assert.match(response.headers.get('content-type'), /javascript/);
+  }
+  assert.equal((await zubra.fetch(new Request('http://localhost/_zubra/sync/package.json'))).status, 404); // only its modules
+});
+
+test("a 'use collection' component without @zubra/sync installed says what to install", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-no-sync-'));
+  try {
+    writeFileSync(join(dir, 'note-card.zb'), "<script>'use collection notes'; let text = ''</script>\n<note-card doc=\"\">{text}</note-card>\n");
+    const zubra = createZubra({ components: dir });
+    const page = zubra.page();
+    const body = page.render('note-card', { doc: 'n1' });
+    assert.throws(() => page.finish(`<html><head></head><body>${body}</body></html>`), /needs @zubra\/sync\. Install it: npm install @zubra\/sync/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
