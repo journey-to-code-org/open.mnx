@@ -62,7 +62,7 @@ It's HTTP, so any server can implement it, and `curl` can call an action.
 | Response | `200` with the return value as JSON (`500` with `{ "error": … }` if the function threw) | `303 See Other` back to the page it came from, with the result in a one-use cookie |
 | In the page | the form fires `action` with `detail: { value }` (or `{ error, status }`) | the server reads `actions.result(request)` and renders it |
 
-- The function receives the `FormData` and `{ request }`. If it returns a `Response`, that response is sent as it is (a redirect after success, say).
+- The function receives the `FormData` and `{ request }`, plus whatever `createActions({ context })` returns for the request: `context: ({ request, req, c }) => ({ user: req.user, db })`, where `req` is Node's request (so what an auth middleware put on it is there; mount that middleware first) and `c` is Hono's context. If it returns a `Response`, that response is sent as it is (a redirect after success, say).
 - While a request is in flight the form has `aria-busy="true"`, so CSS can show it: `form[aria-busy="true"] button { opacity: .5 }`.
 - `beforeaction` fires first and is cancelable (`detail: { formData }`).
 - A form opts out of the script with `data-zb-native`. Forms in a shadow root aren't seen by the document's listener; call `enhance(shadowRoot)` from `@zubra/actions/client`.

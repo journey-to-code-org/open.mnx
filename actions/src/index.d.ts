@@ -11,6 +11,11 @@ export interface ActionsOptions {
   origins?: string[];
   /** Called when a server function throws. The client gets a generic error either way. */
   onError?: (error: unknown, request: Request) => void;
+  /**
+   * What else a server function gets beside `request`, per request: the signed-in user, a
+   * database handle. `req` is Node's request (Node, Express, Fastify); `c` is Hono's context.
+   */
+  context?: (from: { request: Request; req?: import('node:http').IncomingMessage; c?: unknown }) => object | Promise<object>;
 }
 
 export interface ActionResult<T = unknown> {
@@ -21,7 +26,7 @@ export interface ActionResult<T = unknown> {
 
 export interface Actions {
   /** A Response for an action or the client script; null for any other request. */
-  fetch(request: Request): Promise<Response | null>;
+  fetch(request: Request, extra?: { req?: import('node:http').IncomingMessage; c?: unknown }): Promise<Response | null>;
   /** Node's http: answers ours and resolves true, else false without reading the body. */
   handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): Promise<boolean>;
   /** After a no-JavaScript post, its result, once; `setHeader` gets the header that clears it. */
@@ -40,6 +45,8 @@ export interface Actions {
 /** What a server function receives besides its FormData. */
 export interface ActionContext {
   request: Request;
+  /** And whatever `context()` returned. */
+  [key: string]: unknown;
 }
 
 export function createActions(options?: ActionsOptions): Promise<Actions>;

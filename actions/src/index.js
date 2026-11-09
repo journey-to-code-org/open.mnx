@@ -29,6 +29,10 @@ const SOURCE = /\.zb(?:\.[jt]sx)?$/;
 const CLIENT = readFileSync(new URL('./client.js', import.meta.url), 'utf8');
 
 /**
+ * `context({ request, req, c })`: what else a server function gets beside `request`, per request
+ * (the signed-in user, a database handle). `req` is Node's request (Node, Express, Fastify), `c`
+ * Hono's context. It may be async; what it returns is spread into the function's second argument.
+ *
  * `components`: the folder of `.zb` files. `cacheDir`: where the server halves are written
  * (bare imports resolve from there, so keep it inside the project). `origins`: other origins
  * allowed to post (behind a proxy that rewrites Origin, say). `onError(error, request)`: called
@@ -39,6 +43,7 @@ export async function createActions({
   cacheDir = join(process.cwd(), 'node_modules', '.cache', 'zubra-actions'),
   origins = [],
   onError = (error) => console.error(error),
+  context = () => ({}),
 } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/actions: no components folder at ${root}`);
@@ -77,7 +82,7 @@ export async function createActions({
     return '/';
   };
 
-  async function fetch(request) {
+  async function fetch(request, extra = {}) {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === SCRIPT_PATH) {
       return new Response(CLIENT, { headers: { 'content-type': 'text/javascript; charset=utf-8' } });
@@ -91,7 +96,8 @@ export async function createActions({
     let value;
     let failed = false;
     try {
-      value = await fn(await request.formData(), { request });
+      const more = await context({ request, ...extra });
+      value = await fn(await request.formData(), { ...more, request });
     } catch (error) {
       onError(error, request);
       failed = true;
@@ -132,7 +138,7 @@ export async function createActions({
   /** Node's http: answers ours and returns true, or returns false without reading the body. */
   async function handle(req, res) {
     if (!req.url.startsWith(MOUNT) && !req.url.startsWith(SCRIPT_PATH)) return false;
-    const response = await fetch(toRequest(req));
+    const response = await fetch(toRequest(req), { req });
     if (!response) return false;
     await send(response, res);
     return true;
