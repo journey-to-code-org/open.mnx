@@ -192,6 +192,8 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         return Err(Diagnostic::new(span, "`host-reset` protects a shadow-DOM component's host from the page's styles; add `shadow` too")
             .with_help("in light DOM there's no boundary to protect: the page's styles apply by design"));
     }
+    let mut nodes = host.children;
+    resolve_server_exports(&mut script, &host.name, &mut nodes);
     Ok(ComponentAst {
         tag: host.name,
         tag_span: host.span,
@@ -202,7 +204,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         style,
         props,
         script,
-        nodes: host.children,
+        nodes,
         children: Vec::new(),
     })
 }
@@ -2338,4 +2340,111 @@ fn expression_text(
         Diagnostic::new(span_after(inner_span, inner, error.offset), error.message)
     })?;
     Ok((expression, open_span))
+}
+
+/// `'use server'` functions become their endpoint's URL: a `const` in the browser module (so the
+/// script can still `fetch(save)`), and, on a form whose `action` is one, a literal `action`
+/// with `method="post"` (so the form submits to it with or without JavaScript).
+fn resolve_server_exports(script: &mut crate::ast::Script, tag: &str, nodes: &mut [Node]) {
+    if script.server_exports.is_empty() {
+        return;
+    }
+    let urls: Vec<(String, String)> = script
+        .server_exports
+        .iter()
+        .map(|export| {
+            (
+                export.name.clone(),
+                crate::ast::action_url(tag, &export.name),
+            )
+        })
+        .collect();
+    let mut exports = script.server_exports.clone();
+    exports.sort_by_key(|export| std::cmp::Reverse(export.offset));
+    for export in &exports {
+        let url = crate::ast::action_url(tag, &export.name);
+        let declaration = format!("const {} = {};", export.name, serde_json::json!(url));
+        script.body.insert_str(export.offset, &declaration);
+        script.bindings.push(crate::ast::Binding {
+            name: export.name.clone(),
+            init: Some(Expression::String(url.clone())),
+            source: Some(serde_json::json!(url).to_string()),
+            mutable: false,
+            span: export.span,
+        });
+    }
+    point_forms_at(nodes, &urls);
+}
+
+fn point_forms_at(nodes: &mut [Node], urls: &[(String, String)]) {
+    for node in nodes {
+        match node {
+            Node::Element(element) => {
+                let name = element.name.to_ascii_lowercase();
+                // `<form action={save}>`, and `formaction={save}` on a submit button.
+                let (target, method) = match name.as_str() {
+                    "form" => ("action", "method"),
+                    "button" | "input" => ("formaction", "formmethod"),
+                    _ => ("", ""),
+                };
+                let mut pointed = false;
+                if !target.is_empty() {
+                    for attribute in element.attributes.iter_mut() {
+                        if attribute.name != target {
+                            continue;
+                        }
+                        if let AttributeValue::Expression(Expression::Identifier(identifier), _) =
+                            &attribute.value
+                        {
+                            if let Some((_, url)) = urls.iter().find(|(name, _)| name == identifier)
+                            {
+                                attribute.value =
+                                    AttributeValue::Text(vec![Part::Literal(url.clone())]);
+                                pointed = true;
+                            }
+                        }
+                    }
+                }
+                if pointed
+                    && !element
+                        .attributes
+                        .iter()
+                        .any(|attribute| attribute.name == method)
+                {
+                    let span = element.span;
+                    element.attributes.push(crate::ast::Attribute {
+                        name: method.to_owned(),
+                        value: AttributeValue::Text(vec![Part::Literal("post".to_owned())]),
+                        span,
+                    });
+                }
+                point_forms_at(&mut element.children, urls);
+            }
+            Node::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                point_forms_at(consequent, urls);
+                point_forms_at(alternate, urls);
+            }
+            Node::Each { children, .. } | Node::Else { children, .. } => {
+                point_forms_at(children, urls)
+            }
+            Node::Slot { fallback, .. } => point_forms_at(fallback, urls),
+            Node::Await {
+                pending,
+                then,
+                catch,
+                ..
+            } => {
+                point_forms_at(pending, urls);
+                for branch in [then, catch].into_iter().flatten() {
+                    point_forms_at(&mut branch.children, urls);
+                }
+            }
+            Node::Settled { branch, .. } => point_forms_at(&mut branch.children, urls),
+            Node::Text(_) => {}
+        }
+    }
 }
