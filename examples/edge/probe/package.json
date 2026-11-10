@@ -6,7 +6,7 @@
   "scripts": {
     "dev:naive": "wrangler dev --local --compatibility-flag nodejs_compat",
     "dev:wasm": "wrangler dev --local src/worker-wasm.js",
-    "dev:server": "wrangler dev --local --compatibility-flag nodejs_compat src/worker-server.js"
+    "dev:server": "wrangler dev --local src/worker-server.js"
   },
   "dependencies": {
     "@zubra/compiler": "file:../../../compiler",
