@@ -132,12 +132,6 @@ fn mistakes_are_reported_in_the_jsx() {
             .0
             .contains("renaming")
     );
-    // Spreading onto an element compiles since 3.5; onto a zubra component, it's an error.
-    assert!(
-        error("import Badge from './badge.zb';\nexport default function ZbX({ a = 1 }) {\n  return <Badge {...a} />\n}\n")
-            .0
-            .contains("spreading onto a zubra component")
-    );
     assert!(
         error("export default function ZbX({ a = 1 }) {\n  return <p title={<b />} />\n}\n")
             .0

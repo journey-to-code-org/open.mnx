@@ -27,6 +27,11 @@ const kebab = (key) => (key.startsWith('--') ? key : key.replace(/[A-Z]/g, (lett
  */
 export function spread(part, node) {
   const own = new Set(part.own ?? []);
+  // On a component (`part.props`): the entries that are its props are set as props, as the
+  // component's own `prop={...}` is, and anything else lands on its host like on any element.
+  const normalize = (name) => name.replace(/-/g, '').toLowerCase();
+  const props = new Map((part.props ?? []).map((name) => [normalize(name), name]));
+  let givenProps = new Set();
   const listeners = new Map(); // event → { latest, listener }
   let previous = new Map(); // normalized name → value
   let classes = [];
@@ -39,12 +44,20 @@ export function spread(part, node) {
       given = {};
     }
     const next = new Map();
+    const nextProps = new Map();
     const events = new Set();
     let nextClasses = [];
     let nextStyles = new Set();
     for (const [key, value] of Object.entries(given)) {
       if (value === undefined) continue;
       const lower = key.toLowerCase();
+      const prop = props.get(normalize(key));
+      if (prop) {
+        // The element's own `prop={...}` wins, in either spelling. `null` isn't a value: the
+        // prop's default, as on the server.
+        if (value !== null && !own.has(prop.toLowerCase()) && !own.has(kebab(prop))) nextProps.set(prop, value);
+        continue;
+      }
       if (lower.length > 2 && lower.startsWith('on') && (typeof value === 'function' || typeof value === 'string')) {
         if (typeof value === 'string') {
           console.error(`zubra: a spread can't add a handler as text ("${key}"); pass a function${see('safety')}`);
@@ -89,6 +102,15 @@ export function spread(part, node) {
       if (own.has(name.toLowerCase())) continue;
       next.set(name, value);
     }
+    // Props: set, and back to the component's default once the key is gone (or null), which is
+    // what the server renders for a spread without it.
+    for (const name of givenProps) {
+      if (nextProps.has(name)) continue;
+      const fallback = node.constructor.zubra?.props[name]?.default;
+      node[name] = fallback && typeof fallback === 'object' ? structuredClone(fallback) : fallback;
+    }
+    for (const [name, value] of nextProps) node[name] = value; // not read first: that would subscribe this effect to the child's own prop
+    givenProps = new Set(nextProps.keys());
     // Listeners whose keys went away.
     for (const [event, entry] of listeners) {
       if (!events.has(event)) {

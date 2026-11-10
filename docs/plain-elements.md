@@ -41,7 +41,7 @@ Updates are batched in a microtask and re-run the component's bindings; an eleme
 
 Each with an error that names it and points at `--emit js`:
 - shadow DOM (`<x-a shadow>`);
-- `{...spread}` in the template;
+- `{...spread}` in the template (one of the 26 registry components, `combo-box`, uses it, through Zag's props; reading the loop back with `zubra convert` would be the larger half of the work, so it stays refused until more components need it);
 - `zb-await`;
 - imports from `@zubra/runtime` other than the ones above (`resource`, `createContext`…), and runtime subpaths other than `/primitives` (`@zubra/runtime/zag`).
 
