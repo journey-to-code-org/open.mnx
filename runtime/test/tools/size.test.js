@@ -16,13 +16,17 @@ const BUDGETS = {
   // mutated, `deep.js`, about 370 B — to 13.5 KB, and 4.2's zb-await — an array value waited
   // for together, retry(), delay and keep, about 320 B — to 14 KB, and the DevTools hook's
   // recording side — what each effect binds, each flush, each listener, about 490 B; its reading
-  // side loads only when the extension connects — to 14.5 KB. The production build has none of it.)
-  'src/index.js': { gzip: 14.5 * 1024 },
+  // side loads only when the extension connects — to 14.5 KB. The production build has none of it.
+  // And `animate`'s hooks in zb-if and zb-each — about 160 B; leave() and glide() themselves are
+  // `src/motion.js`, loaded only by components that animate — to 15 KB.)
+  'src/index.js': { gzip: 15 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
-  // (12.5 KB until 3.2, 13 KB until 4.2).
-  'dist/production/index.js': { gzip: 13.5 * 1024 },
+  // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`).
+  'dist/production/index.js': { gzip: 14 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
+  // `animate`'s leave() and glide(), loaded only by components that animate.
+  'src/motion.js': { gzip: 1.25 * 1024 },
   // `{...spread}`'s binder (3.5), loaded only by components whose template spreads.
   'src/spread.js': { gzip: 1.5 * 1024, external: ['./element.js', './effect.js'] },
   // rovingFocus and typeahead (3.6), for menus, tab lists and toolbars.

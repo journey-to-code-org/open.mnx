@@ -115,7 +115,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
     return needs(name, response.output);
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, ...syncImports, ...imports } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, ...syncImports, ...imports } })}</script>`;
   const syncImports = syncDir ? { '@zubra/sync': `${base}/sync/index.js`, '@zubra/sync/connect': `${base}/sync/connect.js` } : {};
   const head = (names) => {
     // A component that needs a package that isn't installed fails here, while the page is built,

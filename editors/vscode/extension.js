@@ -1,16 +1,23 @@
 // VS Code client: starts @zubra/language-server for .zb files. Formatting comes from the server
 // (documentFormattingProvider), and package.json makes it the default formatter for .zb.
+//
+// The server is started as a Node module, not as a command: inside VS Code, process.execPath is
+// the editor's own Electron binary, and only the module form has the client fork it with
+// ELECTRON_RUN_AS_NODE=1 so that it runs as Node. As a command, whether the server started at all
+// depended on the extension host's environment, and without it .zb had no formatter.
+//
 // "Zubra: Extract to Component…" asks for the new component's name, then has the server do it
 // (the code action in the lightbulb menu does the same with a default name).
-const path = require('node:path');
 const vscode = require('vscode');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
 let client;
 
 function activate(context) {
-  const server = path.join(path.dirname(require.resolve('@zubra/language-server/package.json')), 'server.js');
-  const run = { command: process.execPath, args: [server, '--stdio'], transport: TransportKind.stdio };
+  // The package's main entry: its exports map has no './package.json', so resolving that threw
+  // and the server never started.
+  const server = require.resolve('@zubra/language-server');
+  const run = { module: server, transport: TransportKind.stdio };
   const settings = vscode.workspace.getConfiguration('zubra');
   const compiler = settings.get('compiler') || undefined;
   const printWidth = settings.get('format.printWidth') || undefined;

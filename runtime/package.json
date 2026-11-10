@@ -1,6 +1,6 @@
 {
   "name": "@zubra/runtime",
-  "version": "5.4.0",
+  "version": "5.4.1",
   "description": "Browser runtime for Zubra compiled components, built on the TC39 Signals API",
   "license": "ISC",
   "repository": {
@@ -39,6 +39,11 @@
       "types": "./types/primitives.d.ts",
       "production": "./dist/production/primitives.js",
       "default": "./src/primitives.js"
+    },
+    "./motion": {
+      "types": "./types/motion.d.ts",
+      "production": "./dist/production/motion.js",
+      "default": "./src/motion.js"
     },
     "./react": {
       "types": "./types/react.d.ts",
