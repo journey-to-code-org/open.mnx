@@ -288,11 +288,17 @@ function @glide(elements, change) {
   const before = new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
   change();
   for (const [element, was] of before) {
-    if (!element.isConnected || element.hasAttribute("data-leaving")) continue;
+    if (!element.isConnected) continue;
     const now = element.getBoundingClientRect();
     const x = was.left - now.left;
     const y = was.top - now.top;
     if (!x && !y) continue;
+    if (element.hasAttribute("data-leaving")) {
+      // Held where it was on screen as it leaves, even if its container moved.
+      element.style.top = `${parseFloat(element.style.top) + y}px`;
+      element.style.left = `${parseFloat(element.style.left) + x}px`;
+      continue;
+    }
     const style = getComputedStyle(element);
     const time = /^\s*([\d.]+)(ms|s)\s*$/.exec(style.getPropertyValue("--zb-move-duration"));
     const duration = time ? Number(time[1]) * (time[2] === "s" ? 1000 : 1) : 250;
