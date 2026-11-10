@@ -1,8 +1,10 @@
 <script>
   import { untrack } from 'svelte';
+  // zubra-snippet:start svelte-imports
   import './components/flip-card.zb';
   import './components/grade-buttons.zb';
   import './components/progress-ring.zb';
+  // zubra-snippet:end svelte-imports
   import { load, save, graded, today, seed } from './decks.js';
 
   const initial = load();
@@ -111,12 +113,16 @@
       {#if current}
         <p class="remaining">{queue.length} to go{cramming ? ' · reviewing everything' : ''}</p>
         {#key current.id}
+          <!-- zubra-snippet:start svelte-flip -->
           <flip-card {flipped} onflippedchange={(event) => (flipped = event.detail)}>
             <div slot="front" class="side"><small>Question</small><p class="front-text">{current.front}</p></div>
             <div slot="back" class="side"><small>Answer</small><p class="back-text">{current.back}</p></div>
           </flip-card>
+          <!-- zubra-snippet:end svelte-flip -->
         {/key}
+        <!-- zubra-snippet:start svelte-grade -->
         <grade-buttons disabled={!flipped} ongrade={(event) => grade(event.detail)}></grade-buttons>
+        <!-- zubra-snippet:end svelte-grade -->
         <p class="tip">{flipped ? 'How well did you know it? (1–4)' : 'Recall the answer, then flip the card.'}</p>
       {:else}
         <div class="done">
