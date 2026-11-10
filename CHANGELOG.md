@@ -4,13 +4,9 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
-### Fixed
-
-- **A row leaving a list anchored to the bottom stays where it was.** `animate` held a removed row in place relative to its list, so in a list that shrinks from the top (toasts in a bottom corner) it jumped up over the next row as it faded. It's now held where it was on screen. Both outputs.
-
 ### Added
 
-- **Motion: `animate` on `<zb-if>`, `<zb-switch>` and a keyed `<zb-each>`, and `zb-animate` beside an element's `zb-if`.** Content going away stays with `data-leaving` and `inert` until the transitions and animations that starts have ended (infinite ones aren't waited for), beside what replaces it; keyed rows that stay glide to their new places (FLIP, with the Web Animations API, timed by `--zb-move-duration` and `--zb-move-easing`), and removed rows leave held in place out of the flow. Coming in is left to CSS (`@starting-style`). Under `prefers-reduced-motion: reduce`, nothing waits or glides. Both outputs have it: `@zubra/runtime` and `--emit element` (its `leave` and `glide` helpers, written only when a component animates), and `zubra convert` reads them back as `animate`. The same functions are `leave()` and `glide()` in the new `@zubra/runtime/motion`, which a compiled module imports only when its component animates (the runtime's own hooks are about 160 B, and its size budgets rise by 0.5 KB for them). `animate` without a `key`, with a value, or `zb-animate` anywhere but beside `zb-if` are errors that say what to write. Tested in the browser on both outputs, including reduced motion.
+- **Motion: `animate` on `<zb-if>`, `<zb-switch>` and a keyed `<zb-each>`, and `zb-animate` beside an element's `zb-if`.** Content going away stays with `data-leaving` and `inert` until the transitions and animations that starts have ended (infinite ones aren't waited for), beside what replaces it; keyed rows that stay glide to their new places (FLIP, with the Web Animations API, timed by `--zb-move-duration` and `--zb-move-easing`), and removed rows leave held where they were on screen, out of the flow (even in a list anchored to the bottom, which shrinks from the top). Coming in is left to CSS (`@starting-style`). Under `prefers-reduced-motion: reduce`, nothing waits or glides. Both outputs have it: `@zubra/runtime` and `--emit element` (its `leave` and `glide` helpers, written only when a component animates), and `zubra convert` reads them back as `animate`. The same functions are `leave()` and `glide()` in the new `@zubra/runtime/motion`, which a compiled module imports only when its component animates (the runtime's own hooks are about 160 B, and its size budgets rise by 0.5 KB for them). `animate` without a `key`, with a value, or `zb-animate` anywhere but beside `zb-if` are errors that say what to write. Tested in the browser on both outputs, including reduced motion.
 
 ## 5.4.1 — 2026-11-09
 
