@@ -17,7 +17,15 @@
   .out span { color: #c62f3f; }
 </style>
 <stock-meter stock={0} reorder={3} max={20}>
-  <div class:low={level === "low"} class:out={level === "out"} role="meter" aria-valuemin="0" aria-valuemax={max} aria-valuenow={stock} aria-label="Stock">
+  <div
+    class:low={level === "low"}
+    class:out={level === "out"}
+    role="meter"
+    aria-valuemin="0"
+    aria-valuemax={max}
+    aria-valuenow={stock}
+    aria-label="Stock"
+  >
     <div class="bar"><div class="fill" style:width={percent + "%"}></div></div>
     <span>{words}</span>
   </div>

@@ -28,6 +28,14 @@
 </style>
 <star-rating form-associated value={0} max={5} required={false} readonly={false} label="Rating">
   <zb-each items={stars} as="n" key={n}>
-    <button type="button" class:on={n <= shown} aria-label={`${n} of ${max}`} aria-pressed={n === value ? "true" : "false"} onclick={() => rate(n)} onmouseenter={() => (hovered = readonly ? 0 : n)} onmouseleave={() => (hovered = 0)}>★</button>
+    <button
+      type="button"
+      class:on={n <= shown}
+      aria-label={`${n} of ${max}`}
+      aria-pressed={n === value ? "true" : "false"}
+      onclick={() => rate(n)}
+      onmouseenter={() => (hovered = readonly ? 0 : n)}
+      onmouseleave={() => (hovered = 0)}
+    >★</button>
   </zb-each>
 </star-rating>

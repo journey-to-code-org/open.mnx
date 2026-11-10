@@ -58,7 +58,12 @@
     <p><zb-each items={pieces} as="piece" key={piece.index}><zb-if test={piece.kind === "mention"}><span class="mention" class:me={piece.me}>{piece.text}</span><zb-else-if test={piece.kind === "link"}><a href={piece.text} target="_blank" rel="noopener">{piece.text}</a></zb-else-if><zb-else>{piece.text}</zb-else></zb-if></zb-each></p>
     <div zb-if={reactions.length > 0} class="reactions">
       <zb-each items={reactions} as="reaction" key={reaction[0]}>
-        <button type="button" aria-pressed={reaction[1].includes(me) ? "true" : "false"} title={reaction[1].join(", ")} onclick={() => emit('reacttoggle', reaction[0])}>{reaction[0]} <b>{reaction[1].length}</b></button>
+        <button
+          type="button"
+          aria-pressed={reaction[1].includes(me) ? "true" : "false"}
+          title={reaction[1].join(", ")}
+          onclick={() => emit('reacttoggle', reaction[0])}
+        >{reaction[0]} <b>{reaction[1].length}</b></button>
       </zb-each>
     </div>
     <div class="tools" role="toolbar" aria-label="Message actions">

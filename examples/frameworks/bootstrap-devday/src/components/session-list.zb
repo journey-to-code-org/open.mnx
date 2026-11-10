@@ -16,9 +16,14 @@
   <div class="list-group">
     <zb-each items={sessions} as="session" key={session.id}>
       <label class="list-group-item list-group-item-action d-flex gap-3 align-items-start py-3">
-        <input class="form-check-input flex-shrink-0 mt-1" type="checkbox" data-id={session.id}
-          checked={value.includes(session.id)} disabled={session.seats === 0 || (full && !value.includes(session.id))}
-          onchange={(event) => toggle(session.id, event.target.checked)} />
+        <input
+          class="form-check-input flex-shrink-0 mt-1"
+          type="checkbox"
+          data-id={session.id}
+          checked={value.includes(session.id)}
+          disabled={session.seats === 0 || (full && !value.includes(session.id))}
+          onchange={(event) => toggle(session.id, event.target.checked)}
+        />
         <span class="flex-grow-1">
           <span class="d-flex flex-wrap align-items-center gap-2">
             <strong>{session.title}</strong>

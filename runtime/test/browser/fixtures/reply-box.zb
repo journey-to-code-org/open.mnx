@@ -12,7 +12,12 @@
 <zb-reply>
   <form onsubmit.prevent={() => emit('send', color)}>
     <select name="sort" onchange.submit><option>new</option><option>old</option></select>
-    <textarea name="body" required onkeydown.mod.enter.prevent.submit={() => (typed = typed + 1)} onkeydown={helper}></textarea>
+    <textarea
+      name="body"
+      required
+      onkeydown.mod.enter.prevent.submit={() => (typed = typed + 1)}
+      onkeydown={helper}
+    ></textarea>
     <button type="button" class="jsx-style" onclick={after}>JSX style</button>
     <zb-swatch value:bind={color}></zb-swatch>
     <output>{typed} {color}</output>

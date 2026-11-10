@@ -23,7 +23,12 @@
       <zb-each items={rows} as="row" key={row.crop}>
         <li data-crop={row.crop}>
           <span>{row.label}</span>
-          <span class="bar" style:width={Math.round((row.kg / top) * 100) + "%"} role="img" aria-label={row.label + ": " + row.kg + " kg"}></span>
+          <span
+            class="bar"
+            style:width={Math.round((row.kg / top) * 100) + "%"}
+            role="img"
+            aria-label={row.label + ": " + row.kg + " kg"}
+          ></span>
           <span class="kg">{row.kg} kg</span>
         </li>
       </zb-each>

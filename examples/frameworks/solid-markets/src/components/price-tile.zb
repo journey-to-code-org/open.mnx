@@ -35,12 +35,25 @@
   article:hover .remove, .remove:focus-visible { display: block; }
 </style>
 <price-tile symbol="" name="" price={0} open={0} points={[]} selected={false}>
-  <article class={flash} class:selected tabindex="0" aria-label={`${symbol} ${price.toFixed(2)}`} aria-pressed={selected ? "true" : "false"} onclick={() => emit('tileselect')} onkeydown.enter.space.prevent={() => emit('tileselect')}>
+  <article
+    class={flash}
+    class:selected
+    tabindex="0"
+    aria-label={`${symbol} ${price.toFixed(2)}`}
+    aria-pressed={selected ? "true" : "false"}
+    onclick={() => emit('tileselect')}
+    onkeydown.enter.space.prevent={() => emit('tileselect')}
+  >
     <span class="symbol">{symbol}</span>
     <span class="name">{name}</span>
     <span class="price">{price.toFixed(2)}</span>
     <span class="change" class:up={change > 0} class:down={change < 0}>{sign}{Math.abs(change * 100).toFixed(2)}%</span>
     <spark-line points={points}></spark-line>
-    <button type="button" class="remove" aria-label={`Remove ${symbol}`} onclick={(event) => (event.stopPropagation(), emit('tileremove'))}>×</button>
+    <button
+      type="button"
+      class="remove"
+      aria-label={`Remove ${symbol}`}
+      onclick={(event) => (event.stopPropagation(), emit('tileremove'))}
+    >×</button>
   </article>
 </price-tile>

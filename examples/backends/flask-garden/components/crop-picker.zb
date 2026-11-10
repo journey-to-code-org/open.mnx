@@ -28,9 +28,14 @@
     <legend>{legend} <small class:full={value.length >= max}>{value.length} of {max}</small></legend>
     <zb-each items={options} as="option" key={option.value}>
       <label>
-        <input type="checkbox" name={name} value={option.value} checked={value.includes(option.value)}
-               disabled={live && value.length >= max && !value.includes(option.value)}
-               onchange={(event) => toggle(event, option.value)}>
+        <input
+          type="checkbox"
+          name={name}
+          value={option.value}
+          checked={value.includes(option.value)}
+          disabled={live && value.length >= max && !value.includes(option.value)}
+          onchange={(event) => toggle(event, option.value)}
+        >
         {option.label}
       </label>
     </zb-each>

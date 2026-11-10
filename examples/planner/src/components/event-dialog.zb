@@ -59,7 +59,14 @@
         <input id={ids.start} name="start" type="time" required value={event?.start ?? ""}>
       </label>
       <label for={ids.end}>Ends
-        <input id={ids.end} name="end" type="time" required value={event?.end ?? ""} oninput={(e) => e.target.setCustomValidity("")}>
+        <input
+          id={ids.end}
+          name="end"
+          type="time"
+          required
+          value={event?.end ?? ""}
+          oninput={(e) => e.target.setCustomValidity("")}
+        >
       </label>
       <label class="wide" for={ids.location}>Location
         <input id={ids.location} name="location" value={event?.location ?? ""}>
@@ -72,7 +79,14 @@
         </select>
       </label>
       <label for={ids.budget}>Budget ($)
-        <input id={ids.budget} name="budget" type="number" min="0" step="1" value={event?.budget ?? 0}>
+        <input
+          id={ids.budget}
+          name="budget"
+          type="number"
+          min="0"
+          step="1"
+          value={event?.budget ?? 0}
+        >
       </label>
       <label class="wide" for={ids.notes}>Notes
         <textarea id={ids.notes} name="notes" rows="2" value={event?.notes ?? ""}></textarea>

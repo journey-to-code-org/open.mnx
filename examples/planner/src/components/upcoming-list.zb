@@ -39,15 +39,33 @@
 <upcoming-list>
   <h2>Events</h2>
   <div class="filters">
-    <input type="search" placeholder="Search events" aria-label="Search events" value={query} oninput={(e) => (query = e.target.value)}>
+    <input
+      type="search"
+      placeholder="Search events"
+      aria-label="Search events"
+      value={query}
+      oninput={(e) => (query = e.target.value)}
+    >
     <select aria-label="Category" value={category} onchange={(e) => (category = e.target.value)}>
       <option value="all">All</option>
       <zb-each items={CATEGORIES} as="name" key={name}><option value={name}>{name}</option></zb-each>
     </select>
   </div>
   <div class="tabs" role="group" aria-label="When">
-    <button type="button" class="pill" class:on={!past} aria-pressed={past ? "false" : "true"} onclick={() => (past = false)}>Upcoming</button>
-    <button type="button" class="pill" class:on={past} aria-pressed={past ? "true" : "false"} onclick={() => (past = true)}>Past</button>
+    <button
+      type="button"
+      class="pill"
+      class:on={!past}
+      aria-pressed={past ? "false" : "true"}
+      onclick={() => (past = false)}
+    >Upcoming</button>
+    <button
+      type="button"
+      class="pill"
+      class:on={past}
+      aria-pressed={past ? "true" : "false"}
+      onclick={() => (past = true)}
+    >Past</button>
   </div>
   <ul zb-if={shown.length > 0}>
     <zb-each items={shown} as="event" key={event.id}>

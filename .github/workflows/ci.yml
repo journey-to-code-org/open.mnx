@@ -21,6 +21,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      # The repository's own components are laid out by zubra fmt.
+      - run: cargo run --locked -- fmt --check .
 
   runtime:
     name: Runtime (unit, browser, tools)

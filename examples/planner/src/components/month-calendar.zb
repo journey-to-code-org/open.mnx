@@ -52,9 +52,19 @@
 <month-calendar>
   <div class="bar">
     <h2 aria-live="polite">{formatMonth(month)}</h2>
-    <button type="button" class="prev" aria-label="Previous month" onclick={() => (month = addMonths(month, -1))}>‹</button>
+    <button
+      type="button"
+      class="prev"
+      aria-label="Previous month"
+      onclick={() => (month = addMonths(month, -1))}
+    >‹</button>
     <button type="button" class="today-button" onclick={() => (month = monthOf(today()))}>Today</button>
-    <button type="button" class="next" aria-label="Next month" onclick={() => (month = addMonths(month, 1))}>›</button>
+    <button
+      type="button"
+      class="next"
+      aria-label="Next month"
+      onclick={() => (month = addMonths(month, 1))}
+    >›</button>
   </div>
   <table>
     <thead><tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th></tr></thead>
@@ -63,10 +73,21 @@
         <tr>
           <zb-each items={week} as="day" key={day}>
             <td class:other={monthOf(day) !== month} class:today={day === now} data-day={day}>
-              <div class="day" role="button" tabindex="0" aria-label={`Add an event on ${formatDay(day)}`} onclick={(e) => e.target.closest('a') || emit('daypick', day)} onkeydown={(e) => e.key === "Enter" && e.target === e.currentTarget && emit('daypick', day)}>
+              <div
+                class="day"
+                role="button"
+                tabindex="0"
+                aria-label={`Add an event on ${formatDay(day)}`}
+                onclick={(e) => e.target.closest('a') || emit('daypick', day)}
+                onkeydown={(e) => e.key === "Enter" && e.target === e.currentTarget && emit('daypick', day)}
+              >
                 <span class="num">{Number(day.slice(8))}</span>
                 <zb-each items={byDay[day] ?? []} as="event" key={event.id}>
-                  <a href={`#/events/${event.id}`} data-category={event.category} title={`${event.start} ${event.title}`}>{event.start} {event.title}</a>
+                  <a
+                    href={`#/events/${event.id}`}
+                    data-category={event.category}
+                    title={`${event.start} ${event.title}`}
+                  >{event.start} {event.title}</a>
                 </zb-each>
               </div>
             </td>

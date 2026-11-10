@@ -8,7 +8,11 @@
   let editing = ephemeral(false);
 </script>
 <task-item doc="">
-  <input type="checkbox" checked={completed} onchange={(event) => (completed = event.target.checked)} />
+  <input
+    type="checkbox"
+    checked={completed}
+    onchange={(event) => (completed = event.target.checked)}
+  />
   <input class="title" value={title} oninput={(event) => (title = event.target.value)} />
   <button class="tag" onclick={() => tags.push('t' + tags.length)}>Tag</button>
   <button class="edit" onclick={() => (editing = !editing)}>Edit</button>
