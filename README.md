@@ -650,6 +650,26 @@ The result is compiled as part of the conversion, and a compile error is shown a
 
 Dynamic values are escaped or written as text. URL attributes must be relative or `http`, `https`, `mailto` or `tel`, checked at build time and again at runtime. Boolean attributes take booleans. String event handlers, interpolated `style` text, and `<script>`/`<style>` inside templates are rejected. See `docs/security.md` for the full model.
 
+## Install the CLI without Node or Rust
+
+Each release attaches prebuilt `zubra` binaries to its [GitHub release](https://github.com/journey-to-code-org/zubra/releases) (`zubra serve`, `zubra compile` and the rest), so a server written in anything can run Zubra:
+
+| Platform | Archive |
+|---|---|
+| Linux x64 / arm64 (glibc) | `zubra-<version>-x86_64-unknown-linux-gnu.tar.gz`, `…aarch64-unknown-linux-gnu.tar.gz` |
+| Linux x64 / arm64, static (Alpine, containers) | `…x86_64-unknown-linux-musl.tar.gz`, `…aarch64-unknown-linux-musl.tar.gz` |
+| macOS Intel / Apple silicon | `…x86_64-apple-darwin.tar.gz`, `…aarch64-apple-darwin.tar.gz` |
+| Windows x64 | `…x86_64-pc-windows-msvc.zip` |
+
+```sh
+version=5.4.0 target=x86_64-unknown-linux-gnu
+curl -fsSLO "https://github.com/journey-to-code-org/zubra/releases/download/v$version/zubra-$version-$target.tar.gz"
+curl -fsSL "https://github.com/journey-to-code-org/zubra/releases/download/v$version/SHA256SUMS" | grep "zubra-$version-$target" | sha256sum -c -
+tar -xzf "zubra-$version-$target.tar.gz" && echo "<hi-x></hi-x>" | "zubra-$version-$target/zubra" fmt --stdin
+```
+
+`SHA256SUMS` is uploaded last, so a release that has it has all seven archives. (Binaries are attached from the first release after this one is merged; earlier releases have none. Or `cargo install --path .` from a checkout, or the npm package.)
+
 ## The CLI
 
 ```sh
