@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zubra"
+version = "0.1.0"
+description = "Render Zubra web components from Python: the zubra compiler as a long-lived process, with Jinja helpers"
+readme = "README.md"
+license = { text = "ISC" }
+requires-python = ">=3.10"
+keywords = ["web-components", "ssr", "flask", "django", "jinja"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Text Processing :: Markup :: HTML",
+]
+dependencies = []
+
+[project.optional-dependencies]
+jinja = ["jinja2>=3"]
+
+[project.urls]
+Repository = "https://github.com/journey-to-code-org/zubra"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# A platform wheel carries the compiler (scripts/build_wheel.py puts it in zubra/bin/).
+[tool.setuptools.package-data]
+zubra = ["bin/*", "py.typed"]
