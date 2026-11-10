@@ -340,6 +340,33 @@ jobs:
       - run: npm test
         working-directory: examples/hypermedia/hono-bikes
 
+  edge-worker:
+    name: Hono bike shop on a Cloudflare Worker (workerd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build --locked
+      # The Worker runs the compiler's WebAssembly build.
+      - run: npm run build
+        working-directory: compiler
+      - run: npm ci
+        working-directory: examples/hypermedia/hono-bikes
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm install
+        working-directory: examples/edge/hono-bikes-worker
+      # Runs the Worker in workerd and compares its HTML to the Node.js app's.
+      - run: npm test
+        working-directory: examples/edge/hono-bikes-worker
+
   standup:
     name: Local-first example (standup, @zubra/sync)
     runs-on: ubuntu-latest
@@ -443,6 +470,12 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
+      # job that runs the rest of the server's tests doesn't build; here they must run.
+      - run: npm ci
+        working-directory: server
+      - run: node --test test/edge.test.js
+        working-directory: server
       # The playground compiling with zubra.wasm in the page.
       - run: node --test "playground/test/*.test.js"
 

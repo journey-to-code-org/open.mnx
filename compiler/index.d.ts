@@ -94,6 +94,13 @@ export declare class CompileError extends Error {
   diagnostics: Diagnostic[];
 }
 
+/**
+ * The compiler stopped on an input (a WebAssembly trap). The request that caused it throws this;
+ * the compiler starts a fresh instance for the next request.
+ */
+export declare class CompilerCrash extends Error {
+  cause: unknown;
+}
 /** Server-render a component. Throws a `CompileError` on errors. */
 export declare function render(path: string, options?: RenderOptions): Rendered;
 /** A component's server-rendered HTML. Throws a `CompileError` on errors. */

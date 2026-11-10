@@ -21,6 +21,14 @@
     "./hono": {
       "types": "./src/adapters.d.ts",
       "default": "./src/hono.js"
+    },
+    "./edge": {
+      "types": "./src/edge.d.ts",
+      "default": "./src/edge.js"
+    },
+    "./hono-edge": {
+      "types": "./src/hono-edge.d.ts",
+      "default": "./src/hono-edge.js"
     }
   },
   "scripts": {
@@ -36,6 +44,7 @@
     "@zubra/compiler": "file:../compiler",
     "@zubra/runtime": "file:../runtime",
     "dompurify": "3.4.17",
+    "esbuild": "0.28.2",
     "express": "5.3.0",
     "fastify": "5.12.8",
     "hono": "4.13.17",

@@ -1,0 +1,24 @@
+{
+  "name": "zubra-example-hono-bikes-worker",
+  "private": true,
+  "type": "module",
+  "description": "The Spoke & Chain bike shop on a Cloudflare Worker: the same routes and components as examples/hypermedia/hono-bikes, rendered by @zubra/server/edge. Its test runs the Worker in workerd and compares its HTML to the Node.js app's.",
+  "scripts": {
+    "build:assets": "node scripts/build-assets.mjs",
+    "dev": "npm run build:assets && wrangler dev --local",
+    "test": "npm run build:assets && node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/server": "file:../../../server",
+    "hono": "4.13.17",
+    "htmx.org": "2.0.11"
+  },
+  "devDependencies": {
+    "wrangler": "4.45.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

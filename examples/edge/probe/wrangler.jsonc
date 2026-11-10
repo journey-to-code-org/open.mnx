@@ -1,0 +1,7 @@
+{
+  "name": "zubra-edge-probe",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  // Components are text imports: `import source from './components/price-tag.zb'`.
+  "rules": [{ "type": "Text", "globs": ["**/*.zb"], "fallthrough": true }]
+}
