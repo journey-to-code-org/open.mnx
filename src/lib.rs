@@ -1,10 +1,29 @@
 //! zubra: a compiler for Web Components written as HTML-first single-file components.
 //!
-//! Every entry point comes in two forms: one taking a source string (no `.zb` imports
-//! allowed, since there is nowhere to find them), and a `_file` / `_with` form that resolves
-//! imported components — from the filesystem, or through a caller-supplied [`Loader`].
+//! # The supported API
+//!
+//! For a server that renders components, start with [`Component`]: a component and what it
+//! imports, held in memory, with `render`, `css` and `module`. (The `zubra-macros` crate builds
+//! one from a `.zb` file at `cargo build`: `include_zb!("components/price-tag.zb")`.)
+//!
+//! The rest of the supported surface is small, and follows semver from 5.x:
+//!
+//! - [`Component`], [`Diagnostic`] and [`Span`]: render, style and serve a component, and report
+//!   what's wrong with it ([`Diagnostic::render_in`] prints it with its source line).
+//! - [`compile_html_with_options`] with [`HtmlOptions`], [`SlotSource`] and a [`Loader`]
+//!   ([`filesystem`] reads imports from disk): rendering with control over slots and streaming.
+//! - [`compile_js_options`] with [`JsOptions`] and [`StyleImports`]; [`compile_css`] and
+//!   [`css_with`]: what the browser loads.
+//! - [`fn@format`] with [`FormatOptions`]: `zubra fmt`.
+//! - [`handle_request`]: the compiler as one JSON request in and one JSON response out, the
+//!   same protocol as `zubra request`, `zubra serve` and the WebAssembly build.
+//!
+//! Older entry points (`compile`, `compile_file`, `compile_html_from`, `compile_js`, …) still work
+//! but are hidden from the documentation: they take their inputs as JSON strings and several
+//! cover the same ground. They are kept through 5.x and may go in 6.0.
 
 mod ast;
+mod bundle;
 mod components;
 mod convert;
 mod convert_element;
@@ -29,6 +48,7 @@ mod styles;
 mod typescript;
 mod validate;
 
+pub use bundle::Component;
 pub use components::component_extension;
 pub use components::{filesystem, Loader};
 pub use convert::{convert, convert_component, Conversion};
@@ -128,10 +148,12 @@ fn read(path: &str) -> Result<String, Diagnostic> {
 
 // ---- HTML -----------------------------------------------------------------------------------
 
+#[doc(hidden)]
 pub fn compile(source: &str, props_json: &str) -> Result<String, Diagnostic> {
     compile_value(source, &parse_json(props_json, "props")?)
 }
 
+#[doc(hidden)]
 pub fn compile_with_slots(
     source: &str,
     props_json: &str,
@@ -144,10 +166,12 @@ pub fn compile_with_slots(
     )
 }
 
+#[doc(hidden)]
 pub fn compile_value(source: &str, props: &serde_json::Value) -> Result<String, Diagnostic> {
     compile_value_with_slots(source, props, &serde_json::json!({}))
 }
 
+#[doc(hidden)]
 pub fn compile_value_with_slots(
     source: &str,
     props: &serde_json::Value,
@@ -164,6 +188,7 @@ pub fn compile_value_with_slots(
 }
 
 /// Static HTML for the component at `path`, resolving its `.zb` imports from the filesystem.
+#[doc(hidden)]
 pub fn compile_file(path: &str, props_json: &str, slots_json: &str) -> Result<String, Diagnostic> {
     compile_html_with(
         &read(path)?,
@@ -175,6 +200,7 @@ pub fn compile_file(path: &str, props_json: &str, slots_json: &str) -> Result<St
 }
 
 /// Static HTML, resolving `.zb` imports with `loader`.
+#[doc(hidden)]
 pub fn compile_html_with(
     source: &str,
     path: &str,
@@ -202,6 +228,7 @@ pub enum SlotSource {
 }
 
 /// Static HTML, with slot content in `slot_source` syntax.
+#[doc(hidden)]
 pub fn compile_html_from(
     source: &str,
     path: &str,
@@ -357,6 +384,7 @@ fn html(
 ///
 /// `runtime` is the module specifier the output imports the runtime from (usually
 /// `"@zubra/runtime"`); `source_name` appears in the generated header.
+#[doc(hidden)]
 pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<String, Diagnostic> {
     front(source, Some(source_name), None, |source| {
         let component = load(source, source_name, None)?;
@@ -374,6 +402,7 @@ pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<Stri
 }
 
 /// The JavaScript module for the component at `path`; `.zb` imports become `.js` imports.
+#[doc(hidden)]
 pub fn compile_js_file(path: &str, runtime: &str) -> Result<String, Diagnostic> {
     compile_js_with(
         &read(path)?,
@@ -387,6 +416,7 @@ pub fn compile_js_file(path: &str, runtime: &str) -> Result<String, Diagnostic> 
 /// The JavaScript module, resolving `.zb` imports with `loader`. `component_extension`
 /// rewrites `.zb` import specifiers (`Some(".js")`), or keeps them (`None`) for bundlers that
 /// load `.zb` files themselves.
+#[doc(hidden)]
 pub fn compile_js_with(
     source: &str,
     path: &str,
@@ -450,11 +480,13 @@ pub fn compile_js_options(
 /// The component as a plain custom element, with no runtime to install (`--emit element`): the
 /// class you'd write by hand, with only the helpers the component uses (see `emit_element`).
 /// Shadow DOM, spreads, zb-await and runtime features beyond the basics are refused with a reason.
+#[doc(hidden)]
 pub fn compile_element_file(path: &str) -> Result<String, Diagnostic> {
     compile_element_with(&read(path)?, path, Some(".js"), &components::filesystem)
 }
 
 /// [`compile_element_file`] for a source and loader.
+#[doc(hidden)]
 pub fn compile_element_with(
     source: &str,
     path: &str,
@@ -485,6 +517,7 @@ pub fn compile_element_with(
 
 /// The JavaScript module for a bundler plugin: `.zb` imports are kept, and the `<style>` is
 /// imported through the bundler (see [`StyleImports`]) instead of inlined.
+#[doc(hidden)]
 pub fn compile_js_for_bundler(
     source: &str,
     path: &str,
@@ -509,6 +542,7 @@ pub fn compile_js_for_bundler(
 
 /// The scoped stylesheet of the component at `path` and of every component it imports, for the
 /// page's `<head>` (light-DOM components; shadow ones carry their own). Empty without styles.
+#[doc(hidden)]
 pub fn compile_css_file(path: &str) -> Result<String, Diagnostic> {
     let source = read(path)?;
     front(
@@ -526,6 +560,7 @@ pub fn compile_css_file(path: &str) -> Result<String, Diagnostic> {
 }
 
 /// The scoped stylesheets of a component and what it imports, resolving imports with `loader`.
+#[doc(hidden)]
 pub fn css_with(source: &str, path: &str, loader: Loader<'_>) -> Result<String, Diagnostic> {
     front(source, Some(path), Some(loader), |source| {
         Ok(stylesheets(&load(source, path, Some(loader))?))
@@ -536,6 +571,11 @@ pub fn css_with(source: &str, path: &str, loader: Loader<'_>) -> Result<String, 
 /// build exposes). See [`request`](crate::request) for the format.
 pub fn handle_request(request: &str) -> String {
     request::handle(request)
+}
+
+/// The host tag of a component's source (`price-tag`), without loading its imports.
+pub(crate) fn tag_of(source: &str) -> Result<String, Diagnostic> {
+    front(source, None, None, |source| Ok(parser::parse(source)?.tag))
 }
 
 /// The scoped stylesheet of a component with no `.zb` imports.

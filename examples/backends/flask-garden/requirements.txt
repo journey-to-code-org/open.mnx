@@ -1,1 +1,3 @@
 flask>=3.1,<4
+# The zubra package from this repository (pip install zubra, once it is on PyPI).
+-e ../../../clients/python

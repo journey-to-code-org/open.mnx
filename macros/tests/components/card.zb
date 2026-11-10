@@ -1,0 +1,4 @@
+<script>
+  import './badge.zb'
+</script>
+<x-card title="Untitled"><h2>{title}</h2><x-badge label={title}></x-badge></x-card>

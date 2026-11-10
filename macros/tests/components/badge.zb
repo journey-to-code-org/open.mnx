@@ -1,0 +1,2 @@
+<style>span { color: green; }</style>
+<x-badge label="none"><span>{label}</span></x-badge>

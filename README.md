@@ -678,6 +678,26 @@ The result is compiled as part of the conversion, and a compile error is shown a
 
 Dynamic values are escaped or written as text. URL attributes must be relative or `http`, `https`, `mailto` or `tel`, checked at build time and again at runtime. Boolean attributes take booleans. String event handlers, interpolated `style` text, and `<script>`/`<style>` inside templates are rejected. See `docs/security.md` for the full model.
 
+## Install the CLI without Node or Rust
+
+Each release attaches prebuilt `zubra` binaries to its [GitHub release](https://github.com/journey-to-code-org/zubra/releases) (`zubra serve`, `zubra compile` and the rest), so a server written in anything can run Zubra:
+
+| Platform | Archive |
+|---|---|
+| Linux x64 / arm64 (glibc) | `zubra-<version>-x86_64-unknown-linux-gnu.tar.gz`, `…aarch64-unknown-linux-gnu.tar.gz` |
+| Linux x64 / arm64, static (Alpine, containers) | `…x86_64-unknown-linux-musl.tar.gz`, `…aarch64-unknown-linux-musl.tar.gz` |
+| macOS Intel / Apple silicon | `…x86_64-apple-darwin.tar.gz`, `…aarch64-apple-darwin.tar.gz` |
+| Windows x64 | `…x86_64-pc-windows-msvc.zip` |
+
+```sh
+version=5.5.0 target=x86_64-unknown-linux-gnu   # 5.5.0 is the first release with binaries
+curl -fsSLO "https://github.com/journey-to-code-org/zubra/releases/download/v$version/zubra-$version-$target.tar.gz"
+curl -fsSL "https://github.com/journey-to-code-org/zubra/releases/download/v$version/SHA256SUMS" | grep "zubra-$version-$target" | sha256sum -c -
+tar -xzf "zubra-$version-$target.tar.gz" && echo "<hi-x></hi-x>" | "zubra-$version-$target/zubra" fmt --stdin
+```
+
+`SHA256SUMS` is uploaded last, so a release that has it has all seven archives. (Binaries are attached from the first release after this one is merged; earlier releases have none. Or `cargo install --path .` from a checkout, or the npm package.)
+
 ## The CLI
 
 ```sh
@@ -692,7 +712,7 @@ zubra request < request.json
 zubra serve
 ```
 
-`zubra check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values; what the HTML output can't render is reported only with `--server`, as warnings (errors for `checked`, `selected`, `value` and `disabled`). `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@zubra/runtime`), and `--keep-imports` leaves `./x.zb` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it, and `--devtools` adds what the browser DevTools panel reads (each part's source location, the script's signals by name, the file's path; for development builds, which `@zubra/unplugin` makes in Vite's dev server). `--emit element` writes the same element as one file with no runtime to install (see [Plain elements](docs/plain-elements.md)). `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `zubra check --server` also reports what a server without JavaScript leaves out (see "What the server can render"). `zubra request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`). `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. `zubra serve` keeps running and answers one request (or batch) per line on stdin with one response per line on stdout, for servers in other languages that render often (`examples/backends/flask-garden/garden/zubra.py`).
+`zubra check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values; what the HTML output can't render is reported only with `--server`, as warnings (errors for `checked`, `selected`, `value` and `disabled`). `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@zubra/runtime`), and `--keep-imports` leaves `./x.zb` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it, and `--devtools` adds what the browser DevTools panel reads (each part's source location, the script's signals by name, the file's path; for development builds, which `@zubra/unplugin` makes in Vite's dev server). `--emit element` writes the same element as one file with no runtime to install (see [Plain elements](docs/plain-elements.md)). `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `zubra check --server` also reports what a server without JavaScript leaves out (see "What the server can render"). `zubra request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`). `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. `zubra serve` keeps running and answers one request (or batch) per line on stdin with one response per line on stdout, for servers in other languages that render often (the [Python package](clients/python) is a client for it, and the Flask garden uses that).
 
 ### Formatting
 
