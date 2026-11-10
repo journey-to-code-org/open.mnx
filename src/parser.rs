@@ -561,6 +561,7 @@ impl<'a> TemplateParser<'a> {
                     continue;
                 }
                 let condition = take_condition(&mut element)?;
+                let animate = take_animate(&mut element, condition.as_ref())?;
                 reserved_attributes(&element)?;
                 let node = lower_directive(element)?;
                 match condition {
@@ -574,6 +575,7 @@ impl<'a> TemplateParser<'a> {
                             test_span,
                             consequent: vec![node],
                             alternate: Vec::new(),
+                            animate,
                             span,
                         });
                         chain = Some((nodes.len() - 1, false));
@@ -937,6 +939,7 @@ impl<'a> TemplateParser<'a> {
                 test_span,
                 consequent,
                 alternate,
+                animate: false,
                 span,
             });
         }
@@ -962,6 +965,7 @@ impl<'a> TemplateParser<'a> {
                 test_span,
                 consequent: vec![node],
                 alternate: Vec::new(),
+                animate: false,
                 span,
             });
         }
@@ -1014,6 +1018,7 @@ impl<'a> TemplateParser<'a> {
                     key,
                     lets: Vec::new(),
                     children: vec![node],
+                    animate: false,
                     span,
                 });
             }
@@ -1729,6 +1734,50 @@ fn take_condition(element: &mut Element) -> Result<Option<Condition>, Diagnostic
     }
 }
 
+/// A directive's attribute that takes no value, like `animate`: whether it's there.
+fn flag(element: &Element, name: &str, example: &str) -> Result<bool, Diagnostic> {
+    match find(element, name) {
+        None => Ok(false),
+        Some(Attribute {
+            value: AttributeValue::None,
+            ..
+        }) => Ok(true),
+        Some(attribute) => Err(Diagnostic::new(
+            attribute.span,
+            format!("`{name}` takes no value: {example}"),
+        )),
+    }
+}
+
+/// `zb-animate` beside an element's `zb-if`: the chain it starts animates (`animate` on <zb-if>).
+fn take_animate(element: &mut Element, condition: Option<&Condition>) -> Result<bool, Diagnostic> {
+    let Some(at) = element
+        .attributes
+        .iter()
+        .position(|attribute| attribute.name.eq_ignore_ascii_case("zb-animate"))
+    else {
+        return Ok(false);
+    };
+    let attribute = element.attributes.remove(at);
+    if !matches!(attribute.value, AttributeValue::None) {
+        return Err(Diagnostic::new(
+            attribute.span,
+            "`zb-animate` takes no value: <p zb-if={…} zb-animate>",
+        ));
+    }
+    match condition {
+        Some(Condition::If(..)) => Ok(true),
+        Some(_) => Err(Diagnostic::new(
+            attribute.span,
+            "`zb-animate` goes on the element with `zb-if`; the whole chain animates",
+        )),
+        None => Err(Diagnostic::new(
+            attribute.span,
+            "`zb-animate` goes beside `zb-if`: <p zb-if={…} zb-animate>; for a list, write <zb-each … key={…} animate>",
+        )),
+    }
+}
+
 /// Attaches a `zb-else-if` or `zb-else` element to the chain its previous sibling started.
 fn attach_branch(
     nodes: &mut Vec<Node>,
@@ -1759,6 +1808,8 @@ fn attach_branch(
     }
     // Whitespace between the branches isn't content.
     nodes.truncate(at + 1);
+    // A chain animates as its `zb-if` says.
+    let animate = matches!(nodes[at], Node::If { animate: true, .. });
     let alternate = last_alternate(&mut nodes[at]);
     match condition {
         Condition::ElseIf(test, test_span, span) => {
@@ -1767,6 +1818,7 @@ fn attach_branch(
                 test_span,
                 consequent: vec![node],
                 alternate: Vec::new(),
+                animate,
                 span,
             }];
         }
@@ -1905,8 +1957,9 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
     }
     match lower.as_str() {
         "zb-if" => {
-            allow_attributes(&element, &["test"])?;
+            allow_attributes(&element, &["test", "animate"])?;
             let (test, test_span) = required_expression(&element, "test")?;
+            let animate = flag(&element, "animate", "<zb-if test={…} animate>")?;
             // The branches in order: the zb-if's own, then each zb-else-if, then zb-else.
             let mut branches: Vec<Branch> =
                 vec![(Some((test, test_span)), Vec::new(), element.span)];
@@ -1956,6 +2009,7 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
                     test_span,
                     consequent,
                     alternate,
+                    animate,
                     span,
                 };
                 alternate = vec![node];
@@ -1963,7 +2017,12 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
             Ok(alternate.pop().expect("zb-if has a branch"))
         }
         "zb-each" => {
-            allow_attributes(&element, &["items", "as", "index", "key"])?;
+            allow_attributes(&element, &["items", "as", "index", "key", "animate"])?;
+            let animate = flag(
+                &element,
+                "animate",
+                "<zb-each items={…} as=\"item\" key={item.id} animate>",
+            )?;
             let (items, items_span) = required_expression(&element, "items")?;
             let item = required_text(&element, "as")?;
             check_binding(&item, element.span, "zb-each as")?;
@@ -1981,6 +2040,12 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
             let key = find(&element, "key")
                 .map(|_| required_expression(&element, "key"))
                 .transpose()?;
+            if animate && key.is_none() {
+                return Err(Diagnostic::new(
+                    element.span,
+                    "`animate` follows rows by their key: give the zb-each a key, <zb-each items={…} as=\"item\" key={item.id} animate>",
+                ));
+            }
             Ok(Node::Each {
                 items,
                 items_span,
@@ -1989,6 +2054,7 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
                 key,
                 lets,
                 children: element.children,
+                animate,
                 span: element.span,
             })
         }
@@ -2011,7 +2077,8 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
             })
         }
         "zb-switch" => {
-            allow_attributes(&element, &["value"])?;
+            allow_attributes(&element, &["value", "animate"])?;
+            let animate = flag(&element, "animate", "<zb-switch value={…} animate>")?;
             let (value, _) = required_expression(&element, "value")?;
             // Each zb-case, in order, then an optional zb-else: an zb-if chain.
             let mut cases: Vec<(Expression, Span, Vec<Node>, Span)> = Vec::new();
@@ -2083,6 +2150,7 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
                     test_span,
                     consequent,
                     alternate,
+                    animate,
                     span,
                 }];
             }

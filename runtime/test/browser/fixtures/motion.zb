@@ -1,0 +1,26 @@
+<!-- Motion: `animate` keeps a leaving branch until its transition ends, and keyed rows glide. -->
+<style>
+  .panel, .closed, .note, .tab { transition: opacity 300ms; }
+  [data-leaving] { opacity: 0; }
+  .list { position: relative; margin: 0; padding: 0; list-style: none; }
+  .row { height: 20px; --zb-move-duration: 400ms; transition: opacity 300ms; }
+  .spinner { animation: turn 1s linear infinite; }
+  @keyframes turn { to { rotate: 1turn; } }
+</style>
+<zb-motion open={true} tab={"a"} items={[]} spin={false}>
+  <zb-if test={open} animate>
+    <p class="panel">Panel</p>
+    <zb-else><p class="closed">Closed</p></zb-else>
+  </zb-if>
+  <p class="note" zb-if={open} zb-animate>Note</p>
+  <zb-switch value={tab} animate>
+    <zb-case is="a"><section class="tab">A</section></zb-case>
+    <zb-case is="b"><section class="tab">B</section></zb-case>
+  </zb-switch>
+  <zb-if test={spin} animate><div class="spinner"></div></zb-if>
+  <ul class="list">
+    <zb-each items={items} as="item" key={item.id} animate>
+      <li class="row">{item.label}</li>
+    </zb-each>
+  </ul>
+</zb-motion>

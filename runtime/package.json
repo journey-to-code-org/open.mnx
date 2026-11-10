@@ -40,6 +40,11 @@
       "production": "./dist/production/primitives.js",
       "default": "./src/primitives.js"
     },
+    "./motion": {
+      "types": "./types/motion.d.ts",
+      "production": "./dist/production/motion.js",
+      "default": "./src/motion.js"
+    },
     "./react": {
       "types": "./types/react.d.ts",
       "production": "./dist/production/react.js",
