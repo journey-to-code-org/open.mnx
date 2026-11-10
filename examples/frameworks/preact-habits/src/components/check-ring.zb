@@ -28,12 +28,32 @@
   .less:disabled { visibility: hidden; }
 </style>
 <check-ring value:model={0} goal={1} label="Today">
-  <button type="button" class="less" aria-label={`One less: ${label}`} disabled={value === 0} onclick={() => set(value - 1)}>−</button>
-  <button type="button" class="ring" class:done aria-label={`${label}: ${value} of ${goal}`} aria-pressed={done ? "true" : "false"} onclick={() => set(value + 1)}>
+  <button
+    type="button"
+    class="less"
+    aria-label={`One less: ${label}`}
+    disabled={value === 0}
+    onclick={() => set(value - 1)}
+  >−</button>
+  <button
+    type="button"
+    class="ring"
+    class:done
+    aria-label={`${label}: ${value} of ${goal}`}
+    aria-pressed={done ? "true" : "false"}
+    onclick={() => set(value + 1)}
+  >
     <svg viewBox="0 0 42 42" aria-hidden="true">
       <circle class="bg" cx="21" cy="21" r="16" stroke="none" fill="none"></circle>
       <circle class="track" cx="21" cy="21" r={R}></circle>
-      <circle zb-if={percent > 0} class="fill" cx="21" cy="21" r={R} stroke-dasharray={`${percent} ${100 - percent}`}></circle>
+      <circle
+        zb-if={percent > 0}
+        class="fill"
+        cx="21"
+        cy="21"
+        r={R}
+        stroke-dasharray={`${percent} ${100 - percent}`}
+      ></circle>
     </svg>
     <span class="count">{goal === 1 ? (done ? "✓" : "") : value}</span>
   </button>

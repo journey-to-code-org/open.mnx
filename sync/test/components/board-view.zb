@@ -7,7 +7,11 @@
   let others = peers();
 </script>
 <board-view doc="">
-  <div class="pad" style="width: 300px; height: 200px; background: #eee" onpointermove={(event) => (cursor = { x: Math.round(event.offsetX), y: Math.round(event.offsetY) })}></div>
+  <div
+    class="pad"
+    style="width: 300px; height: 200px; background: #eee"
+    onpointermove={(event) => (cursor = { x: Math.round(event.offsetX), y: Math.round(event.offsetY) })}
+  ></div>
   <button class="stroke" onclick={() => (strokes = strokes + 1)}>{strokes}</button>
   <p class="count">{others.length}</p>
   <zb-each items={others} as="other" key={other.peer}><i class="other">{other.cursor.x},{other.cursor.y}</i></zb-each>

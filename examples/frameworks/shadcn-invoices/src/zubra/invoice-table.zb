@@ -26,15 +26,19 @@
       </thead>
       <tbody class="[&_tr:last-child]:border-0">
         <zb-each items={shown} as="invoice" key={invoice.id}>
-        <tr tabindex="0" data-id={invoice.id}
-          onclick={() => emit("invoiceopen", invoice.id)} onkeydown.enter={() => emit("invoiceopen", invoice.id)}
-          class="cursor-pointer border-b transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted">
-          <td class="p-2 align-middle font-medium">{invoice.id}</td>
-          <td class="p-2 align-middle">{invoice.client}</td>
-          <td class="p-2 align-middle"><status-badge status={invoice.status}></status-badge></td>
-          <td class="p-2 align-middle text-muted-foreground">{day.format(new Date(`${invoice.due}T12:00`))}</td>
-          <td class="p-2 text-right align-middle tabular-nums">{money.format(invoice.amount)}</td>
-        </tr>
+          <tr
+            tabindex="0"
+            data-id={invoice.id}
+            onclick={() => emit("invoiceopen", invoice.id)}
+            onkeydown.enter={() => emit("invoiceopen", invoice.id)}
+            class="cursor-pointer border-b transition-colors outline-none hover:bg-muted/50 focus-visible:bg-muted"
+          >
+            <td class="p-2 align-middle font-medium">{invoice.id}</td>
+            <td class="p-2 align-middle">{invoice.client}</td>
+            <td class="p-2 align-middle"><status-badge status={invoice.status}></status-badge></td>
+            <td class="p-2 align-middle text-muted-foreground">{day.format(new Date(`${invoice.due}T12:00`))}</td>
+            <td class="p-2 text-right align-middle tabular-nums">{money.format(invoice.amount)}</td>
+          </tr>
         </zb-each>
       </tbody>
       <caption zb-if={shown.length === 0} class="mt-4 text-sm text-muted-foreground">No {filter} invoices.</caption>

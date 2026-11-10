@@ -44,7 +44,13 @@
   <div class="counts" role="group" aria-label="Show">
     <button type="button" class="pill" class:on={filter === "all"} onclick={() => (filter = "all")}>All {event.guests.length}</button>
     <zb-each items={RSVPS} as="rsvp" key={rsvp}>
-      <button type="button" class="pill" class:on={filter === rsvp} data-filter={rsvp} onclick={() => (filter = rsvp)}>{rsvp} {counts[rsvp]}</button>
+      <button
+        type="button"
+        class="pill"
+        class:on={filter === rsvp}
+        data-filter={rsvp}
+        onclick={() => (filter = rsvp)}
+      >{rsvp} {counts[rsvp]}</button>
     </zb-each>
     <span class="headcount">Headcount: {headcount}</span>
   </div>
@@ -55,7 +61,11 @@
         <tr data-rsvp={guest.rsvp}>
           <td>{guest.name}<small>{guest.email}</small></td>
           <td>
-            <select aria-label={`RSVP for ${guest.name}`} value={guest.rsvp} onchange={(e) => act('guests.update', event.id, guest.id, { rsvp: e.target.value })}>
+            <select
+              aria-label={`RSVP for ${guest.name}`}
+              value={guest.rsvp}
+              onchange={(e) => act('guests.update', event.id, guest.id, { rsvp: e.target.value })}
+            >
               <zb-each items={RSVPS} as="rsvp" key={rsvp}><option value={rsvp}>{rsvp}</option></zb-each>
             </select>
           </td>
@@ -67,8 +77,20 @@
   </table>
   <p zb-else class="empty">{event.guests.length ? "No one with that RSVP." : "No guests yet."}</p>
   <form onsubmit.prevent={invite}>
-    <input required placeholder="Name" aria-label="Guest name" value={name} oninput={(e) => (name = e.target.value)}>
-    <input type="email" placeholder="Email (optional)" aria-label="Guest email" value={email} oninput={(e) => ((email = e.target.value), (problem = ""))}>
+    <input
+      required
+      placeholder="Name"
+      aria-label="Guest name"
+      value={name}
+      oninput={(e) => (name = e.target.value)}
+    >
+    <input
+      type="email"
+      placeholder="Email (optional)"
+      aria-label="Guest email"
+      value={email}
+      oninput={(e) => ((email = e.target.value), (problem = ""))}
+    >
     <button type="submit" class="primary">Invite</button>
   </form>
   <p zb-if={problem} class="problem" role="alert">{problem}</p>

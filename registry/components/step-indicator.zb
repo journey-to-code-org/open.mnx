@@ -23,7 +23,12 @@
     <ol>
       <zb-each items={steps} as="step" index="index" key={step}>
         <li class:done={index < current} class:current={index === current}>
-          <button type="button" disabled={index >= current} aria-current={index === current ? "step" : "false"} onclick={() => emit('stepselect', index)}><span class="label">{step}</span></button>
+          <button
+            type="button"
+            disabled={index >= current}
+            aria-current={index === current ? "step" : "false"}
+            onclick={() => emit('stepselect', index)}
+          ><span class="label">{step}</span></button>
         </li>
       </zb-each>
     </ol>

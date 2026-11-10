@@ -28,10 +28,24 @@
 </style>
 <date-range form-associated value:model={{ start: "", end: "" }} min="">
   <label for={startId}>Check-in
-    <input id={startId} type="date" class="start" min={min} value={value.start} onchange={(event) => set("start", event.target.value)}>
+    <input
+      id={startId}
+      type="date"
+      class="start"
+      min={min}
+      value={value.start}
+      onchange={(event) => set("start", event.target.value)}
+    >
   </label>
   <label for={endId}>Check-out
-    <input id={endId} type="date" class="end" min={nextDay(value.start)} value={value.end} onchange={(event) => set("end", event.target.value)}>
+    <input
+      id={endId}
+      type="date"
+      class="end"
+      min={nextDay(value.start)}
+      value={value.end}
+      onchange={(event) => set("end", event.target.value)}
+    >
   </label>
   <span class="nights" aria-live="polite">{nights > 0 ? `${nights} night${nights === 1 ? "" : "s"}` : "—"}</span>
 </date-range>

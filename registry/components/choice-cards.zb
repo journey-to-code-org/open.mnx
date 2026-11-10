@@ -36,12 +36,22 @@
 </style>
 <choice-cards form-associated value:model="" items={[]} required={false} label="">
   <div role="radiogroup" aria-label={label} ref={group}>
-  <zb-each items={items} as="item" index="index" key={item.id}>
-    <button type="button" role="radio" data-id={item.id} aria-checked={item.id === value ? "true" : "false"} tabindex={item.id === value || (!value && index === 0) ? "0" : "-1"} disabled={item.disabled ?? false} onclick={() => choose(item)} onkeydown.down.right.prevent={() => move(index, 1)} onkeydown.up.left.prevent={() => move(index, -1)}>
-      <strong>{item.title}</strong>
-      <span class="detail">{item.detail}</span>
-      <span class="row"><span class="note">{item.note ?? ""}</span><span class="price">{item.price ?? ""}</span></span>
-    </button>
-  </zb-each>
+    <zb-each items={items} as="item" index="index" key={item.id}>
+      <button
+        type="button"
+        role="radio"
+        data-id={item.id}
+        aria-checked={item.id === value ? "true" : "false"}
+        tabindex={item.id === value || (!value && index === 0) ? "0" : "-1"}
+        disabled={item.disabled ?? false}
+        onclick={() => choose(item)}
+        onkeydown.down.right.prevent={() => move(index, 1)}
+        onkeydown.up.left.prevent={() => move(index, -1)}
+      >
+        <strong>{item.title}</strong>
+        <span class="detail">{item.detail}</span>
+        <span class="row"><span class="note">{item.note ?? ""}</span><span class="price">{item.price ?? ""}</span></span>
+      </button>
+    </zb-each>
   </div>
 </choice-cards>

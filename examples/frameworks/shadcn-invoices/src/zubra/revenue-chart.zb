@@ -21,7 +21,11 @@
   .legend i { display: inline-block; width: 0.6rem; height: 0.6rem; margin-right: 0.35rem; border-radius: 2px; vertical-align: -1px; }
 </style>
 <revenue-chart shadow months={[]}>
-  <div class="bars" role="img" aria-label={months.map((month) => `${month.label}: ${money.format(month.paid)} paid, ${money.format(month.outstanding)} outstanding`).join("; ")}>
+  <div
+    class="bars"
+    role="img"
+    aria-label={months.map((month) => `${month.label}: ${money.format(month.paid)} paid, ${money.format(month.outstanding)} outstanding`).join("; ")}
+  >
     <zb-each items={months} as="month" key={month.label}>
       <div class="month">
         <div class="outstanding" style:height={`${(month.outstanding / most) * 100}%`}></div>

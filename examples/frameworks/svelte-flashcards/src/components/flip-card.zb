@@ -21,7 +21,16 @@
   @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
 </style>
 <flip-card shadow flipped:model={false} hint="Click or press Space to flip">
-  <div class="card" class:flipped role="button" tabindex="0" aria-pressed={flipped ? "true" : "false"} aria-label={flipped ? "Answer (flip back)" : "Question (flip to see the answer)"} onclick={flip} onkeydown.space.enter.prevent={flip}>
+  <div
+    class="card"
+    class:flipped
+    role="button"
+    tabindex="0"
+    aria-pressed={flipped ? "true" : "false"}
+    aria-label={flipped ? "Answer (flip back)" : "Question (flip to see the answer)"}
+    onclick={flip}
+    onkeydown.space.enter.prevent={flip}
+  >
     <div class="face front" aria-hidden={flipped ? "true" : "false"}><zb-slot name="front"></zb-slot></div>
     <div class="face back" aria-hidden={flipped ? "false" : "true"}><zb-slot name="back"></zb-slot></div>
     <span class="hint">{hint}</span>
