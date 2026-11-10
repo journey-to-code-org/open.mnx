@@ -68,6 +68,13 @@ test('compiles in the page and runs the component in every preview', async () =>
   // Every output, in its tab.
   await page.click('[role=tab][data-tab=js]');
   assert.match(await page.textContent('#out-js'), /\$define\(tag, \{/);
+  // The custom element as you'd write it by hand: a class, not the runtime's definition.
+  await page.click('[role=tab][data-tab=element]');
+  const element = await page.textContent('#out-element');
+  assert.match(element, /export class HelloCounter extends HTMLElement \{/);
+  assert.match(element, /static observedAttributes = /);
+  assert.match(element, /customElements\.define\(tag, HelloCounter\)/);
+  assert.doesNotMatch(element, /\$define|@zubra\/runtime"/);
   assert.match(await page.textContent('#out-html'), /<hello-counter>\s*<button type="button" class="less" disabled>−<\/button>\s*<output>Clicks: 0<\/output>/);
   assert.match(await page.textContent('#out-dts'), /countchange: CustomEvent<number>/);
   assert.match(await page.textContent('#out-manifest'), /"tagName": "hello-counter"/);
