@@ -52,7 +52,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return needs(name, response.output);
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, ...syncImports, ...imports } })}</script>`;
+  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, ...syncImports, ...imports } })}</script>`;
   const head = (names) => {
     // A component that needs a package that isn't installed fails here, while the page is built,
     // with the reason, rather than later in the browser as an unresolved import.
