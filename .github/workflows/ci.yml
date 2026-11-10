@@ -471,6 +471,8 @@ jobs:
       # runs with the runtime's browser suite).
       - run: npm test
         working-directory: editors/devtools
+      # What addons.mozilla.org's validator checks, warnings included.
+      - run: npx --yes web-ext lint --source-dir editors/devtools --self-hosted --warnings-as-errors
 
   skills:
     name: Skills (examples compile, copies in sync)
