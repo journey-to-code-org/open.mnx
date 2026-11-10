@@ -26,7 +26,7 @@ How it gets there:
 ## What's left in the 18
 
 All are reported with advice, none silently wrong:
-- **Spreading onto another component (7)**: `<Button {...props}>`. Zubra checks every prop of a child component; a spread can't be checked. The fix is to pass each prop.
+- **Spreading onto another component (7)**: `<Button {...props}>`. This was an error because Zubra checks every prop of a child component. Since the next release a spread onto a component is allowed (the entries that are its props are passed as props, the rest go on its host), and a rerun of this corpus at `8ab2771` (the pinned commit isn't fetchable) shows all 7 get past it and stop at the next thing: they import the sibling component by its path in the shadcn repository (`@/registry/new-york-v4/ui/button`), which `convert` doesn't map to a converted `.zb` file, and the siblings (`Button`, `Label`) are Radix-based and refused themselves; `Loader2Icon` is a `lucide-react` icon. So the headline number stays at 50: the spread was a real blocker, but not the only one.
 - **Custom hooks and a context provider (6, all in `message-scroller.tsx`)**: the component's state lives in a React context and a custom hook.
 - **The rest of the props spread onto an inner element (2)**: `<div><table {...props} /></div>`. The consumer's attributes would land on the host, not the table.
 - **One early return, one `children` used as a value, one icon component** that isn't imported as a component.
@@ -44,16 +44,16 @@ Converted or reported:
 | `alert.tsx` | 3 | 3 | — |
 | `card.tsx` | 7 | 7 | — |
 | `empty.tsx` | 6 | 6 | — |
-| `field.tsx` | 10 | 7 | spreading onto a component isn't converted (1), X can only be rendered: put X in the JSX (1), a component function returns once, at the end (1), use conditionals in the returned JSX (1) |
-| `input-group.tsx` | 6 | 3 | spreading onto a component isn't converted (3) |
+| `field.tsx` | 10 | 7 | `<Label>` isn't an imported component (1), X can only be rendered: put X in the JSX (1), a component function returns once, at the end (1), use conditionals in the returned JSX (1) |
+| `input-group.tsx` | 6 | 3 | `<Button>`, `<Input>`, `<Textarea>` aren't imported components (3) |
 | `input.tsx` | 1 | 1 | — |
 | `kbd.tsx` | 2 | 2 | — |
 | `message-scroller.tsx` | 6 | 0 | member expressions as tags (X) aren't supported (5), import the component and use its name (5), X isn't converted (1), props as one object (X) aren't converted (1) |
 | `message.tsx` | 6 | 6 | — |
 | `native-select.tsx` | 3 | 2 | the rest of the props, used other than spread onto the returned element, aren't converted (1) |
-| `pagination.tsx` | 7 | 4 | spreading onto a component isn't converted (2), <MoreHorizontalIcon> isn't an imported component (1) |
+| `pagination.tsx` | 7 | 4 | `<PaginationLink>` isn't an imported component (2), <MoreHorizontalIcon> isn't an imported component (1) |
 | `skeleton.tsx` | 1 | 1 | — |
-| `spinner.tsx` | 1 | 0 | spreading onto a component isn't converted (1) |
+| `spinner.tsx` | 1 | 0 | `<Loader2Icon>` isn't an imported component (1) |
 | `table.tsx` | 8 | 7 | the rest of the props, used other than spread onto the returned element, aren't converted (1) |
 | `textarea.tsx` | 1 | 1 | — |
 
