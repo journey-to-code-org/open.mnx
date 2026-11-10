@@ -2,6 +2,8 @@
 
 ![Garden plots](../../../demos/shots/flask-garden.jpg)
 
+The same garden from Rust is in [`../axum-garden`](../axum-garden), and its test checks the HTML is identical.
+
 This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
 
 A community garden's plot sign-up, in Python: Flask routes, Jinja templates and SQLite (the

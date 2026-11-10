@@ -13,6 +13,7 @@ The element then hydrates that HTML in the browser: it finds its template's part
 | Server | How it renders | What it can evaluate |
 |---|---|---|
 | **The Rust CLI** (`zubra compile`, `zubra serve`), so Flask, Rails, Go, PHP, any server at all | Native | Everything in the deterministic subset (below) |
+| **The Rust crates** (`zubra`'s `Component`, `zubra-macros`' `include_zb!`), so Axum, Actix, Rocket, any Rust server | Native, in your process: no Node, no child process | The same subset, so the Axum example's HTML equals the Flask example's |
 | **`@zubra/compiler`** on Node or Bun (`render()`), **`@zubra/server`** (Express, Fastify, Hono, Eleventy, or any engine) | The same compiler, as WebAssembly | The same subset, so Flask and Node produce byte-identical HTML |
 | **Astro** (`@zubra/unplugin/astro`) | Components render on the server; a client directive hydrates them | The same |
 | **Nuxt, React Router, Next.js** | The React and Vue wrappers write the element's content into the host on the server (light DOM: its rendered children; shadow DOM: a declarative shadow root) and keep the framework out of the host while hydrating; `@zubra/server`'s `injectShadowRoots()` is the alternative for shadow DOM where the page has an HTML hook | The same |
