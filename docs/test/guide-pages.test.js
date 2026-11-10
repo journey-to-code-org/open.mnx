@@ -13,7 +13,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const guide = join(root, 'docs/guide');
 
 /** The framework pages this repository has (added to as each page takes the shared shape). */
-export const PAGES = ['for-angular-developers.md'];
+export const PAGES = ['for-angular-developers.md', 'for-vue-developers.md', 'for-svelte-developers.md', 'for-react-developers.md'];
 
 for (const name of PAGES) {
   test(`${name}: snippets match the example apps, links resolve, sections are all there`, () => {

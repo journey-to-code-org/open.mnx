@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
 // The column comes from a library (built with `zubra build --lib`, see ../ui), as a React
 // component; the card and the editor are this app's own components.
+// zubra-snippet:start react-imports
 import { KanbanColumn } from '@zubra-examples/ui/react';
 import TaskCard from './components/task-card.zb';
+// zubra-snippet:end react-imports
 // The editor was a React component; `zubra convert` made it a zubra one (see ../CONVERTED.md).
 import CardEditor from './components/card-editor.zb.jsx';
 import { COLUMNS, PEOPLE, load, reducer, save } from './board.js';
@@ -63,6 +65,7 @@ export function App() {
             limit={column.limit}
             onCardDrop={(event) => dispatch({ type: 'move', id: event.detail.id, column: column.id, before: visible[column.id][event.detail.index]?.id ?? null })}
           >
+            {/* zubra-snippet:start react-cards */}
             {visible[column.id].map((card) => (
               <TaskCard
                 key={card.id}
@@ -73,6 +76,7 @@ export function App() {
                 onCardReorder={(event) => dispatch({ type: 'reorder', id: card.id, by: event.detail })}
               />
             ))}
+            {/* zubra-snippet:end react-cards */}
             <button type="button" slot="actions" className="add" onClick={() => create(column.id)}>+ Add card</button>
           </KanbanColumn>
         ))}
