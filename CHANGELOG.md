@@ -2,10 +2,14 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.4.0 — 2026-11-09
+
+The output you learn from: `--emit element` writes the custom element you'd write by hand, `zubra convert` takes one back to `.zb`, and the playground shows it. And Zubra DevTools, a pane in the browser's Elements panel.
 
 ### Added
 
+- **An Element tab in the playground**, next to Preview: the component as `--emit element` writes it, or why it's refused. The JavaScript tab is now called Runtime module, which is what it shows and what the preview runs.
+- **`npm run pack` in `editors/devtools`** makes the store zip with Node alone (no `zip` program, which Windows lacks): `manifest.json` at its root, the same bytes for the same files.
 - **`--devtools`** (and `devtools: true` in requests), for development builds: each part of the compiled module records where it was written in the `.zb` file (`at: [line, column]`), the definition records the file and its host tag's place (`source`), and `setup` hands the runtime the script's signals by name. It's what the browser DevTools panel reads; without the flag the output is unchanged, byte for byte.
 - **`globalThis.__ZUBRA_DEVTOOLS__`**, in the runtime's development build: what the browser DevTools panel reads. `inspect(node)` gives the node's component (its `.zb` file and line), its props and state by name with their values, its bindings as the DOM operations they perform (`textContent = …`, `classList.toggle('done', …)`, `addEventListener('click', …)`) with each one's source line and the named signals it depends on (looked up through `Signal.subtle.introspectSources`, so `items[0].done` rather than an internal signal), what a parent binds onto a child component, and the last update: what was written and which bindings re-ran. Recording is small and always on in development (the size budget for `src/index.js` went from 14 KB to 14.5 KB, gzip); the reading side loads when the extension calls `connect()`. The production build has none of it: `dist/production` is byte for byte what it was.
 - **`@zubra/unplugin` compiles for the DevTools in Vite's dev server** (`--devtools`), where it already sets up hot reloading. Builds are compiled as before.
