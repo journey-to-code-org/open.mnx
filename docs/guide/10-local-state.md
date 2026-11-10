@@ -54,4 +54,4 @@ The component doesn't change. Writes still land on the device first, go out when
 
 [`examples/standup`](../../examples/standup/) is a whole app built this way, with a SQLite log, offline edits and presence. The [sync page](../sync.md) has the protocol, `authorize`, the stores, and the `zubra-sync` binary for servers without Node.
 
-**Back to:** [the guide](README.md)
+**Next:** [Motion](11-motion.md).

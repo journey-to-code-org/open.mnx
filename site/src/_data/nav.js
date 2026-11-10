@@ -14,6 +14,7 @@ export default [
     { file: 'docs/guide/08-read-the-output.md', label: 'Read the output' },
     { file: 'docs/guide/09-server-actions.md', label: 'Forms that post to the server' },
     { file: 'docs/guide/10-local-state.md', label: 'State on the device' },
+    { file: 'docs/guide/11-motion.md', label: 'Motion' },
   ] },
   { group: 'Beyond the browser', pages: [
     { file: 'docs/actions.md', label: 'Actions (`@zubra/actions`)' },

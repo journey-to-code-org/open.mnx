@@ -6,9 +6,21 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
+- **Motion: `animate` on `<zb-if>`, `<zb-switch>` and a keyed `<zb-each>`, and `zb-animate` beside an element's `zb-if`.** Content going away stays with `data-leaving` and `inert` until the transitions and animations that starts have ended (infinite ones aren't waited for), beside what replaces it; keyed rows that stay glide to their new places (FLIP, with the Web Animations API, timed by `--zb-move-duration` and `--zb-move-easing`), and removed rows leave held where they were on screen, out of the flow (even in a list anchored to the bottom, which shrinks from the top). Coming in is left to CSS (`@starting-style`). Under `prefers-reduced-motion: reduce`, nothing waits or glides. Both outputs have it: `@zubra/runtime` and `--emit element` (its `leave` and `glide` helpers, written only when a component animates), and `zubra convert` reads them back as `animate`. The same functions are `leave()` and `glide()` in the new `@zubra/runtime/motion`, which a compiled module imports only when its component animates (the runtime's own hooks are about 160 B, and its size budgets rise by 0.5 KB for them). `animate` without a `key`, with a value, or `zb-animate` anywhere but beside `zb-if` are errors that say what to write. Tested in the browser on both outputs, including reduced motion.
 - **`{...object}` onto a Zubra component.** `<ui-button {...rest}>` no longer needs every prop written out. The entries that are the child's props (`isOpen` or `is-open`) are passed as props and checked like written ones, the rest become attributes and listeners of its host, as on any element. A prop written on the tag wins over the spread's, in either order; `null` leaves a prop at its default; a key that goes away unsets the prop. A spread known at build time renders on the server; one known only in the browser leaves the child to render its defaults until it runs. Also in JSX components, and `zubra convert` no longer reports "spreading onto a component isn't converted". Still an error on the host tag and on directives.
+
+## 5.4.1 — 2026-11-09
+
+The VS Code extension's language server starts, so `.zb` files have a formatter (and diagnostics, completion and hover) in VS Code. And the Zubra DevTools in the demo gallery, on the playground, and in builds when you ask for it.
+
+### Added
+
 - **The Zubra DevTools in builds, when you ask for it.** `zubra({ devtools: true })` in `@zubra/unplugin`, `devtools` in `createZubra()` (on by default outside production) and in `buildLibrary()`, or `ZUBRA_DEVTOOLS=1` for all three. Components are compiled for the extension and `@zubra/runtime` resolves to its development build, which has the hook. Production builds still leave it out unless asked. The demo gallery builds with it, so the extension works in every live demo, and the gallery test checks that it does.
 - **Zubra DevTools on the playground.** The previews are compiled for the DevTools extension, so you can try it without a project: open the playground, select an element in a preview, and the Zubra pane shows it; clicking a line selects it in the playground's editor. The page's own `__ZUBRA_DEVTOOLS__` passes the pane's calls to the preview frames, and the pane now reads the hook of the frame the selected node is in. The runtime's `open()` lets a page handle a location itself (a cancelable `zubra:open` event) before asking Vite.
+
+### Fixed
+
+- **The VS Code extension's language server starts.** The extension looked the server up as `@zubra/language-server/package.json`, which that package's `exports` map doesn't allow, so activating threw before the server began: `.zb` files had no formatter ("There is no formatter for 'zubra' files installed"), and no diagnostics, completion, hover or go to definition either. It now resolves the package's own entry, and starts it as a Node module, which VS Code forks with `ELECTRON_RUN_AS_NODE=1` (as a command, `process.execPath` is the editor's Electron binary). A test activates the extension and starts the server the way the client does.
 
 ## 5.4.0 — 2026-11-09
 
