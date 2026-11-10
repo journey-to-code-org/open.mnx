@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 // zubra language server: diagnostics from the compiler as you type, completion of directives,
 // imported components, their props and events, hover documentation from their manifests, and
-// go to definition for imported components, and formatting (`zubra fmt`). Speaks LSP over stdio
+// go to definition for imported components, formatting (`zubra fmt`), and the Extract to component
+// refactor (a code action, and the `zubra.applyExtractComponent` command that takes a name). Speaks LSP over stdio
 // (`--stdio`).
 //
 // initializationOptions: { compiler?: "/path/to/zubra", printWidth?: number } — otherwise
 // @zubra/compiler (WebAssembly) when installed, else `zubra` on PATH. printWidth is the width a
 // tag is fitted into when formatting (default 100); indentation comes from the editor.
-import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind } from 'vscode-languageserver/node';
+import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind, CodeActionKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { createBackend, importsOf, readText } from './backend.js';
-import { completions, documentation, interfaceOf, offsetAt, positionAt, tagAt } from './analysis.js';
+import { completions, documentation, hostOf, interfaceOf, offsetAt, positionAt, tagAt } from './analysis.js';
 
+const EXTRACT_COMMAND = 'zubra.applyExtractComponent'; // not the editor command's name: the client registers the server's commands itself
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 let backend;
@@ -33,6 +35,8 @@ connection.onInitialize(async (params) => {
       hoverProvider: true,
       definitionProvider: true,
       documentFormattingProvider: true,
+      codeActionProvider: { codeActionKinds: [CodeActionKind.RefactorExtract] },
+      executeCommandProvider: { commands: [EXTRACT_COMMAND] },
     },
     serverInfo: { name: 'zubra-language-server', version: '1.2.0' },
   };
@@ -146,6 +150,81 @@ connection.onDocumentFormatting(({ textDocument, options }) => {
   }
   if (result.output === text) return [];
   return [{ range: { start: { line: 0, character: 0 }, end: positionAt(text, text.length) }, newText: result.output }];
+});
+
+// ---- Extract to component -------------------------------------------------------------------
+// The compiler (`refactor`, `action: "extract"`) decides what can be extracted and how; offsets
+// there are UTF-8 bytes, LSP's are UTF-16.
+const byteOffset = (text, index) => Buffer.byteLength(text.slice(0, index));
+const indexOfByte = (text, bytes) => Buffer.from(text).subarray(0, bytes).toString().length;
+
+/** A name for the new component that isn't taken beside the document. */
+function defaultTag(uri, text) {
+  const base = `${hostOf(text)?.tag ?? 'my'}-part`;
+  const directory = dirname(pathOf(uri));
+  let tag = base;
+  for (let n = 2; existsSync(resolve(directory, `${tag}.zb`)); n++) tag = `${base}-${n}`;
+  return tag;
+}
+
+/** The workspace edit for extracting `range` of the document as `tag`, or why it can't be. */
+function extraction(document, range, tag) {
+  const text = document.getText();
+  const start = byteOffset(text, offsetAt(text, range.start));
+  const end = byteOffset(text, offsetAt(text, range.end));
+  const made = backend.refactor?.(pathOf(document.uri), text, { start, end, tag });
+  if (!made) return { reason: 'This compiler cannot extract components: update @zubra/compiler (or the zubra CLI).' };
+  if (!made.ok) {
+    return { reason: made.unsupported ? 'Extracting a component needs a newer Zubra: update @zubra/compiler (or the zubra CLI).' : made.reason };
+  }
+  const { fileName, fileSource, edits } = made.result;
+  const newUri = pathToFileURL(resolve(dirname(pathOf(document.uri)), fileName)).href;
+  return {
+    edit: {
+      documentChanges: [
+        { kind: 'create', uri: newUri, options: { ignoreIfExists: false } },
+        { textDocument: { uri: newUri, version: null }, edits: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: fileSource }] },
+        {
+          textDocument: { uri: document.uri, version: document.version },
+          edits: edits.map((edit) => ({
+            range: { start: positionAt(text, indexOfByte(text, edit.start)), end: positionAt(text, indexOfByte(text, edit.end)) },
+            newText: edit.text,
+          })),
+        },
+      ],
+    },
+    tag: made.result.tag,
+  };
+}
+
+// The code action: offered on a non-empty selection, with a default name; when the compiler
+// refuses, it's shown disabled with the reason, so the rule is discoverable.
+connection.onCodeAction(({ textDocument, range, context }) => {
+  const document = documents.get(textDocument.uri);
+  if (!document) return [];
+  if (context.only && !context.only.some((kind) => CodeActionKind.RefactorExtract.startsWith(kind))) return [];
+  if (range.start.line === range.end.line && range.start.character === range.end.character) return [];
+  const made = extraction(document, range, defaultTag(textDocument.uri, document.getText()));
+  if (!made.edit) {
+    return [{ title: 'Extract to component', kind: CodeActionKind.RefactorExtract, disabled: { reason: made.reason } }];
+  }
+  return [{ title: `Extract to component <${made.tag}>`, kind: CodeActionKind.RefactorExtract, edit: made.edit }];
+});
+
+// For editors that ask for the name first (the VS Code extension): [uri, range, tag].
+connection.onExecuteCommand(async ({ command, arguments: args }) => {
+  if (command !== EXTRACT_COMMAND) return null;
+  const [uri, range, tag] = args ?? [];
+  const document = documents.get(uri);
+  if (!document || !range || !tag) return { error: 'Extract to component needs a document, a selection and a name.' };
+  const made = extraction(document, range, tag);
+  if (!made.edit) {
+    connection.window.showErrorMessage(made.reason);
+    return { error: made.reason };
+  }
+  const applied = await connection.workspace.applyEdit(made.edit);
+  if (!applied.applied) connection.window.showErrorMessage(`Couldn't extract: ${applied.failureReason ?? 'the editor refused the edit'}`);
+  return { applied: applied.applied, tag: made.tag };
 });
 
 documents.listen(connection);

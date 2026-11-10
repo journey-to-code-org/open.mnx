@@ -7,7 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { completions, contextAt, hostOf, tagAt } from '../analysis.js';
+import { completions, contextAt, hostOf, offsetAt, positionAt, tagAt } from '../analysis.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../../..');
@@ -16,6 +16,7 @@ const compiler = join(repo, 'target/debug/zubra');
 let server, dir, nextId = 1;
 const pending = new Map();
 const notifications = [];
+const clientRequests = [];
 const waiters = [];
 
 function send(message) {
@@ -57,6 +58,11 @@ before(async () => {
       if (message.id !== undefined && pending.has(message.id)) {
         pending.get(message.id)(message.result);
         pending.delete(message.id);
+      } else if (message.method && message.id !== undefined) {
+        // A request from the server (workspace/applyEdit): record it and say it was applied.
+        clientRequests.push(message);
+        send({ id: message.id, result: { applied: true } });
+        for (const waiter of [...waiters]) if (waiter()) waiters.splice(waiters.indexOf(waiter), 1);
       } else if (message.method) {
         notifications.push(message);
         for (const waiter of [...waiters]) if (waiter()) waiters.splice(waiters.indexOf(waiter), 1);
@@ -66,6 +72,8 @@ before(async () => {
   const init = await call('initialize', { processId: process.pid, rootUri: pathToFileURL(dir).href, capabilities: {}, initializationOptions: { compiler } });
   assert.ok(init.capabilities.completionProvider);
   assert.equal(init.capabilities.documentFormattingProvider, true);
+  assert.deepEqual(init.capabilities.codeActionProvider.codeActionKinds, ['refactor.extract']);
+  assert.deepEqual(init.capabilities.executeCommandProvider.commands, ['zubra.applyExtractComponent']);
   notify('initialized', {});
 });
 after(() => {
@@ -146,4 +154,82 @@ test('the analysis knows where the cursor is', () => {
   const plain = '<zb-x a="1"><p zb-</p></zb-x>';
   assert.deepEqual(completions(plain, plain.indexOf('zb-</') + 3, []).map((item) => item.label), ['zb-if', 'zb-else-if', 'zb-else']);
   assert.deepEqual(tagAt(text, text.indexOf('zb-if') + 2), { name: 'zb-if', start: text.indexOf('zb-if'), end: text.indexOf('zb-if') + 5 });
+});
+
+// ---- Extract to component ---------------------------------------------------------------------
+
+const LIST = "<!-- café: a list -->\n<script>\n  let items = [{ id: 1, name: \"ada\" }]\n  let count = 0\n  function remove() { count = count + 1 }\n</script>\n<zb-list>\n  <ul>\n    <zb-each items={items} as=\"item\" key={item.id}>\n      <li onclick={remove}>{item.name} {count}</li>\n    </zb-each>\n  </ul>\n  <button onclick={() => count++}>more</button>\n</zb-list>\n";
+
+function rangeOf(text, from, to) {
+  const start = text.indexOf(from);
+  const end = text.indexOf(to, start) + to.length;
+  return { start: positionAt(text, start), end: positionAt(text, end) };
+}
+function applyEdits(text, edits) {
+  let out = text;
+  const offsets = edits.map((edit) => ({ ...edit, start: offsetAt(text, edit.range.start), end: offsetAt(text, edit.range.end) })).sort((a, b) => b.start - a.start);
+  for (const edit of offsets) out = out.slice(0, edit.start) + edit.newText + out.slice(edit.end);
+  return out;
+}
+async function open(name, text) {
+  const uri = pathToFileURL(join(dir, name)).href;
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  return uri;
+}
+
+test('Extract to component: a code action with the new file and the edits, after a multibyte character', async () => {
+  const uri = await open('list.zb', LIST);
+  const range = rangeOf(LIST, '<ul>', '</ul>');
+  const actions = await call('textDocument/codeAction', { textDocument: { uri }, range, context: { diagnostics: [], only: ['refactor'] } });
+  assert.equal(actions.length, 1);
+  const [action] = actions;
+  assert.equal(action.kind, 'refactor.extract');
+  assert.equal(action.title, 'Extract to component <zb-list-part>');
+  const [create, fresh, current] = action.edit.documentChanges;
+  assert.equal(create.kind, 'create');
+  assert.ok(create.uri.endsWith('/zb-list-part.zb'));
+  assert.equal(fresh.textDocument.uri, create.uri);
+  const file = fresh.edits[0].newText;
+  assert.match(file, /<zb-list-part count items>/);
+  assert.match(file, /onclick=\{\(\) => emit\("remove"\)\}/);
+  const parent = applyEdits(LIST, current.edits);
+  assert.match(parent, /<zb-list-part count=\{count\} items=\{items\} onremove=\{remove\}><\/zb-list-part>/);
+  assert.match(parent, /import '\.\/zb-list-part\.zb'/);
+  assert.match(parent, /café/, 'text before the edit is untouched');
+  assert.match(parent, /\n  <zb-list-part count=\{count\}[^\n]*><\/zb-list-part>\n  <button/, 'exactly the selection was replaced');
+  assert.ok(parent.includes('<button onclick={() => count++}>more</button>'));
+});
+
+test('Extract to component: refused selections show the action disabled, with the reason', async () => {
+  const uri = await open('list-b.zb', LIST);
+  const actions = await call('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<button', '</button>'), context: { diagnostics: [] } });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].title, 'Extract to component');
+  assert.match(actions[0].disabled.reason, /assigns to `count`/);
+  assert.equal(actions[0].edit, undefined);
+  // Not whole sibling nodes.
+  const partial = await call('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<ul>', '<zb-each'), context: { diagnostics: [] } });
+  assert.match(partial[0].disabled.reason, /sibling nodes/);
+});
+
+test('Extract to component: no action without a selection, or when other kinds are asked for', async () => {
+  const uri = await open('list-c.zb', LIST);
+  const at = positionAt(LIST, LIST.indexOf('<ul>'));
+  assert.deepEqual(await call('textDocument/codeAction', { textDocument: { uri }, range: { start: at, end: at }, context: { diagnostics: [] } }), []);
+  assert.deepEqual(await call('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<ul>', '</ul>'), context: { diagnostics: [], only: ['quickfix'] } }), []);
+});
+
+test('zubra.applyExtractComponent: the name comes from the editor and the server applies the edit', async () => {
+  const uri = await open('list-d.zb', LIST);
+  const before = clientRequests.length;
+  const result = await call('workspace/executeCommand', { command: 'zubra.applyExtractComponent', arguments: [uri, rangeOf(LIST, '<ul>', '</ul>'), 'people-list'] });
+  assert.deepEqual(result, { applied: true, tag: 'people-list' });
+  const request = clientRequests[before];
+  assert.equal(request.method, 'workspace/applyEdit');
+  assert.ok(request.params.edit.documentChanges[0].uri.endsWith('/people-list.zb'));
+  // A refusal is reported, not applied.
+  const refused = await call('workspace/executeCommand', { command: 'zubra.applyExtractComponent', arguments: [uri, rangeOf(LIST, '<button', '</button>'), 'people-list'] });
+  assert.match(refused.error, /assigns to `count`/);
+  assert.deepEqual(clientRequests.slice(before).map((r) => r.method).filter((method) => method === 'workspace/applyEdit'), ['workspace/applyEdit'], 'a refusal applies nothing');
+  assert.ok(clientRequests.slice(before).some((r) => r.method === 'window/showMessageRequest' && /assigns to `count`/.test(r.params.message)), 'and says why');
 });

@@ -8,6 +8,7 @@ Language support for [Zubra](https://journey-to-code-org.github.io/zubra/): `.zb
 - **Hover** documentation for imported components: description, props with types and defaults, events and slots.
 - **Go to definition** for imported components.
 - **Formatting** (Format Document, or format on save with `"editor.formatOnSave": true`): `zubra fmt`'s layout, with your editor's indentation. It re-indents the template and tidies tags without changing what the component compiles to, and leaves expressions, comments, `<script>`, `<style>` and `<pre>` as written. `zubra.format.printWidth` (default 100) is the width a tag is fitted into before its attributes go one per line. Needs Zubra 5.4 or later.
+- **Extract to component** (select whole sibling nodes of the template; lightbulb → *Extract to component*, or *Zubra: Extract to Component…* in the command palette and the context menu, which asks for the name): moves the markup into a new `.zb` file beside this one and puts `<new-tag …>` in its place, with the import. What the selection reads becomes a prop, a function of the component used as a whole handler (`onclick={remove}`) becomes an event, and names the component imports are imported again. When it can't, the action shows disabled with the reason (assigning to the component's state, a `<zb-slot>`, a shadow DOM component, a cut `zb-if`/`zb-else` chain). No CSS moves. Needs a Zubra compiler with the `refactor` command (the release after 5.4).
 
 ## Requirements
 
