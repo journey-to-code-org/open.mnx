@@ -11,44 +11,28 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { CompileError, CompilerCrash, over, restarting, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './core.js';
 
-/**
- * The text of the hydration-marker comments a 4.x server writes (`<!--[-->`, `<!--]-->`, `<!---->`,
- * `<!--[?-->`, `<!--[!-->`), for tools that remove comments: keep the ones matching this. For example
- * html-minifier-terser's `ignoreCustomComments: [ZUBRA_MARKER_COMMENT]`. Since 5.0 the markers are
- * processing instructions (`<?zb [?>`), which minifiers keep without it.
- */
-export const ZUBRA_MARKER_COMMENT = /^[[\]?!]*$/;
-
-/**
- * For minifiers that strip the processing-instruction markers (`<?zb [?>`) unless told otherwise.
- * Most keep them as shipped (html-minifier-terser, @minify-html/node); these two need one option,
- * measured in server/test/markers.test.js:
- * - @swc/html: `minify(html, { preserveComments: [ZUBRA_MARKER_PATTERN] })`;
- * - htmlnano (and any posthtml pipeline): the parser option `{ directives: [ZUBRA_MARKER_DIRECTIVE] }`,
- *   htmlnano's fourth argument.
- */
-export const ZUBRA_MARKER_PATTERN = '^\\?zb';
-export const ZUBRA_MARKER_DIRECTIVE = Object.freeze({ name: '?zb', start: '<', end: '>' });
+// For Workers, Deno and browsers, which have no disk to read zubra.wasm from: `@zubra/compiler/wasm`.
+export { CompileError, CompilerCrash, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN };
 
 const wasmUrl = new URL('./zubra.wasm', import.meta.url);
-let exports = null;
+let module = null;
 
 /** Whether the WebAssembly module is present (it's built by `npm run build`, or ships in the package). */
 export function available() {
   return existsSync(wasmUrl);
 }
 
-function wasm() {
-  if (!exports) {
+// One instance for the process, replaced if a request traps (a `CompilerCrash` for that request):
+// a long-lived server or dev server must not lose its compiler to one bad input.
+const wasm = restarting(() => {
+  if (!module) {
     if (!available()) throw new Error('@zubra/compiler: zubra.wasm is missing; run `npm run build` in its package (needs Rust with the wasm32-unknown-unknown target)');
-    exports = new WebAssembly.Instance(new WebAssembly.Module(readFileSync(wasmUrl)), {}).exports;
+    module = new WebAssembly.Module(readFileSync(wasmUrl));
   }
-  return exports;
-}
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+  return new WebAssembly.Instance(module, {}).exports;
+});
 
 /**
  * One request to the compiler; returns `{ ok, output, error, warnings, diagnostics }`. Without
@@ -56,17 +40,7 @@ const decoder = new TextDecoder();
  */
 export function request(body) {
   if (!available() && process.env.ZUBRA_COMPILER) return native(process.env.ZUBRA_COMPILER, body);
-  const { memory, zubra_alloc, zubra_request, zubra_free } = wasm();
-  const bytes = encoder.encode(JSON.stringify(body));
-  const pointer = zubra_alloc(bytes.length);
-  new Uint8Array(memory.buffer, pointer, bytes.length).set(bytes);
-  const packed = BigInt.asUintN(64, zubra_request(pointer, bytes.length));
-  const at = Number(packed >> 32n);
-  const length = Number(packed & 0xffffffffn);
-  // The memory may have grown during the request; read through the current buffer.
-  const text = decoder.decode(new Uint8Array(memory.buffer, at, length).slice());
-  zubra_free(at, length);
-  return JSON.parse(text);
+  return wasm(body);
 }
 
 function native(compiler, body) {
@@ -100,25 +74,15 @@ export function compileFile(path, options = {}) {
   return request({ ...options, path: absolute, files: sources(absolute) });
 }
 
+const compiler = over(request);
+
 /**
  * `source` laid out the way `zubra fmt` lays it out: indentation and tags tidied, nothing it
  * compiles to changed (see the README's "Formatting"). `path` only names the file in errors.
  * Throws a CompileError when the source doesn't parse, or is a JSX component.
  */
-export function format(source, { indentWidth, useTabs, printWidth, path = 'component.zb' } = {}) {
-  const absolute = resolve(path);
-  const response = request({ command: 'format', path: absolute, files: { [absolute]: source }, indentWidth, useTabs, printWidth });
-  if (!response.ok) throw new CompileError(response);
-  return response.output;
-}
-
-/** A compile error, with the rendered message and the diagnostics. */
-export class CompileError extends Error {
-  constructor(response) {
-    super(response.error);
-    this.name = 'CompileError';
-    this.diagnostics = response.diagnostics;
-  }
+export function format(source, { path = 'component.zb', ...options } = {}) {
+  return compiler.format(source, { ...options, path: resolve(path) });
 }
 
 /**
@@ -130,14 +94,9 @@ export class CompileError extends Error {
  * can compute (JavaScript expressions, runtime-only values) is left for the element to fill in
  * when it starts; `partial: false` makes that an error instead. Throws a `CompileError` on errors.
  */
-export function render(path, { props = {}, slots = {}, slotSource = 'html', partial = true, files } = {}) {
+export function render(path, options = {}) {
   const absolute = resolve(path);
-  const all = files ?? sources(absolute);
-  const html = request({ emit: 'html', path: absolute, files: all, props, slots, slotSource, partial });
-  if (!html.ok) throw new CompileError(html);
-  const css = request({ emit: 'css', path: absolute, files: all });
-  if (!css.ok) throw new CompileError(css);
-  return { html: html.output, css: css.output, warnings: html.warnings };
+  return compiler.render(absolute, { ...options, files: options.files ?? sources(absolute) });
 }
 
 /** The component's server-rendered HTML (see `render`). */

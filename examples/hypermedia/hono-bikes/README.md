@@ -25,7 +25,8 @@ wherever htmx puts them.
 
 | | |
 |---|---|
-| `src/app.js` | Routes and templates, with `hono/html`. `@zubra/server/hono`'s middleware renders components (with `@zubra/compiler`), and serves their browser modules and `@zubra/runtime`. |
+| `src/shop.js` | Routes and templates, with `hono/html`, as `createShop({ store, middleware, htmx, css })`. It reads no files and imports nothing from Node.js, so a Worker can run it too (see `examples/edge/hono-bikes-worker`). |
+| `src/app.js` | The Node.js host: reads htmx and the stylesheet, builds `@zubra/server/hono`'s middleware over `components/` (which renders components with `@zubra/compiler` and serves their browser modules and `@zubra/runtime`), and returns `createShop(...)`. |
 | `src/store.js` | The inventory, in memory. |
 | `components/` | `price-tag` and `stock-gauge` (rendered completely on the server), `tag-list`, and `qty-input` (a native number input that gains − and + buttons). |
 | `test/app.test.js` | Chromium against the server on Node.js and on Bun, with and without JavaScript. |
