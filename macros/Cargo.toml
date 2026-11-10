@@ -1,0 +1,19 @@
+[package]
+name = "zubra-macros"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97"
+license = "ISC"
+repository = "https://github.com/journey-to-code-org/zubra"
+description = "include_zb!: compile a Zubra component at cargo build and embed it, with its imports, in a Rust server"
+# Not published yet: it follows the zubra crate's own publication (see plan/roadmap-server-clients.md).
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+zubra = { path = ".." }
+
+[dev-dependencies]
+serde_json = "1"
