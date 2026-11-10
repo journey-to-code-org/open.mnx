@@ -23,8 +23,9 @@ const BUDGETS = {
   'dist/production/index.js': { gzip: 13.5 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
-  // `{...spread}`'s binder (3.5), loaded only by components whose template spreads.
-  'src/spread.js': { gzip: 1.5 * 1024, external: ['./element.js', './effect.js'] },
+  // `{...spread}`'s binder (3.5), loaded only by components whose template spreads. (1.5 KB until
+  // spread onto a Zubra component — its props as props, unset when their key goes, about 50 B.)
+  'src/spread.js': { gzip: 1.75 * 1024, external: ['./element.js', './effect.js'] },
   // rovingFocus and typeahead (3.6), for menus, tab lists and toolbars.
   'src/primitives.js': { gzip: 1.25 * 1024 },
   // The Zag adapter (3.6), without Zag itself (an app's dependency, like the machines).
