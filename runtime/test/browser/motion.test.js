@@ -14,6 +14,9 @@ const set = (page, values) => page.evaluate(async (values) => {
   Object.assign(el, values);
   await el.updateComplete;
 }, values);
+// The page has drawn what's there: an element never drawn has no style to transition from, so it
+// leaves at once (nobody saw it), which these tests aren't about.
+const drawn = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const count = (page, selector) => page.$$eval(selector, (els) => els.length);
 const leaving = (page, selector) => page.$$eval(selector, (els) => els.map((el) => [el.textContent, el.hasAttribute('data-leaving'), el.inert]));
 const gone = (page, selector) => page.waitForFunction((selector) => !document.querySelector(selector), selector, { timeout: 3000 });
@@ -21,6 +24,7 @@ const rows = [{ id: 1, label: 'one' }, { id: 2, label: 'two' }, { id: 3, label: 
 
 test('a leaving branch stays, marked and inert, until its transition ends', async () => {
   const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
+  await drawn(page);
   await set(page, { open: false });
   assert.deepEqual(await leaving(page, '.panel'), [['Panel', true, true]], 'the old branch is still here, leaving');
   assert.deepEqual(await leaving(page, '.closed'), [['Closed', false, false]], 'the new one is in beside it');
@@ -31,6 +35,7 @@ test('a leaving branch stays, marked and inert, until its transition ends', asyn
   await gone(page, '.note');
   assert.equal(await count(page, '.closed'), 1);
   // Back again, while nothing is leaving: still one of each.
+  await drawn(page);
   await set(page, { open: true });
   await gone(page, '.closed');
   assert.equal(await count(page, '.panel:not([data-leaving])'), 1);
@@ -40,6 +45,7 @@ test('a leaving branch stays, marked and inert, until its transition ends', asyn
 
 test('switching quickly leaves each old branch and keeps one live branch', async () => {
   const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
+  await drawn(page);
   await set(page, { tab: 'b' });
   await set(page, { tab: 'a' });
   await set(page, { tab: 'b' });
@@ -61,6 +67,7 @@ test('an infinite animation inside does not keep a branch forever', async () => 
 test('keyed rows that stay glide; removed rows leave out of the flow', async () => {
   const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
   await set(page, { items: rows });
+  await drawn(page);
   const three = await page.$('ul li:nth-child(3)');
   await set(page, { items: [rows[2], rows[0]] });
   const moves = await page.evaluate((three) => three.getAnimations().filter((a) => !(a instanceof CSSTransition)).map((a) => a.effect.getKeyframes()[0].transform), three);
@@ -79,6 +86,7 @@ test('keyed rows that stay glide; removed rows leave out of the flow', async () 
 test('a removed row stays where it was on screen, even when its list is anchored to the bottom', async () => {
   const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
   await set(page, { items: rows });
+  await drawn(page);
   const top = (page) => page.$eval('.dock li:first-child', (el) => el.getBoundingClientRect().top);
   const was = await top(page);
   const one = await page.$('.dock li:first-child');
