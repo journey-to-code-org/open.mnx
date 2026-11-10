@@ -81,6 +81,77 @@ pub fn format(source: &str, options: &FormatOptions) -> Result<String, Diagnosti
     Ok(formatted)
 }
 
+// ---- the file's pieces by position, for tools that work on a selection ---------------------
+
+/// What a piece of a file is, as far as its boundaries matter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PieceKind {
+    /// Whitespace between things.
+    Space,
+    /// A run of text without whitespace in it (a word, an entity).
+    Text,
+    /// A `{…}` in the template, whole: an expression, or markup in braces.
+    Braces,
+    /// `<!-- … -->`.
+    Comment,
+    /// A start tag, whole, attributes included (`void` or self-closing: it has no end tag).
+    Open { childless: bool },
+    /// An end tag.
+    Close,
+    /// The text inside a `<script>` or `<style>`.
+    Body,
+}
+
+/// One piece of the file: every byte of the file is in exactly one, in order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct Piece {
+    pub kind: PieceKind,
+    pub start: usize,
+    pub end: usize,
+    /// The tag's name, for a start or end tag.
+    pub name: String,
+}
+
+/// `source` as its pieces. A selection that doesn't start and end on a piece's edge is inside a
+/// tag, a comment, an expression or a word. An error when the file doesn't scan.
+pub(crate) fn pieces(source: &str) -> Result<Vec<Piece>, Diagnostic> {
+    let mut at = 0;
+    Ok(scan(source)?
+        .into_iter()
+        .map(|token| {
+            let (kind, length, name) = match &token {
+                Token::Space(text) => (PieceKind::Space, text.len(), ""),
+                Token::Text(text) if text.starts_with('{') => (PieceKind::Braces, text.len(), ""),
+                Token::Text(text) => (PieceKind::Text, text.len(), ""),
+                Token::Comment(text) => (PieceKind::Comment, text.len(), ""),
+                Token::Body(text) => (PieceKind::Body, text.len(), ""),
+                Token::Open {
+                    name,
+                    self_closing,
+                    raw,
+                    ..
+                } => (
+                    PieceKind::Open {
+                        childless: *self_closing
+                            || VOID_ELEMENTS.contains(&name.to_ascii_lowercase().as_str()),
+                    },
+                    raw.len(),
+                    *name,
+                ),
+                Token::Close { name, raw } => (PieceKind::Close, raw.len(), *name),
+            };
+            let piece = Piece {
+                kind,
+                start: at,
+                end: at + length,
+                name: name.to_owned(),
+            };
+            at += length;
+            piece
+        })
+        .collect())
+}
+
 // ---- scanning: the file as tokens, every byte accounted for -------------------------------
 
 #[derive(Clone, Debug, Eq, PartialEq)]

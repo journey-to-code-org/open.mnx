@@ -70,6 +70,22 @@
       "[zubra]": {
         "editor.defaultFormatter": "JourneytoCode.zubra"
       }
+    },
+    "commands": [
+      {
+        "command": "zubra.extractComponent",
+        "title": "Zubra: Extract to Component…",
+        "category": "Zubra"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "zubra.extractComponent",
+          "when": "editorLangId == zubra && editorHasSelection",
+          "group": "1_modification"
+        }
+      ]
     }
   },
   "scripts": {
