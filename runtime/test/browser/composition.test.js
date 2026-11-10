@@ -88,6 +88,9 @@ test('hydrates a parent and its children from nested server markup', { skip: run
 test("an element whose children aren't server markup isn't mistaken for it", async () => {
   // A badge used directly in a page, with content that happens to resemble its template.
   const { page, messages } = await open('<zb-badge label="Hi"><span class="badge">mine</span></zb-badge>', { modules: ['badge'] });
+  // Content shaped like the template looks like server markup with its comments stripped, so the
+  // element loads remark.js to check before it renders: wait for that, not just for the module.
+  await page.waitForSelector('zb-badge b');
   assert.equal(await page.$eval('zb-badge b', (b) => b.textContent), 'Hi');
   assert.equal(await page.$eval('zb-badge .badge .badge', (inner) => inner.textContent), 'mine', 'it is slotted, not hydrated');
   assert.deepEqual(messages, []);

@@ -225,3 +225,43 @@ fn the_slot_machinery_is_left_out_of_a_component_without_slots() {
     .unwrap();
     assert!(asks.contains("function assignSlots("), "hasSlot() needs it");
 }
+
+/// A JSX component's element reads like a `.zb` one's: its script with props as `element.name`
+/// and state as `name.value` (no `$p`), its text under JSX's whitespace rule.
+#[test]
+fn a_jsx_component_reads_like_any_other() {
+    let dir = temp_dir("jsx");
+    let path = dir.join("counter.zb.jsx");
+    fs::write(
+        &path,
+        r#"export default function XCounter({ step = 1, onChange }) {
+  let count = 0
+  function add() {
+    count += step
+    onChange(count)
+  }
+  return (
+    <x-counter>
+      <button onClick={add}>
+        Add
+      </button>
+      <output>{count}</output>
+    </x-counter>
+  )
+}
+"#,
+    )
+    .unwrap();
+    let module = zubra::compile_element_file(path.to_str().unwrap()).unwrap();
+    for expected in [
+        "count.value += element.step",
+        "emit(\"change\", count.value)",
+        "<button>Add</button>",
+        "export class XCounter extends HTMLElement {",
+    ] {
+        assert!(module.contains(expected), "`{expected}` in:\n{module}");
+    }
+    for runtime in ["$p", "__zubra"] {
+        assert!(!module.contains(runtime), "no `{runtime}` in:\n{module}");
+    }
+}

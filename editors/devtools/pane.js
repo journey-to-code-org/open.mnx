@@ -22,6 +22,12 @@ const evaluate = (code) => new Promise((resolve) => {
   inspected.eval(code, (result, exception) => resolve(exception ? { error: exception.value ?? exception.description ?? 'the page threw' } : result));
 });
 
+/** Put the rendered HTML in the pane. render() escapes every value from the page; parsing it
+ * with DOMParser (no scripts run there) rather than assigning innerHTML keeps that plain. */
+function show(html) {
+  pane.replaceChildren(...new DOMParser().parseFromString(html, 'text/html').body.childNodes);
+}
+
 let lastUpdates = null;
 let reading = false;
 async function read(attempt = 0) {
@@ -29,7 +35,7 @@ async function read(attempt = 0) {
   reading = true;
   const result = await evaluate(READ);
   reading = false;
-  pane.innerHTML = render(result);
+  show(render(result));
   lastUpdates = result?.update ?? null;
   // The reading side is loading (a dynamic import): try again shortly.
   if (result?.loading && attempt < 40) setTimeout(() => read(attempt + 1), 50);

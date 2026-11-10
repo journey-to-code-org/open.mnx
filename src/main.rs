@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -535,7 +535,7 @@ fn entry(
 /// (`--out` elsewhere, `--stdout` to print it). What wasn't converted is reported, and the exit
 /// status is 1 then, so a script can tell.
 fn convert(arguments: Vec<String>) -> Result<(), String> {
-    let usage = "usage: zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]";
+    let usage = "usage: zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]";
     let mut path = None;
     let mut prefix = None;
     let mut out = None;
@@ -569,9 +569,17 @@ fn convert(arguments: Vec<String>) -> Result<(), String> {
     let path = path.ok_or(usage)?;
     let source = fs::read_to_string(&path)
         .map_err(|error| format!("{path}: unable to read source: {error}"))?;
-    let mut conversion =
+    // A custom element class (`--emit element` output, or one written the same way): back to `.zb`.
+    let element = !path.ends_with(".jsx")
+        && !path.ends_with(".tsx")
+        && source.contains("extends HTMLElement");
+    let mut conversion = if element {
+        zubra::convert_element(&source, &path)
+            .map_err(|diagnostic| diagnostic.render_in(&source, &path))?
+    } else {
         zubra::convert_component(&source, &path, prefix.as_deref(), component.as_deref())
-            .map_err(|diagnostic| diagnostic.render_in(&source, &path))?;
+            .map_err(|diagnostic| diagnostic.render_in(&source, &path))?
+    };
     let mut lowering_error = None;
     if as_zb {
         if conversion.unsupported.is_empty() && conversion.compile_error.is_none() {

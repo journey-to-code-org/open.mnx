@@ -15,7 +15,7 @@ Two binaries share the name. The **Rust CLI** (`zubra`, built with `cargo build 
 | `zubra compile <file> --emit js` | The custom element module. `--emit dts\|manifest\|html-data\|interface\|css` gives the typings (`--framework react\|vue\|svelte\|solid` types the default export as that framework's wrapper), Custom Elements Manifest, VS Code data, prop/event interface, or stylesheet. |
 | `npx zubra build --lib <dir> [--out dist] [--name @acme/ui] [--version x.y.z] [--watch]` | A publishable package: an ES module per element, `react` and `vue` entries, typings, `custom-elements.json`, a `skills/` folder for agents, and `package.json` with `exports` and `@zubra/runtime` as a peer. |
 | `npx zubra add <name>... [--dir src/components]`, `npx zubra add --list` | Copy a registry component (twenty-five tested, accessible ones) into the project to own. |
-| `zubra convert <Component.jsx> [--prefix word] [--component Name] [--as zubra] [--out file]` | A React function component as a Zubra JSX component next to it (`--as zubra` for the HTML-first file, once nothing is left to finish; `--component` picks one of several exports). Exit 1 and a report for what it can't convert: a spread onto another component, rest props used anywhere but spread onto the returned element, custom hooks, a context from another module, a third-party React primitive in the markup. |
+| `zubra convert <Component.jsx \| my-element.js> [--prefix word] [--component Name] [--as zubra] [--out file]` | A React function component as a Zubra JSX component next to it (`--as zubra` for the HTML-first file, once nothing is left to finish; `--component` picks one of several exports). Exit 1 and a report for what it can't convert: a spread onto another component, rest props used anywhere but spread onto the returned element, custom hooks, a context from another module, a third-party React primitive in the markup. |
 | `zubra request < request.json`, `zubra serve` | The compiler as JSON: one request (or `{ "requests": [...] }`) in, one response out; `serve` keeps answering, one JSON line per request, for a server in any language. |
 
 ## Steps for common jobs
@@ -33,6 +33,8 @@ and read one line back: `{"ok":true,"output":"<price-tag …>…</price-tag>","e
 **Publish components**: `npx zubra build --lib src/components --out dist && cd dist && npm publish`. Consumers need no Zubra tooling.
 
 **Bring a React component in**: `npx zubra convert src/Thing.jsx`, read the report, finish what it names by hand, then `zubra check` the result.
+
+**Bring a custom element back to `.zb`**: `zubra convert my-element.js --out my-element.zb` reads a class in the shape `--emit element` writes (edited, or written by hand that way) and writes the component. Lines it can't place are reported with `not converted:`.
 
 ## Reference
 

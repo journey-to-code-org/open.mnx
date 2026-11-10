@@ -737,7 +737,7 @@ pub fn emit(
     }
     if !body.trim().is_empty() {
         out.push_str("\n    // ---- <script>\n");
-        out.push_str(&indent_script(body, 1));
+        out.push_str(&indent_script(body, "    "));
         out.push('\n');
     }
     out.push_str(&initial);
@@ -2182,9 +2182,9 @@ fn property_key(name: &str) -> String {
     }
 }
 
-/// The script, indented `by` more levels (two spaces each), except lines inside template literals.
-fn indent_script(body: &str, by: usize) -> String {
-    let pad = "  ".repeat(by);
+/// The script, its shallowest lines at `pad` (as written in a `.zb` file, or at the margin, as
+/// the JSX front end lowers it), except lines inside template literals, which are text.
+fn indent_script(body: &str, pad: &str) -> String {
     // Byte ranges inside template literals: their lines are text, not code.
     let mut literal_ranges: Vec<(usize, usize)> = Vec::new();
     let allocator = oxc_allocator::Allocator::default();
@@ -2203,13 +2203,23 @@ fn indent_script(body: &str, by: usize) -> String {
         ranges: &mut literal_ranges,
     };
     oxc_ast_visit::Visit::visit_program(&mut visitor, &parsed.program);
-    let mut out = String::new();
+    let mut lines: Vec<(&str, bool)> = Vec::new();
     let mut offset = 0;
     for line in body.split('\n') {
         let inside = literal_ranges
             .iter()
             .any(|(start, end)| offset > *start && offset < *end);
         offset += line.len() + 1;
+        lines.push((line, inside));
+    }
+    let shallowest = lines
+        .iter()
+        .filter(|(line, inside)| !inside && !line.trim().is_empty())
+        .map(|(line, _)| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for (line, inside) in lines {
         if inside {
             out.push_str(line);
         } else if line.trim().is_empty() {
@@ -2218,8 +2228,9 @@ fn indent_script(body: &str, by: usize) -> String {
                 continue;
             }
         } else {
-            out.push_str(&pad);
-            out.push_str(line);
+            out.push_str(pad);
+            let lead = line.len() - line.trim_start().len();
+            out.push_str(&line[lead.min(shallowest)..]);
         }
         out.push('\n');
     }
