@@ -89,6 +89,16 @@ test('the last update says what was written and which bindings re-ran', { skip }
   await page.close();
 });
 
+test('writes count from connecting, for elements that were there before it', { skip }, async () => {
+  // The page runs before the pane connects; the first thing after connecting is a click, with
+  // no inspect in between.
+  const { page, inspect } = await connected();
+  await page.click('button.inc');
+  const after = await inspect('dt-panel p');
+  assert.deepEqual(after.lastUpdate.written, ['count']);
+  await page.close();
+});
+
 test('a child component shows what its parent binds onto it', { skip }, async () => {
   const { page, inspect } = await connected();
   await page.click('button.inc');
