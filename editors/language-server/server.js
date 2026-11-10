@@ -20,6 +20,7 @@ const documents = new TextDocuments(TextDocument);
 let backend;
 let printWidth;
 let toldAboutVersion = false;
+let toldAboutRangeVersion = false;
 const manifests = new Map(); // path → { mtime, component }
 
 connection.onInitialize(async (params) => {
@@ -33,12 +34,17 @@ connection.onInitialize(async (params) => {
       hoverProvider: true,
       definitionProvider: true,
       documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
     },
     serverInfo: { name: 'zubra-language-server', version: '1.2.0' },
   };
 });
 
 const pathOf = (uri) => fileURLToPath(uri);
+
+// Byte offsets (the compiler's) and string indexes (LSP's UTF-16 positions).
+const byteOffset = (text, index) => Buffer.byteLength(text.slice(0, index));
+const indexOfByte = (text, bytes) => Buffer.from(text).subarray(0, bytes).toString().length;
 
 /** The components a document imports: { tag, …interface, path }. */
 function componentsOf(uri, text) {
@@ -146,6 +152,32 @@ connection.onDocumentFormatting(({ textDocument, options }) => {
   }
   if (result.output === text) return [];
   return [{ range: { start: { line: 0, character: 0 }, end: positionAt(text, text.length) }, newText: result.output }];
+});
+
+// Format Selection (and format on paste): the lines the selection touches, as `zubra fmt` would
+// write them in the whole file. One edit, or none when they're already formatted.
+connection.onDocumentRangeFormatting(({ textDocument, range, options }) => {
+  const document = documents.get(textDocument.uri);
+  if (!document) return [];
+  const text = document.getText();
+  const answer = backend.formatRange?.(
+    pathOf(textDocument.uri),
+    text,
+    { start: byteOffset(text, offsetAt(text, range.start)), end: byteOffset(text, offsetAt(text, range.end)) },
+    { indentWidth: options.tabSize, useTabs: options.insertSpaces === false, printWidth },
+  );
+  if (!answer?.ok) {
+    if (answer?.unsupported && !toldAboutRangeVersion) {
+      toldAboutRangeVersion = true;
+      connection.window.showInformationMessage('Formatting a selection needs a newer Zubra: update @zubra/compiler (or the zubra CLI).');
+    }
+    return [];
+  }
+  if (!answer.edit) return [];
+  return [{
+    range: { start: positionAt(text, indexOfByte(text, answer.edit.start)), end: positionAt(text, indexOfByte(text, answer.edit.end)) },
+    newText: answer.edit.text,
+  }];
 });
 
 documents.listen(connection);

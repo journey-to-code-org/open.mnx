@@ -8,6 +8,7 @@ Language support for [Zubra](https://journey-to-code-org.github.io/zubra/): `.zb
 - **Hover** documentation for imported components: description, props with types and defaults, events and slots.
 - **Go to definition** for imported components.
 - **Formatting** (Format Document, or format on save with `"editor.formatOnSave": true`): `zubra fmt`'s layout, with your editor's indentation. It re-indents the template and tidies tags without changing what the component compiles to, and leaves expressions, comments, `<script>`, `<style>` and `<pre>` as written. `zubra.format.printWidth` (default 100) is the width a tag is fitted into before its attributes go one per line. Needs Zubra 5.4 or later.
+- **Format Selection** (and `"editor.formatOnPaste": true`): formats the lines the selection touches, exactly as Format Document would write them in the whole file, and nothing else. Needs a Zubra compiler with `formatRange` (the release after 5.4).
 
 ## Requirements
 

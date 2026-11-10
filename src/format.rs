@@ -81,6 +81,131 @@ pub fn format(source: &str, options: &FormatOptions) -> Result<String, Diagnosti
     Ok(formatted)
 }
 
+/// A change to a file: `start..end` (bytes of the original) replaced by `text`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RangeEdit {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+/// The edit that formats what `start..end` (bytes of `source`) touches, or `None` when that part
+/// is already formatted. The whole file is laid out (nesting depth and line widths depend on
+/// what comes before), and the edit is the output for the tokens the range covers: from the
+/// whitespace before the first (it carries the first line's indentation) to the end of the
+/// last. The range is widened to whole lines. So it is exactly what formatting the file would write there, and nothing else changes.
+/// Like [`format`], an error when the file doesn't parse.
+pub fn format_range(
+    source: &str,
+    start: usize,
+    end: usize,
+    options: &FormatOptions,
+) -> Result<Option<RangeEdit>, Diagnostic> {
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    if crate::jsx::looks_like_jsx(&normalized) {
+        return Err(Diagnostic::new(
+            Span::new(1, 1),
+            "zubra fmt formats HTML-first .zb files; this is a JSX component",
+        )
+        .with_help("format JSX components (.zb.tsx, .zb.jsx) with Prettier"));
+    }
+    parser::parse(&normalized)?;
+    let tokens = scan(&normalized)?;
+    let (formatted, marks) = Printer::new(options).print_marked(&tokens);
+    if let Err(error) = parser::parse(&formatted) {
+        return Err(Diagnostic::new(
+            Span::new(1, 1),
+            format!(
+                "the formatter wrote markup that doesn't parse ({}), so the file is left as it was",
+                error.message
+            ),
+        )
+        .with_help("please report it: https://github.com/journey-to-code-org/zubra/issues"));
+    }
+    // Offsets in the text with LF line endings, which is what was scanned.
+    let (start, end) = (
+        normalized_offset(source, start.min(source.len())),
+        normalized_offset(source, end.min(source.len())),
+    );
+    let (start, mut end) = (start.min(end), end.max(start));
+    // Whole lines: a cursor, or a selection that starts or ends mid-line, formats its lines
+    // (and a selection that ends at the start of a line leaves that line alone).
+    if end > start && normalized.as_bytes().get(end - 1) == Some(&b'\n') {
+        end -= 1;
+    }
+    let start = normalized[..start].rfind('\n').map_or(0, |at| at + 1);
+    let end = normalized[end..]
+        .find('\n')
+        .map_or(normalized.len(), |at| end + at);
+    let mut ranges = Vec::with_capacity(tokens.len());
+    let mut at = 0;
+    for token in &tokens {
+        let length = match token {
+            Token::Space(text) | Token::Text(text) | Token::Comment(text) | Token::Body(text) => {
+                text.len()
+            }
+            Token::Open { raw, .. } | Token::Close { raw, .. } => raw.len(),
+        };
+        ranges.push(at..at + length);
+        at += length;
+    }
+    let covered = |index: usize| {
+        let range = &ranges[index];
+        if start == end {
+            range.start <= start && start < range.end
+        } else {
+            range.start < end && range.end > start
+        }
+    };
+    let content = |index: usize| !matches!(tokens[index], Token::Space(_));
+    let Some(first) = (0..tokens.len()).find(|&index| covered(index) && content(index)) else {
+        return Ok(None);
+    };
+    let last = (first..tokens.len())
+        .rev()
+        .find(|&index| covered(index) && content(index))
+        .unwrap_or(first);
+    // The whitespace before the first token is part of the window.
+    let first = if first > 0 && !content(first - 1) {
+        first - 1
+    } else {
+        first
+    };
+    let (from, to) = (ranges[first].start, ranges[last].end);
+    let text = formatted[marks[first]..marks[last + 1]].to_owned();
+    if normalized[from..to] == text {
+        return Ok(None);
+    }
+    Ok(Some(RangeEdit {
+        start: original_offset(source, from),
+        end: original_offset(source, to),
+        text,
+    }))
+}
+
+/// A byte offset in `source` as an offset in the same text with `\r\n` and `\r` as `\n`.
+fn normalized_offset(source: &str, offset: usize) -> usize {
+    let bytes = source.as_bytes();
+    let pairs = (0..offset.saturating_sub(1))
+        .filter(|&index| bytes[index] == b'\r' && bytes[index + 1] == b'\n')
+        .count();
+    offset - pairs
+}
+
+/// The inverse: where an offset in the normalized text is in `source`.
+fn original_offset(source: &str, normalized: usize) -> usize {
+    let bytes = source.as_bytes();
+    let (mut seen, mut index) = (0, 0);
+    while index < bytes.len() && seen < normalized {
+        if bytes[index] == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+            index += 1;
+        }
+        index += 1;
+        seen += 1;
+    }
+    index
+}
+
 // ---- scanning: the file as tokens, every byte accounted for -------------------------------
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -297,6 +422,9 @@ struct Printer {
     verbatim: usize,
     /// The last thing printed opened an element: the next line break starts its content.
     just_opened: bool,
+    /// Where in `out` each token's output starts (and a last one for the end): what a range
+    /// edit is cut from.
+    marks: Vec<usize>,
 }
 
 impl Printer {
@@ -307,6 +435,7 @@ impl Printer {
             depth: 0,
             verbatim: 0,
             just_opened: false,
+            marks: Vec::new(),
         }
     }
 
@@ -330,9 +459,14 @@ impl Printer {
         (indent, width)
     }
 
-    fn print(mut self, tokens: &[Token<'_>]) -> String {
+    fn print(self, tokens: &[Token<'_>]) -> String {
+        self.print_marked(tokens).0
+    }
+
+    fn print_marked(mut self, tokens: &[Token<'_>]) -> (String, Vec<usize>) {
         let mut top_level_gap: Option<usize> = None; // line breaks seen between top-level items
         for (index, token) in tokens.iter().enumerate() {
+            self.marks.push(self.out.len());
             // At the top level (outside the host tag) nothing is template: lay items out.
             if self.depth == 0 && self.verbatim == 0 {
                 if let Token::Space(space) = token {
@@ -361,10 +495,11 @@ impl Printer {
                 Token::Close { name, raw } => self.close(name, raw),
             }
         }
+        self.marks.push(self.out.len());
         let trimmed = self.out.trim_end().len();
         self.out.truncate(trimmed);
         self.out.push('\n');
-        self.out
+        (self.out, self.marks)
     }
 
     fn space(&mut self, space: &str, next: Option<&Token<'_>>) {
@@ -597,5 +732,88 @@ mod tests {
             let once = fmt(source);
             assert_eq!(fmt(&once), once);
         }
+    }
+
+    fn range(source: &str, from: &str, to: &str) -> Option<(String, RangeEdit)> {
+        let start = source.find(from).unwrap();
+        let end = source[start..].find(to).unwrap() + start + to.len();
+        let edit = format_range(source, start, end, &FormatOptions::default()).unwrap()?;
+        let mut out = source.to_owned();
+        out.replace_range(edit.start..edit.end, &edit.text);
+        Some((out, edit))
+    }
+
+    #[test]
+    fn a_range_formats_the_lines_it_touches_and_nothing_else() {
+        let source =
+            "<x-a>\n<p>\n        hi {name}\n</p>\n      <ul>\n<li>one</li>\n</ul>\n</x-a>\n";
+        let (out, _) = range(source, "<li>one", "</li>").unwrap();
+        // Only the <li> line is re-indented, at its depth in the whole file.
+        assert_eq!(
+            out,
+            "<x-a>\n<p>\n        hi {name}\n</p>\n      <ul>\n    <li>one</li>\n</ul>\n</x-a>\n"
+        );
+        let (out, _) = range(source, "hi {name}", "hi {name}").unwrap();
+        assert_eq!(
+            out,
+            "<x-a>\n<p>\n    hi {name}\n</p>\n      <ul>\n<li>one</li>\n</ul>\n</x-a>\n"
+        );
+    }
+
+    #[test]
+    fn the_range_of_everything_is_the_whole_format() {
+        let source = "<!-- a -->\n\n\n<script>let a = 1</script>   <style>p{}</style>\n<x-a>\n<p>\n  <b   x = \"1\">hi</b>\n</p>\n</x-a>\n";
+        let edit = format_range(source, 0, source.len(), &FormatOptions::default())
+            .unwrap()
+            .unwrap();
+        let mut out = source.to_owned();
+        out.replace_range(edit.start..edit.end, &edit.text);
+        assert_eq!(
+            format(&out, &FormatOptions::default()).unwrap(),
+            format(source, &FormatOptions::default()).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_formatted_range_has_no_edit_and_a_cursor_formats_its_line() {
+        let source = "<x-a>\n  <p>a</p>\n</x-a>\n";
+        assert_eq!(range(source, "<p>a</p>", "</p>"), None);
+        let ragged = "<x-a>\n<p>a</p>\n</x-a>\n";
+        let at = ragged.find("a</p>").unwrap();
+        let edit = format_range(ragged, at, at, &FormatOptions::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(edit.text, "\n  <p>a</p>");
+        // A selection that ends at the start of a line leaves that line alone; one that reaches
+        // into it formats it.
+        let space = ragged.find("\n<p>").unwrap();
+        assert!(
+            format_range(ragged, space, space + 1, &FormatOptions::default())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            format_range(ragged, space, space + 2, &FormatOptions::default())
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn a_range_in_a_crlf_file_is_in_the_file_s_own_offsets() {
+        let source = "<x-a>\r\n<p>\r\nx\r\n</p>\r\n<i>y</i>\r\n</x-a>\r\n";
+        let start = source.find("x\r\n").unwrap();
+        let edit = format_range(source, start, start + 1, &FormatOptions::default())
+            .unwrap()
+            .unwrap();
+        let mut out = source.to_owned();
+        out.replace_range(edit.start..edit.end, &edit.text);
+        assert_eq!(out, "<x-a>\r\n<p>\n    x\r\n</p>\r\n<i>y</i>\r\n</x-a>\r\n");
+    }
+
+    #[test]
+    fn a_range_refuses_what_the_formatter_refuses() {
+        let broken = "<x-a>\n  <p>\n</x-a>\n";
+        assert!(format_range(broken, 0, 3, &FormatOptions::default()).is_err());
     }
 }
