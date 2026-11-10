@@ -373,6 +373,47 @@ fn rest_props_anywhere_but_the_returned_element_are_reported() {
 }
 
 #[test]
+fn rest_props_spread_onto_a_returned_component_are_reported_not_dropped() {
+    // `<Button {...props}>`: the rest would be Button's props (variant, size). Dropping the
+    // spread, as for a returned element, would compile and lose them.
+    for source in [
+        "import { Button } from './button';\nexport default function UiSave({ label, ...props }) {\n  return <Button {...props}>{label}</Button>;\n}\n",
+        "import * as Ui from './ui';\nexport default function UiSave({ ...props }) {\n  return <Ui.Button {...props} />;\n}\n",
+    ] {
+        let conversion = convert(source, "Save.jsx", None).unwrap();
+        let messages: Vec<&str> = conversion
+            .unsupported
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        assert!(
+            messages.contains(&"the rest of the props, spread onto the component this one returns, aren't converted"),
+            "{messages:?}"
+        );
+        assert!(
+            !conversion
+                .changes
+                .iter()
+                .any(|change| change.contains("spread onto the returned element went")),
+            "{:?}",
+            conversion.changes
+        );
+    }
+    // Onto a returned element it still goes, with the note: the host carries those attributes.
+    let source = "export default function UiBox({ ...props }) {\n  return <div {...props} />;\n}\n";
+    let conversion = convert(source, "Box.jsx", None).unwrap();
+    assert!(
+        conversion.unsupported.is_empty(),
+        "{:?}",
+        conversion.unsupported
+    );
+    assert!(conversion
+        .changes
+        .iter()
+        .any(|change| change.contains("spread onto the returned element went")));
+}
+
+#[test]
 fn a_spread_converts_onto_an_element_and_onto_a_component() {
     let source = "import Badge from './badge.zb';\nexport default function UiRow({ attrs = {} }) {\n  return <li {...attrs}><Badge {...attrs} /></li>;\n}\n";
     let conversion = convert(source, "Row.jsx", None).unwrap();

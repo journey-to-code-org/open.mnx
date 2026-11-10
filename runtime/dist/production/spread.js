@@ -53,8 +53,9 @@ export function spread(part, node) {
       const lower = key.toLowerCase();
       const prop = props.get(normalize(key));
       if (prop) {
-        // The element's own `prop={...}` wins, in either spelling.
-        if (!own.has(prop.toLowerCase()) && !own.has(kebab(prop))) nextProps.set(prop, value);
+        // The element's own `prop={...}` wins, in either spelling. `null` isn't a value: the
+        // prop's default, as on the server.
+        if (value !== null && !own.has(prop.toLowerCase()) && !own.has(kebab(prop))) nextProps.set(prop, value);
         continue;
       }
       if (lower.length > 2 && lower.startsWith('on') && (typeof value === 'function' || typeof value === 'string')) {
@@ -101,8 +102,13 @@ export function spread(part, node) {
       if (own.has(name.toLowerCase())) continue;
       next.set(name, value);
     }
-    // Props: set, and unset (to undefined) once the key is gone.
-    for (const name of givenProps) if (!nextProps.has(name)) node[name] = undefined;
+    // Props: set, and back to the component's default once the key is gone (or null), which is
+    // what the server renders for a spread without it.
+    for (const name of givenProps) {
+      if (nextProps.has(name)) continue;
+      const fallback = node.constructor.zubra?.props[name]?.default;
+      node[name] = fallback && typeof fallback === 'object' ? structuredClone(fallback) : fallback;
+    }
     for (const [name, value] of nextProps) node[name] = value; // not read first: that would subscribe this effect to the child's own prop
     givenProps = new Set(nextProps.keys());
     // Listeners whose keys went away.

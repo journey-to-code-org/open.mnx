@@ -278,3 +278,121 @@ fn a_spread_known_only_in_the_browser_names_the_props_for_the_binder() {
     .unwrap();
     assert!(output.contains("<b>new</b>"), "{output}");
 }
+
+// ---- required props, two spreads, and the JavaScript output's checks ----------------------
+
+/// `name` has no default, so it's required (as a JSX component's parameter without one is).
+const TAG: &str = r#"<zb-tag name count={0}>
+  <b>{name}</b> <i>{count}</i>
+</zb-tag>"#;
+
+fn tag_loader(specifier: &str, _from: &str) -> Result<(String, String), String> {
+    match specifier {
+        "./tag.zb" => Ok(("tag.zb".to_owned(), TAG.to_owned())),
+        _ => Err("not found".to_owned()),
+    }
+}
+
+fn tag_page(script: &str, attributes: &str) -> String {
+    format!("<script>\n  import './tag.zb'\n{script}\n</script>\n<zb-page rest={{{{}}}}><zb-tag {attributes}></zb-tag></zb-page>")
+}
+
+#[test]
+fn a_spread_may_give_a_required_prop() {
+    // The spread is the parent's prop, known only in the browser: it may carry `name`, so
+    // neither output refuses the tag for not writing it. (This is what a converted React
+    // component looks like: `<Button {...rest}>`, where Button's params have no defaults.)
+    let source = tag_page("", "{...rest}");
+    let output = compile_js_with(&source, "page.zb", "@zubra/runtime", None, &tag_loader).unwrap();
+    assert!(output.contains(r#"props: ["count", "name"]"#), "{output}");
+    // A spread known at build time that has the key.
+    let known = tag_page(r#"  const given = { name: "a" }"#, "{...given}");
+    compile_js_with(&known, "page.zb", "@zubra/runtime", None, &tag_loader).unwrap();
+    let html = compile_html_with(&known, "page.zb", "{}", "{}", &tag_loader).unwrap();
+    assert!(html.contains("<b>a</b>"), "{html}");
+    // Written out in the tag, where no name is read: both outputs know it.
+    let literal = tag_page("", r#"{...{ name: "a" }}"#);
+    compile_js_with(&literal, "page.zb", "@zubra/runtime", None, &tag_loader).unwrap();
+    assert!(
+        compile_html_with(&literal, "page.zb", "{}", "{}", &tag_loader)
+            .unwrap()
+            .contains("<b>a</b>")
+    );
+}
+
+#[test]
+fn a_known_spread_without_the_required_prop_is_still_an_error() {
+    // No spread at all: as before.
+    for (attributes, script) in [
+        ("", ""),
+        // Known, and it doesn't have `name`.
+        ("{...{ count: 2 }}", ""),
+        // `null` isn't a value: the default, and a required prop has none.
+        ("{...{ name: null }}", ""),
+    ] {
+        let source = tag_page(script, attributes);
+        let error =
+            compile_js_with(&source, "page.zb", "@zubra/runtime", None, &tag_loader).unwrap_err();
+        assert!(
+            error.message.contains("requires the prop `name`"),
+            "{attributes}: {}",
+            error.message
+        );
+        let error = compile_html_with(&source, "page.zb", "{}", "{}", &tag_loader).unwrap_err();
+        assert!(
+            error.message.contains("requires the prop `name`"),
+            "{attributes}: {}",
+            error.message
+        );
+    }
+    // The HTML output knows the parent's constants too.
+    let source = tag_page("  const given = { count: 2 }", "{...given}");
+    let error = compile_html_with(&source, "page.zb", "{}", "{}", &tag_loader).unwrap_err();
+    assert!(
+        error.message.contains("requires the prop `name`"),
+        "{}",
+        error.message
+    );
+}
+
+#[test]
+fn the_javascript_output_type_checks_a_known_spread_too() {
+    let source = tag_page("", r#"{...{ name: "a", count: "three" }}"#);
+    let error =
+        compile_js_with(&source, "page.zb", "@zubra/runtime", None, &tag_loader).unwrap_err();
+    assert!(
+        error.message.contains("prop `count` must be"),
+        "{}",
+        error.message
+    );
+    // The tag's own prop wins, so the spread's value for it isn't checked.
+    let source = tag_page("", r#"count={1} {...{ name: "a", count: "three" }}"#);
+    compile_js_with(&source, "page.zb", "@zubra/runtime", None, &tag_loader).unwrap();
+}
+
+#[test]
+fn of_two_spreads_the_later_one_wins_as_in_the_browser() {
+    let source = tag_page(
+        r#"  const first = { name: "first", count: 1 }
+  const second = { name: "second" }"#,
+        "{...first} {...second}",
+    );
+    let html = compile_html_with(&source, "page.zb", "{}", "{}", &tag_loader).unwrap();
+    assert!(html.contains("<b>second</b> <i>1</i>"), "{html}");
+    // `null` in the later one: back to the default, not the earlier spread's value.
+    let source = tag_page(
+        r#"  const first = { name: "first", count: 1 }
+  const second = { count: null }"#,
+        "{...first} {...second}",
+    );
+    let html = compile_html_with(&source, "page.zb", "{}", "{}", &tag_loader).unwrap();
+    assert!(html.contains("<b>first</b> <i>0</i>"), "{html}");
+    // The tag's own prop still wins over both, wherever it's written.
+    let source = tag_page(
+        r#"  const first = { name: "first" }
+  const second = { name: "second" }"#,
+        r#"{...first} name="own" {...second}"#,
+    );
+    let html = compile_html_with(&source, "page.zb", "{}", "{}", &tag_loader).unwrap();
+    assert!(html.contains("<b>own</b>"), "{html}");
+}

@@ -447,6 +447,15 @@ pub fn convert_component(
                         Expression::JSXElement(element) => Some((
                             element.opening_element.span.start,
                             element.opening_element.span.end,
+                            // `<Button …>` or `<Ui.Button …>`: another component, not an element.
+                            match &element.opening_element.name {
+                                JSXElementName::Identifier(name) => {
+                                    name.name.starts_with(|c: char| c.is_ascii_uppercase())
+                                }
+                                JSXElementName::IdentifierReference(_)
+                                | JSXElementName::MemberExpression(_) => true,
+                                _ => false,
+                            },
                         )),
                         _ => None,
                     }
@@ -459,8 +468,19 @@ pub fn convert_component(
         for reference in scoping.get_resolved_references(symbol) {
             let span = nodes.get_node(reference.node_id()).kind().span();
             match nodes.parent_kind(reference.node_id()) {
+                // Onto a returned component, the rest of the props would be that component's
+                // props: dropping them would compile and behave differently, so it's reported.
                 AstKind::JSXSpreadAttribute(spread)
-                    if root_tag.is_some_and(|(start, end)| start <= spread.span.start && spread.span.end <= end) =>
+                    if root_tag.is_some_and(|(start, end, component)| component && start <= spread.span.start && spread.span.end <= end) =>
+                {
+                    work.unsupported(
+                        spread.span.start,
+                        "the rest of the props, spread onto the component this one returns, aren't converted",
+                        "they would be that component's props (`variant`, `size`, …), and a zubra component declares each prop it takes: name the ones this component passes on, and write them on the tag",
+                    );
+                }
+                AstKind::JSXSpreadAttribute(spread)
+                    if root_tag.is_some_and(|(start, end, _)| start <= spread.span.start && spread.span.end <= end) =>
                 {
                     let mut start = spread.span.start as usize;
                     while start > 0 && source.as_bytes()[start - 1].is_ascii_whitespace() {

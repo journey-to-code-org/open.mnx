@@ -450,7 +450,43 @@ pub(crate) fn check_child(element: &ast::Element, info: &ChildInfo) -> Result<()
             validate::check_child_prop_type(&element.name, prop, &value, span)?;
         }
     }
-    validate::check_child_required(&element.name, &info.interface, element)
+    // `{...spread}`: one that reads no name is known here, and is checked like written props
+    // (its values' types, and that it gives what's required); one that reads a prop or state is
+    // the browser's, and may give anything.
+    for (expression, span) in validate::spreads_of(element) {
+        let mut free = false;
+        expression.for_each_identifier(&mut |_| free = true);
+        let Ok(serde_json::Value::Object(entries)) = expression.evaluate(&|_| None) else {
+            continue;
+        };
+        if free {
+            continue;
+        }
+        for (key, value) in &entries {
+            let written = |prop: &validate::PropInterface| {
+                element.attributes.iter().any(|attribute| {
+                    attribute.name != crate::parser::SPREAD
+                        && validate::camel(&attribute.name) == prop.name
+                })
+            };
+            if let Some(prop) = info
+                .interface
+                .props
+                .iter()
+                .find(|prop| validate::spread_key_is_prop(key, &prop.name))
+            {
+                if !value.is_null() && !written(prop) {
+                    validate::check_child_prop_type(&element.name, prop, value, span)?;
+                }
+            }
+        }
+    }
+    validate::check_child_required(
+        &element.name,
+        &info.interface,
+        element,
+        &validate::SpreadKeys::of(element),
+    )
 }
 
 pub(crate) fn child_infos(
