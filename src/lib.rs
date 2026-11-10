@@ -39,6 +39,7 @@ mod jsx;
 mod parser;
 mod pure;
 mod reactive;
+mod refactor;
 mod render;
 mod request;
 mod runtime_expression;
@@ -56,6 +57,7 @@ pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
 pub use emit_js::StyleImports;
 pub use format::{format, FormatOptions};
+pub use refactor::{extract, Edit, Extraction};
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {
     serde_json::from_str(text).map_err(|error| {

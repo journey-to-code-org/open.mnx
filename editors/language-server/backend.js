@@ -55,7 +55,29 @@ function wasmBackend(wasm) {
       const response = wasm.request({ command: 'format', path: absolute, files: { [absolute]: text }, ...options });
       return response.ok ? { ok: true, output: response.output } : { ok: false, error: response.error ?? '' };
     },
+    refactor(path, text, extraction) {
+      const absolute = resolve(path);
+      const files = wasm.sources(absolute);
+      files[absolute] = text;
+      for (const specifier of importsOf(text)) wasm.sources(resolve(dirname(absolute), specifier), files);
+      return refactored(wasm.request({ command: 'refactor', action: 'extract', path: absolute, files, ...extraction }));
+    },
   };
+}
+
+/** A `refactor` response as { ok, result } or { ok: false, reason, unsupported? }. */
+function refactored(response) {
+  if (response?.ok) {
+    // A compiler from before the command doesn't know it and compiles the file instead.
+    try {
+      const result = JSON.parse(response.output);
+      if (typeof result?.fileSource === 'string' && Array.isArray(result.edits)) return { ok: true, result };
+    } catch {
+      // Not the command's answer.
+    }
+    return { ok: false, unsupported: true, reason: 'this compiler does not know the refactor command' };
+  }
+  return { ok: false, reason: response?.diagnostics?.[0]?.message ?? response?.error ?? 'the compiler did not answer' };
 }
 
 function cliBackend(compiler) {
@@ -80,6 +102,18 @@ function cliBackend(compiler) {
       const result = run(args, text);
       if (result.error) return { ok: false, error: result.error.message };
       return result.status === 0 ? { ok: true, output: result.stdout } : { ok: false, error: result.stderr };
+    },
+    refactor(path, text, extraction) {
+      const absolute = resolve(path);
+      const files = { [absolute]: text };
+      for (const specifier of importsOf(text)) {
+        const imported = resolve(dirname(absolute), specifier);
+        const source = readText(imported);
+        if (source !== null) files[imported] = source;
+      }
+      const result = run(['request'], JSON.stringify({ command: 'refactor', action: 'extract', path: absolute, files, ...extraction }));
+      if (result.error) return { ok: false, reason: result.error.message };
+      try { return refactored(JSON.parse(result.stdout)); } catch { return { ok: false, reason: result.stderr || 'the compiler did not answer', unsupported: true }; }
     },
   };
 }
