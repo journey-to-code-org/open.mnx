@@ -1294,7 +1294,7 @@ impl Context<'_> {
                 self.lower_directives(element, &mut attributes, state)?;
                 for attribute in &element.attributes {
                     if attribute.name == crate::parser::SPREAD {
-                        self.lower_spread(element, attribute, &mut attributes, state)?;
+                        self.lower_spread(element, attribute, &mut attributes, state, &[])?;
                     }
                 }
                 let mut lowered = ir::Element {
@@ -1549,7 +1549,12 @@ impl Context<'_> {
             analyze(&child.ast).map_err(|error| error.in_file(&child.path, &child.source))?;
         let mut overrides = serde_json::Map::new();
         let mut attributes = Vec::new();
+        let mut spreads = Vec::new();
         for attribute in &element.attributes {
+            if attribute.name == crate::parser::SPREAD {
+                spreads.push(attribute);
+                continue; // after the element's own (an explicit prop or attribute wins)
+            }
             let prop_name = camel(&attribute.name);
             let lower = attribute.name.to_ascii_lowercase();
             check_child_event(&child.ast.tag, &interface, attribute)?;
@@ -1579,7 +1584,51 @@ impl Context<'_> {
             }
         }
         self.lower_directives(element, &mut attributes, state)?;
-        check_child_required(&child.ast.tag, &interface, element)?;
+        // `{...object}` on a component: the entries that are the child's props are passed as
+        // props (the element's own win), the rest are attributes of its host, as on any
+        // element. An object known only in the browser is left for it.
+        let prop_names: Vec<String> = interface
+            .props
+            .iter()
+            .map(|prop| prop.name.clone())
+            .collect();
+        for attribute in spreads {
+            let AttributeValue::Expression(expression, span) = &attribute.value else {
+                continue;
+            };
+            let Some(Value::Object(entries)) = self.evaluate_known(expression, *span, state)?
+            else {
+                self.lower_spread(element, attribute, &mut attributes, state, &[])?;
+                continue;
+            };
+            for (key, value) in &entries {
+                let Some(prop) = interface
+                    .props
+                    .iter()
+                    .find(|prop| spread_key_is_prop(key, &prop.name))
+                else {
+                    continue;
+                };
+                if value.is_null() {
+                    continue; // a value that isn't one: the child's default
+                }
+                let given = element.attributes.iter().any(|other| {
+                    other.name != crate::parser::SPREAD && camel(&other.name) == prop.name
+                });
+                if !given && !overrides.contains_key(&prop.name) {
+                    check_child_prop_type(&child.ast.tag, prop, value, *span)?;
+                    overrides.insert(prop.name.clone(), value.clone());
+                }
+            }
+            self.lower_spread(element, attribute, &mut attributes, state, &prop_names)?;
+        }
+        if !element
+            .attributes
+            .iter()
+            .any(|a| a.name == crate::parser::SPREAD)
+        {
+            check_child_required(&child.ast.tag, &interface, element)?;
+        }
         for prop in &interface.props {
             if prop.runtime_default.is_some() && !overrides.contains_key(&prop.name) && !partial() {
                 return Err(Diagnostic::new(
@@ -1744,6 +1793,7 @@ impl Context<'_> {
         attribute: &ast::Attribute,
         attributes: &mut Vec<ir::Attribute>,
         state: &LowerState,
+        props: &[String],
     ) -> Result<(), Diagnostic> {
         let AttributeValue::Expression(expression, span) = &attribute.value else {
             return Ok(());
@@ -1772,6 +1822,9 @@ impl Context<'_> {
             .map(|other| other.name.to_ascii_lowercase())
             .collect();
         for (key, value) in entries {
+            if props.iter().any(|prop| spread_key_is_prop(&key, prop)) {
+                continue; // a prop of the child, passed as one
+            }
             let lower = key.to_ascii_lowercase();
             if lower.len() > 2 && lower.starts_with("on") {
                 if value.is_string() {
@@ -2480,13 +2533,6 @@ pub(crate) fn unknown_child_prop(
     interface: &Interface,
     attribute: &ast::Attribute,
 ) -> Diagnostic {
-    if attribute.name == crate::parser::SPREAD {
-        return Diagnostic::new(
-            attribute.span,
-            format!("<{tag}> is a zubra component: pass each prop rather than spreading an object onto it"),
-        )
-        .with_help("a spread works on HTML elements and other libraries' custom elements");
-    }
     let prop_name = camel(&attribute.name);
     let names: Vec<&str> = interface
         .props
@@ -2506,7 +2552,8 @@ pub(crate) fn is_unknown_child_attribute(
 ) -> bool {
     let lower = attribute.name.to_ascii_lowercase();
     let prop_name = camel(&attribute.name);
-    !interface.props.iter().any(|prop| prop.name == prop_name)
+    attribute.name != crate::parser::SPREAD
+        && !interface.props.iter().any(|prop| prop.name == prop_name)
         && matches!(attribute.value, AttributeValue::Expression(..))
         && !crate::parser::is_event_attribute(&lower)
         && !is_global_attribute(&lower)
@@ -2740,4 +2787,10 @@ fn destructure(text: &str, value: &Value) -> Vec<(String, Value)> {
             (name, current.clone())
         })
         .collect()
+}
+
+/// Whether a spread's key names `prop` (`isOpen` or `is-open`, in any case).
+pub(crate) fn spread_key_is_prop(key: &str, prop: &str) -> bool {
+    let normalize = |name: &str| name.replace('-', "").to_ascii_lowercase();
+    normalize(key) == normalize(prop)
 }
