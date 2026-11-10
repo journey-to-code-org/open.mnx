@@ -3,40 +3,9 @@
 // `command: process.execPath` server only ran as Node by accident of the environment.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { fork } from 'node:child_process';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { activated } from './stub.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-
-/** Activate extension.js with stand-ins for `vscode` and the client, and return what it passed. */
-function activated() {
-  const Module = require('node:module');
-  const seen = {};
-  const stubs = {
-    vscode: { workspace: { getConfiguration: () => ({ get: () => undefined }) } },
-    'vscode-languageclient/node': {
-      TransportKind: { stdio: 0, ipc: 1 },
-      LanguageClient: class {
-        constructor(id, name, serverOptions, clientOptions) { Object.assign(seen, { serverOptions, clientOptions }); }
-        start() { return Promise.resolve(); }
-        stop() {}
-      },
-    },
-  };
-  const load = Module._load;
-  Module._load = function (request, ...rest) { return request in stubs ? stubs[request] : load.call(this, request, ...rest); };
-  try {
-    const path = join(here, '../extension.js');
-    delete require.cache[path];
-    require(path).activate({ subscriptions: [] });
-  } finally {
-    Module._load = load;
-  }
-  return seen;
-}
 
 test('the server is a Node module the client forks, not the editor binary as a command', () => {
   const { serverOptions } = activated();

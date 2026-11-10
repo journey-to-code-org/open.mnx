@@ -13,10 +13,18 @@
 //!   a `<zb-slot>`, a parent function used any other way, and a shadow DOM parent are refused,
 //!   each with its reason.
 //!
-//! No CSS moves: a light-DOM parent's scoped rules reach into a light-DOM child already.
-//! Names bound inside the selection (`zb-each` items, `zb-then` values) are told apart from the
-//! parent's by name, not by scope: a name used both inside and outside a binding of it in the
-//! selection counts as the selection's own.
+//! The selection is checked against the file itself, not only parsed on its own: it has to
+//! start and end on the edges of whole elements, text and `{…}` expressions (not inside a tag, a
+//! comment, an expression or a `<textarea>`), and what would be written is compiled before it is
+//! offered. If the component compiled before and wouldn't after, or rendered on the server
+//! before and wouldn't after, the extraction is refused with the compiler's reason.
+//!
+//! No CSS moves: a light-DOM parent's scoped rules reach into a light-DOM child already. That
+//! covers rules that match by descendant (`ul li`, `.row b`). A rule that depends on the
+//! selection being a *direct* child (`ul > li`, or a flex or grid container laying out its
+//! children) sees the new element instead, so the layout can change: the new host is one box.
+//! Names bound inside the selection (`zb-each` items, `zb-then` values) are the selection's own
+//! only where they are bound: the same name read outside that loop or branch is the parent's.
 
 use std::collections::BTreeSet;
 
@@ -139,6 +147,13 @@ pub fn extract(
                 .to_owned(),
         ));
     }
+    // The selection against the file's own pieces: it starts where one starts and ends where one
+    // ends, closes every tag it opens, and isn't inside an element whose content is text.
+    // (Parsing the selected text alone can't tell: `class="a"` out of a tag, the inside of a
+    // comment, or a string in an expression can each read as markup on their own.)
+    let pieces = crate::format::pieces(source)?;
+    let ancestors = whole_pieces(&pieces, template_start, from, to)
+        .map_err(|(offset, message)| refuse(offset, message))?;
     let selected = &source[from..to];
 
     // Whole sibling nodes: the selection is a template of its own.
@@ -164,6 +179,47 @@ pub fn extract(
             from,
             "the selection contains a <zb-slot>, which belongs to this component's own content"
                 .to_owned(),
+        ));
+    }
+    if let Some(slot) = top_slot(&parsed.nodes) {
+        return Err(refuse(
+            from,
+            format!("the selection is placed in its parent's `{slot}` slot (slot=\"{slot}\"); the new component would sit in the default slot instead: select what's inside it"),
+        ));
+    }
+    // The new tag must be free: not one of Zubra's own, and not one this component already uses.
+    // (Directives parse as something other than an element; `zb-window` and `zb-document` are
+    // elements to the parser and special to the compiler.)
+    if ["zb-window", "zb-document"].contains(&tag)
+        || !matches!(
+            parser::parse(&format!("<x-probe><{tag}></{tag}></x-probe>")),
+            Ok(probe) if matches!(probe.nodes.first(), Some(Node::Element(_)))
+        )
+    {
+        return Err(refuse(
+            start,
+            format!("`{tag}` is one of Zubra's own tags, so it can't name a component"),
+        ));
+    }
+    let mut in_use = BTreeSet::new();
+    element_names(&component.nodes, &mut in_use);
+    for import in &component.script.imports {
+        if import.specifier.ends_with(".zb") {
+            if let Some(imported) = loader(&import.specifier, path)
+                .ok()
+                .and_then(|(_, imported)| parser::parse(&imported).ok())
+            {
+                in_use.insert(imported.tag);
+            }
+            if import.specifier.rsplit('/').next() == Some(&format!("{tag}.zb")) {
+                in_use.insert(tag.to_owned());
+            }
+        }
+    }
+    if in_use.contains(tag) {
+        return Err(refuse(
+            start,
+            format!("this component already uses <{tag}>: choose another name"),
         ));
     }
     // `<ol zb-if={…}>` then `<p zb-else>`: the else would be left without its if.
@@ -218,7 +274,13 @@ pub fn extract(
             format!("<{name}> only works directly inside its parent element (a new component would sit between them): select the parent too"),
         ));
     }
-    if let Some(parent) = enclosing_tag(source, template_start, from) {
+    // The nearest element around the selection (looking through `zb-` directives).
+    if let Some(parent) = ancestors
+        .iter()
+        .rev()
+        .find(|name| !name.starts_with("zb-"))
+        .map(|name| name.to_ascii_lowercase())
+    {
         if ONLY_THESE_CHILDREN.contains(&parent.as_str())
             && !["ul", "ol", "menu", "dl", "details", "fieldset", "figure"]
                 .contains(&parent.as_str())
@@ -239,14 +301,21 @@ pub fn extract(
     let mut props = BTreeSet::new();
     let mut events = BTreeSet::new();
     let mut imports: Vec<&str> = Vec::new();
+    // An import that brings `name` into scope: by the names it binds, not any word in it
+    // (`import { size as width } from './from.js'` binds `width`, not `size` or `from`).
     let imported = |name: &str| {
-        script
-            .imports
-            .iter()
-            .find(|import| mentions(&import.text, name))
+        script.imports.iter().find(|import| {
+            import_locals(&import.text)
+                .iter()
+                .any(|local| local == name)
+        })
     };
     for (name, written) in &uses.names {
-        if uses.bound.contains(name) || GLOBALS.contains(&name.as_str()) {
+        // What the browser provides is the new component's too (the validator's list, so
+        // `setTimeout`, `fetch` and `localStorage` don't become props).
+        if GLOBALS.contains(&name.as_str())
+            || crate::validate::RUNTIME_GLOBALS.contains(&name.as_str())
+        {
             continue;
         }
         if script.emit.as_deref() == Some(name.as_str()) {
@@ -285,6 +354,14 @@ pub fn extract(
         }
         if script.runtime_names.contains(name) {
             if uses.handlers.contains(name) && !uses.other_uses.contains(name) {
+                // The parent's function would listen for the new component's event, and be
+                // called with that event, not the click or submit it was written for.
+                if function_parameters(&source[..template_start], name) != Some(false) {
+                    return Err(refuse(
+                        from,
+                        format!("the selection uses `{name}` as an event handler, and `{name}` takes the event as its argument; as a listener on the new component it would be given that component's event instead (`preventDefault()` and `target` would no longer be the element's)"),
+                    ));
+                }
                 events.insert(name.clone());
             } else {
                 return Err(refuse(
@@ -307,6 +384,21 @@ pub fn extract(
             return Err(refuse(
                 from,
                 format!("the selection changes `{name}` (`{name}.set(…)`), state of this component; a prop would only be a copy of it"),
+            ));
+        }
+        // A function held in a `const` (`const nudge = (by) => …`) would have to be passed as a
+        // prop, and a function is a value only the browser has.
+        if script.bindings.iter().any(|binding| {
+            binding.name == *name
+                && binding.init.is_none()
+                && binding.source.as_deref().is_some_and(|init| {
+                    let init = init.trim_start();
+                    init.contains("=>") || init.starts_with("function") || init.starts_with("async")
+                })
+        }) {
+            return Err(refuse(
+                from,
+                format!("the selection uses `{name}`, a function of this component; passed to the new component as a prop it couldn't be rendered on the server: keep the markup with its function"),
             ));
         }
         let camel = name.starts_with(|character: char| character.is_ascii_lowercase())
@@ -371,7 +463,9 @@ pub fn extract(
             &format!("() => emit(\"{}\")", event_name(name)),
         );
     }
-    let body = dedent(&body);
+    // `<pre>` and `<textarea>` show their whitespace: such a selection is moved as written.
+    let verbatim = uses.elements.contains("pre") || uses.elements.contains("textarea");
+    let body = if verbatim { body } else { dedent(&body) };
     let attributes: Vec<String> = props.iter().map(|name| kebab(name)).collect();
     let mut file = format!("<!-- Extracted from <{}>. -->\n", component.tag);
     if !imports.is_empty() || !events.is_empty() {
@@ -392,10 +486,11 @@ pub fn extract(
     file.push('>');
     // On lines of its own in the parent, the selection is indented inside the new tag; inside a
     // line of text it stays as it was, so the page doesn't gain whitespace.
-    let own_lines = source[..from]
-        .rsplit('\n')
-        .next()
-        .is_some_and(|before| before.trim().is_empty())
+    let own_lines = !verbatim
+        && source[..from]
+            .rsplit('\n')
+            .next()
+            .is_some_and(|before| before.trim().is_empty())
         && source[to..]
             .split('\n')
             .next()
@@ -449,6 +544,66 @@ pub fn extract(
     });
     edits.sort_by_key(|edit| edit.start);
 
+    // What would be written is compiled before it's offered: a refactoring must not turn a
+    // component that works into one that doesn't. (A file that didn't compile to begin with
+    // can't be judged this way, and is left to the checks above.)
+    let mut after = source.to_owned();
+    for edit in edits.iter().rev() {
+        after.replace_range(edit.start..edit.end, &edit.text);
+    }
+    let child_path = match path.replace('\\', "/").rsplit_once('/') {
+        Some((directory, _)) => format!("{directory}/{tag}.zb"),
+        None => format!("{tag}.zb"),
+    };
+    let with_child = |specifier: &str, importer: &str| -> Result<(String, String), String> {
+        if specifier == format!("./{tag}.zb") && importer != child_path {
+            return Ok((child_path.clone(), file.clone()));
+        }
+        loader(specifier, importer)
+    };
+    if crate::compile_js_with(source, path, "@zubra/runtime", None, loader).is_ok() {
+        if let Err(error) =
+            crate::compile_js_with(&after, path, "@zubra/runtime", None, &with_child)
+        {
+            return Err(refuse(
+                from,
+                format!(
+                    "extracting this would leave a component that doesn't compile ({})",
+                    error.message
+                ),
+            ));
+        }
+        // And the server: a prop only the browser can compute (a function, `Date.now()`) can't
+        // be passed to the new component while the page is rendered.
+        for partial in [false, true] {
+            let render = |text: &str, loader: crate::Loader| {
+                crate::compile_html_with_options(
+                    text,
+                    path,
+                    "{}",
+                    "{}",
+                    crate::HtmlOptions {
+                        slot_source: crate::SlotSource::Template,
+                        partial,
+                        pending: Vec::new(),
+                    },
+                    loader,
+                )
+            };
+            if render(source, loader).is_ok() {
+                if let Err(error) = render(&after, &with_child) {
+                    return Err(refuse(
+                        from,
+                        format!(
+                            "this component renders on the server now, and wouldn't with the selection extracted ({})",
+                            error.message
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
     Ok(Extraction {
         tag: tag.to_owned(),
         file_name: format!("{tag}.zb"),
@@ -468,8 +623,9 @@ struct Uses {
     /// Identifiers that are a whole event handler somewhere, and ones used another way.
     handlers: BTreeSet<String>,
     other_uses: BTreeSet<String>,
-    /// Names the selection binds itself.
-    bound: BTreeSet<String>,
+    /// The names bound around what is being looked at (`zb-each` items, `zb-then` values), one
+    /// set per loop or branch: a name is the parent's unless one of these binds it there.
+    scopes: Vec<BTreeSet<String>>,
     /// Tags of elements in it.
     elements: BTreeSet<String>,
     slot: bool,
@@ -478,29 +634,48 @@ struct Uses {
 }
 
 impl Uses {
+    fn is_bound(&self, name: &str) -> bool {
+        self.scopes.iter().any(|scope| scope.contains(name))
+    }
+
+    fn bind(&mut self, name: &str) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_owned());
+        }
+    }
+
     fn expression(&mut self, attribute: Option<&str>, expression: &Expression) {
         let handler = attribute
             .filter(|name| parser::is_event_attribute(&name.to_ascii_lowercase()))
             .and(match expression {
-                Expression::Identifier(name) => Some(name.clone()),
+                Expression::Identifier(name) if !self.is_bound(name) => Some(name.clone()),
                 _ => None,
             });
         if let Some(name) = &handler {
             self.handlers.insert(name.clone());
         }
-        expression.for_each_identifier(&mut |name| {
-            self.names.entry(name.to_owned()).or_insert(false);
-            if handler.as_deref() != Some(name) {
-                self.other_uses.insert(name.to_owned());
+        let mut free = Vec::new();
+        expression.for_each_identifier(&mut |name| free.push(name.to_owned()));
+        for name in free {
+            if self.is_bound(&name) {
+                continue;
             }
-        });
+            if handler.as_deref() != Some(name.as_str()) {
+                self.other_uses.insert(name.clone());
+            }
+            self.names.entry(name).or_insert(false);
+        }
         for name in expression.written_names() {
-            self.names.insert(name.to_owned(), true);
+            if !self.is_bound(name) {
+                self.names.insert(name.to_owned(), true);
+            }
         }
         // `value:bind={count}` and `:model` write what they name.
         if attribute.is_some_and(|name| name.ends_with(":bind") || name.ends_with(":model")) {
             if let Expression::Identifier(name) = expression {
-                self.names.insert(name.clone(), true);
+                if !self.is_bound(name) {
+                    self.names.insert(name.clone(), true);
+                }
             }
         }
     }
@@ -513,15 +688,30 @@ impl Uses {
         }
     }
 
+    /// Bind what a pattern names (`item`, `{ id, name }`, `[first, ...rest]`) in the current scope.
     fn pattern(&mut self, pattern: &str) {
         match ast::bindings(pattern) {
-            Ok(bindings) => self
-                .bound
-                .extend(bindings.into_iter().map(|(name, _)| name)),
-            Err(_) => {
-                self.bound.insert(pattern.trim().to_owned());
+            Ok(bindings) => {
+                for (name, _) in bindings {
+                    self.bind(&name);
+                }
             }
+            Err(_) => self.bind(pattern.trim()),
         }
+    }
+
+    /// A `zb-then`/`zb-catch` branch: its value and `let:`s are bound for its children only.
+    fn branch(&mut self, branch: &ast::Branch) {
+        self.scopes.push(BTreeSet::new());
+        if let Some(name) = &branch.name {
+            self.pattern(name);
+        }
+        for binding in &branch.lets {
+            self.expression(None, &binding.value);
+            self.bind(&binding.name);
+        }
+        self.nodes(&branch.children);
+        self.scopes.pop();
     }
 
     fn nodes(&mut self, nodes: &[Node]) {
@@ -560,19 +750,23 @@ impl Uses {
                     children,
                     ..
                 } => {
+                    // The list is read outside the loop; the item, index and `let:`s are bound
+                    // inside it only.
                     self.expression(None, items);
+                    self.scopes.push(BTreeSet::new());
                     self.pattern(item);
                     if let Some(index) = index {
-                        self.bound.insert(index.clone());
+                        self.bind(index);
                     }
                     if let Some((key, _)) = key {
                         self.expression(None, key);
                     }
                     for binding in lets {
-                        self.bound.insert(binding.name.clone());
                         self.expression(None, &binding.value);
+                        self.bind(&binding.name);
                     }
                     self.nodes(children);
+                    self.scopes.pop();
                 }
                 Node::Slot { .. } => self.slot = true,
                 Node::Else { test, children, .. } => {
@@ -596,26 +790,263 @@ impl Uses {
                     }
                     self.nodes(pending);
                     for branch in then.iter().chain(catch) {
-                        if let Some(name) = &branch.name {
-                            self.pattern(name);
-                        }
-                        for binding in &branch.lets {
-                            self.bound.insert(binding.name.clone());
-                            self.expression(None, &binding.value);
-                        }
-                        self.nodes(&branch.children);
+                        self.branch(branch);
                     }
                 }
                 Node::Settled { branch, .. } => {
                     self.orphan = true;
-                    if let Some(name) = &branch.name {
-                        self.pattern(name);
-                    }
-                    self.nodes(&branch.children);
+                    self.branch(branch);
                 }
             }
         }
     }
+}
+
+// ---- the selection against the file --------------------------------------------------------
+
+/// Elements whose content is text: markup written inside them is shown, not parsed.
+const TEXT_CONTENT: &[&str] = &["textarea", "title", "script", "style"];
+
+/// Check that `from..to` is whole pieces of the file that close every tag they open, and give
+/// the elements around it (outermost first). The error is where it goes wrong, and why.
+fn whole_pieces(
+    pieces: &[crate::format::Piece],
+    template_start: usize,
+    from: usize,
+    to: usize,
+) -> Result<Vec<String>, (usize, String)> {
+    use crate::format::PieceKind;
+    for (offset, verb) in [(from, "starts"), (to, "ends")] {
+        let Some(piece) = pieces
+            .iter()
+            .find(|piece| piece.start < offset && offset < piece.end)
+        else {
+            continue;
+        };
+        let inside = match piece.kind {
+            PieceKind::Open { .. } => format!("inside the <{}> tag itself", piece.name),
+            PieceKind::Close => format!("inside the </{}> tag", piece.name),
+            PieceKind::Comment => "inside a comment".to_owned(),
+            PieceKind::Braces => "inside a {…} expression".to_owned(),
+            PieceKind::Body => "inside a script or style".to_owned(),
+            PieceKind::Text | PieceKind::Space => "in the middle of a word".to_owned(),
+        };
+        return Err((
+            offset,
+            format!(
+                "the selection {verb} {inside}: select whole elements, text and {{…}} expressions"
+            ),
+        ));
+    }
+    // The elements open around the selection.
+    let mut around: Vec<String> = Vec::new();
+    for piece in pieces
+        .iter()
+        .filter(|piece| piece.start >= template_start && piece.end <= from)
+    {
+        match piece.kind {
+            PieceKind::Open { childless: false } => around.push(piece.name.clone()),
+            PieceKind::Close => {
+                if let Some(open) = around
+                    .iter()
+                    .rposition(|name| name.eq_ignore_ascii_case(&piece.name))
+                {
+                    around.truncate(open);
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(parent) = around
+        .iter()
+        .find(|name| TEXT_CONTENT.contains(&name.to_ascii_lowercase().as_str()))
+    {
+        return Err((
+            from,
+            format!("the selection is inside <{parent}>, whose content is text, not markup"),
+        ));
+    }
+    // Every tag the selection opens, it closes, and it closes no other.
+    let mut open: Vec<&crate::format::Piece> = Vec::new();
+    for piece in pieces
+        .iter()
+        .filter(|piece| piece.start >= from && piece.end <= to)
+    {
+        match piece.kind {
+            PieceKind::Open { childless: false } => open.push(piece),
+            PieceKind::Close if open.pop().is_none() => {
+                return Err((
+                    piece.start,
+                    format!(
+                        "the selection ends a <{}> it doesn't start: select whole elements",
+                        piece.name
+                    ),
+                ));
+            }
+            _ => {}
+        }
+    }
+    if let Some(piece) = open.first() {
+        return Err((
+            piece.start,
+            format!(
+                "the selection starts a <{}> it doesn't end: select whole elements",
+                piece.name
+            ),
+        ));
+    }
+    Ok(around)
+}
+
+/// The `slot="…"` of an element at the top of the selection (through directives), if one has it.
+fn top_slot(nodes: &[Node]) -> Option<String> {
+    for node in nodes {
+        let found = match node {
+            Node::Element(element) => element
+                .attributes
+                .iter()
+                .find(|attribute| attribute.name.eq_ignore_ascii_case("slot"))
+                .map(|attribute| match &attribute.value {
+                    AttributeValue::Text(parts) => parts
+                        .iter()
+                        .map(|part| match part {
+                            Part::Literal(text) => text.as_str(),
+                            Part::Expression { .. } => "…",
+                        })
+                        .collect::<String>(),
+                    _ => "…".to_owned(),
+                }),
+            Node::If {
+                consequent,
+                alternate,
+                ..
+            } => top_slot(consequent).or_else(|| top_slot(alternate)),
+            Node::Each { children, .. } | Node::Else { children, .. } => top_slot(children),
+            Node::Await {
+                pending,
+                then,
+                catch,
+                ..
+            } => top_slot(pending).or_else(|| {
+                then.iter()
+                    .chain(catch)
+                    .find_map(|branch| top_slot(&branch.children))
+            }),
+            Node::Settled { branch, .. } => top_slot(&branch.children),
+            Node::Slot { .. } | Node::Text(_) => None,
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+/// Every element name in a template.
+fn element_names(nodes: &[Node], out: &mut BTreeSet<String>) {
+    for node in nodes {
+        match node {
+            Node::Element(element) => {
+                out.insert(element.name.clone());
+                element_names(&element.children, out);
+            }
+            Node::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                element_names(consequent, out);
+                element_names(alternate, out);
+            }
+            Node::Each { children, .. } | Node::Else { children, .. } => {
+                element_names(children, out)
+            }
+            Node::Await {
+                pending,
+                then,
+                catch,
+                ..
+            } => {
+                element_names(pending, out);
+                for branch in then.iter().chain(catch) {
+                    element_names(&branch.children, out);
+                }
+            }
+            Node::Settled { branch, .. } => element_names(&branch.children, out),
+            Node::Slot { fallback, .. } => element_names(fallback, out),
+            Node::Text(_) => {}
+        }
+    }
+}
+
+/// The names an `import` statement binds: `a` and `c` for `import a, { b as c } from 'x'`, `ns`
+/// for `import * as ns from 'x'`, none for `import './side.zb'`.
+fn import_locals(text: &str) -> Vec<String> {
+    let Some(clause) = text.trim().strip_prefix("import") else {
+        return Vec::new();
+    };
+    // Up to the `from` before the specifier's quote.
+    let Some(quote) = clause.find(['\'', '"']) else {
+        return Vec::new();
+    };
+    let Some(clause) = clause[..quote].trim_end().strip_suffix("from") else {
+        return Vec::new(); // a bare `import './x.zb'`
+    };
+    let clause = clause.trim();
+    let clause = clause.strip_prefix("type ").unwrap_or(clause);
+    let word = |text: &str| -> Option<String> {
+        let text = text.trim();
+        let text = text.strip_prefix("type ").unwrap_or(text).trim();
+        // `b as c`, `* as ns` (given here as `as ns`) and `a` all end in the local name.
+        let local = text.split_whitespace().next_back().unwrap_or(text);
+        (!local.is_empty()
+            && local.chars().all(|character| {
+                character.is_alphanumeric() || character == '_' || character == '$'
+            }))
+        .then(|| local.to_owned())
+    };
+    let mut locals = Vec::new();
+    let (outside, inside) = match (clause.find('{'), clause.rfind('}')) {
+        (Some(open), Some(close)) if open < close => (
+            format!("{}{}", &clause[..open], &clause[close + 1..]),
+            &clause[open + 1..close],
+        ),
+        _ => (clause.to_owned(), ""),
+    };
+    for part in outside.split(',') {
+        let part = part.trim();
+        if let Some(namespace) = part.strip_prefix('*') {
+            locals.extend(word(namespace));
+        } else {
+            locals.extend(word(part));
+        }
+    }
+    locals.extend(inside.split(',').filter_map(word));
+    locals
+}
+
+/// Whether the function `name`, declared in `script`, takes parameters: `None` when its
+/// declaration (`function name(…)`) isn't found.
+fn function_parameters(script: &str, name: &str) -> Option<bool> {
+    let word =
+        |character: char| character.is_alphanumeric() || character == '_' || character == '$';
+    for (at, _) in script.match_indices("function") {
+        if script[..at].chars().next_back().is_some_and(word) {
+            continue;
+        }
+        let rest = script[at + "function".len()..].trim_start();
+        let rest = rest.strip_prefix('*').unwrap_or(rest).trim_start();
+        let Some(rest) = rest.strip_prefix(name) else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let Some(rest) = rest.strip_prefix('(') else {
+            continue;
+        };
+        let close = rest.find(')')?;
+        return Some(!rest[..close].trim().is_empty());
+    }
+    None
 }
 
 // ---- text helpers ---------------------------------------------------------------------------
@@ -641,7 +1072,11 @@ fn mentions(text: &str, name: &str) -> bool {
 }
 
 fn span_at(source: &str, offset: usize) -> Span {
-    let offset = offset.min(source.len());
+    // An offset inside a character (a client counting in other units) is that character's start.
+    let mut offset = offset.min(source.len());
+    while !source.is_char_boundary(offset) {
+        offset -= 1;
+    }
     let before = &source[..offset];
     let line = before.matches('\n').count() + 1;
     let column = before
@@ -810,49 +1245,4 @@ fn top_elements(nodes: &[Node], out: &mut Vec<String>) {
             Node::Slot { .. } | Node::Text(_) => {}
         }
     }
-}
-
-/// The nearest element (not a `zb-` directive) around `at`, by balancing tags from `from`.
-fn enclosing_tag(source: &str, from: usize, at: usize) -> Option<String> {
-    const VOID: &[&str] = &[
-        "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source",
-        "track", "wbr",
-    ];
-    let bytes = source.as_bytes();
-    let mut stack: Vec<String> = Vec::new();
-    let mut index = from;
-    while index < at {
-        if source[index..].starts_with("<!--") {
-            index += source[index..]
-                .find("-->")
-                .map_or(at - index, |end| end + 3);
-        } else if bytes[index] == b'<' {
-            let closing = bytes.get(index + 1) == Some(&b'/');
-            let name: String = source[index + 1 + usize::from(closing)..]
-                .chars()
-                .take_while(|character| character.is_ascii_alphanumeric() || *character == '-')
-                .collect();
-            if name.is_empty() {
-                index += 1;
-                continue;
-            }
-            let end = tag_end(source, index).unwrap_or(at);
-            if closing {
-                if let Some(open) = stack.iter().rposition(|open| *open == name) {
-                    stack.truncate(open);
-                }
-            } else if !(bytes.get(end.wrapping_sub(2)) == Some(&b'/')
-                || VOID.contains(&name.as_str()))
-            {
-                stack.push(name);
-            }
-            index = end.max(index + 1);
-        } else {
-            index += source[index..].chars().next().map_or(1, char::len_utf8);
-        }
-    }
-    stack
-        .into_iter()
-        .rev()
-        .find(|name| !name.starts_with("zb-"))
 }

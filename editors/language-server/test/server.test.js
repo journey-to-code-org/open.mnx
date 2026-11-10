@@ -13,6 +13,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../../..');
 const compiler = join(repo, 'target/debug/zubra');
 
+// What an editor that can do Extract to component declares (VS Code does): it applies edits that
+// create files, takes code actions as objects, and knows disabled ones.
+const FULL = {
+  workspace: { applyEdit: true, workspaceEdit: { documentChanges: true, resourceOperations: ['create', 'rename', 'delete'] } },
+  textDocument: { codeAction: { codeActionLiteralSupport: { codeActionKind: { valueSet: ['refactor', 'refactor.extract'] } }, disabledSupport: true } },
+};
+
 let server, dir, nextId = 1;
 const pending = new Map();
 const notifications = [];
@@ -69,7 +76,7 @@ before(async () => {
       }
     }
   });
-  const init = await call('initialize', { processId: process.pid, rootUri: pathToFileURL(dir).href, capabilities: {}, initializationOptions: { compiler } });
+  const init = await call('initialize', { processId: process.pid, rootUri: pathToFileURL(dir).href, capabilities: FULL, initializationOptions: { compiler } });
   assert.ok(init.capabilities.completionProvider);
   assert.equal(init.capabilities.documentFormattingProvider, true);
   assert.deepEqual(init.capabilities.codeActionProvider.codeActionKinds, ['refactor.extract']);
@@ -209,7 +216,91 @@ test('Extract to component: refused selections show the action disabled, with th
   assert.equal(actions[0].edit, undefined);
   // Not whole sibling nodes.
   const partial = await call('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<ul>', '<zb-each'), context: { diagnostics: [] } });
-  assert.match(partial[0].disabled.reason, /sibling nodes/);
+  assert.match(partial[0].disabled.reason, /ends inside the <zb-each> tag itself/);
+  const half = await call('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<ul>', '</zb-each>'), context: { diagnostics: [] } });
+  assert.match(half[0].disabled.reason, /starts a <ul> it doesn't end/);
+  // Inside a tag: its attributes aren't markup.
+  const inside = await call('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, 'items={items}', 'key={item.id}'), context: { diagnostics: [] } });
+  assert.match(inside[0].disabled.reason, /inside the <zb-each> tag itself/);
+});
+
+/** A second server, for an editor that declares `capabilities`: runs `use(call, notify)` against it. */
+async function withServer(capabilities, use) {
+  const other = spawn(process.execPath, [join(here, '../server.js'), '--stdio']);
+  const waiting = new Map();
+  let id = 1;
+  let buffer = Buffer.alloc(0);
+  const write = (message) => {
+    const body = JSON.stringify({ jsonrpc: '2.0', ...message });
+    other.stdin.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+  };
+  other.stdout.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    for (;;) {
+      const header = buffer.indexOf('\r\n\r\n');
+      if (header < 0) return;
+      const length = Number(buffer.slice(0, header).toString().match(/Content-Length: (\d+)/)[1]);
+      if (buffer.length < header + 4 + length) return;
+      const message = JSON.parse(buffer.slice(header + 4, header + 4 + length).toString());
+      buffer = buffer.slice(header + 4 + length);
+      if (message.id !== undefined && waiting.has(message.id)) {
+        waiting.get(message.id)(message.result);
+        waiting.delete(message.id);
+      } else if (message.method && message.id !== undefined) {
+        write({ id: message.id, result: null }); // (a message shown to the user)
+      }
+    }
+  });
+  const ask = (method, params) => new Promise((resolve) => {
+    waiting.set(id, resolve);
+    write({ id: id++, method, params });
+  });
+  try {
+    const init = await ask('initialize', { processId: process.pid, rootUri: pathToFileURL(dir).href, capabilities, initializationOptions: { compiler } });
+    write({ method: 'initialized', params: {} });
+    return await use(init, ask, (method, params) => write({ method, params }));
+  } finally {
+    other.kill();
+  }
+}
+
+test('Extract to component is offered only to an editor that can apply it', async () => {
+  // Nothing declared: no code actions, no command, and formatting as before.
+  await withServer({}, async (init, ask, tell) => {
+    assert.equal(init.capabilities.codeActionProvider, undefined);
+    assert.equal(init.capabilities.executeCommandProvider, undefined);
+    assert.equal(init.capabilities.documentFormattingProvider, true);
+    const uri = pathToFileURL(join(dir, 'bare.zb')).href;
+    tell('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text: LIST } });
+    assert.deepEqual(await ask('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<ul>', '</ul>'), context: { diagnostics: [] } }), []);
+    const result = await ask('workspace/executeCommand', { command: 'zubra.applyExtractComponent', arguments: [uri, rangeOf(LIST, '<ul>', '</ul>'), 'bare-part'] });
+    assert.match(result.error, /can apply an edit that creates a file/);
+  });
+  // Edits, but not ones that create files.
+  await withServer({ ...FULL, workspace: { applyEdit: true, workspaceEdit: { documentChanges: true } } }, async (init) => {
+    assert.equal(init.capabilities.codeActionProvider, undefined);
+    assert.equal(init.capabilities.executeCommandProvider, undefined);
+  });
+  // Everything but disabled actions: what can be extracted is offered, and what can't isn't shown.
+  const older = { ...FULL, textDocument: { codeAction: { codeActionLiteralSupport: FULL.textDocument.codeAction.codeActionLiteralSupport } } };
+  await withServer(older, async (init, ask, tell) => {
+    assert.deepEqual(init.capabilities.codeActionProvider.codeActionKinds, ['refactor.extract']);
+    const uri = pathToFileURL(join(dir, 'older.zb')).href;
+    tell('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text: LIST } });
+    const offered = await ask('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<ul>', '</ul>'), context: { diagnostics: [] } });
+    assert.equal(offered.length, 1);
+    assert.ok(offered[0].edit);
+    assert.deepEqual(await ask('textDocument/codeAction', { textDocument: { uri }, range: rangeOf(LIST, '<button', '</button>'), context: { diagnostics: [] } }), []);
+  });
+});
+
+test('Extract to component: a name whose file is already there is refused before any edit', async () => {
+  const uri = await open('list-e.zb', LIST);
+  writeFileSync(join(dir, 'taken-name.zb'), '<taken-name></taken-name>\n');
+  const before = clientRequests.length;
+  const result = await call('workspace/executeCommand', { command: 'zubra.applyExtractComponent', arguments: [uri, rangeOf(LIST, '<ul>', '</ul>'), 'taken-name'] });
+  assert.match(result.error, /taken-name\.zb already exists beside this file/);
+  assert.equal(clientRequests.slice(before).filter((request) => request.method === 'workspace/applyEdit').length, 0);
 });
 
 test('Extract to component: no action without a selection, or when other kinds are asked for', async () => {

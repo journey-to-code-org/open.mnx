@@ -24,10 +24,20 @@ let printWidth;
 let toldAboutVersion = false;
 const manifests = new Map(); // path → { mtime, component }
 
+// What the editor said it can do, for Extract to component: the edit creates a file, which not
+// every client applies, and a client that doesn't know disabled actions would show one as usable.
+const client = { createsFiles: false, appliesEdits: false, actionLiterals: false, disabledActions: false };
+
 connection.onInitialize(async (params) => {
   const folder = params.workspaceFolders?.[0]?.uri ?? params.rootUri;
   backend = await createBackend({ ...params.initializationOptions, root: folder ? fileURLToPath(folder) : undefined });
   printWidth = Number(params.initializationOptions?.printWidth) || undefined;
+  const edits = params.capabilities?.workspace?.workspaceEdit;
+  const actions = params.capabilities?.textDocument?.codeAction;
+  client.createsFiles = edits?.documentChanges === true && (edits.resourceOperations ?? []).includes('create');
+  client.appliesEdits = params.capabilities?.workspace?.applyEdit === true;
+  client.actionLiterals = !!actions?.codeActionLiteralSupport;
+  client.disabledActions = actions?.disabledSupport === true;
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -35,8 +45,9 @@ connection.onInitialize(async (params) => {
       hoverProvider: true,
       definitionProvider: true,
       documentFormattingProvider: true,
-      codeActionProvider: { codeActionKinds: [CodeActionKind.RefactorExtract] },
-      executeCommandProvider: { commands: [EXTRACT_COMMAND] },
+      // Only to an editor that can take the edit: a new file and changes to this one, together.
+      ...(client.createsFiles && client.actionLiterals ? { codeActionProvider: { codeActionKinds: [CodeActionKind.RefactorExtract] } } : {}),
+      ...(client.createsFiles && client.appliesEdits ? { executeCommandProvider: { commands: [EXTRACT_COMMAND] } } : {}),
     },
     serverInfo: { name: 'zubra-language-server', version: '1.2.0' },
   };
@@ -178,7 +189,10 @@ function extraction(document, range, tag) {
     return { reason: made.unsupported ? 'Extracting a component needs a newer Zubra: update @zubra/compiler (or the zubra CLI).' : made.reason };
   }
   const { fileName, fileSource, edits } = made.result;
-  const newUri = pathToFileURL(resolve(dirname(pathOf(document.uri)), fileName)).href;
+  const newPath = resolve(dirname(pathOf(document.uri)), fileName);
+  // The edit creates the file and would fail on one that's there, after the name was chosen.
+  if (existsSync(newPath)) return { reason: `${fileName} already exists beside this file: choose another name.` };
+  const newUri = pathToFileURL(newPath).href;
   return {
     edit: {
       documentChanges: [
@@ -201,11 +215,13 @@ function extraction(document, range, tag) {
 // refuses, it's shown disabled with the reason, so the rule is discoverable.
 connection.onCodeAction(({ textDocument, range, context }) => {
   const document = documents.get(textDocument.uri);
-  if (!document) return [];
+  if (!document || !client.createsFiles || !client.actionLiterals) return [];
   if (context.only && !context.only.some((kind) => CodeActionKind.RefactorExtract.startsWith(kind))) return [];
   if (range.start.line === range.end.line && range.start.character === range.end.character) return [];
   const made = extraction(document, range, defaultTag(textDocument.uri, document.getText()));
   if (!made.edit) {
+    // An editor that doesn't know `disabled` would offer this as an action that does nothing.
+    if (!client.disabledActions) return [];
     return [{ title: 'Extract to component', kind: CodeActionKind.RefactorExtract, disabled: { reason: made.reason } }];
   }
   return [{ title: `Extract to component <${made.tag}>`, kind: CodeActionKind.RefactorExtract, edit: made.edit }];
@@ -217,6 +233,7 @@ connection.onExecuteCommand(async ({ command, arguments: args }) => {
   const [uri, range, tag] = args ?? [];
   const document = documents.get(uri);
   if (!document || !range || !tag) return { error: 'Extract to component needs a document, a selection and a name.' };
+  if (!client.createsFiles || !client.appliesEdits) return { error: 'This editor did not say it can apply an edit that creates a file, which extracting a component needs.' };
   const made = extraction(document, range, tag);
   if (!made.edit) {
     connection.window.showErrorMessage(made.reason);
