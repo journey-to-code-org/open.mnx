@@ -493,11 +493,23 @@ async function main() {
     if (mine !== run) return; // a newer edit is on its way
     const error = $('#error');
     const output = $('.pane.output');
+    const tabs = ['#out-element', '#out-js', '#out-html', '#out-dts', '#out-manifest', '#out-server'];
+    // Nothing to compile: everything on the right goes, so it follows the source.
+    if (!text.trim()) {
+      error.hidden = true;
+      delete output.dataset.stale;
+      for (const tab of tabs) show(tab, '// Nothing to compile yet: write a component on the left.', 'js');
+      $('#previews').replaceChildren(Object.assign(document.createElement('p'), { className: 'empty', textContent: 'Nothing to preview yet: write a component on the left.' }));
+      status.textContent = 'Empty';
+      return;
+    }
     if (!js.ok) {
       error.hidden = false;
-      error.textContent = `${js.error}\nThe preview and the tabs below still show the last version that compiled; fix the error to update them.`;
+      error.textContent = js.error;
       status.textContent = 'Compile error';
-      // Dimmed, so what's below the error doesn't read as the result of this edit.
+      // The tabs show the error, not output from an older version. The preview keeps the last
+      // version that compiled (so it doesn't flash while you type), dimmed and labelled as such.
+      for (const tab of tabs) show(tab, `// Doesn't compile yet:\n${js.error.split('\n').map((line) => `//   ${line}`).join('\n')}`, 'js');
       output.dataset.stale = '';
       return;
     }

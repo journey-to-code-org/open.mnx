@@ -262,18 +262,32 @@ test('the Zubra DevTools extension works on the playground: its hook reaches the
   await page.close();
 });
 
-test('after a compile error, the preview and outputs are marked as the last version that compiled', async () => {
+test('after a compile error the tabs show it and the preview is marked old; an empty source clears everything', async () => {
   const { page } = await openPlayground();
   await frame(page, 'html');
   const stale = () => page.$eval('.pane.output', (pane) => pane.hasAttribute('data-stale'));
+  const edit = (change) => page.$eval('#source', (area, change) => { area.value = (0, eval)(`(${change})`)(area.value); area.dispatchEvent(new Event('input')); }, change);
   assert.equal(await stale(), false);
-  await page.$eval('#source', (area) => { area.value = area.value.replace(' label="Clicks"', ''); area.dispatchEvent(new Event('input')); });
+
+  await edit(`(v) => v.replace(' label="Clicks"', '')`);
   await page.waitForFunction(() => document.querySelector('#status').textContent === 'Compile error');
   assert.equal(await stale(), true);
-  assert.match(await page.textContent('#error'), /unknown reference `label`[\s\S]*last version that compiled/);
-  assert.equal(await page.$eval('[data-panel=preview]', (panel) => getComputedStyle(panel).opacity), '0.4');
-  await page.$eval('#source', (area) => { area.value = area.value.replace('<hello-counter count:model={0}>', '<hello-counter count:model={0} label="Taps">'); area.dispatchEvent(new Event('input')); });
+  assert.match(await page.textContent('#error'), /unknown reference `label`/);
+  assert.match(await page.textContent('#out-js'), /^\/\/ Doesn't compile yet:[\s\S]*unknown reference `label`/, 'not the old module');
+  assert.match(await page.textContent('#out-element'), /Doesn't compile yet/);
+  assert.equal(await page.$eval('#previews', (box) => getComputedStyle(box).opacity), '0.4');
+
+  await edit(`(v) => v.replace('<hello-counter count:model={0}>', '<hello-counter count:model={0} label="Taps">')`);
   await page.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Compiled'));
+  assert.equal(await stale(), false);
+  assert.match(await page.textContent('#out-js'), /Taps/);
+
+  await edit(`() => ''`);
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'Empty');
+  assert.equal(await page.$('#previews iframe'), null, 'no preview of the old component');
+  assert.match(await page.textContent('#previews'), /Nothing to preview yet/);
+  assert.match(await page.textContent('#out-js'), /Nothing to compile yet/);
+  assert.equal(await page.$eval('#error', (box) => box.hidden), true);
   assert.equal(await stale(), false);
   await page.close();
 });
