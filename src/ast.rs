@@ -209,6 +209,9 @@ pub enum Node {
         test_span: Span,
         consequent: Vec<Node>,
         alternate: Vec<Node>,
+        /// `animate`: the branch going away leaves (`data-leaving`) instead of being removed at
+        /// once. Set on every `If` of a chain.
+        animate: bool,
         span: Span,
     },
     Each {
@@ -221,6 +224,9 @@ pub enum Node {
         /// `let:total={item.price * item.qty}`: names derived once per row (4.3).
         lets: Vec<Let>,
         children: Vec<Node>,
+        /// `animate`: removed rows leave (`data-leaving`), and the rows that stay glide to their
+        /// new places. Needs a `key`.
+        animate: bool,
         span: Span,
     },
     Slot {

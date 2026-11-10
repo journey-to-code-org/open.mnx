@@ -92,7 +92,7 @@ let extraImports = {};
 export async function open(body, { modules = [], beforeModules = '' } = {}) {
   const path = `/page-${++pageCount}.html`;
   pages.set(path, `<!doctype html><meta charset="utf-8">
-<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': '/runtime/index.js', '@zubra/runtime/spread': '/runtime/spread.js', '@zubra/runtime/primitives': '/runtime/primitives.js', ...extraImports } })}</script>
+<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': '/runtime/index.js', '@zubra/runtime/spread': '/runtime/spread.js', '@zubra/runtime/primitives': '/runtime/primitives.js', '@zubra/runtime/motion': '/runtime/motion.js', ...extraImports } })}</script>
 <script>window.lifecycle = []; window.messages = [];</script>
 <body>${body}</body>
 <script type="module">

@@ -11,7 +11,7 @@
 //! - the template is its markup with each binding put back where it writes: `bind(() => x,
 //!   (value) => less.setAttribute("aria-label", value))` is `aria-label={x}` on that node,
 //!   `addEventListener` is `on…={…}` (modifiers included), `list(…)` is `<zb-each>`, `when(…)`
-//!   is `<zb-if>`, `#slotRegion(…)` is `<zb-slot>`;
+//!   is `<zb-if>` (`animate` when `leave` is passed to either), `#slotRegion(…)` is `<zb-slot>`;
 //! - the stylesheet comes back unscoped, `:scope` as `:host`.
 //!
 //! What it can't place is reported at its line, not guessed; the result is compiled to check it.
@@ -91,6 +91,8 @@ const GENERATED: &[&str] = &[
     "move",
     "list",
     "when",
+    "leave",
+    "glide",
     "templates",
     "clone",
     "svgTemplates",
@@ -1401,8 +1403,16 @@ impl Converter<'_> {
                     })
                     .map(|read| context.apply(&unparen(self.text(read.span()))))
                     .unwrap_or_default();
+                // A `leave` passed in (the sixth argument): `animate`.
+                let animate = if argument(5).is_some() {
+                    " animate"
+                } else {
+                    ""
+                };
                 if callee == "list" {
                     let directive = self.each(argument(3), argument(4), &read, context)?;
+                    let directive =
+                        directive.replacen("<zb-each ", &format!("<zb-each{animate} "), 1);
                     tree.region(&start, &end, directive);
                 } else {
                     let mut branches = Vec::new();
@@ -1420,9 +1430,9 @@ impl Converter<'_> {
                     let yes = branches.first().cloned().flatten().unwrap_or_default();
                     let directive = match branches.get(1).cloned().flatten() {
                         Some(no) => {
-                            format!("<zb-if test={{{read}}}>{yes}<zb-else>{no}</zb-else></zb-if>")
+                            format!("<zb-if test={{{read}}}{animate}>{yes}<zb-else>{no}</zb-else></zb-if>")
                         }
-                        None => format!("<zb-if test={{{read}}}>{yes}</zb-if>"),
+                        None => format!("<zb-if test={{{read}}}{animate}>{yes}</zb-if>"),
                     };
                     tree.region(&start, &end, directive);
                 }
