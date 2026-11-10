@@ -93,10 +93,25 @@ jobs:
       - name: Publish to npm
         if: steps.version.outputs.new == 'true'
         run: node scripts/publish.mjs
+      # The extension installs the language server just published, and npm can take minutes to serve
+      # a version it has accepted (5.4.0's packaging gave up after two and a half): wait until it
+      # does, up to ten minutes, asking the registry rather than npm's cache.
+      - name: Wait for npm to serve the language server
+        if: steps.version.outputs.new == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for attempt in $(seq 1 40); do
+            [ "$(npm view "@zubra/language-server@$VERSION" version --prefer-online 2> /dev/null)" = "$VERSION" ] && exit 0
+            sleep 15
+          done
+          echo "::error::npm doesn't serve @zubra/language-server@$VERSION after ten minutes; re-run the failed job to finish the release (published packages are skipped)"
+          exit 1
       - name: Package the VS Code extension
         if: steps.version.outputs.new == 'true'
-        # It installs the language server just published; npm can take a minute to serve it.
-        run: for attempt in 1 2 3 4 5; do npm run package && exit 0; sleep 30; done; exit 1
+        env:
+          npm_config_prefer_online: "true"
+        run: for attempt in 1 2 3; do npm run package && exit 0; sleep 30; done; exit 1
         working-directory: editors/vscode
       - name: Tag and release
         if: steps.version.outputs.new == 'true'
