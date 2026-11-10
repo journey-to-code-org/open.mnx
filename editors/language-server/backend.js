@@ -55,6 +55,11 @@ function wasmBackend(wasm) {
       const response = wasm.request({ command: 'format', path: absolute, files: { [absolute]: text }, ...options });
       return response.ok ? { ok: true, output: response.output } : { ok: false, error: response.error ?? '' };
     },
+    formatRange(path, text, range, options) {
+      const absolute = resolve(path);
+      const response = wasm.request({ command: 'formatRange', path: absolute, files: { [absolute]: text }, ...range, ...options });
+      return rangeEdit(response?.ok ? { ok: true, output: response.output } : { ok: false, error: response?.error ?? '' });
+    },
     refactor(path, text, extraction) {
       const absolute = resolve(path);
       const files = wasm.sources(absolute);
@@ -63,6 +68,22 @@ function wasmBackend(wasm) {
       return refactored(wasm.request({ command: 'refactor', action: 'extract', path: absolute, files, ...extraction }));
     },
   };
+}
+
+/**
+ * A `formatRange` answer as { ok, edit } (edit: null when nothing changes) or { ok: false, error,
+ * unsupported? }. A compiler from before the command compiles the file instead: its answer isn't
+ * the command's.
+ */
+function rangeEdit(answer) {
+  if (!answer.ok) return { ok: false, error: answer.error, unsupported: /unknown command|usage: zubra/.test(answer.error) };
+  try {
+    const parsed = JSON.parse(answer.output);
+    if (parsed && typeof parsed === 'object' && 'edit' in parsed) return { ok: true, edit: parsed.edit };
+  } catch {
+    // Not the command's answer.
+  }
+  return { ok: false, error: 'this compiler does not know range formatting', unsupported: true };
 }
 
 /** A `refactor` response as { ok, result } or { ok: false, reason, unsupported? }. */
@@ -102,6 +123,18 @@ function cliBackend(compiler) {
       const result = run(args, text);
       if (result.error) return { ok: false, error: result.error.message };
       return result.status === 0 ? { ok: true, output: result.stdout } : { ok: false, error: result.stderr };
+    },
+    formatRange(path, text, range, { indentWidth, useTabs, printWidth } = {}) {
+      const absolute = resolve(path);
+      const request = { command: 'formatRange', path: absolute, files: { [absolute]: text }, ...range, indentWidth, useTabs, printWidth };
+      const result = run(['request'], JSON.stringify(request));
+      if (result.error) return { ok: false, error: result.error.message };
+      try {
+        const response = JSON.parse(result.stdout);
+        return rangeEdit(response.ok ? { ok: true, output: response.output } : { ok: false, error: response.error ?? '' });
+      } catch {
+        return { ok: false, error: result.stderr, unsupported: true };
+      }
     },
     refactor(path, text, extraction) {
       const absolute = resolve(path);

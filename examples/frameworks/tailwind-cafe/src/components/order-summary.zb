@@ -14,13 +14,23 @@
   const items = lines.reduce((sum, line) => sum + line.count, 0)
 </script>
 <order-summary shadow lines={[]} placed={false}>
-  <section class="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900" aria-labelledby="order-heading">
+  <section
+    class="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm dark:border-stone-800 dark:bg-stone-900"
+    aria-labelledby="order-heading"
+  >
     <div class="mb-4 flex items-baseline justify-between">
       <h2 id="order-heading" class="text-lg font-bold tracking-tight">Your order</h2>
       <span class="text-sm text-stone-500 dark:text-stone-400">{items} {items === 1 ? "item" : "items"}</span>
     </div>
-    <p zb-if={placed} class="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200" role="status">Order placed. We'll call your name.</p>
-    <p zb-else-if={lines.length === 0} class="rounded-xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-stone-700">Nothing yet. Add something from the menu.</p>
+    <p
+      zb-if={placed}
+      class="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+      role="status"
+    >Order placed. We'll call your name.</p>
+    <p
+      zb-else-if={lines.length === 0}
+      class="rounded-xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-stone-700"
+    >Nothing yet. Add something from the menu.</p>
     <ul zb-else class="mb-4 divide-y divide-stone-100 dark:divide-stone-800">
       <zb-each items={lines} as="line" key={line.key}>
         <li class="flex items-center gap-3 py-2.5">
@@ -30,8 +40,12 @@
             <span class="text-xs uppercase text-stone-500">{line.size}</span>
           </span>
           <span class="text-sm tabular-nums">{money(line.price * line.count)}</span>
-          <button type="button" aria-label={`Remove one ${line.name}`} onclick={() => emit("remove", line.key)}
-            class="grid size-7 place-items-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800">−</button>
+          <button
+            type="button"
+            aria-label={`Remove one ${line.name}`}
+            onclick={() => emit("remove", line.key)}
+            class="grid size-7 place-items-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-800"
+          >−</button>
         </li>
       </zb-each>
     </ul>
@@ -40,8 +54,13 @@
       <div class="flex justify-between text-stone-500"><dt>Tax</dt><dd class="tabular-nums">{money(tax)}</dd></div>
       <div class="flex justify-between text-base font-semibold"><dt>Total</dt><dd class="tabular-nums" data-total>{money(subtotal + tax)}</dd></div>
     </dl>
-    <button zb-if={!placed} type="button" disabled={lines.length === 0} onclick={() => emit("checkout")}
-      class="w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-200">
+    <button
+      zb-if={!placed}
+      type="button"
+      disabled={lines.length === 0}
+      onclick={() => emit("checkout")}
+      class="w-full rounded-xl bg-stone-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-stone-900 dark:hover:bg-stone-200"
+    >
       Place order
     </button>
   </section>

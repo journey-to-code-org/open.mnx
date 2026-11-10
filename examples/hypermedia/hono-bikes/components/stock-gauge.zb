@@ -10,7 +10,14 @@
   small[data-level=out] { background: #fde2e1; color: #a1251f; }
 </style>
 <stock-gauge count={0} reorder={3} capacity={20}>
-  <meter min="0" max={capacity} low={reorder + 1} optimum={capacity} value={count} aria-label="Stock"></meter>
+  <meter
+    min="0"
+    max={capacity}
+    low={reorder + 1}
+    optimum={capacity}
+    value={count}
+    aria-label="Stock"
+  ></meter>
   <span>{count}</span>
   <small zb-if={count === 0} data-level="out">Out</small>
   <small zb-else-if={count <= reorder} data-level="low">Low</small>

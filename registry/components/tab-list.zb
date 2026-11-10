@@ -52,7 +52,15 @@
 <tab-list value:model="" tabs={[]} label="" manual={false}>
   <div role="tablist" aria-label={label || null} ref={list}>
     <zb-each items={tabs} as="tab" key={tab.value}>
-      <button type="button" role="tab" id={tabId(tab.value)} data-value={tab.value} aria-selected={tab.value === current ? "true" : "false"} tabindex={tab.value === current ? 0 : -1} onclick={() => (value = tab.value)}>{tab.label}</button>
+      <button
+        type="button"
+        role="tab"
+        id={tabId(tab.value)}
+        data-value={tab.value}
+        aria-selected={tab.value === current ? "true" : "false"}
+        tabindex={tab.value === current ? 0 : -1}
+        onclick={() => (value = tab.value)}
+      >{tab.label}</button>
     </zb-each>
   </div>
   <zb-slot></zb-slot>

@@ -17,7 +17,12 @@
 <segmented-control shadow value:model="" options={[]} label="">
   <div role="group" aria-label={label}>
     <zb-each items={options} as="option" key={option.value}>
-      <button type="button" aria-pressed={option.value === value ? "true" : "false"} data-value={option.value} onclick={() => pick(option)}>{option.label}</button>
+      <button
+        type="button"
+        aria-pressed={option.value === value ? "true" : "false"}
+        data-value={option.value}
+        onclick={() => pick(option)}
+      >{option.label}</button>
     </zb-each>
   </div>
 </segmented-control>

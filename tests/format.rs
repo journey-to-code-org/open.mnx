@@ -135,6 +135,92 @@ fn formatting_every_component_keeps_what_it_compiles_to() {
     assert!(compiled_both > 150);
 }
 
+/// Ranges over every component: the edit changes only what it covers, keeps what the component
+/// compiles to, is stable once applied, and over the whole file gives the whole format.
+#[test]
+fn range_formatting_every_component_changes_only_the_range_and_keeps_what_it_compiles_to() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut files = Vec::new();
+    components(root, &mut files);
+    files.sort();
+    let options = FormatOptions::default();
+    let (mut edits, mut compared) = (0, 0);
+    for file in &files {
+        let original = fs::read_to_string(file).unwrap().replace("\r\n", "\n");
+        // The repository is formatted, so start from the same file laid out at another width:
+        // there is then something for every range to do.
+        let wide = FormatOptions {
+            indent_width: 8,
+            ..FormatOptions::default()
+        };
+        let Ok(source) = zubra::format(&original, &wide) else {
+            continue;
+        };
+        let Ok(whole) = zubra::format(&source, &options) else {
+            continue;
+        };
+        // The whole file as one range is the whole format.
+        let all = zubra::format_range(&source, 0, source.len(), &options).unwrap();
+        let everything = all.as_ref().map_or(source.clone(), |edit| {
+            let mut out = source.clone();
+            out.replace_range(edit.start..edit.end, &edit.text);
+            out
+        });
+        assert_eq!(
+            zubra::format(&everything, &options).unwrap(),
+            whole,
+            "{}: the range of the whole file",
+            file.display()
+        );
+        // Windows of a few lines, down the file.
+        let lines: Vec<usize> = std::iter::once(0)
+            .chain(source.match_indices('\n').map(|(at, _)| at + 1))
+            .collect();
+        for window in lines.chunks(7).take(30) {
+            let start = window[0];
+            let end = window.last().copied().unwrap().min(source.len());
+            let Some(edit) = zubra::format_range(&source, start, end, &options).unwrap() else {
+                continue;
+            };
+            edits += 1;
+            let mut out = source.clone();
+            out.replace_range(edit.start..edit.end, &edit.text);
+            assert_eq!(&out[..edit.start], &source[..edit.start]);
+            assert_eq!(
+                &out[edit.start + edit.text.len()..],
+                &source[edit.end..],
+                "{}: text outside the edit changed",
+                file.display()
+            );
+            // Applied, the edited region has nothing left to do.
+            // (An edit that opens with the line break before its first line starts at the end of
+            // the line above; the region begins on the line after it.)
+            let edited_start = edit.start + usize::from(edit.text.starts_with('\n'));
+            let edited_end = edit.start + edit.text.len();
+            assert_eq!(
+                zubra::format_range(&out, edited_start, edited_end, &options).unwrap(),
+                None,
+                "{}: {start}..{end} isn't stable",
+                file.display()
+            );
+            if let (Some(before), Some(after)) = (compiled(&source, file), compiled(&out, file)) {
+                assert_eq!(
+                    before,
+                    after,
+                    "{}: {start}..{end} changed the output",
+                    file.display()
+                );
+                compared += 1;
+            }
+        }
+    }
+    eprintln!("{edits} range edits, {compared} compiled the same");
+    assert!(
+        edits > 100 && compared > 100,
+        "{edits} edits, {compared} compared"
+    );
+}
+
 #[test]
 fn the_comparison_would_notice_a_change() {
     // The check above is only as good as `normalize`: it must keep real differences.
@@ -244,4 +330,47 @@ fn the_request_api_formats_too() {
         serde_json::from_str(&zubra::handle_request(&request.to_string())).unwrap();
     assert_eq!(response["ok"], false);
     assert_eq!(response["diagnostics"][0]["severity"], "error");
+}
+
+#[test]
+fn the_request_api_formats_a_range() {
+    let source = "<x-a>\n<p>\nx\n</p>\n<i>y</i>\n</x-a>\n";
+    let start = source.find("x\n").unwrap();
+    let request = serde_json::json!({
+        "command": "formatRange", "path": "a.zb", "files": { "a.zb": source },
+        "start": start, "end": start + 1, "indentWidth": 4,
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(&zubra::handle_request(&request.to_string())).unwrap();
+    assert_eq!(response["ok"], true, "{response}");
+    let output: serde_json::Value =
+        serde_json::from_str(response["output"].as_str().unwrap()).unwrap();
+    let edit = &output["edit"];
+    assert_eq!(edit["text"], "\n        x");
+    let (from, to) = (
+        edit["start"].as_u64().unwrap() as usize,
+        edit["end"].as_u64().unwrap() as usize,
+    );
+    let mut out = source.to_owned();
+    out.replace_range(from..to, edit["text"].as_str().unwrap());
+    assert_eq!(out, "<x-a>\n<p>\n        x\n</p>\n<i>y</i>\n</x-a>\n");
+    // Formatted already: no edit. A file that doesn't parse: an error with a diagnostic.
+    let formatted = serde_json::json!({
+        "command": "formatRange", "path": "a.zb", "files": { "a.zb": "<x-a>\n  <p>a</p>\n</x-a>\n" },
+        "start": 8, "end": 12,
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(&zubra::handle_request(&formatted.to_string())).unwrap();
+    assert_eq!(response["output"].as_str().unwrap(), r#"{"edit":null}"#);
+    let broken = serde_json::json!({
+        "command": "formatRange", "path": "a.zb", "files": { "a.zb": "<x-a>\n  <p>\n</x-a>\n" },
+        "start": 0, "end": 3,
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(&zubra::handle_request(&broken.to_string())).unwrap();
+    assert_eq!(response["ok"], false);
+    let missing = serde_json::json!({ "command": "formatRange", "path": "a.zb", "files": { "a.zb": "<x-a></x-a>" } });
+    let response: serde_json::Value =
+        serde_json::from_str(&zubra::handle_request(&missing.to_string())).unwrap();
+    assert!(response["error"].as_str().unwrap().contains("start"));
 }

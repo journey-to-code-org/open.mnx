@@ -31,7 +31,12 @@
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; }
 </style>
 <modal-dialog open:model={false} label="Dialog">
-  <dialog ref={dialog} aria-labelledby={headingId} onclose={() => (open = false)} onclick.self={() => (open = false)}>
+  <dialog
+    ref={dialog}
+    aria-labelledby={headingId}
+    onclose={() => (open = false)}
+    onclick.self={() => (open = false)}
+  >
     <div class="panel">
       <header>
         <h2 id={headingId}><zb-slot name="heading">{label}</zb-slot></h2>

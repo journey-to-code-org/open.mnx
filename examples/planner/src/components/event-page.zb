@@ -84,7 +84,13 @@
     </div>
     <div role="tablist" aria-label="Plan">
       <zb-each items={TABS} as="name" key={name}>
-        <button type="button" role="tab" aria-selected={tab === name ? "true" : "false"} data-tab={name} onclick={() => (tab = name)}>{name}</button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === name ? "true" : "false"}
+          data-tab={name}
+          onclick={() => (tab = name)}
+        >{name}</button>
       </zb-each>
     </div>
     <section role="tabpanel" aria-label={tab}>

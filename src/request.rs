@@ -17,7 +17,8 @@
 //! compiled text, `error` and `warnings` are rendered for a terminal, and `diagnostics` has
 //! each one as `{ file, line, column, severity, message, help }` for editors. `command: "check"`
 //! runs every check without producing output, and `command: "format"` answers with the source
-//! as `zubra fmt` lays it out (`indentWidth`, `useTabs`, `printWidth`). `command: "refactor"`
+//! as `zubra fmt` lays it out (`indentWidth`, `useTabs`, `printWidth`); `command: "formatRange"`
+//! (`start`, `end` in bytes) answers with the one edit that formats the lines the range touches. `command: "refactor"`
 //! with `action: "extract"`, `start`/`end` (byte offsets of the markup to extract) and `tag`
 //! answers with the edits that turn it into a new component (see `refactor.rs`).
 //!
@@ -99,7 +100,9 @@ fn respond(request: &Map<String, Value>) -> Value {
     };
 
     // `format`: the source laid out by `zubra fmt` (`indentWidth`, `useTabs`, `printWidth`).
-    if text("command") == Some("format") {
+    // `formatRange` (with `start` and `end`, byte offsets): the edit that formats the lines the
+    // range touches, as JSON text `{ "edit": null | { start, end, text } }`.
+    if matches!(text("command"), Some("format" | "formatRange")) {
         let defaults = crate::FormatOptions::default();
         let number = |key: &str, default: usize| {
             request
@@ -117,7 +120,24 @@ fn respond(request: &Map<String, Value>) -> Value {
                 .unwrap_or(defaults.use_tabs),
             print_width: number("printWidth", defaults.print_width),
         };
-        return match crate::format(source, &options) {
+        let result = if text("command") == Some("formatRange") {
+            let offset = |key: &str| {
+                request
+                    .get(key)
+                    .and_then(Value::as_u64)
+                    .and_then(|value| usize::try_from(value).ok())
+            };
+            let (Some(start), Some(end)) = (offset("start"), offset("end")) else {
+                return failure("`formatRange` needs `start` and `end` (byte offsets)");
+            };
+            crate::format_range(source, start, end, &options).map(|edit| {
+                json!({ "edit": edit.map(|edit| json!({ "start": edit.start, "end": edit.end, "text": edit.text })) })
+                    .to_string()
+            })
+        } else {
+            crate::format(source, &options)
+        };
+        return match result {
             Ok(output) => {
                 json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
             }

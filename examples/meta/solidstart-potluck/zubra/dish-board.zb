@@ -17,7 +17,12 @@
     <zb-each items={courses} as="course" key={course.id}>
       <li data-course={course.id}>
         <h3>{course.title} <small>{course.people.length} of {course.need}</small></h3>
-        <meter min="0" max={course.need} value={course.people.length} aria-label={course.title + ": " + course.people.length + " of " + course.need}></meter>
+        <meter
+          min="0"
+          max={course.need}
+          value={course.people.length}
+          aria-label={course.title + ": " + course.people.length + " of " + course.need}
+        ></meter>
         <ul>
           <zb-each items={course.people} as="person" key={person.name}><li>{person.name}{person.guests > 1 ? " +" + (person.guests - 1) : ""}</li></zb-each>
         </ul>
