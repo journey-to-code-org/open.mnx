@@ -21,6 +21,14 @@
     "./hono": {
       "types": "./src/adapters.d.ts",
       "default": "./src/hono.js"
+    },
+    "./edge": {
+      "types": "./src/edge.d.ts",
+      "default": "./src/edge.js"
+    },
+    "./hono-edge": {
+      "types": "./src/hono-edge.d.ts",
+      "default": "./src/hono-edge.js"
     }
   },
   "scripts": {
