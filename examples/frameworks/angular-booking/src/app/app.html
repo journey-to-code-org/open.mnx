@@ -19,7 +19,9 @@
         @case (0) {
           <fieldset formGroupName="trip">
             <legend><h2>Where and when</h2></legend>
+            <!-- zubra-snippet:start angular-choice -->
             <choice-cards zubraModel formControlName="place" [items]="placeCards" [required]="true" label="Destination"></choice-cards>
+            <!-- zubra-snippet:end angular-choice -->
             @if (form.controls.trip.controls.place.touched && form.controls.trip.controls.place.invalid) {
               <p class="error" role="alert">Choose a destination.</p>
             }
@@ -45,7 +47,9 @@
             <legend><h2>Make it yours</h2></legend>
             <div class="extras">
               @for (extra of extras; track extra.id) {
+                <!-- zubra-snippet:start angular-toggle -->
                 <toggle-switch zubraModel="checked" [formControlName]="extra.id" [label]="extra.label" [description]="extra.description + ' · ' + extra.per" [extra]="extraPrice(extra.id)"></toggle-switch>
+                <!-- zubra-snippet:end angular-toggle -->
               }
             </div>
           </fieldset>
