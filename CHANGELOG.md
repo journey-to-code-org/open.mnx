@@ -2,7 +2,9 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.4.1 — 2026-11-09
+
+The VS Code extension's language server starts, so `.zb` files have a formatter (and diagnostics, completion and hover) in VS Code. And the Zubra DevTools in the demo gallery, on the playground, and in builds when you ask for it.
 
 ### Added
 
