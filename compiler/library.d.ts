@@ -6,6 +6,11 @@ export interface LibraryOptions {
   version?: string;
   /** The runtime module the elements import. Default: `@zubra/runtime`. */
   runtime?: string;
+  /**
+   * Compile for the Zubra DevTools extension (it records source paths): for a demo or staging
+   * build, not a library you publish. Default: `ZUBRA_DEVTOOLS=1`.
+   */
+  devtools?: boolean;
 }
 
 export interface LibraryComponent {

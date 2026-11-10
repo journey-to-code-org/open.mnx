@@ -37,16 +37,19 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
  * `components`: the folder of `.zb` (and `.zb.jsx`/`.zb.tsx`) files. `prefix`: the URL path
  * the browser modules are served under. `cache`: keep compiled output (turn it off in
  * development to pick up edits). `production`: serve the runtime's production build, without hot
- * reloading (by default when `NODE_ENV` is `production`). `imports`: more import map entries,
+ * reloading (by default when `NODE_ENV` is `production`). `devtools`: compile for the Zubra DevTools
+ * extension and serve the runtime build it reads (on by default except in production;
+ * `ZUBRA_DEVTOOLS=1` turns it on there too, for a demo or a staging site). `imports`: more import map entries,
  * for packages the components import beyond `@zubra/runtime` and `@zubra/sync` (both of which
  * are served and mapped by themselves).
  */
-export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', imports = {} } = {}) {
+export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {} } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
   const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
   const productionDir = join(sourceDir, '..', 'dist', 'production');
-  const runtimeDir = production && existsSync(productionDir) ? productionDir : sourceDir;
+  // The Zubra DevTools need the runtime's development build, whose hook the production one leaves out.
+  const runtimeDir = production && !devtools && existsSync(productionDir) ? productionDir : sourceDir;
   const base = prefix.replace(/\/$/, '');
 
   // @zubra/sync, for components that start with 'use collection': found from the components
@@ -107,7 +110,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
     call(pathOf(name), { emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
   const js = (name) => once(`js:${name}`, () => {
-    const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@zubra/runtime' });
+    const response = need().compileFile(pathOf(name), { emit: 'js', runtime: '@zubra/runtime', devtools });
     if (!response.ok) throw new Error(response.error);
     return needs(name, response.output);
   });

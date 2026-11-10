@@ -1,5 +1,6 @@
 // The built gallery, served under a base path the way GitHub Pages serves a project site: every
-// live demo loads with no failed requests or errors, and draws its Zubra elements.
+// live demo loads with no failed requests or errors, draws its Zubra elements, and works with
+// the Zubra DevTools extension.
 //
 //   node demos/build.mjs --out _site --base /zubra/ && node --test "demos/test/*.test.js"
 //
@@ -79,6 +80,20 @@ for (const demo of live) {
       return rendered.length ? rendered.length : false;
     }, null, { timeout: 10_000 }).then((handle) => handle.jsonValue());
     assert.ok(drawn > 0);
+    // The Zubra DevTools extension works here: it reads the hook from the page and inspects an
+    // element, as the pane does (connect, then inspect the selected node).
+    const inspected = await page.evaluate(async () => {
+      const element = [...document.querySelectorAll('*')].flatMap(function all(node) {
+        return [node, ...(node.shadowRoot ? [...node.shadowRoot.querySelectorAll('*')].flatMap(all) : [])];
+      }).find((node) => node.localName.includes('-') && customElements.get(node.localName)?.zubra);
+      const hook = globalThis.__ZUBRA_DEVTOOLS__;
+      if (!hook) return 'no hook';
+      hook.connect();
+      for (let i = 0; i < 100 && !hook.ready; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = hook.inspect(element);
+      return { tag: result.component?.tag, ours: result.component?.tag === element.localName, located: result.component?.located };
+    });
+    assert.deepEqual(inspected && { ours: inspected.ours, located: inspected.located }, { ours: true, located: true }, JSON.stringify(inspected));
     assert.deepEqual(problems, []);
     await page.close();
   });
