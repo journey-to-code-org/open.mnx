@@ -315,7 +315,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         }
         (other, _) => {
             return failure(&format!(
-                "unknown command `{other}`; expected compile, check or convert"
+                "unknown command `{other}`; expected compile, check, format or convert"
             ))
         }
     };
