@@ -33,9 +33,26 @@
   span { padding-left: 0.7rem; color: var(--muted, #667085); font-weight: 600; }
   input { flex: 1; min-width: 0; padding: 0.55rem 0.7rem 0.55rem 0.3rem; border: 0; outline: 0; background: none; font: inherit; font-variant-numeric: tabular-nums; color: inherit; text-align: right; }
 </style>
-<money-input shadow form-associated value:model={null} symbol="$" required={false} min={0} label="Amount">
+<money-input
+  shadow
+  form-associated
+  value:model={null}
+  symbol="$"
+  required={false}
+  min={0}
+  label="Amount"
+>
   <div class="box">
     <span aria-hidden="true">{symbol}</span>
-    <input inputmode="decimal" autocomplete="off" aria-label={label} placeholder="0.00" value={shown} oninput={input} onfocus={focus} onblur={() => (focused = false)}>
+    <input
+      inputmode="decimal"
+      autocomplete="off"
+      aria-label={label}
+      placeholder="0.00"
+      value={shown}
+      oninput={input}
+      onfocus={focus}
+      onblur={() => (focused = false)}
+    >
   </div>
 </money-input>

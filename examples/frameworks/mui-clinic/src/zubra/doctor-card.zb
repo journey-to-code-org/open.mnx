@@ -24,7 +24,11 @@
   .meta { display: block; color: var(--mui-palette-text-secondary); font-size: 0.875rem; }
 </style>
 <doctor-card doctor={{}} selected={false}>
-  <button type="button" aria-pressed={selected ? "true" : "false"} onclick={() => emit("choose", doctor.id)}>
+  <button
+    type="button"
+    aria-pressed={selected ? "true" : "false"}
+    onclick={() => emit("choose", doctor.id)}
+  >
     <span class="avatar" aria-hidden="true">{initials}</span>
     <span>
       <span class="name">{doctor.name}</span>

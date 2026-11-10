@@ -18,5 +18,9 @@
   <dialog ref={dialog}></dialog>
   <zb-if test={mode === "a"}>A<zb-else-if test={mode === "b"}>B</zb-else-if><zb-else>C</zb-else></zb-if>
   <output>{log.join(",")}</output>
-  <button type="button" class="change" onclick={() => ((on = true), (size = 30), (tone = null), (mode = mode === "a" ? "b" : "c"))}>change</button>
+  <button
+    type="button"
+    class="change"
+    onclick={() => ((on = true), (size = 30), (tone = null), (mode = mode === "a" ? "b" : "c"))}
+  >change</button>
 </zb-sugar>

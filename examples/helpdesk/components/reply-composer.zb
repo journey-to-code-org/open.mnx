@@ -33,14 +33,25 @@
   label { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.9rem; }
 </style>
 <reply-composer ticket={0} name="body" label="Reply" agent={false} max={4000}>
-  <form action={reply} onaction={(event) => (problem = event.detail.value?.error ?? event.detail.error ?? "")}>
-  <input type="hidden" name="ticket" value={ticket}>
-  <textarea name={name} aria-label={label} required maxlength={max} placeholder="Write a reply…" oninput={(event) => (text = event.target.value)} onkeydown.mod.enter.prevent.submit></textarea>
-  <div class="row">
-    <label zb-if={agent}><input type="checkbox" name="internal" value="on"> Internal note</label>
-    <span zb-if={live} class="count" class:over={text.length > max}>{text.length}/{max}</span>
-    <button disabled={live && text.trim() === ""}>Send</button>
-  </div>
-  <p zb-if={problem} class="problem" role="alert">{problem}</p>
+  <form
+    action={reply}
+    onaction={(event) => (problem = event.detail.value?.error ?? event.detail.error ?? "")}
+  >
+    <input type="hidden" name="ticket" value={ticket}>
+    <textarea
+      name={name}
+      aria-label={label}
+      required
+      maxlength={max}
+      placeholder="Write a reply…"
+      oninput={(event) => (text = event.target.value)}
+      onkeydown.mod.enter.prevent.submit
+    ></textarea>
+    <div class="row">
+      <label zb-if={agent}><input type="checkbox" name="internal" value="on"> Internal note</label>
+      <span zb-if={live} class="count" class:over={text.length > max}>{text.length}/{max}</span>
+      <button disabled={live && text.trim() === ""}>Send</button>
+    </div>
+    <p zb-if={problem} class="problem" role="alert">{problem}</p>
   </form>
 </reply-composer>

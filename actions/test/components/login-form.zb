@@ -19,7 +19,10 @@
 </script>
 
 <login-form>
-  <form action={login} onaction={(event) => (message = event.detail.value?.error ?? 'Welcome ' + event.detail.value.email)}>
+  <form
+    action={login}
+    onaction={(event) => (message = event.detail.value?.error ?? 'Welcome ' + event.detail.value.email)}
+  >
     <input name="email" type="email" />
     <button type="submit">Log in</button>
     <p class="message">{message}</p>

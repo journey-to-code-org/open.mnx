@@ -24,10 +24,18 @@
   button { padding: 0.4rem 0.9rem; border: 0; border-radius: 0.4rem; background: #3341c4; color: white; font: inherit; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: 0.45; cursor: default; }
 </style>
-<note-composer color:model="#16a34a" colors={["#16a34a", "#2563eb", "#db2777", "#ea580c", "#7c3aed"]}>
-  <textarea ref={box} aria-label="New note" placeholder="Write a note for this site…" value={text}
-            oninput={(event) => (text = event.target.value)}
-            onkeydown.mod.enter.prevent={add}></textarea>
+<note-composer
+  color:model="#16a34a"
+  colors={["#16a34a", "#2563eb", "#db2777", "#ea580c", "#7c3aed"]}
+>
+  <textarea
+    ref={box}
+    aria-label="New note"
+    placeholder="Write a note for this site…"
+    value={text}
+    oninput={(event) => (text = event.target.value)}
+    onkeydown.mod.enter.prevent={add}
+  ></textarea>
   <div>
     <color-swatches value:bind={color} colors={colors} label="Note colour"></color-swatches>
     <button type="button" disabled={empty} onclick={add}>Add note</button>

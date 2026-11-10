@@ -23,10 +23,31 @@
 <number-field name="value" value:model={1} min={0} max={100} step={1} label="Amount" unit="">
   <label for={name}><span class="label">{label}</span></label>
   <div>
-    <button zb-if={live} type="button" aria-label={"Less " + label} disabled={value <= min} onclick={() => nudge(0 - step)}>−</button>
-    <input id={name} type="number" name={name} value={value} min={min} max={max} step={step} required
-           oninput={(event) => (value = event.target.valueAsNumber)}>
-    <button zb-if={live} type="button" aria-label={"More " + label} disabled={value >= max} onclick={() => nudge(step)}>+</button>
+    <button
+      zb-if={live}
+      type="button"
+      aria-label={"Less " + label}
+      disabled={value <= min}
+      onclick={() => nudge(0 - step)}
+    >−</button>
+    <input
+      id={name}
+      type="number"
+      name={name}
+      value={value}
+      min={min}
+      max={max}
+      step={step}
+      required
+      oninput={(event) => (value = event.target.valueAsNumber)}
+    >
+    <button
+      zb-if={live}
+      type="button"
+      aria-label={"More " + label}
+      disabled={value >= max}
+      onclick={() => nudge(step)}
+    >+</button>
     <small>{unit}</small>
   </div>
 </number-field>

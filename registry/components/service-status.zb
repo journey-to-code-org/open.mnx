@@ -39,9 +39,9 @@
         <zb-if test={answer}>
           <span class="state {answer.status}"><span class="dot" aria-hidden="true"></span>{LABELS[answer.status] ?? answer.status}</span>
           <span class="message" zb-if={answer.message}>{answer.message}</span>
-        <zb-else>
-          <span class="state"><span class="dot" aria-hidden="true"></span>No source</span>
-        </zb-else>
+          <zb-else>
+            <span class="state"><span class="dot" aria-hidden="true"></span>No source</span>
+          </zb-else>
         </zb-if>
       </zb-then>
       <zb-catch as="error">

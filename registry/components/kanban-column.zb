@@ -51,7 +51,14 @@
   .empty { display: grid; place-items: center; flex: 1; min-height: 4rem; border: 2px dashed var(--line, #d9dce3); border-radius: 0.7rem; color: var(--muted, #667085); font-size: 0.8125rem; }
 </style>
 <kanban-column heading="" count={0} limit={0}>
-  <section class:over class:full aria-label={heading} ondragover={dragover} ondragleave={(event) => event.currentTarget.contains(event.relatedTarget) || (over = false)} ondrop={drop}>
+  <section
+    class:over
+    class:full
+    aria-label={heading}
+    ondragover={dragover}
+    ondragleave={(event) => event.currentTarget.contains(event.relatedTarget) || (over = false)}
+    ondrop={drop}
+  >
     <header>
       <h2>{heading}</h2>
       <span class="count">{count}</span>

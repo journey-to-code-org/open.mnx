@@ -40,13 +40,24 @@
     <zb-each items={shown} as="task" key={task.id}>
       <li>
         <label><input type="checkbox" checked={task.done} onchange={(e) => act('tasks.update', event.id, task.id, { done: e.target.checked })}><span class:done={task.done}>{task.title}</span></label>
-        <button type="button" class="icon" aria-label={`Remove ${task.title}`} onclick={() => act('tasks.remove', event.id, task.id)}>✕</button>
+        <button
+          type="button"
+          class="icon"
+          aria-label={`Remove ${task.title}`}
+          onclick={() => act('tasks.remove', event.id, task.id)}
+        >✕</button>
       </li>
     </zb-each>
   </ul>
   <p zb-else class="empty">{event.tasks.length ? "Everything's done." : "Nothing to do yet."}</p>
   <form onsubmit.prevent={add}>
-    <input required placeholder="Add a task" aria-label="Add a task" value={title} oninput={(e) => (title = e.target.value)}>
+    <input
+      required
+      placeholder="Add a task"
+      aria-label="Add a task"
+      value={title}
+      oninput={(e) => (title = e.target.value)}
+    >
     <button type="submit" class="primary">Add</button>
   </form>
 </task-list>

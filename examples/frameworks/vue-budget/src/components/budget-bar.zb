@@ -23,6 +23,10 @@
 <budget-bar label="" spent={0} limit={0}>
   <div class={state} data-state={state}>
     <div class="top"><span>{label}</span><span class="numbers">{money(spent)} / {money(limit)}{state === "over" ? ` · ${money(spent - limit)} over` : ""}</span></div>
-    <progress max={limit || 1} value={Math.min(spent, limit || 1)} aria-label={`${label}: ${money(spent)} of ${money(limit)}`}></progress>
+    <progress
+      max={limit || 1}
+      value={Math.min(spent, limit || 1)}
+      aria-label={`${label}: ${money(spent)} of ${money(limit)}`}
+    ></progress>
   </div>
 </budget-bar>

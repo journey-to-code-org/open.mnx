@@ -16,7 +16,19 @@
   output { min-width: 2ch; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 </style>
 <quantity-stepper shadow form-associated value:model={1} min={0} max={10} label="Quantity">
-  <button type="button" class="less" aria-label={`Fewer ${label}`} disabled={value <= min} onclick={() => step(-1)}>−</button>
+  <button
+    type="button"
+    class="less"
+    aria-label={`Fewer ${label}`}
+    disabled={value <= min}
+    onclick={() => step(-1)}
+  >−</button>
   <output aria-live="polite" aria-label={label}>{value}</output>
-  <button type="button" class="more" aria-label={`More ${label}`} disabled={value >= max} onclick={() => step(1)}>+</button>
+  <button
+    type="button"
+    class="more"
+    aria-label={`More ${label}`}
+    disabled={value >= max}
+    onclick={() => step(1)}
+  >+</button>
 </quantity-stepper>

@@ -25,10 +25,25 @@
   button.on { color: var(--accent, #e07a2f); }
   :host([readonly]) button { cursor: default; font-size: 1rem; }
 </style>
-<star-rating form-associated value:model={0} max={5} required={false} readonly={false} label="Rating">
+<star-rating
+  form-associated
+  value:model={0}
+  max={5}
+  required={false}
+  readonly={false}
+  label="Rating"
+>
   <span role="group" aria-label={label}>
-  <zb-each items={stars} as="n" key={n}>
-    <button type="button" class:on={n <= shown} aria-label={`${n} of ${max}`} aria-pressed={n === value ? "true" : "false"} onclick={() => rate(n)} onmouseenter={() => (hovered = readonly ? 0 : n)} onmouseleave={() => (hovered = 0)}>★</button>
-  </zb-each>
+    <zb-each items={stars} as="n" key={n}>
+      <button
+        type="button"
+        class:on={n <= shown}
+        aria-label={`${n} of ${max}`}
+        aria-pressed={n === value ? "true" : "false"}
+        onclick={() => rate(n)}
+        onmouseenter={() => (hovered = readonly ? 0 : n)}
+        onmouseleave={() => (hovered = 0)}
+      >★</button>
+    </zb-each>
   </span>
 </star-rating>

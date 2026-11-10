@@ -48,7 +48,13 @@
     <div><b class="spent">{money.format(spent)}</b><span>{money.format(paid)} paid</span></div>
     <div><b class="left">{money.format(left)}</b><span>{left < 0 ? "over budget" : "left"}</span></div>
   </div>
-  <progress zb-if={event.budget > 0} class:over={left < 0} max={event.budget} value={Math.min(spent, event.budget)} aria-label="Budget used"></progress>
+  <progress
+    zb-if={event.budget > 0}
+    class:over={left < 0}
+    max={event.budget}
+    value={Math.min(spent, event.budget)}
+    aria-label="Budget used"
+  ></progress>
   <div zb-if={byKind.length > 0} class="kinds">
     <zb-each items={byKind} as="group" key={group.name}>
       <span>{group.name}</span><meter min="0" max={spent} value={group.total}></meter><span>{money.format(group.total)}</span>
@@ -70,11 +76,26 @@
   </table>
   <p zb-else class="empty">No expenses yet.</p>
   <form onsubmit.prevent={add}>
-    <input required placeholder="Expense" aria-label="Expense" value={label} oninput={(e) => (label = e.target.value)}>
+    <input
+      required
+      placeholder="Expense"
+      aria-label="Expense"
+      value={label}
+      oninput={(e) => (label = e.target.value)}
+    >
     <select aria-label="Category" value={kind} onchange={(e) => (kind = e.target.value)}>
       <zb-each items={KINDS} as="name" key={name}><option value={name}>{name}</option></zb-each>
     </select>
-    <input type="number" required min="0.01" step="0.01" placeholder="Amount" aria-label="Amount" value={amount} oninput={(e) => (amount = e.target.value)}>
+    <input
+      type="number"
+      required
+      min="0.01"
+      step="0.01"
+      placeholder="Amount"
+      aria-label="Amount"
+      value={amount}
+      oninput={(e) => (amount = e.target.value)}
+    >
     <button type="submit" class="primary">Add</button>
   </form>
 </budget-table>

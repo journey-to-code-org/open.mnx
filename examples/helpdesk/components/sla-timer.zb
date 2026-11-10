@@ -30,5 +30,10 @@
   time.met { color: #12704a; }
 </style>
 <sla-timer due={0} now={0} solved={false}>
-  <time class:overdue={!solved && left < 0} class:soon={!solved && left >= 0 && left < 3600000} class:met={solved} title="Response due">{label}</time>
+  <time
+    class:overdue={!solved && left < 0}
+    class:soon={!solved && left >= 0 && left < 3600000}
+    class:met={solved}
+    title="Response due"
+  >{label}</time>
 </sla-timer>
