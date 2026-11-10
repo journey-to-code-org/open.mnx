@@ -470,6 +470,12 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
+      # job that runs the rest of the server's tests doesn't build; here they must run.
+      - run: npm ci
+        working-directory: server
+      - run: node --test test/edge.test.js
+        working-directory: server
       # The playground compiling with zubra.wasm in the page.
       - run: node --test "playground/test/*.test.js"
 

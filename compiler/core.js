@@ -38,6 +38,40 @@ export class CompileError extends Error {
   }
 }
 
+/**
+ * The compiler stopped while answering a request: a WebAssembly trap (a stack overflow on input
+ * nested deeper than it can follow, or a bug). The instance that trapped can't be trusted again;
+ * where there is a module to make another from, the next request gets a fresh one.
+ */
+export class CompilerCrash extends Error {
+  constructor(cause) {
+    super(`@zubra/compiler: the compiler stopped on this input (${cause?.message ?? cause}). Please report the input: https://github.com/journey-to-code-org/zubra/issues`, { cause });
+    this.name = 'CompilerCrash';
+  }
+}
+
+/**
+ * `request` over an instance that `instantiate()` makes on first use, and again after a trap: a
+ * trapped instance is left mid-request (its allocator and stack pointer where the trap found
+ * them), and would fail every request after it for as long as the process or isolate lives.
+ * `instantiate(crash)` is given the last crash, to rethrow when it has nothing to start from.
+ */
+export function restarting(instantiate) {
+  let exports = null;
+  let crash = null;
+  return (body) => {
+    exports ??= instantiate(crash);
+    try {
+      return requestWith(exports, body);
+    } catch (error) {
+      if (typeof WebAssembly === 'undefined' || !(error instanceof WebAssembly.RuntimeError)) throw error;
+      exports = null;
+      crash = new CompilerCrash(error);
+      throw crash;
+    }
+  };
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -105,14 +139,27 @@ export function over(request) {
  * A compiler over the WebAssembly module you give it: a `WebAssembly.Module` (what a Worker's
  * bundler hands you for `import wasm from '…/zubra.wasm'`, or `await WebAssembly.compileStreaming(fetch(url))`
  * in a browser), or an instance or its exports. Returns `{ request, render, renderToString, format }`.
+ *
+ * Give it the module where you can: if a request traps, a compiler made from a module starts a
+ * fresh instance for the next one (and throws a `CompilerCrash` for the one that trapped). One
+ * made from an instance or its exports has nothing to start again from, so every request after a
+ * trap throws a `CompilerCrash`.
  */
 export function createCompiler(wasm) {
+  const isModule = typeof WebAssembly !== 'undefined' && wasm instanceof WebAssembly.Module;
   let exports;
-  if (typeof WebAssembly !== 'undefined' && wasm instanceof WebAssembly.Module) exports = new WebAssembly.Instance(wasm, {}).exports;
+  if (isModule) exports = new WebAssembly.Instance(wasm, {}).exports;
   else if (typeof WebAssembly !== 'undefined' && wasm instanceof WebAssembly.Instance) exports = wasm.exports;
   else exports = wasm;
   if (!exports || typeof exports.zubra_request !== 'function') {
     throw new TypeError("@zubra/compiler: createCompiler() needs the compiler's WebAssembly module (zubra.wasm), compiled: a WebAssembly.Module, or an instance of it");
   }
-  return over((body) => requestWith(exports, body));
+  // The instance made above answers until it traps; after that, a module gives a new one.
+  let first = exports;
+  return over(restarting((crash) => {
+    const made = first ?? (isModule ? new WebAssembly.Instance(wasm, {}).exports : null);
+    first = null;
+    if (!made) throw crash;
+    return made;
+  }));
 }

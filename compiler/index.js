@@ -11,26 +11,28 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { CompileError, over, requestWith, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './core.js';
+import { CompileError, CompilerCrash, over, restarting, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './core.js';
 
 // For Workers, Deno and browsers, which have no disk to read zubra.wasm from: `@zubra/compiler/wasm`.
-export { CompileError, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN };
+export { CompileError, CompilerCrash, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN };
 
 const wasmUrl = new URL('./zubra.wasm', import.meta.url);
-let exports = null;
+let module = null;
 
 /** Whether the WebAssembly module is present (it's built by `npm run build`, or ships in the package). */
 export function available() {
   return existsSync(wasmUrl);
 }
 
-function wasm() {
-  if (!exports) {
+// One instance for the process, replaced if a request traps (a `CompilerCrash` for that request):
+// a long-lived server or dev server must not lose its compiler to one bad input.
+const wasm = restarting(() => {
+  if (!module) {
     if (!available()) throw new Error('@zubra/compiler: zubra.wasm is missing; run `npm run build` in its package (needs Rust with the wasm32-unknown-unknown target)');
-    exports = new WebAssembly.Instance(new WebAssembly.Module(readFileSync(wasmUrl)), {}).exports;
+    module = new WebAssembly.Module(readFileSync(wasmUrl));
   }
-  return exports;
-}
+  return new WebAssembly.Instance(module, {}).exports;
+});
 
 /**
  * One request to the compiler; returns `{ ok, output, error, warnings, diagnostics }`. Without
@@ -38,7 +40,7 @@ function wasm() {
  */
 export function request(body) {
   if (!available() && process.env.ZUBRA_COMPILER) return native(process.env.ZUBRA_COMPILER, body);
-  return requestWith(wasm(), body);
+  return wasm(body);
 }
 
 function native(compiler, body) {

@@ -2,7 +2,7 @@
 // Workers, Deno, browsers and Node. You hand it the compiler's WebAssembly module and the sources.
 import type { FormatOptions, RenderOptions, Rendered, Request, Response } from './index.js';
 
-export { CompileError, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './index.js';
+export { CompileError, CompilerCrash, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './index.js';
 export type { Diagnostic, FormatOptions, Options, Rendered, Request, Response } from './index.js';
 
 /** `RenderOptions` where `files` is required: there is no disk to read the sources from. */
@@ -29,5 +29,7 @@ export declare function over(request: (body: Request) => Response): Compiler;
 /**
  * A compiler over the WebAssembly module you give it: a `WebAssembly.Module` (what a Worker's
  * bundler gives you for `import wasm from '@zubra/compiler/zubra.wasm'`), an instance, or its exports.
+ * Prefer the module: after a request traps (a `CompilerCrash`), a compiler made from a module starts a
+ * fresh instance for the next request; one made from an instance can't.
  */
 export declare function createCompiler(wasm: WebAssembly.Module | WebAssembly.Instance | WebAssembly.Exports): Compiler;

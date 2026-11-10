@@ -345,13 +345,23 @@ struct TemplateParser<'a> {
     /// Already-rendered HTML (a server's slot content): braces are text, comments are kept,
     /// and `<script>`, `<style>`, unquoted and inline-handler attributes are allowed as written.
     html: bool,
+    /// How many elements deep the parser is (see [`MAX_DEPTH`]).
+    depth: usize,
 }
+
+/// How deep elements may nest, in a template or in slot content. The parser and every pass
+/// after it recurse once per level, so without a limit a deep enough input (slot HTML is the
+/// page's, not the author's) overflows the stack: a crash natively, and in WebAssembly a trap
+/// that leaves the compiler unusable. Browsers stop nesting at 512; hand-written markup rarely
+/// passes 30.
+pub const MAX_DEPTH: usize = 256;
 
 impl<'a> TemplateParser<'a> {
     fn new(cursor: Cursor<'a>) -> Self {
         Self {
             cursor,
             html: false,
+            depth: 0,
         }
     }
 
@@ -778,12 +788,27 @@ impl<'a> TemplateParser<'a> {
                 format!("<{name}> elements are not supported inside a template"),
             ));
         }
-        let children =
-            if self_closing || VOID_ELEMENTS.contains(&name.to_ascii_lowercase().as_str()) {
-                Vec::new()
-            } else {
-                self.parse_nodes(Some(&name))?
-            };
+        let children = if self_closing
+            || VOID_ELEMENTS.contains(&name.to_ascii_lowercase().as_str())
+        {
+            Vec::new()
+        } else {
+            if self.depth >= MAX_DEPTH {
+                return Err(Diagnostic::new(
+                        span,
+                        format!("markup is nested more than {MAX_DEPTH} elements deep"),
+                    )
+                    .with_help(if self.html {
+                        "slot content this deep can't be rendered on the server; leave it to the browser, or flatten it"
+                    } else {
+                        "split the template into components: each one starts again at its own host"
+                    }));
+            }
+            self.depth += 1;
+            let children = self.parse_nodes(Some(&name))?;
+            self.depth -= 1;
+            children
+        };
         Ok(Element {
             name,
             attributes,

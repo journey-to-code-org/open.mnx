@@ -13,6 +13,7 @@ import { zubra as honoEdge } from '../src/hono-edge.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const wasmPath = fileURLToPath(import.meta.resolve('@zubra/compiler/zubra.wasm'));
+if (process.env.ZUBRA_REQUIRE_WASM && !existsSync(wasmPath)) throw new Error('ZUBRA_REQUIRE_WASM is set but @zubra/compiler has no zubra.wasm');
 const skip = existsSync(wasmPath) ? false : 'zubra.wasm is not built (npm run build in compiler)';
 const wasm = () => new WebAssembly.Module(readFileSync(wasmPath));
 
@@ -144,6 +145,49 @@ test('streamResponse sends the shell, then the resolved region, as Node does', {
   assert.match(fromEdge, /Ada: 5/);
   assert.equal(fromEdge, await stream(node));
   assert.equal('stream' in edge.page(), false, 'the Node Readable stays on the Node entry');
+});
+
+// A Worker's bundler rewrites the server's code. Wrangler builds with esbuild's keep-names, which
+// wraps `var kind = function…` in a `__name()` helper that exists only in the bundle; a page whose
+// inline scripts were this code's functions, stringified, then threw in the browser.
+test('bundled the way Wrangler bundles, a streamed page\'s inline scripts are the same text', { skip }, async () => {
+  const { build } = await import('esbuild');
+  const out = join(mkdtempSync(join(tmpdir(), 'zb-bundle-')), 'edge.mjs');
+  await build({ entryPoints: [join(here, '../src/edge.js')], bundle: true, format: 'esm', platform: 'neutral', mainFields: ['module', 'main'], keepNames: true, minify: true, outfile: out, logLevel: 'silent' });
+  const bundled = (await import(out)).createZubra({ wasm: wasm(), components: sources });
+  const { edge } = both();
+  const stream = async (zubra) => {
+    const page = zubra.page();
+    const body = page.render('review-list', { reviews: Promise.resolve([{ id: 1, name: 'Ada', stars: 5 }]) });
+    return await page.streamResponse(`<!doctype html><html><head></head><body>${body}</body></html>`).text();
+  };
+  const html = await stream(bundled);
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+  assert.equal(scripts.length, 2, 'the hold script and the swap script');
+  for (const script of scripts) {
+    assert.doesNotMatch(script, /__name\b/, 'no helper from the bundle');
+    // Every name it reads is its own, a parameter, or the browser's.
+    const free = new Function('document', 'window', 'NodeFilter', `"use strict"; return ${script.replace(/\)\(("[^"]*"),[\s\S]*\)$/, ')')}`);
+    assert.equal(typeof free({}, {}, {}), 'function');
+  }
+  assert.equal(html, await stream(edge), 'the bundle writes the page the source does');
+});
+
+// The import map names every runtime entry a compiled module can import on its own (the compiler
+// writes `@zubra/runtime/spread`, `/primitives` and `/motion` only into components that use them).
+// One missing, and the first component to need it fails in the browser with a bare-specifier error.
+test('the import map has every runtime entry a compiled module imports, on both entries', { skip }, () => {
+  const { node, edge } = both();
+  const runtime = JSON.parse(readFileSync(join(here, '../../runtime/package.json'), 'utf8'));
+  for (const [name, zubra] of [['node', node], ['edge', edge]]) {
+    const map = JSON.parse(zubra.head().match(/<script type="importmap">(.*?)<\/script>/s)[1]).imports;
+    for (const entry of ['', '/spread', '/primitives', '/motion']) {
+      const specifier = `@zubra/runtime${entry}`;
+      assert.equal(map[specifier], `/_zubra/runtime/${entry ? entry.slice(1) : 'index'}.js`, `${name}: ${specifier}`);
+      assert.ok(runtime.exports[entry ? `.${entry}` : '.'], `${specifier} is an entry of @zubra/runtime`);
+    }
+  }
+  assert.equal(edge.head(), node.head());
 });
 
 test('the Hono middleware serves modules and hands each request a page', { skip }, async () => {

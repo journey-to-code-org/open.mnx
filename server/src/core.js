@@ -112,7 +112,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
         pendingRenders.push(entry);
         // Until the values arrive, the element (should it start first) holds a promise for
         // each, set before it upgrades, so its `zb-await` shows the pending content.
-        return `${named(shell, entry.names)}<script>(${holdInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
+        return `${named(shell, entry.names)}<script>(${HOLD_IN_BROWSER})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
       get pending() {
@@ -422,13 +422,18 @@ function named(html, names) {
 /** The chunk for one settled promise: each resolved region in a `<template for>`, and the script. */
 function swapScript(id, regions, values) {
   const templates = (regions ?? []).map((region) => `<template for="${region.name}">${region.html}</template>`).join('');
-  const script = `<script>(${swapInBrowser.toString()})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
+  const script = `<script>(${SWAP_IN_BROWSER})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
   return `${templates}${script}\n`;
 }
 
+// The two scripts below run in the browser, inlined into the page. They are kept as text, not as
+// functions stringified with toString(): a bundler rewrites a function's body for the server it
+// builds (esbuild's keep-names, which Wrangler turns on, wraps `var kind = function…` in a
+// `__name()` helper that exists only in the bundle), and the page would then throw.
+//
 // Runs in the browser, inlined, right after a streamed host: a promise per pending prop, as a
 // property the element captures when it upgrades, resolved by the swap script later.
-function holdInBrowser(id, names) {
+const HOLD_IN_BROWSER = String.raw`function (id, names) {
   var host = document.querySelector('[data-zb-stream="' + id + '"]');
   var held = (window.__zubraStream = window.__zubraStream || {});
   for (var i = 0; i < names.length; i++) {
@@ -436,19 +441,19 @@ function holdInBrowser(id, names) {
       host[name] = new Promise(function (resolve, reject) { held[id + ':' + name] = { resolve: resolve, reject: reject }; });
     })(names[i]);
   }
-}
+}`;
 
 // Runs in the browser, inlined: hand the element the values (as properties, captured when it
 // upgrades), and, before it starts, put the resolved regions in place where the browser didn't:
 // browsers without out-of-order streaming leave each `<template for>` as an element, and those
 // with it don't reach into a shadow root. Once the element has started it renders the regions
 // itself (it removed their names, so the browser has nothing to replace).
-function swapInBrowser(id, values) {
+const SWAP_IN_BROWSER = String.raw`function (id, values) {
   var host = document.querySelector('[data-zb-stream="' + id + '"]');
   var script = document.currentScript;
   var templates = [];
   for (var node = script && script.previousElementSibling; node && node.tagName === 'TEMPLATE' && node.hasAttribute('for'); node = node.previousElementSibling) templates.push(node);
-  // A `<?start name>` or `<?end>`: a processing instruction, or the comment it parses as.
+  // A <?start name> or <?end>: a processing instruction, or the comment it parses as.
   var kind = function (node) {
     return node.nodeType === 7 ? node.target : node.nodeType === 8 ? (/^\?(start|end)\b/.exec(node.data) || [])[1] : null;
   };
@@ -492,7 +497,7 @@ function swapInBrowser(id, values) {
     }
     delete held[id + ':' + name];
   }
-}
+}`;
 
 /** A rendered light-DOM host's children: between its start tag and its end tag. */
 function lightContent(rendered, tag) {
