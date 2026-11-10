@@ -183,12 +183,40 @@ export default function ZbRating({ value = 0, onValueChange }) {
 - `let:name={…}` on `<zb-each>` or `<zb-then>` names an expression for the row or the result: `<zb-each items={cart} as="item" let:total={item.price * item.qty}>`. It's derived (each read is its current value), read-only, and later `let:`s can use earlier ones.
 - `<zb-slot name="…">` with fallback content; without `name`, the default slot.
 - `<zb-await value={…}>` with pending content, `<zb-then as="…">` and `<zb-catch as="…">` (see Async data).
+- `animate` on `<zb-if>`, `<zb-switch>` or a keyed `<zb-each>` (or `zb-animate` beside an element's `zb-if`): content going away leaves instead of vanishing, and keyed rows glide to their new places (see Motion).
 
 In the HTML output, directives are expanded at build time and wrapped in `<?zb [?>` … `<?zb ]?>` markers (each list row in its own pair), so the element can find them when it hydrates. In the browser:
 
 - `zb-if` re-renders only when the chosen branch changes.
 - `zb-each` without a key updates rows in place by position. Each row holds its item and index as signals, so changing one item updates only that row. Rows are added and removed at the end.
 - With `key`, rows follow their key. Reordering moves the existing rows with their DOM state (a half-typed input, focus), using `moveBefore()` where the browser has it. Inserting or removing in the middle touches only those rows.
+
+### Motion
+
+CSS animates content coming in on its own: `@starting-style` gives a transition somewhere to start from, and a CSS animation runs when an element is inserted. What it can't do is animate content going out, because a removed element is gone, or a reordered list, because moving an element doesn't transition its position. `animate` fills those two gaps, and CSS still decides how everything looks:
+
+```html
+<style>
+  .toast { transition: opacity 200ms, translate 200ms; }
+  @starting-style { .toast { opacity: 0; translate: 0 8px; } }  /* coming in */
+  .toast[data-leaving] { opacity: 0; translate: 0 8px; }       /* going out */
+  li { --zb-move-duration: 300ms; --zb-move-easing: ease-out; } /* gliding */
+</style>
+<zb-x open={false} items={[]}>
+  <p class="toast" zb-if={open} zb-animate>Saved</p>
+  <ul>
+    <zb-each items={items} as="item" key={item.id} animate><li>{item.name}</li></zb-each>
+  </ul>
+</zb-x>
+```
+
+- **Leaving.** When a branch goes away, its elements stay where they are with the `data-leaving` attribute and `inert` (no clicks or focus on the way out), and are removed once the transitions and animations that attribute starts have ended. With none, they go at once; an infinite animation inside (a spinner) isn't waited for. The branch replacing it is rendered beside it, so the two can cross-fade. A whole `zb-if` chain animates, and `zb-switch` is one.
+- **Lists.** On a `zb-each` with `animate` (it needs a `key`), removed rows leave the same way, held in place out of the flow (`position: absolute`, so the list needs a positioned ancestor) so the rows after them close the gap. The rows that stay glide from their old place to their new one (First, Last, Invert, Play, with the Web Animations API, on top of any transform of their own). `--zb-move-duration` (250ms) and `--zb-move-easing` set how; a duration of `0` turns gliding off.
+- **Reduced motion.** Under `prefers-reduced-motion: reduce`, content leaves at once and nothing glides, whatever the CSS says.
+- **On the server**, nothing changes: the branch and the rows render as before.
+- Content slotted into a leaving branch returns to the page at once, so put what should fade inside the component's own markup.
+
+The same behaviour is `leave(nodes, { float })` and `glide(elements, change)` in `@zubra/runtime/motion`, for code that adds and removes elements itself, and the `leave` and `glide` helpers in `--emit element` output.
 
 ## Classes, styles, events and references
 

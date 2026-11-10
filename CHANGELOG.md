@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **Motion: `animate` on `<zb-if>`, `<zb-switch>` and a keyed `<zb-each>`, and `zb-animate` beside an element's `zb-if`.** Content going away stays with `data-leaving` and `inert` until the transitions and animations that starts have ended (infinite ones aren't waited for), beside what replaces it; keyed rows that stay glide to their new places (FLIP, with the Web Animations API, timed by `--zb-move-duration` and `--zb-move-easing`), and removed rows leave held in place out of the flow. Coming in is left to CSS (`@starting-style`). Under `prefers-reduced-motion: reduce`, nothing waits or glides. Both outputs have it: `@zubra/runtime` and `--emit element` (its `leave` and `glide` helpers, written only when a component animates), and `zubra convert` reads them back as `animate`. The same functions are `leave()` and `glide()` in the new `@zubra/runtime/motion`. `animate` without a `key`, with a value, or `zb-animate` anywhere but beside `zb-if` are errors that say what to write. Tested in the browser on both outputs, including reduced motion.
+
 ## 5.4.1 — 2026-11-09
 
 The VS Code extension's language server starts, so `.zb` files have a formatter (and diagnostics, completion and hover) in VS Code. And the Zubra DevTools in the demo gallery, on the playground, and in builds when you ask for it.

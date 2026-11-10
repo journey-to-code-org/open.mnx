@@ -13,6 +13,7 @@ import { Signal } from './signal.js';
 import { wrap, raw } from './deep.js';
 import { effect, scope, root as rootScope, tick, batch } from './effect.js';
 import { RESOURCE } from './resource.js';
+import { leave, glide, isLeaving } from './motion.js';
 
 const { untrack } = Signal.subtle;
 const TEXT = 3;
@@ -521,6 +522,18 @@ function blueprint(source, parent = null) {
 
 function clearBetween(open, close) {
   while (open.nextSibling && open.nextSibling !== close) open.nextSibling.remove();
+}
+
+/**
+ * `animate`: the region's nodes leave (motion.js) instead of going at once. They stay where they
+ * are, and the region starts after them, so what replaces them is rendered beside them.
+ */
+function departBetween(open, close) {
+  const nodes = [];
+  for (let node = open.nextSibling; node && node !== close; node = node.nextSibling) nodes.push(node);
+  if (!nodes.length) return;
+  nodes[nodes.length - 1].after(open);
+  leave(nodes);
 }
 
 /** Remove everything between `open` and `close` in one operation. */
@@ -1118,6 +1131,7 @@ function bindWhen(part, open, hydrating, context) {
     first = false;
     // Effects created while mounting belong to this effect, so switching branches disposes them.
     untrack(() => {
+      if (part.animate && !hydrate) departBetween(open, close);
       if (block) mountBlock(block, [], open, close, hydrate, context);
       else clearBetween(open, close);
     });
@@ -1258,8 +1272,10 @@ function bindEach(part, open, hydrating, context) {
   };
   const removeRow = (row) => {
     row.owner.dispose();
-    for (const node of nodesOf(row)) node.remove();
+    if (part.animate) leave(nodesOf(row), { float: true });
+    else for (const node of nodesOf(row)) node.remove();
   };
+  const elementsOf = (row) => nodesOf(row).filter((node) => node.nodeType === 1);
   const placeRow = (row, before) => {
     const parent = close.parentNode;
     for (const node of nodesOf(row)) move(parent, node, before);
@@ -1331,7 +1347,7 @@ function bindEach(part, open, hydrating, context) {
       const byKey = new Map(rows.map((row) => [row.key, row]));
       // Nothing reused (cleared, or replaced wholesale): drop every row at once, then build the
       // new ones in one fragment and insert it once.
-      if (rows.length && !keys.some((key) => byKey.has(key))) {
+      if (!part.animate && rows.length && !keys.some((key) => byKey.has(key))) {
         batch(() => { for (const row of rows) row.owner.dispose(); });
         deleteBetween(open, close);
         rows = [];
@@ -1347,25 +1363,33 @@ function bindEach(part, open, hydrating, context) {
         close.before(fragment);
         return;
       }
-      const next = list.map((value, index) => {
-        const row = byKey.get(keys[index]);
-        if (!row) return createRow(value, index, keys[index]);
-        byKey.delete(keys[index]);
-        row.item.set(value);
-        row.position.set(index);
-        return row;
-      });
-      batch(() => { for (const row of byKey.values()) removeRow(row); });
-      let at = open.nextSibling;
-      while (at && at.nodeType === TEXT) at = at.nextSibling;
-      for (const row of next) {
-        if (row.open === at) {
-          at = row.close.nextSibling;
-          continue;
+      // `animate`: the rows that stay glide from where they were (motion.js).
+      const reorder = () => {
+        const next = list.map((value, index) => {
+          const row = byKey.get(keys[index]);
+          if (!row) return createRow(value, index, keys[index]);
+          byKey.delete(keys[index]);
+          row.item.set(value);
+          row.position.set(index);
+          return row;
+        });
+        batch(() => { for (const row of byKey.values()) removeRow(row); });
+        // Text between rows, and rows on their way out, aren't rows to place against.
+        const skip = (node) => node && (node.nodeType === TEXT || isLeaving(node));
+        let at = open.nextSibling;
+        while (skip(at)) at = at.nextSibling;
+        for (const row of next) {
+          if (row.open === at) {
+            at = row.close.nextSibling;
+            while (skip(at)) at = at.nextSibling;
+            continue;
+          }
+          placeRow(row, at ?? close);
         }
-        placeRow(row, at ?? close);
-      }
-      rows = next;
+        rows = next;
+      };
+      if (part.animate) glide(rows.flatMap(elementsOf), reorder);
+      else reorder();
     });
   });
 }

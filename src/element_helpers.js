@@ -144,9 +144,10 @@ function @move(parent, node, before) {
 /**
  * <zb-each>: a row per item, between two markers. Rows are matched by key, so a row that stays
  * keeps its nodes (and its focus), and moves only when it's out of order. `create(item, index)`
- * makes a row: its nodes, and how to bring them up to date.
+ * makes a row: its nodes, and how to bring them up to date. With `animate`, `leave` and `glide`
+ * come too: removed rows leave, and the rows that stay glide to their new places.
  */
-function @list(start, end, read, key, create) {
+function @list(start, end, read, key, create, leave, glide) {
   let rows = new Map();
   const nodesOf = (row) => {
     const nodes = [];
@@ -156,41 +157,62 @@ function @list(start, end, read, key, create) {
     }
     return nodes;
   };
-  return () => {
+  // The node after `node`, passing rows on their way out.
+  const after = (node) => {
+    let next = node.nextSibling;
+    while (next?.nodeType === 1 && next.hasAttribute("data-leaving")) next = next.nextSibling;
+    return next;
+  };
+  const update = () => {
     const parent = start.parentNode;
     const items = [...(read() ?? [])];
-    const next = new Map();
-    let after = start;
-    items.forEach((item, index) => {
-      let id = key(item, index);
-      if (next.has(id)) {
+    const ids = items.map((item, index) => key(item, index));
+    const seen = new Set();
+    ids.forEach((id, index) => {
+      if (seen.has(id)) {
         console.error("zubra: duplicate zb-each key", id, `(row ${index + 1}); that row is not keyed`);
-        id = Symbol("duplicate");
+        ids[index] = Symbol("duplicate");
       }
+      seen.add(ids[index]);
+    });
+    for (const [id, row] of rows) {
+      if (seen.has(id)) continue;
+      if (leave) leave(nodesOf(row), true);
+      else for (const node of nodesOf(row)) node.remove();
+    }
+    const next = new Map();
+    let last = start;
+    items.forEach((item, index) => {
+      const id = ids[index];
       let row = rows.get(id);
       if (!row) {
         const { nodes, update } = create(item, index);
         // A row is everything from its first node to its last, with what a list inside it adds later.
         row = { first: nodes.firstChild, last: nodes.lastChild, update };
         update(item, index); // filled in before it's on the page
-        @insert(parent, nodes, after.nextSibling);
+        @insert(parent, nodes, after(last));
       }
       next.set(id, row);
       row.update(item, index);
-      if (row.first !== after.nextSibling) {
-        const before = after.nextSibling;
+      if (row.first !== after(last)) {
+        const before = after(last);
         for (const node of nodesOf(row)) @move(parent, node, before);
       }
-      after = row.last;
+      last = row.last;
     });
-    for (const [id, row] of rows) if (!next.has(id)) for (const node of nodesOf(row)) node.remove();
     rows = next;
   };
+  if (!glide) return update;
+  const elements = () => [...rows.values()].flatMap((row) => nodesOf(row).filter((node) => node.nodeType === 1));
+  return () => glide(elements(), update);
 }
 
 //@@ when: insert
-/** <zb-if>: the branch whose condition holds, between two markers, rebuilt only when that changes. */
-function @when(start, end, read, branches, leaving) {
+/**
+ * <zb-if>: the branch whose condition holds, between two markers, rebuilt only when that changes.
+ * With `animate`, `leave` comes too: the branch going away leaves, beside the one replacing it.
+ */
+function @when(start, end, read, branches, leaving, leave) {
   let shown = -1;
   let update = null;
   return () => {
@@ -198,6 +220,12 @@ function @when(start, end, read, branches, leaving) {
     if (index !== shown) {
       shown = index;
       leaving?.(start, end); // slotted content inside goes back to wait, not away
+      if (leave && start.nextSibling !== end) {
+        const nodes = [];
+        for (let node = start.nextSibling; node !== end; node = node.nextSibling) nodes.push(node);
+        nodes[nodes.length - 1].after(start); // the region starts after them now
+        leave(nodes);
+      }
       while (start.nextSibling !== end) start.nextSibling.remove();
       update = null;
       if (branches[index]) {
@@ -209,6 +237,73 @@ function @when(start, end, read, branches, leaving) {
     }
     update?.();
   };
+}
+
+//@@ leave:
+/**
+ * Lets nodes finish their exit before they go. Each element gets `data-leaving` (and `inert`), so
+ * CSS can transition or animate it out, and is removed once those animations end; with nothing
+ * animating, or under prefers-reduced-motion, it goes at once. `float` takes the elements out of
+ * the flow first, held where they are, so what's around them can move into their space.
+ */
+function @leave(nodes, float) {
+  const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const elements = [];
+  for (const node of nodes) {
+    if (node.nodeType === 1 && !reduced && node.isConnected) elements.push(node);
+    else node.remove();
+  }
+  // Every position first: floating one element moves the next.
+  const places = elements.map((element) => float && {
+    position: "absolute",
+    top: `${element.offsetTop}px`,
+    left: `${element.offsetLeft}px`,
+    width: `${element.getBoundingClientRect().width}px`,
+    height: `${element.getBoundingClientRect().height}px`,
+    margin: "0",
+  });
+  elements.forEach((element, index) => {
+    if (float) Object.assign(element.style, places[index]);
+    element.inert = true;
+    element.setAttribute("data-leaving", "");
+  });
+  for (const element of elements) {
+    // getAnimations() brings styles up to date, so it sees what data-leaving started. An infinite
+    // animation (a spinner inside) never ends, so it isn't waited for.
+    const running = (element.getAnimations?.({ subtree: true }) ?? [])
+      .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity && animation.playState !== "finished");
+    if (!running.length) element.remove();
+    else Promise.allSettled(running.map((animation) => animation.finished)).then(() => element.remove());
+  }
+}
+
+//@@ glide:
+/**
+ * Runs `change`, then animates each element from where it was to where it is now (First, Last,
+ * Invert, Play). Each element's `--zb-move-duration` (250ms) and `--zb-move-easing` say how;
+ * a duration of 0, or prefers-reduced-motion, moves them without animating.
+ */
+function @glide(elements, change) {
+  if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return change();
+  const before = new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
+  change();
+  for (const [element, was] of before) {
+    if (!element.isConnected || element.hasAttribute("data-leaving")) continue;
+    const now = element.getBoundingClientRect();
+    const x = was.left - now.left;
+    const y = was.top - now.top;
+    if (!x && !y) continue;
+    const style = getComputedStyle(element);
+    const time = /^\s*([\d.]+)(ms|s)\s*$/.exec(style.getPropertyValue("--zb-move-duration"));
+    const duration = time ? Number(time[1]) * (time[2] === "s" ? 1000 : 1) : 250;
+    if (!duration) continue;
+    // "add": on top of the element's own transform.
+    element.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: "none" }], {
+      duration,
+      easing: style.getPropertyValue("--zb-move-easing").trim() || "cubic-bezier(0.2, 0, 0, 1)",
+      composite: "add",
+    });
+  }
 }
 
 //@@ clone:

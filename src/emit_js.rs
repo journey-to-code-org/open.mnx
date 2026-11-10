@@ -848,6 +848,7 @@ impl<'a> Emitter<'a> {
                     test,
                     consequent,
                     alternate,
+                    animate,
                     ..
                 } => {
                     // An empty region in the template; the branch is rendered (or found in
@@ -860,7 +861,11 @@ impl<'a> Emitter<'a> {
                     } else {
                         self.block(alternate, &[], &region)?
                     };
-                    let body = format!("when: () => {}, blocks: [{yes}, {no}]", self.js(test));
+                    let animate = if *animate { ", animate: true" } else { "" };
+                    let body = format!(
+                        "when: () => {}, blocks: [{yes}, {no}]{animate}",
+                        self.js(test)
+                    );
                     self.part(JsPart::at(&region, body));
                 }
                 Node::Each {
@@ -870,6 +875,7 @@ impl<'a> Emitter<'a> {
                     key,
                     lets,
                     children,
+                    animate,
                     ..
                 } => {
                     self.template.push_str("<!--[--><!--]-->");
@@ -891,7 +897,9 @@ impl<'a> Emitter<'a> {
                         }
                         None => String::new(),
                     };
-                    let body = format!("each: () => {}{key}, block: {row}", self.js(items));
+                    let animate = if *animate { ", animate: true" } else { "" };
+                    let body =
+                        format!("each: () => {}{key}, block: {row}{animate}", self.js(items));
                     self.part(JsPart::at(&region, body));
                 }
                 Node::Slot {
