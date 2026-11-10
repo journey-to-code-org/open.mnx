@@ -27,6 +27,9 @@ fn run() -> Result<(), String> {
     if command.as_deref() == Some("convert") {
         return convert(arguments.collect());
     }
+    if command.as_deref() == Some("fmt") {
+        return fmt(arguments.collect());
+    }
     // `zubra request`: one JSON request on stdin, the JSON response on stdout (what the
     // WebAssembly build exposes, for anything embedding the native compiler instead).
     if command.as_deref() == Some("request") {
@@ -61,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -279,6 +282,124 @@ fn write_atomically(output_path: &str, contents: &[u8]) -> Result<(), String> {
 }
 
 /// `zubra check`: every error and warning, for CI and editors; exits non-zero on errors.
+const FMT_USAGE: &str = "usage: zubra fmt <file.zb | folder>... [--check] [--indent <n> | --tabs] [--width <n>]\n       zubra fmt --stdin [<path, for messages>] (source in, formatted source out)";
+
+/// `zubra fmt`: format `.zb` files in place (folders: every `.zb` in them, skipping
+/// `node_modules`, `dist`, `target` and dot-folders). `--check` changes nothing and fails if a
+/// file would change, for CI. `--stdin` formats standard input to standard output, for editors.
+fn fmt(arguments: Vec<String>) -> Result<(), String> {
+    let mut paths = Vec::new();
+    let mut check = false;
+    let mut stdin = false;
+    let mut options = zubra::FormatOptions::default();
+    let number = |value: Option<String>, flag: &str| -> Result<usize, String> {
+        value
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+            .filter(|&value: &usize| value > 0)
+            .ok_or_else(|| format!("{flag} takes a positive number"))
+    };
+    let mut arguments = arguments.into_iter();
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--check" => check = true,
+            "--stdin" => stdin = true,
+            "--tabs" => options.use_tabs = true,
+            "--indent" => options.indent_width = number(arguments.next(), "--indent")?,
+            "--width" => options.print_width = number(arguments.next(), "--width")?,
+            _ if argument.starts_with("--") => {
+                return Err(format!("unexpected argument `{argument}`\n{FMT_USAGE}"))
+            }
+            _ => paths.push(argument),
+        }
+    }
+    if stdin {
+        if check || paths.len() > 1 {
+            return Err(FMT_USAGE.into());
+        }
+        let name = paths.first().map_or("<stdin>", String::as_str);
+        let source = std::io::read_to_string(std::io::stdin())
+            .map_err(|error| format!("unable to read standard input: {error}"))?;
+        let formatted =
+            zubra::format(&source, &options).map_err(|error| error.render_in(&source, name))?;
+        print!("{formatted}");
+        return Ok(());
+    }
+    if paths.is_empty() {
+        return Err(FMT_USAGE.into());
+    }
+    let mut files = Vec::new();
+    for path in &paths {
+        collect_zb(Path::new(path), &mut files).map_err(|error| format!("{path}: {error}"))?;
+    }
+    let (mut changed, mut failed) = (Vec::new(), 0);
+    for file in &files {
+        let name = file.display().to_string();
+        let source = fs::read_to_string(file)
+            .map_err(|error| format!("{name}: unable to read source: {error}"))?;
+        match zubra::format(&source, &options) {
+            Ok(formatted) if formatted == source => {}
+            Ok(formatted) => {
+                if !check {
+                    fs::write(file, &formatted)
+                        .map_err(|error| format!("{name}: unable to write: {error}"))?;
+                }
+                changed.push(name);
+            }
+            Err(error) => {
+                failed += 1;
+                eprint!("{}", error.render_in(&source, &name));
+            }
+        }
+    }
+    for name in &changed {
+        println!(
+            "{}{name}",
+            if check { "would format " } else { "formatted " }
+        );
+    }
+    if failed > 0 {
+        return Err(format!(
+            "{failed} file{} couldn't be formatted",
+            if failed == 1 { "" } else { "s" }
+        ));
+    }
+    if check && !changed.is_empty() {
+        return Err(format!(
+            "{} file{} not formatted; run zubra fmt",
+            changed.len(),
+            if changed.len() == 1 { " is" } else { "s are" }
+        ));
+    }
+    Ok(())
+}
+
+/// `path` if it's a `.zb` file (or named outright), else every `.zb` under it.
+fn collect_zb(path: &Path, files: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    if !path.is_dir() {
+        // A file named outright is formatted whatever its extension says; zubra::format refuses JSX.
+        fs::metadata(path)?;
+        files.push(path.to_path_buf());
+        return Ok(());
+    }
+    let mut entries: Vec<_> = fs::read_dir(path)?.collect::<Result<_, _>>()?;
+    entries.sort_by_key(std::fs::DirEntry::path);
+    for entry in entries {
+        let entry_path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if entry_path.is_dir() {
+            if !(name.starts_with('.')
+                || ["node_modules", "dist", "target"].contains(&name.as_str()))
+            {
+                collect_zb(&entry_path, files)?;
+            }
+        } else if name.ends_with(".zb") {
+            files.push(entry_path);
+        }
+    }
+    Ok(())
+}
+
 fn check(arguments: Vec<String>) -> Result<(), String> {
     let mut files = Vec::new();
     let mut json = false;

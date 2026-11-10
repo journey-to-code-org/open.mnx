@@ -6,11 +6,12 @@
 //   zubra add --list
 //   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
 //   zubra check <file>... [--server]          --server: what a server without JavaScript leaves out
+//   zubra fmt <file | dir>... [--check] [--indent <n> | --tabs] [--width <n>]   (--stdin: in to out)
 //   zubra convert <Component.jsx> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]   React → zubra JSX, or .zb
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, watch, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { compileFile, request } from './index.js';
+import { compileFile, format, request } from './index.js';
 import { buildLibrary } from './library.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -78,10 +79,57 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) rest.push(arg);
-    else if (['--lib', '--force', '--list', '--partial', '--stdout', '--server', '--watch'].includes(arg)) flags[arg.slice(2)] = true;
+    else if (['--lib', '--force', '--list', '--partial', '--stdout', '--server', '--watch', '--check', '--stdin', '--tabs'].includes(arg)) flags[arg.slice(2)] = true;
     else flags[arg.slice(2)] = args[++i];
   }
   return { flags, rest };
+}
+
+/** `.zb` files under `path` (or `path` itself), skipping node_modules, dist, target and dot-folders. */
+function componentsIn(path, found = []) {
+  if (!statSync(path).isDirectory()) return found.push(path), found;
+  for (const name of readdirSync(path).sort()) {
+    const child = join(path, name);
+    if (statSync(child).isDirectory()) {
+      if (!name.startsWith('.') && !['node_modules', 'dist', 'target'].includes(name)) componentsIn(child, found);
+    } else if (name.endsWith('.zb')) found.push(child);
+  }
+  return found;
+}
+
+/** `zubra fmt`: as the Rust CLI's (src/main.rs): format in place, or --check, or --stdin. */
+function fmt(paths, flags) {
+  const number = (value, flag) => {
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${flag} takes a positive number`);
+    return parsed;
+  };
+  const options = { indentWidth: number(flags.indent, '--indent'), useTabs: flags.tabs, printWidth: number(flags.width, '--width') };
+  if (flags.stdin) {
+    process.stdout.write(format(readFileSync(0, 'utf8'), { ...options, path: paths[0] ?? '<stdin>' }));
+    return;
+  }
+  if (!paths.length) throw new Error('usage: zubra fmt <file.zb | folder>... [--check] [--indent <n> | --tabs] [--width <n>]   (zubra fmt --stdin)');
+  const changed = [];
+  let failed = 0;
+  for (const file of paths.flatMap((path) => componentsIn(path))) {
+    const source = readFileSync(file, 'utf8');
+    let formatted;
+    try {
+      formatted = format(source, { ...options, path: file });
+    } catch (error) {
+      process.stderr.write(error.message);
+      failed++;
+      continue;
+    }
+    if (formatted === source) continue;
+    if (!flags.check) writeFileSync(file, formatted);
+    changed.push(file);
+    console.log(`${flags.check ? 'would format' : 'formatted'} ${file}`);
+  }
+  if (failed) throw new Error(`${failed} file${failed === 1 ? '' : 's'} couldn't be formatted`);
+  if (flags.check && changed.length) throw new Error(`${changed.length} file${changed.length === 1 ? ' is' : 's are'} not formatted; run zubra fmt`);
 }
 
 function main(argv) {
@@ -140,6 +188,8 @@ function main(argv) {
       process.stderr.write(`${response.diagnostics.length} thing${response.diagnostics.length === 1 ? '' : 's'} to finish by hand (above)\n`);
       process.exitCode = 1;
     }
+  } else if (command === 'fmt') {
+    fmt(rest, flags);
   } else if (command === 'compile' || command === 'check') {
     if (!rest.length) throw new Error(`usage: zubra ${command} <file>${command === 'check' ? '...' : ''}`);
     let failed = false;

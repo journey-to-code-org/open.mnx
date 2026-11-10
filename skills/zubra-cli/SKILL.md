@@ -10,6 +10,7 @@ Two binaries share the name. The **Rust CLI** (`zubra`, built with `cargo build 
 | | |
 |---|---|
 | `zubra check <file>... [--format json] [--server]` | Errors and warnings with carets and suggested fixes; exit 1 on an error. `--server` also reports every part the server can't render (an error for `checked`, `selected`, `value` and `disabled`). `--format json` for tooling. |
+| `zubra fmt <file \| dir>... [--check]` | Lays `.zb` files out (indentation, tidy tags) without changing what they compile to; `--check` fails if a file would change. Run it after editing a component. |
 | `zubra compile <file>` | Server HTML. `--props props.json` gives prop values (required props need one); `--slots slots.json` gives slot content (`--slots-html` to keep it as HTML); `--partial` leaves browser-only parts empty instead of failing. |
 | `zubra compile <file> --emit js` | The custom element module. `--emit dts\|manifest\|html-data\|interface\|css` gives the typings (`--framework react\|vue\|svelte\|solid` types the default export as that framework's wrapper), Custom Elements Manifest, VS Code data, prop/event interface, or stylesheet. |
 | `npx zubra build --lib <dir> [--out dist] [--name @acme/ui] [--version x.y.z] [--watch]` | A publishable package: an ES module per element, `react` and `vue` entries, typings, `custom-elements.json`, a `skills/` folder for agents, and `package.json` with `exports` and `@zubra/runtime` as a peer. |

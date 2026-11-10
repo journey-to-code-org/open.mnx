@@ -100,6 +100,18 @@ export function compileFile(path, options = {}) {
   return request({ ...options, path: absolute, files: sources(absolute) });
 }
 
+/**
+ * `source` laid out the way `zubra fmt` lays it out: indentation and tags tidied, nothing it
+ * compiles to changed (see the README's "Formatting"). `path` only names the file in errors.
+ * Throws a CompileError when the source doesn't parse, or is a JSX component.
+ */
+export function format(source, { indentWidth, useTabs, printWidth, path = 'component.zb' } = {}) {
+  const absolute = resolve(path);
+  const response = request({ command: 'format', path: absolute, files: { [absolute]: source }, indentWidth, useTabs, printWidth });
+  if (!response.ok) throw new CompileError(response);
+  return response.output;
+}
+
 /** A compile error, with the rendered message and the diagnostics. */
 export class CompileError extends Error {
   constructor(response) {
