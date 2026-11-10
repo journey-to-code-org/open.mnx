@@ -146,7 +146,16 @@ fn range_formatting_every_component_changes_only_the_range_and_keeps_what_it_com
     let options = FormatOptions::default();
     let (mut edits, mut compared) = (0, 0);
     for file in &files {
-        let source = fs::read_to_string(file).unwrap().replace("\r\n", "\n");
+        let original = fs::read_to_string(file).unwrap().replace("\r\n", "\n");
+        // The repository is formatted, so start from the same file laid out at another width:
+        // there is then something for every range to do.
+        let wide = FormatOptions {
+            indent_width: 8,
+            ..FormatOptions::default()
+        };
+        let Ok(source) = zubra::format(&original, &wide) else {
+            continue;
+        };
         let Ok(whole) = zubra::format(&source, &options) else {
             continue;
         };
@@ -183,10 +192,13 @@ fn range_formatting_every_component_changes_only_the_range_and_keeps_what_it_com
                 "{}: text outside the edit changed",
                 file.display()
             );
-            // Applied, the same range has nothing left to do (the range moves with the edit).
-            let moved_end = end + edit.text.len() - (edit.end - edit.start);
+            // Applied, the edited region has nothing left to do.
+            // (An edit that opens with the line break before its first line starts at the end of
+            // the line above; the region begins on the line after it.)
+            let edited_start = edit.start + usize::from(edit.text.starts_with('\n'));
+            let edited_end = edit.start + edit.text.len();
             assert_eq!(
-                zubra::format_range(&out, start, moved_end.min(out.len()), &options).unwrap(),
+                zubra::format_range(&out, edited_start, edited_end, &options).unwrap(),
                 None,
                 "{}: {start}..{end} isn't stable",
                 file.display()
