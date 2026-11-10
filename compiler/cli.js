@@ -6,7 +6,7 @@
 //   zubra add --list
 //   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
 //   zubra check <file>... [--server]          --server: what a server without JavaScript leaves out
-//   zubra convert <Component.jsx> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]   React → zubra JSX, or .zb
+//   zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]   React → zubra JSX, or .zb; a custom element → .zb
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -124,7 +124,7 @@ function main(argv) {
     const packages = packagesFor(files);
     if (packages.length) console.log(`zubra: they import ${packages.join(', ')}: npm install ${packages.join(' ')}`);
   } else if (command === 'convert') {
-    if (rest.length !== 1) throw new Error('usage: zubra convert <Component.jsx> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]');
+    if (rest.length !== 1) throw new Error('usage: zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]');
     const path = resolve(rest[0]);
     const response = request({ command: 'convert', path, files: { [path]: readFileSync(path, 'utf8') }, prefix: flags.prefix, as: flags.as });
     if (!response.ok) throw new Error(response.error);

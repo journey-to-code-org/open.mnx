@@ -7,6 +7,7 @@
 mod ast;
 mod components;
 mod convert;
+mod convert_element;
 mod diagnostic;
 mod emit_element;
 mod emit_interface;
@@ -78,6 +79,21 @@ fn front<T>(
 /// (`zubra convert --as zubra` writes it as the converted file.)
 pub fn lower_jsx(source: &str, path: &str) -> Result<String, Diagnostic> {
     jsx::lower_readable(source, path)
+}
+
+/// `zubra convert my-element.js`: a custom element class (the shape `--emit element` writes,
+/// edited or written that way by hand) back to a `.zb` component.
+pub fn convert_element(source: &str, path: &str) -> Result<convert::Conversion, Diagnostic> {
+    convert_element::convert_element(source, path, &components::filesystem)
+}
+
+/// [`convert_element`] with a loader for the components it imports.
+pub fn convert_element_with(
+    source: &str,
+    path: &str,
+    loader: Loader<'_>,
+) -> Result<convert::Conversion, Diagnostic> {
+    convert_element::convert_element(source, path, loader)
 }
 
 /// `zubra convert --as zubra`: the conversion's JSX component as a readable `.zb` file. The
@@ -443,12 +459,24 @@ pub fn compile_element_with(
     component_extension: Option<&str>,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
+    let source_name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    // A JSX component, lowered with its script readable (`let` state and props by name, as
+    // `zubra convert --as zubra` writes it), so the element reads like any other: props as
+    // `element.name`, state as `name.value`. What that lowering can't do yet goes the usual way.
+    if jsx::is_jsx(path) {
+        if let Ok(readable) = jsx::lower_for_element(source, path, Some(loader)) {
+            if let Ok(module) = load(&readable, path, Some(loader)).and_then(|component| {
+                emit_element::emit(&component, &source_name, component_extension)
+            }) {
+                return Ok(module);
+            }
+        }
+    }
     front(source, Some(path), Some(loader), |source| {
         let component = load(source, path, Some(loader))?;
-        let source_name = std::path::Path::new(path).file_name().map_or_else(
-            || path.to_owned(),
-            |name| name.to_string_lossy().into_owned(),
-        );
         emit_element::emit(&component, &source_name, component_extension)
     })
 }

@@ -102,7 +102,16 @@ fn respond(request: &Map<String, Value>) -> Value {
 
     // `convert`: a React component → a zubra JSX component (`prefix` names a one-word one).
     if text("command") == Some("convert") {
-        return match crate::convert_component(source, &path, text("prefix"), text("component")) {
+        // A custom element class (`--emit element` output, or written that way): back to `.zb`.
+        let element = !path.ends_with(".jsx")
+            && !path.ends_with(".tsx")
+            && source.contains("extends HTMLElement");
+        let converted = if element {
+            crate::convert_element_with(source, &path, &loader)
+        } else {
+            crate::convert_component(source, &path, text("prefix"), text("component"))
+        };
+        return match converted {
             Ok(mut conversion) => {
                 // `"as": "zubra"`: the readable .zb file, once nothing is left to finish.
                 if text("as") == Some("zubra")

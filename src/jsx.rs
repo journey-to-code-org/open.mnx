@@ -273,7 +273,7 @@ pub fn tag_in(source: &str, path: &str) -> Result<String, Diagnostic> {
 /// Lower the JSX component at `path`. `loader` finds imported components (for their tags).
 pub fn lower(source: &str, path: &str, loader: Option<Loader<'_>>) -> Result<Lowered, Diagnostic> {
     LOWERED.with(|lowered| lowered.borrow_mut().remove(path));
-    let lowered = lower_uncached(source, path, loader, false)?;
+    let lowered = lower_uncached(source, path, loader, false, false)?;
     LOWERED.with(|cache| cache.borrow_mut().insert(path.to_owned(), lowered.clone()));
     Ok(lowered)
 }
@@ -282,9 +282,21 @@ pub fn lower(source: &str, path: &str, loader: Option<Loader<'_>>) -> Result<Low
 /// written (`let` state, props by name, `on…` calls as `emit()`), the template with its
 /// indentation, and nothing the compiler adds for itself.
 pub fn lower_readable(source: &str, path: &str) -> Result<String, Diagnostic> {
-    let lowered = lower_uncached(source, path, None, true)?;
+    let lowered = lower_uncached(source, path, None, true, true)?;
     let text = lowered.text.replace(&format!("{EMIT}("), "emit(");
     Ok(dedent_template(&text))
+}
+
+/// The JSX component as `.zb` text with its script readable (as [`lower_readable`]) and its
+/// text under JSX's whitespace rule, so it compiles to what the JSX means: `--emit element`
+/// compiles a JSX component from this, so its element reads like any other.
+pub fn lower_for_element(
+    source: &str,
+    path: &str,
+    loader: Option<Loader<'_>>,
+) -> Result<String, Diagnostic> {
+    let lowered = lower_uncached(source, path, loader, true, false)?;
+    Ok(lowered.text.replace(&format!("{EMIT}("), "emit("))
 }
 
 /// The template lines (after `</script>`), left with two spaces of indentation at their shallowest.
@@ -325,6 +337,7 @@ fn lower_uncached(
     path: &str,
     loader: Option<Loader<'_>>,
     readable: bool,
+    keep_text: bool,
 ) -> Result<Lowered, Diagnostic> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type(path)).parse();
@@ -505,6 +518,7 @@ fn lower_uncached(
         props: Vec::new(),
         from: from_names,
         readable,
+        keep_text,
         type_ranges: if path.ends_with(".tsx") {
             crate::typescript::type_ranges_tsx(source)
         } else {
@@ -794,6 +808,9 @@ struct Lowering<'s, 'l> {
     /// `lower_readable`: keep the script as written, apart from `on…` calls, and the template's
     /// whitespace.
     readable: bool,
+    /// Keep the template's text as written (`lower_readable`), rather than under JSX's
+    /// whitespace rule.
+    keep_text: bool,
     /// In a .tsx file, the type syntax to blank in template expressions (`e.target as Element`).
     type_ranges: Vec<std::ops::Range<usize>>,
 }
@@ -1231,7 +1248,7 @@ impl Lowering<'_, '_> {
                         .raw
                         .as_ref()
                         .map_or(text.value.as_str(), |raw| raw.as_str());
-                    if self.readable {
+                    if self.keep_text {
                         out.synthetic(raw, text.span.start as usize);
                     } else {
                         out.synthetic(&clean_text(raw), text.span.start as usize);
