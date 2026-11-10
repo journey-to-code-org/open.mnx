@@ -450,7 +450,43 @@ pub(crate) fn check_child(element: &ast::Element, info: &ChildInfo) -> Result<()
             validate::check_child_prop_type(&element.name, prop, &value, span)?;
         }
     }
-    validate::check_child_required(&element.name, &info.interface, element)
+    // `{...spread}`: one that reads no name is known here, and is checked like written props
+    // (its values' types, and that it gives what's required); one that reads a prop or state is
+    // the browser's, and may give anything.
+    for (expression, span) in validate::spreads_of(element) {
+        let mut free = false;
+        expression.for_each_identifier(&mut |_| free = true);
+        let Ok(serde_json::Value::Object(entries)) = expression.evaluate(&|_| None) else {
+            continue;
+        };
+        if free {
+            continue;
+        }
+        for (key, value) in &entries {
+            let written = |prop: &validate::PropInterface| {
+                element.attributes.iter().any(|attribute| {
+                    attribute.name != crate::parser::SPREAD
+                        && validate::camel(&attribute.name) == prop.name
+                })
+            };
+            if let Some(prop) = info
+                .interface
+                .props
+                .iter()
+                .find(|prop| validate::spread_key_is_prop(key, &prop.name))
+            {
+                if !value.is_null() && !written(prop) {
+                    validate::check_child_prop_type(&element.name, prop, value, span)?;
+                }
+            }
+        }
+    }
+    validate::check_child_required(
+        &element.name,
+        &info.interface,
+        element,
+        &validate::SpreadKeys::of(element),
+    )
 }
 
 pub(crate) fn child_infos(
@@ -1042,21 +1078,26 @@ impl<'a> Emitter<'a> {
         for attribute in &element.attributes {
             self.span = Some(attribute.span);
             if attribute.name == crate::parser::SPREAD {
-                if let Some(info) = child {
-                    let _ = info;
-                    return Err(Diagnostic::new(
-                        attribute.span,
-                        format!("<{}> is a zubra component: pass each prop rather than spreading an object onto it", element.name),
-                    )
-                    .with_help("a spread works on HTML elements and other libraries' custom elements"));
-                }
                 let AttributeValue::Expression(expression, _) = &attribute.value else {
                     unreachable!("a spread is always an expression");
                 };
                 // `bind`: the code that applies it, from its own runtime entry, so components
                 // without a spread don't load it.
+                // On a component, the entries that are its props are set as props.
+                let props = child.map_or_else(String::new, |child| {
+                    let mut names: Vec<_> = child.props.iter().collect();
+                    names.sort();
+                    format!(
+                        ", props: [{}]",
+                        names
+                            .iter()
+                            .map(|name| json(name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                });
                 let body = format!(
-                    "spread: () => {}, own: [{}], bind: {SPREAD_BINDER}",
+                    "spread: () => {}, own: [{}]{props}, bind: {SPREAD_BINDER}",
                     self.js(expression),
                     own.iter()
                         .map(|name| json(name))

@@ -1294,7 +1294,7 @@ impl Context<'_> {
                 self.lower_directives(element, &mut attributes, state)?;
                 for attribute in &element.attributes {
                     if attribute.name == crate::parser::SPREAD {
-                        self.lower_spread(element, attribute, &mut attributes, state)?;
+                        self.lower_spread(element, attribute, &mut attributes, state, &[])?;
                     }
                 }
                 let mut lowered = ir::Element {
@@ -1549,7 +1549,12 @@ impl Context<'_> {
             analyze(&child.ast).map_err(|error| error.in_file(&child.path, &child.source))?;
         let mut overrides = serde_json::Map::new();
         let mut attributes = Vec::new();
+        let mut spreads = Vec::new();
         for attribute in &element.attributes {
+            if attribute.name == crate::parser::SPREAD {
+                spreads.push(attribute);
+                continue; // after the element's own (an explicit prop or attribute wins)
+            }
             let prop_name = camel(&attribute.name);
             let lower = attribute.name.to_ascii_lowercase();
             check_child_event(&child.ast.tag, &interface, attribute)?;
@@ -1579,7 +1584,64 @@ impl Context<'_> {
             }
         }
         self.lower_directives(element, &mut attributes, state)?;
-        check_child_required(&child.ast.tag, &interface, element)?;
+        // `{...object}` on a component: the entries that are the child's props are passed as
+        // props (the element's own win), the rest are attributes of its host, as on any
+        // element. An object known only in the browser is left for it.
+        let prop_names: Vec<String> = interface
+            .props
+            .iter()
+            .map(|prop| prop.name.clone())
+            .collect();
+        // What the tag itself gives: a later spread replaces an earlier one's value, as in
+        // JavaScript (and as the browser's binder does), but never the tag's own.
+        let written: Vec<String> = overrides.keys().cloned().collect();
+        let mut spread_keys = SpreadKeys::Known(Vec::new());
+        for attribute in spreads {
+            let AttributeValue::Expression(expression, span) = &attribute.value else {
+                continue;
+            };
+            let entries = match self.evaluate_known(expression, *span, state)? {
+                Some(Value::Object(entries)) => entries,
+                known => {
+                    if known.is_none() {
+                        spread_keys = SpreadKeys::Unknown; // the browser's to give
+                    }
+                    self.lower_spread(element, attribute, &mut attributes, state, &[])?;
+                    continue;
+                }
+            };
+            for (key, value) in &entries {
+                let Some(prop) = interface
+                    .props
+                    .iter()
+                    .find(|prop| spread_key_is_prop(key, &prop.name))
+                else {
+                    continue;
+                };
+                let given = written.contains(&prop.name)
+                    || element.attributes.iter().any(|other| {
+                        other.name != crate::parser::SPREAD && camel(&other.name) == prop.name
+                    });
+                if given {
+                    continue; // the tag's own prop wins, in either order
+                }
+                if value.is_null() {
+                    // A value that isn't one: the child's default, whatever an earlier spread gave.
+                    overrides.remove(&prop.name);
+                    if let SpreadKeys::Known(keys) = &mut spread_keys {
+                        keys.retain(|known| !spread_key_is_prop(known, &prop.name));
+                    }
+                    continue;
+                }
+                check_child_prop_type(&child.ast.tag, prop, value, *span)?;
+                overrides.insert(prop.name.clone(), value.clone());
+                if let SpreadKeys::Known(keys) = &mut spread_keys {
+                    keys.push(key.clone());
+                }
+            }
+            self.lower_spread(element, attribute, &mut attributes, state, &prop_names)?;
+        }
+        check_child_required(&child.ast.tag, &interface, element, &spread_keys)?;
         for prop in &interface.props {
             if prop.runtime_default.is_some() && !overrides.contains_key(&prop.name) && !partial() {
                 return Err(Diagnostic::new(
@@ -1744,6 +1806,7 @@ impl Context<'_> {
         attribute: &ast::Attribute,
         attributes: &mut Vec<ir::Attribute>,
         state: &LowerState,
+        props: &[String],
     ) -> Result<(), Diagnostic> {
         let AttributeValue::Expression(expression, span) = &attribute.value else {
             return Ok(());
@@ -1772,6 +1835,9 @@ impl Context<'_> {
             .map(|other| other.name.to_ascii_lowercase())
             .collect();
         for (key, value) in entries {
+            if props.iter().any(|prop| spread_key_is_prop(&key, prop)) {
+                continue; // a prop of the child, passed as one
+            }
             let lower = key.to_ascii_lowercase();
             if lower.len() > 2 && lower.starts_with("on") {
                 if value.is_string() {
@@ -2480,13 +2546,6 @@ pub(crate) fn unknown_child_prop(
     interface: &Interface,
     attribute: &ast::Attribute,
 ) -> Diagnostic {
-    if attribute.name == crate::parser::SPREAD {
-        return Diagnostic::new(
-            attribute.span,
-            format!("<{tag}> is a zubra component: pass each prop rather than spreading an object onto it"),
-        )
-        .with_help("a spread works on HTML elements and other libraries' custom elements");
-    }
     let prop_name = camel(&attribute.name);
     let names: Vec<&str> = interface
         .props
@@ -2506,23 +2565,75 @@ pub(crate) fn is_unknown_child_attribute(
 ) -> bool {
     let lower = attribute.name.to_ascii_lowercase();
     let prop_name = camel(&attribute.name);
-    !interface.props.iter().any(|prop| prop.name == prop_name)
+    attribute.name != crate::parser::SPREAD
+        && !interface.props.iter().any(|prop| prop.name == prop_name)
         && matches!(attribute.value, AttributeValue::Expression(..))
         && !crate::parser::is_event_attribute(&lower)
         && !is_global_attribute(&lower)
 }
 
-/// Every required prop of the child must be given.
+/// What the `{...spread}`s on a component's tag are known to give at build time.
+pub(crate) enum SpreadKeys {
+    /// At least one spread is only known in the browser: it may give anything.
+    Unknown,
+    /// Every spread is known (or there is none): the keys they give a value other than `null`.
+    Known(Vec<String>),
+}
+
+impl SpreadKeys {
+    /// From the tag alone: a spread whose expression reads no name is known, any other isn't.
+    /// (The HTML backend knows more, since it has the parent's props and state.)
+    pub(crate) fn of(element: &ast::Element) -> Self {
+        let mut keys = Vec::new();
+        for (expression, _) in spreads_of(element) {
+            let mut free = false;
+            expression.for_each_identifier(&mut |_| free = true);
+            match expression.evaluate(&|_| None) {
+                Ok(Value::Object(entries)) if !free => keys.extend(
+                    entries
+                        .into_iter()
+                        .filter(|(_, value)| !value.is_null())
+                        .map(|(key, _)| key),
+                ),
+                Ok(Value::Null) if !free => {}
+                _ => return Self::Unknown,
+            }
+        }
+        Self::Known(keys)
+    }
+}
+
+/// The `{...spread}` expressions on a tag, in order.
+pub(crate) fn spreads_of(element: &ast::Element) -> impl Iterator<Item = (&Expression, Span)> {
+    element
+        .attributes
+        .iter()
+        .filter_map(|attribute| match &attribute.value {
+            AttributeValue::Expression(expression, span)
+                if attribute.name == crate::parser::SPREAD =>
+            {
+                Some((expression, *span))
+            }
+            _ => None,
+        })
+}
+
+/// Every required prop of the child must be given: written on the tag, or by a `{...spread}`.
+/// A spread only the browser knows may give it, so nothing is required of the tag then; a
+/// spread known at build time has to have the key.
 pub(crate) fn check_child_required(
     tag: &str,
     interface: &Interface,
     element: &ast::Element,
+    spreads: &SpreadKeys,
 ) -> Result<(), Diagnostic> {
+    let SpreadKeys::Known(keys) = spreads else {
+        return Ok(());
+    };
     for prop in &interface.props {
-        let given = element
-            .attributes
-            .iter()
-            .any(|attribute| camel(&attribute.name) == prop.name);
+        let given = element.attributes.iter().any(|attribute| {
+            attribute.name != crate::parser::SPREAD && camel(&attribute.name) == prop.name
+        }) || keys.iter().any(|key| spread_key_is_prop(key, &prop.name));
         if prop.required() && !given {
             return Err(Diagnostic::new(
                 element.span,
@@ -2740,4 +2851,10 @@ fn destructure(text: &str, value: &Value) -> Vec<(String, Value)> {
             (name, current.clone())
         })
         .collect()
+}
+
+/// Whether a spread's key names `prop` (`isOpen` or `is-open`, in any case).
+pub(crate) fn spread_key_is_prop(key: &str, prop: &str) -> bool {
+    let normalize = |name: &str| name.replace('-', "").to_ascii_lowercase();
+    normalize(key) == normalize(prop)
 }

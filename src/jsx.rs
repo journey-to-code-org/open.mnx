@@ -764,12 +764,6 @@ fn element_name(name: &JSXElementName<'_>) -> Option<String> {
     }
 }
 
-/// Whether a JSX tag names a component (`<Badge>`) rather than an element (`<span>`).
-fn name_is_component(name: &JSXElementName<'_>) -> bool {
-    element_name(name)
-        .is_some_and(|name| name.starts_with(|character: char| character.is_ascii_uppercase()))
-}
-
 fn attribute_name(name: &JSXAttributeName<'_>) -> String {
     match name {
         JSXAttributeName::Identifier(identifier) => identifier.name.to_string(),
@@ -1287,20 +1281,14 @@ impl Lowering<'_, '_> {
         for attribute in &opening.attributes {
             let attribute = match attribute {
                 JSXAttributeItem::Attribute(attribute) => attribute,
-                JSXAttributeItem::SpreadAttribute(spread) if !name_is_component(&opening.name) => {
-                    // `{...attributes}` on an element: the same spread as in an .zb template.
+                JSXAttributeItem::SpreadAttribute(spread) => {
+                    // `{...attributes}` on an element or a component: the same spread as in an .zb template.
                     if let Some(at) = contains_jsx(&spread.argument) {
                         return Err(self.error(at, "JSX inside a spread isn't supported"));
                     }
                     out.synthetic(" ", spread.span.start as usize);
                     self.expression(out, &spread.argument, "{...", "}")?;
                     continue;
-                }
-                JSXAttributeItem::SpreadAttribute(spread) => {
-                    return Err(self.error(
-                        spread.span.start,
-                        "spreading onto a zubra component isn't supported; pass each prop",
-                    ));
                 }
             };
             let mut name = attribute_name(&attribute.name);
