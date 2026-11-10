@@ -53,9 +53,36 @@ impl Default for FormatOptions {
     }
 }
 
+/// The comment that opts a file out: `<!-- zubra-fmt-ignore -->` as the first thing in it.
+pub const IGNORE_COMMENT: &str = "zubra-fmt-ignore";
+
+/// Whether the file opts out of formatting: its first non-blank content is the comment
+/// `<!-- zubra-fmt-ignore -->`. For a fixture that is malformed on purpose, or a file laid out by
+/// hand. It is read before parsing, so a file that doesn't parse can opt out too.
+pub fn is_ignored(source: &str) -> bool {
+    source
+        .trim_start_matches(['\u{feff}', ' ', '\t', '\r', '\n'])
+        .strip_prefix("<!--")
+        .and_then(|rest| rest.split_once("-->"))
+        .is_some_and(|(comment, _)| comment.trim() == IGNORE_COMMENT)
+}
+
+/// Whether the file's lines end in CRLF: its first line break decides. The formatter keeps the
+/// file's line endings, so a CRLF checkout (Windows with `core.autocrlf`) isn't "unformatted".
+fn uses_crlf(source: &str) -> bool {
+    source
+        .find('\n')
+        .is_some_and(|at| at > 0 && source.as_bytes()[at - 1] == b'\r')
+}
+
 /// `source` formatted. An error when it doesn't parse (the compiler's own error), or is a JSX
-/// component.
+/// component. A file that opts out ([`is_ignored`]) is returned as it is, and line endings are
+/// kept: a CRLF file stays CRLF.
 pub fn format(source: &str, options: &FormatOptions) -> Result<String, Diagnostic> {
+    if is_ignored(source) {
+        return Ok(source.to_owned());
+    }
+    let crlf = uses_crlf(source);
     let source = source.replace("\r\n", "\n").replace('\r', "\n");
     if crate::jsx::looks_like_jsx(&source) {
         return Err(Diagnostic::new(
@@ -78,7 +105,11 @@ pub fn format(source: &str, options: &FormatOptions) -> Result<String, Diagnosti
         )
         .with_help("please report it: https://github.com/journey-to-code-org/zubra/issues"));
     }
-    Ok(formatted)
+    Ok(if crlf {
+        formatted.replace('\n', "\r\n")
+    } else {
+        formatted
+    })
 }
 
 /// A change to a file: `start..end` (bytes of the original) replaced by `text`.
@@ -94,13 +125,19 @@ pub struct RangeEdit {
 /// what comes before), and the edit is the output for the tokens the range covers: from the
 /// whitespace before the first (it carries the first line's indentation) to the end of the
 /// last. The range is widened to whole lines. So it is exactly what formatting the file would write there, and nothing else changes.
-/// Like [`format`], an error when the file doesn't parse.
+/// Like [`format`], an error when the file doesn't parse, nothing for a file that opts out, and
+/// the edit's line breaks are the file's own. An offset inside a character counts as the
+/// character's start, so no offset an editor sends can be out of place.
 pub fn format_range(
     source: &str,
     start: usize,
     end: usize,
     options: &FormatOptions,
 ) -> Result<Option<RangeEdit>, Diagnostic> {
+    if is_ignored(source) {
+        return Ok(None);
+    }
+    let crlf = uses_crlf(source);
     let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
     if crate::jsx::looks_like_jsx(&normalized) {
         return Err(Diagnostic::new(
@@ -127,7 +164,15 @@ pub fn format_range(
         normalized_offset(source, start.min(source.len())),
         normalized_offset(source, end.min(source.len())),
     );
-    let (start, mut end) = (start.min(end), end.max(start));
+    // An offset inside a multi-byte character (a client counting in other units, or a stale
+    // one) is moved back to the character's start: slicing there would panic.
+    let floor = |mut offset: usize| {
+        while !normalized.is_char_boundary(offset) {
+            offset -= 1;
+        }
+        offset
+    };
+    let (start, mut end) = (floor(start.min(end)), floor(end.max(start)));
     // Whole lines: a cursor, or a selection that starts or ends mid-line, formats its lines
     // (and a selection that ends at the start of a line leaves that line alone).
     if end > start && normalized.as_bytes().get(end - 1) == Some(&b'\n') {
@@ -179,7 +224,11 @@ pub fn format_range(
     Ok(Some(RangeEdit {
         start: original_offset(source, from),
         end: original_offset(source, to),
-        text,
+        text: if crlf {
+            text.replace('\n', "\r\n")
+        } else {
+            text
+        },
     }))
 }
 
@@ -706,11 +755,46 @@ mod tests {
     }
 
     #[test]
-    fn crlf_becomes_lf() {
+    fn line_endings_are_kept() {
         assert_eq!(
             fmt("<x-a>\r\n<p>a</p>\r\n</x-a>\r\n"),
+            "<x-a>\r\n  <p>a</p>\r\n</x-a>\r\n"
+        );
+        // A formatted CRLF file is formatted: `--check` has nothing to say about it.
+        let formatted = "<script>\r\n  let a = 1\r\n</script>\r\n<x-a>\r\n  <p>a</p>\r\n</x-a>\r\n";
+        assert_eq!(fmt(formatted), formatted);
+        // The first line break decides; a stray one of the other kind follows it.
+        assert_eq!(
+            fmt("<x-a>\r\n<p>a</p>\n</x-a>\r\n"),
+            "<x-a>\r\n  <p>a</p>\r\n</x-a>\r\n"
+        );
+        assert_eq!(
+            fmt("<x-a>\n<p>a</p>\r\n</x-a>\n"),
             "<x-a>\n  <p>a</p>\n</x-a>\n"
         );
+    }
+
+    #[test]
+    fn a_file_that_opts_out_is_left_alone_even_when_it_does_not_parse() {
+        for source in [
+            "<!-- zubra-fmt-ignore -->\n<x-a>\n<p>\n</x-a>\n",
+            "\n  <!--zubra-fmt-ignore-->\n<x-a>\n      <p>a</p>\n</x-a>\n",
+        ] {
+            assert!(is_ignored(source));
+            assert_eq!(fmt(source), source);
+            assert_eq!(
+                format_range(source, 0, source.len(), &FormatOptions::default()).unwrap(),
+                None
+            );
+        }
+        // Only as the first thing in the file, and only that comment.
+        for source in [
+            "<x-a>\n<!-- zubra-fmt-ignore -->\n<p>a</p>\n</x-a>\n",
+            "<!-- about zubra-fmt-ignore -->\n<x-a>\n<p>a</p>\n</x-a>\n",
+        ] {
+            assert!(!is_ignored(source));
+            assert_ne!(fmt(source), source);
+        }
     }
 
     #[test]
@@ -808,7 +892,40 @@ mod tests {
             .unwrap();
         let mut out = source.to_owned();
         out.replace_range(edit.start..edit.end, &edit.text);
-        assert_eq!(out, "<x-a>\r\n<p>\n    x\r\n</p>\r\n<i>y</i>\r\n</x-a>\r\n");
+        // The edit's line breaks are the file's: no bare LF in a CRLF file.
+        assert_eq!(edit.text, "\r\n    x");
+        assert_eq!(
+            out,
+            "<x-a>\r\n<p>\r\n    x\r\n</p>\r\n<i>y</i>\r\n</x-a>\r\n"
+        );
+    }
+
+    #[test]
+    fn an_offset_inside_a_character_is_that_character_s_start() {
+        // "é" is two bytes and "日本" three each: every byte offset in the file must be safe.
+        let source = "<x-a>\n<p>caf\u{e9} \u{65e5}\u{672c}</p>\n      <i>\u{1f600}</i>\n</x-a>\n";
+        let whole = format(source, &FormatOptions::default()).unwrap();
+        for start in 0..=source.len() {
+            for end in [start, (start + 1).min(source.len()), source.len()] {
+                let edit = format_range(source, start, end, &FormatOptions::default()).unwrap();
+                if let Some(edit) = edit {
+                    let mut out = source.to_owned();
+                    out.replace_range(edit.start..edit.end, &edit.text);
+                    assert!(
+                        whole.contains(edit.text.trim_start_matches('\n')),
+                        "{start}..{end}"
+                    );
+                }
+            }
+        }
+        // And past the end.
+        assert!(format_range(
+            source,
+            source.len() + 9,
+            source.len() + 99,
+            &FormatOptions::default()
+        )
+        .is_ok());
     }
 
     #[test]

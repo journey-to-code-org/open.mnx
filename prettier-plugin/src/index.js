@@ -1,7 +1,9 @@
 // prettier-plugin-zubra: Prettier for .zb components.
 //
-// The template is laid out by `zubra fmt` (the compiler's formatter, so Prettier and `zubra fmt`
-// never disagree about markup). The bodies of the component's <script> and <style> are Prettier's:
+// The template is laid out by `zubra fmt` (the compiler's formatter), at the same line width: the
+// plugin's default `printWidth` for `.zb` files is `zubra fmt`'s 100, not Prettier's 80, so a file
+// Prettier has formatted passes `zubra fmt --check`. Set `printWidth` yourself and it applies to
+// both the template and the bodies; give `zubra fmt` the same `--width`. The bodies of the component's <script> and <style> are Prettier's:
 // JavaScript or TypeScript (`lang="ts"`), CSS, SCSS and Less, with your Prettier configuration,
 // indented one level inside their tag. A body that doesn't parse is left as written, and so is one
 // in a language Prettier has no parser for. `embeddedLanguageFormatting: "off"` leaves every body
@@ -25,6 +27,10 @@ export const languages = [
 ];
 
 const PLACEHOLDER = (index) => `__ZUBRA_BODY_${index}__`;
+const IGNORED = /^[\ufeff\s]*<!--\s*zubra-fmt-ignore\s*-->/;
+
+/** `zubra fmt`'s line width, so the two agree at their defaults. */
+export const PRINT_WIDTH = 100;
 
 /** The parser Prettier should use for a body, or null to leave it as written. */
 export function parserFor(tag, attributes) {
@@ -86,6 +92,9 @@ export const parsers = {
     locEnd: (node) => node.text?.length ?? 0,
     parse(text, options) {
       const source = text.replace(/\r\n?/g, '\n');
+      // A file that opts out of `zubra fmt` (its first content is `<!-- zubra-fmt-ignore -->`) is
+      // left as written, bodies included.
+      if (IGNORED.test(source)) return { type: 'root', text: source, children: [{ type: 'markup', text: source }] };
       // Swap each body Prettier will format for a placeholder, so `zubra fmt` can lay out the rest.
       const formatting = options.embeddedLanguageFormatting !== 'off';
       const blocks = formatting ? bodies(source).filter((block) => block.parser && source.slice(block.start, block.end).trim()) : [];
@@ -151,4 +160,5 @@ export const printers = {
 };
 
 export const options = {};
-export default { languages, parsers, printers, options };
+export const defaultOptions = { printWidth: PRINT_WIDTH };
+export default { languages, parsers, printers, options, defaultOptions };

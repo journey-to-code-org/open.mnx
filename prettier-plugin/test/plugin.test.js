@@ -121,10 +121,29 @@ test('every .zb in the repository formats, idempotently, to the same compiled ou
     if (before === null) continue;
     const out = await run(source);
     assert.equal(await run(out), out, `${path}: not idempotent`);
+    // At their defaults the two agree: what Prettier wrote, `zubra fmt --check` accepts.
+    assert.equal(zubraFormat(out), out, `${path}: zubra fmt would change what the plugin wrote`);
     assert.equal(await compiled(path, out), before, `${path}: compiled output changed`);
     count += 1;
   }
   assert.ok(count > 100, `only ${count} files checked`);
+});
+
+test('the default line width is zubra fmt\'s, and printWidth overrides it for both', async () => {
+  // A tag that fits in 100 columns but not in 80.
+  const tag = '  <button type="button" class="primary" aria-label="Add it" onclick={() => add(item)}>Add</button>';
+  assert.ok(tag.length > 80 && tag.length <= 100);
+  const source = `<my-x>\n${tag}\n</my-x>\n`;
+  assert.equal(await run(source), source);
+  assert.equal(await run(source), zubraFormat(source));
+  const narrow = await run(source, { printWidth: 80 });
+  assert.notEqual(narrow, source);
+  assert.equal(narrow, zubraFormat(source, { printWidth: 80 }));
+});
+
+test('a file that opts out of zubra fmt is left as written, bodies included', async () => {
+  const source = '<!-- zubra-fmt-ignore -->\n<script>\nconst   a = {b:1}\n</script>\n<my-x>\n      <p>a</p>\n</my-x>\n';
+  assert.equal(await run(source), source);
 });
 
 test('the template follows tabWidth and useTabs too', async () => {
