@@ -1,5 +1,6 @@
 // How the language server reaches the compiler: the WebAssembly build (@zubra/compiler) when it's
-// installed in the workspace (or beside the server), otherwise the `zubra` CLI (or the one in `compiler`). Both give the same diagnostics.
+// installed in the workspace (or beside the server), otherwise the `zubra` CLI (or the one in `compiler`). Both give the same diagnostics,
+// and both format (`format` answers { ok, output } or { ok: false, error }).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -49,6 +50,11 @@ function wasmBackend(wasm) {
       const response = wasm.compileFile(path, { emit: 'manifest' });
       return response.ok ? JSON.parse(response.output) : null;
     },
+    format(path, text, options) {
+      const absolute = resolve(path);
+      const response = wasm.request({ command: 'format', path: absolute, files: { [absolute]: text }, ...options });
+      return response.ok ? { ok: true, output: response.output } : { ok: false, error: response.error ?? '' };
+    },
   };
 }
 
@@ -65,6 +71,15 @@ function cliBackend(compiler) {
       const result = run(['compile', path, '--emit', 'manifest']);
       if (result.status !== 0) return null;
       try { return JSON.parse(result.stdout); } catch { return null; }
+    },
+    format(path, text, { indentWidth, useTabs, printWidth } = {}) {
+      const args = ['fmt', '--stdin', path];
+      if (useTabs) args.push('--tabs');
+      else if (indentWidth) args.push('--indent', String(indentWidth));
+      if (printWidth) args.push('--width', String(printWidth));
+      const result = run(args, text);
+      if (result.error) return { ok: false, error: result.error.message };
+      return result.status === 0 ? { ok: true, output: result.stdout } : { ok: false, error: result.stderr };
     },
   };
 }

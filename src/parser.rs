@@ -25,7 +25,7 @@ use crate::{
     script,
 };
 
-const VOID_ELEMENTS: &[&str] = &[
+pub(crate) const VOID_ELEMENTS: &[&str] = &[
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
     "track", "wbr",
 ];
@@ -233,6 +233,22 @@ pub(crate) fn parse_slot(source: &str, html: bool) -> Result<Vec<Node>, Diagnost
         return Err(parser.error("unexpected content after slot template"));
     }
     Ok(nodes)
+}
+
+/// Where the `{…}` at byte `open` of a template ends (just past its `}`), read the way the
+/// template parser reads it: markup in braces included. For the formatter, which keeps braces
+/// as written and only needs to step over them.
+pub(crate) fn braces_end(source: &str, open: usize) -> Result<usize, Diagnostic> {
+    let mut cursor = Cursor::new(source);
+    cursor.advance(open);
+    if markup_in_braces(source, open).is_some() {
+        let mut parser = TemplateParser::new(cursor);
+        parser.parse_markup_braces()?;
+        Ok(parser.cursor.position())
+    } else {
+        cursor.scan_braced()?;
+        Ok(cursor.position())
+    }
 }
 
 /// Trim a comment's text and remove the indentation its lines share.

@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // zubra language server: diagnostics from the compiler as you type, completion of directives,
 // imported components, their props and events, hover documentation from their manifests, and
-// go to definition for imported components. Speaks LSP over stdio (`--stdio`).
+// go to definition for imported components, and formatting (`zubra fmt`). Speaks LSP over stdio
+// (`--stdio`).
 //
-// initializationOptions: { compiler?: "/path/to/zubra" } — otherwise @zubra/compiler (WebAssembly)
-// when installed, else `zubra` on PATH.
+// initializationOptions: { compiler?: "/path/to/zubra", printWidth?: number } — otherwise
+// @zubra/compiler (WebAssembly) when installed, else `zubra` on PATH. printWidth is the width a
+// tag is fitted into when formatting (default 100); indentation comes from the editor.
 import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -16,17 +18,21 @@ import { completions, documentation, interfaceOf, offsetAt, positionAt, tagAt } 
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 let backend;
+let printWidth;
+let toldAboutVersion = false;
 const manifests = new Map(); // path → { mtime, component }
 
 connection.onInitialize(async (params) => {
   const folder = params.workspaceFolders?.[0]?.uri ?? params.rootUri;
   backend = await createBackend({ ...params.initializationOptions, root: folder ? fileURLToPath(folder) : undefined });
+  printWidth = Number(params.initializationOptions?.printWidth) || undefined;
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: { triggerCharacters: ['<', ' ', '{'] },
       hoverProvider: true,
       definitionProvider: true,
+      documentFormattingProvider: true,
     },
     serverInfo: { name: 'zubra-language-server', version: '1.2.0' },
   };
@@ -117,6 +123,29 @@ connection.onDefinition(({ textDocument, position }) => {
   const at = Math.max(target.search(new RegExp(`<${component.tag}[\\s>]`)), 0);
   const start = positionAt(target, at);
   return { uri: pathToFileURL(component.path).href, range: { start, end: { line: start.line, character: start.character + component.tag.length + 1 } } };
+});
+
+// Format Document (and format on save): the whole file, as `zubra fmt` lays it out, with the
+// editor's indentation. A file that doesn't parse isn't formatted: its diagnostics say why.
+connection.onDocumentFormatting(({ textDocument, options }) => {
+  const document = documents.get(textDocument.uri);
+  if (!document) return [];
+  const text = document.getText();
+  const result = backend.format(pathOf(textDocument.uri), text, {
+    indentWidth: options.tabSize,
+    useTabs: options.insertSpaces === false,
+    printWidth,
+  });
+  if (!result.ok) {
+    // A compiler from before `zubra fmt` (5.3 and older) doesn't know the command.
+    if (/unknown command|usage: zubra/.test(result.error) && !toldAboutVersion) {
+      toldAboutVersion = true;
+      connection.window.showInformationMessage('Formatting .zb files needs Zubra 5.4 or later: update @zubra/compiler (or the zubra CLI).');
+    }
+    return [];
+  }
+  if (result.output === text) return [];
+  return [{ range: { start: { line: 0, character: 0 }, end: positionAt(text, text.length) }, newText: result.output }];
 });
 
 documents.listen(connection);

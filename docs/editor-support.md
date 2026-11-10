@@ -11,6 +11,7 @@ Install **Zubra** from the [Marketplace](https://marketplace.visualstudio.com/it
 - **Completion** of directives, imported components, their props and events, and of props inside `{…}`.
 - **Hover** documentation for imported components: description, props with types and defaults, events and slots.
 - **Go to definition** for imported components.
+- **Formatting**: Format Document (Shift+Alt+F), or on save with `"editor.formatOnSave": true`. It's `zubra fmt` with your editor's indentation: the template re-indented, tags tidied, and a tag too wide for its line split one attribute per line (`zubra.format.printWidth`, default 100). It never changes what the component compiles to, and leaves expressions, comments, `<script>`, `<style>`, `<pre>` and `<textarea>` as written (see [Formatting](../README.md#formatting)). The extension is the default formatter for `.zb`. Needs Zubra 5.4 or later; with an older compiler it says so once and changes nothing.
 
 Highlighting works on its own. The rest needs the compiler, which the extension looks for in this order:
 

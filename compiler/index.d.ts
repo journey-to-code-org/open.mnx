@@ -56,6 +56,19 @@ export declare function request(request: Request): Response;
 export declare function sources(path: string, files?: Record<string, string>): Record<string, string>;
 export declare function compileFile(path: string, options?: Options): Response;
 
+export interface FormatOptions {
+  /** Spaces per level (default 2; ignored with `useTabs`). */
+  indentWidth?: number;
+  /** Indent with tabs. */
+  useTabs?: boolean;
+  /** The width a tag that starts its line is fitted into before its attributes go one per line (default 100). */
+  printWidth?: number;
+  /** Names the file in error messages. */
+  path?: string;
+}
+/** `source` laid out as `zubra fmt` does it; throws a `CompileError` when it doesn't parse. */
+export declare function format(source: string, options?: FormatOptions): string;
+
 export interface RenderOptions {
   /** The host's prop values. */
   props?: Record<string, unknown>;

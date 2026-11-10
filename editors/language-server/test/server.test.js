@@ -65,6 +65,7 @@ before(async () => {
   });
   const init = await call('initialize', { processId: process.pid, rootUri: pathToFileURL(dir).href, capabilities: {}, initializationOptions: { compiler } });
   assert.ok(init.capabilities.completionProvider);
+  assert.equal(init.capabilities.documentFormattingProvider, true);
   notify('initialized', {});
 });
 after(() => {
@@ -112,6 +113,27 @@ test('hover shows the component; go to definition opens it', async () => {
   assert.equal(definition.uri, pathToFileURL(join(dir, 'badge.zb')).href);
   assert.deepEqual(definition.range.start, { line: 5, character: 0 });
   assert.equal(await call('textDocument/hover', { textDocument: { uri }, position: { line: 3, character: 3 } }), null, 'not an imported component');
+});
+
+test('Format Document: the whole file as zubra fmt lays it out, with the editor\'s indentation', async () => {
+  const init = await call('textDocument/formatting', { textDocument: { uri: 'file:///nowhere.zb' }, options: { tabSize: 2, insertSpaces: true } });
+  assert.deepEqual(init, [], 'not an open document');
+  const uri = pathToFileURL(join(dir, 'messy.zb')).href;
+  const text = '<zb-messy>\n<p>\nhi   {name}\n</p>\n      <input   type = "text"/>\n</zb-messy>';
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const edits = await call('textDocument/formatting', { textDocument: { uri }, options: { tabSize: 4, insertSpaces: true } });
+  assert.equal(edits.length, 1);
+  assert.deepEqual(edits[0].range, { start: { line: 0, character: 0 }, end: { line: 5, character: 11 } });
+  assert.equal(edits[0].newText, '<zb-messy>\n    <p>\n        hi   {name}\n    </p>\n    <input type="text" />\n</zb-messy>\n');
+
+  const tabs = await call('textDocument/formatting', { textDocument: { uri }, options: { tabSize: 4, insertSpaces: false } });
+  assert.match(tabs[0].newText, /^\t<p>$/m);
+
+  notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: edits[0].newText }] });
+  assert.deepEqual(await call('textDocument/formatting', { textDocument: { uri }, options: { tabSize: 4, insertSpaces: true } }), [], 'already formatted: no edits');
+
+  notify('textDocument/didChange', { textDocument: { uri, version: 3 }, contentChanges: [{ text: '<zb-messy>\n<p>\n</zb-messy>' }] });
+  assert.deepEqual(await call('textDocument/formatting', { textDocument: { uri }, options: { tabSize: 2, insertSpaces: true } }), [], 'a file that doesn\'t parse is left alone');
 });
 
 test('the analysis knows where the cursor is', () => {
