@@ -69,7 +69,7 @@ pub fn is_ignored(source: &str) -> bool {
 
 /// Whether the file's lines end in CRLF: its first line break decides. The formatter keeps the
 /// file's line endings, so a CRLF checkout (Windows with `core.autocrlf`) isn't "unformatted".
-fn uses_crlf(source: &str) -> bool {
+pub(crate) fn uses_crlf(source: &str) -> bool {
     source
         .find('\n')
         .is_some_and(|at| at > 0 && source.as_bytes()[at - 1] == b'\r')
@@ -233,7 +233,7 @@ pub fn format_range(
 }
 
 /// A byte offset in `source` as an offset in the same text with `\r\n` and `\r` as `\n`.
-fn normalized_offset(source: &str, offset: usize) -> usize {
+pub(crate) fn normalized_offset(source: &str, offset: usize) -> usize {
     let bytes = source.as_bytes();
     let pairs = (0..offset.saturating_sub(1))
         .filter(|&index| bytes[index] == b'\r' && bytes[index + 1] == b'\n')
@@ -242,7 +242,7 @@ fn normalized_offset(source: &str, offset: usize) -> usize {
 }
 
 /// The inverse: where an offset in the normalized text is in `source`.
-fn original_offset(source: &str, normalized: usize) -> usize {
+pub(crate) fn original_offset(source: &str, normalized: usize) -> usize {
     let bytes = source.as_bytes();
     let (mut seen, mut index) = (0, 0);
     while index < bytes.len() && seen < normalized {

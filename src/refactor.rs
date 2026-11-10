@@ -92,7 +92,44 @@ const GLOBALS: &[&str] = &[
 ];
 
 /// Extract the markup in `start..end` of `source` into a component called `tag`.
+///
+/// What it writes is laid out as `zubra fmt` would lay it out (the new file, and the lines of
+/// this one that the new tag is on), in the file's own line endings: a repository that checks
+/// its formatting must not fail on a refactoring its editor offered.
 pub fn extract(
+    source: &str,
+    start: usize,
+    end: usize,
+    tag: &str,
+    path: &str,
+    loader: crate::Loader,
+) -> Result<Extraction, Diagnostic> {
+    if !crate::format::uses_crlf(source) {
+        return extract_lf(source, start, end, tag, path, loader);
+    }
+    // A CRLF file: worked on with LF, as the formatter does, and given back with its own line
+    // endings, so the edited file doesn't end up with both kinds.
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    let to_normalized =
+        |offset: usize| crate::format::normalized_offset(source, offset.min(source.len()));
+    let mut extraction = extract_lf(
+        &normalized,
+        to_normalized(start),
+        to_normalized(end),
+        tag,
+        path,
+        loader,
+    )?;
+    for edit in &mut extraction.edits {
+        edit.start = crate::format::original_offset(source, edit.start);
+        edit.end = crate::format::original_offset(source, edit.end);
+        edit.text = edit.text.replace('\n', "\r\n");
+    }
+    extraction.file_source = extraction.file_source.replace('\n', "\r\n");
+    Ok(extraction)
+}
+
+fn extract_lf(
     source: &str,
     start: usize,
     end: usize,
@@ -537,12 +574,50 @@ pub fn extract(
             });
         }
     }
+    let host_length = host.len();
     edits.push(Edit {
         start: from,
         end: to,
         text: host,
     });
     edits.sort_by_key(|edit| edit.start);
+
+    // Laid out as `zubra fmt` would: the new file whole, and in this file the lines the new tag
+    // is on (a tag with many props goes one attribute per line, as the formatter would put it).
+    let options = crate::FormatOptions::default();
+    if let Ok(formatted) = crate::format::format(&file, &options) {
+        file = formatted;
+    }
+    {
+        let mut after = source.to_owned();
+        for edit in edits.iter().rev() {
+            after.replace_range(edit.start..edit.end, &edit.text);
+        }
+        // Where the new tag is in the edited text: past what the import edit added before it.
+        let (shift, added_until) = edits
+            .iter()
+            .filter(|edit| edit.start < from)
+            .fold((0, 0), |(shift, _), edit| {
+                (shift + edit.text.len(), edit.start + edit.text.len())
+            });
+        let (tag_from, tag_to) = (from + shift, from + shift + host_length);
+        if let Ok(Some(range)) = crate::format::format_range(&after, tag_from, tag_to, &options) {
+            let (first, last) = (range.start.min(tag_from), range.end.max(tag_to));
+            if first >= added_until {
+                let text = format!(
+                    "{}{}{}",
+                    &after[first..range.start],
+                    range.text,
+                    &after[range.end..last]
+                );
+                if let Some(edit) = edits.iter_mut().find(|edit| edit.start == from) {
+                    edit.start = first - shift;
+                    edit.end = last - shift - host_length + (to - from);
+                    edit.text = text;
+                }
+            }
+        }
+    }
 
     // What would be written is compiled before it's offered: a refactoring must not turn a
     // component that works into one that doesn't. (A file that didn't compile to begin with
