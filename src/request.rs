@@ -17,7 +17,9 @@
 //! compiled text, `error` and `warnings` are rendered for a terminal, and `diagnostics` has
 //! each one as `{ file, line, column, severity, message, help }` for editors. `command: "check"`
 //! runs every check without producing output, and `command: "format"` answers with the source
-//! as `zubra fmt` lays it out (`indentWidth`, `useTabs`, `printWidth`).
+//! as `zubra fmt` lays it out (`indentWidth`, `useTabs`, `printWidth`). `command: "refactor"`
+//! with `action: "extract"`, `start`/`end` (byte offsets of the markup to extract) and `tag`
+//! answers with the edits that turn it into a new component (see `refactor.rs`).
 //!
 //! `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. The CLI's
 //! `zubra serve` answers one request (or batch) per line, for a long-lived process.
@@ -123,6 +125,47 @@ fn respond(request: &Map<String, Value>) -> Value {
         return match crate::format(source, &options) {
             Ok(output) => {
                 json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
+            }
+            Err(error) => json!({
+                "ok": false,
+                "output": null,
+                "error": error.render_in(source, &path),
+                "warnings": [],
+                "diagnostics": [entry(&path, &error, "error")],
+            }),
+        };
+    }
+
+    // `refactor`: edits for the editor to apply. `action: "extract"` turns the markup in the byte
+    // range `start..end` into a new component called `tag`; `output` is JSON text:
+    // `{ tag, fileName, fileSource, edits: [{ start, end, text }], props, events }`.
+    if text("command") == Some("refactor") {
+        if text("action") != Some("extract") {
+            return failure("`refactor` needs `action: \"extract\"`");
+        }
+        let offset = |key: &str| {
+            request
+                .get(key)
+                .and_then(Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+        };
+        let (Some(start), Some(end), Some(tag)) = (offset("start"), offset("end"), text("tag"))
+        else {
+            return failure("extract needs `start` and `end` (byte offsets) and `tag`");
+        };
+        return match crate::extract(source, start, end, tag, &path, &loader) {
+            Ok(extraction) => {
+                let output = json!({
+                    "tag": extraction.tag,
+                    "fileName": extraction.file_name,
+                    "fileSource": extraction.file_source,
+                    "edits": extraction.edits.iter().map(|edit| json!({
+                        "start": edit.start, "end": edit.end, "text": edit.text,
+                    })).collect::<Vec<_>>(),
+                    "props": extraction.props,
+                    "events": extraction.events,
+                });
+                json!({ "ok": true, "output": output.to_string(), "error": null, "warnings": [], "diagnostics": [] })
             }
             Err(error) => json!({
                 "ok": false,
