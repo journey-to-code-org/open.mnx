@@ -29,7 +29,7 @@ A component's `let`s last as long as the element. This chapter keeps them: in th
 
 The directive makes the component's state a document in the collection `notes`, found by its `doc` prop. Its top-level `let`s are the document's fields; `const`s are derived, so they aren't stored, and neither is anything wrapped in `ephemeral()`. Two elements with the same `doc` show the same document, and so does another tab.
 
-Try it in the [playground](https://journey-to-code-org.github.io/zubra/playground/#example=sync): type a note, reload the page, and it's still there. The JavaScript tab shows the one line the directive adds, `$collection("notes", ["doc"], $p, { text })`.
+Try it in the [playground](https://journey-to-code-org.github.io/zubra/playground/#example=sync): type a note, reload the page, and it's still there. The Runtime module tab shows the one line the directive adds, `$collection("notes", ["doc"], $p, { text })`.
 
 ## Nothing to run
 
