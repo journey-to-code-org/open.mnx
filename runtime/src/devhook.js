@@ -9,10 +9,16 @@ export const elements = new WeakMap(); // host → { tag, source, props, named, 
 export const listeners = new WeakMap(); // node → the listener parts bound to it
 export const hooks = { registered: null }; // devtools.js listens once it's loaded
 
+// Elements from before the reading side loads: it watches their writes when it does. WeakRefs,
+// so a removed element isn't kept alive, and pruned now and then on a page that never connects.
+export const early = [];
+
 /** An element finished setting up (see devtools.js for what the record holds). */
 export function register(host, record) {
   elements.set(host, record);
-  hooks.registered?.(record);
+  if (hooks.registered) return hooks.registered(record);
+  if (early.length >= 1000) early.splice(0, Infinity, ...early.filter((ref) => ref.deref()));
+  early.push(new WeakRef(record));
 }
 
 /** A listener part was bound to `node` (effects carry their part; listeners aren't effects). */

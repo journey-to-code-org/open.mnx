@@ -16,7 +16,7 @@
 import { Signal, isNative } from './signal.js';
 import { dev as effects } from './effect.js';
 import { dev as deep, raw } from './deep.js';
-import { elements, listeners, hooks } from './devhook.js';
+import { elements, listeners, hooks, early } from './devhook.js';
 
 const { introspectSources, untrack } = Signal.subtle;
 const isComputed = (value) => value instanceof Signal.Computed;
@@ -61,6 +61,10 @@ function watch(record) {
   }
 }
 hooks.registered = watch;
+for (const ref of early.splice(0)) {
+  const record = ref.deref();
+  if (record) watch(record);
+}
 
 // ---- reading -------------------------------------------------------------------------------
 
