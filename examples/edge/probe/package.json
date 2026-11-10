@@ -1,0 +1,22 @@
+{
+  "name": "zubra-example-edge-probe",
+  "private": true,
+  "type": "module",
+  "description": "Does Zubra render inside a Cloudflare Worker? A probe that renders one component from workerd (Wrangler's local runtime) and records what stops it.",
+  "scripts": {
+    "dev:naive": "wrangler dev --local --compatibility-flag nodejs_compat",
+    "dev:wasm": "wrangler dev --local src/worker-wasm.js",
+    "dev:server": "wrangler dev --local --compatibility-flag nodejs_compat src/worker-server.js"
+  },
+  "dependencies": {
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/server": "file:../../../server"
+  },
+  "devDependencies": {
+    "wrangler": "4.45.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
