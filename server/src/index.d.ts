@@ -61,6 +61,11 @@ export interface ZubraOptions {
   cache?: boolean;
   /** Serve the runtime's production build, without hot reloading (default: `NODE_ENV` is `production`). */
   production?: boolean;
+  /**
+   * Compile for the Zubra DevTools extension and serve the runtime build it reads (default: on,
+   * except in production; `ZUBRA_DEVTOOLS=1` turns it on there too).
+   */
+  devtools?: boolean;
 }
 
 export declare function createZubra(options?: ZubraOptions): Zubra;

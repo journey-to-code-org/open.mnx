@@ -585,3 +585,18 @@ test('JSX components: imported from React as React components, and as elements',
   assert.deepEqual(messages, []);
   await page.close();
 });
+
+test('devtools: true keeps the DevTools in a build: located components and the runtime\'s development build', async () => {
+  const { build } = await import('vite');
+  const root = app('plain');
+  const outDir = join(root, '.tmp-devtools-build');
+  try {
+    await build({ root, configFile: false, logLevel: 'silent', plugins: [zubra({ compiler, devtools: true })], build: { outDir, emptyOutDir: true, minify: false } });
+    const { readdirSync } = await import('node:fs');
+    const shipped = readdirSync(join(outDir, 'assets')).filter((name) => name.endsWith('.js')).map((name) => readFileSync(join(outDir, 'assets', name), 'utf8')).join('\n');
+    assert.match(shipped, /\bat: \[\d+, \d+\]/, 'components compiled with --devtools');
+    assert.match(shipped, /__ZUBRA_DEVTOOLS__/, 'the runtime with the hook');
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+});

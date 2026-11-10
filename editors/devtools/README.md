@@ -10,6 +10,10 @@ A **Zubra** pane in the browser's Elements panel (Chrome, Edge, Firefox). Select
 
 It's read-only, and it follows the page: it re-reads when the selection changes and when the page updates.
 
+## Try it
+
+Install it, then open the [playground](https://journey-to-code-org.github.io/zubra/playground/): its previews are development builds, so select an element in one and the Zubra pane shows it. Clicking a line selects it in the playground's editor.
+
 ## What it needs
 
 A development build. `@zubra/unplugin` makes one in Vite's dev server: it compiles each component with `--devtools` (which records the source lines and names) and Vite serves the runtime's development build (which has the hook). "Open in editor" goes through Vite's own `/__open-in-editor`, so it opens the editor it finds running (set `LAUNCH_EDITOR`, for instance to `code`, to choose one).

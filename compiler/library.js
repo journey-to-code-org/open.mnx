@@ -39,6 +39,9 @@ export function buildLibrary(dir, options = {}) {
   // build in place (`--watch`).
   const out = `${target}.building`;
   const runtime = options.runtime ?? '@zubra/runtime';
+  // For a demo or staging build only (it records source paths): the components compiled for the
+  // Zubra DevTools extension. Off for a library you publish.
+  const devtools = options.devtools ?? process.env.ZUBRA_DEVTOOLS === '1';
   const sources = walk(root);
   if (!sources.length) throw new Error(`zubra build --lib: no components (.zb, .zb.jsx, .zb.tsx) in ${dir}`);
   if (target === root || root.startsWith(target + sep)) throw new Error('zubra build --lib: the output directory must not contain the components');
@@ -71,7 +74,7 @@ export function buildLibrary(dir, options = {}) {
   const modules = [];
   for (const path of sources) {
     const module = posix(relative(root, path)).replace(SOURCE, '');
-    const js = compile(path, { emit: 'js' });
+    const js = compile(path, { emit: 'js', devtools });
     warnings.push(...js.warnings);
     const manifest = JSON.parse(compile(path, { emit: 'manifest', modulePath: `${module}.js` }).output);
     const declaration = manifest.modules[0].declarations.find((item) => item.customElement);
