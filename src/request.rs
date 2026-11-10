@@ -403,7 +403,7 @@ fn file_name(path: &str) -> &str {
 }
 
 /// `/app/./x/../badge.zb` → `/app/badge.zb` (lexically; the request has no filesystem).
-fn normalize(path: &str) -> String {
+pub(crate) fn normalize(path: &str) -> String {
     let path = path.replace('\\', "/");
     let absolute = path.starts_with('/');
     let mut parts: Vec<&str> = Vec::new();
