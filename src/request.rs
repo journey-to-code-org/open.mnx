@@ -16,7 +16,8 @@
 //! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }`: `output` is the
 //! compiled text, `error` and `warnings` are rendered for a terminal, and `diagnostics` has
 //! each one as `{ file, line, column, severity, message, help }` for editors. `command: "check"`
-//! runs every check without producing output.
+//! runs every check without producing output, and `command: "format"` answers with the source
+//! as `zubra fmt` lays it out (`indentWidth`, `useTabs`, `printWidth`).
 //!
 //! `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. The CLI's
 //! `zubra serve` answers one request (or batch) per line, for a long-lived process.
@@ -99,6 +100,39 @@ fn respond(request: &Map<String, Value>) -> Value {
             .map(|source| (resolved.clone(), source.clone()))
             .ok_or_else(|| format!("{resolved}: not among the request's files"))
     };
+
+    // `format`: the source laid out by `zubra fmt` (`indentWidth`, `useTabs`, `printWidth`).
+    if text("command") == Some("format") {
+        let defaults = crate::FormatOptions::default();
+        let number = |key: &str, default: usize| {
+            request
+                .get(key)
+                .and_then(Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .filter(|&value| value > 0)
+                .unwrap_or(default)
+        };
+        let options = crate::FormatOptions {
+            indent_width: number("indentWidth", defaults.indent_width),
+            use_tabs: request
+                .get("useTabs")
+                .and_then(Value::as_bool)
+                .unwrap_or(defaults.use_tabs),
+            print_width: number("printWidth", defaults.print_width),
+        };
+        return match crate::format(source, &options) {
+            Ok(output) => {
+                json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
+            }
+            Err(error) => json!({
+                "ok": false,
+                "output": null,
+                "error": error.render_in(source, &path),
+                "warnings": [],
+                "diagnostics": [entry(&path, &error, "error")],
+            }),
+        };
+    }
 
     // `convert`: a React component → a zubra JSX component (`prefix` names a one-word one).
     if text("command") == Some("convert") {
@@ -290,7 +324,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         }
         (other, _) => {
             return failure(&format!(
-                "unknown command `{other}`; expected compile, check or convert"
+                "unknown command `{other}`; expected compile, check, format or convert"
             ))
         }
     };

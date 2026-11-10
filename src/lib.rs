@@ -14,6 +14,7 @@ mod emit_interface;
 mod emit_js;
 mod events;
 mod expression;
+mod format;
 mod ir;
 mod jsx;
 mod parser;
@@ -34,6 +35,7 @@ pub use convert::{convert, convert_component, Conversion};
 pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
 pub use emit_js::StyleImports;
+pub use format::{format, FormatOptions};
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {
     serde_json::from_str(text).map_err(|error| {

@@ -128,3 +128,29 @@ test('zubra build --lib --watch rebuilds on a change, and keeps the last good bu
     child.kill();
   }
 });
+
+test('zubra fmt formats in place, checks, and reads standard input', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-fmt-'));
+  const messy = '<x-a>\n<p>a</p>\n</x-a>\n';
+  const tidy = '<x-a>\n  <p>a</p>\n</x-a>\n';
+  writeFileSync(join(dir, 'a.zb'), messy);
+  writeFileSync(join(dir, 'b.zb'), tidy);
+
+  let result = zubra(['fmt', '.', '--check'], dir);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /would format a\.zb/);
+  assert.doesNotMatch(result.stdout, /b\.zb/);
+  assert.match(result.stderr, /1 file is not formatted/);
+  assert.equal(readFileSync(join(dir, 'a.zb'), 'utf8'), messy);
+
+  result = zubra(['fmt', '.'], dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(dir, 'a.zb'), 'utf8'), tidy);
+  assert.equal(zubra(['fmt', '.', '--check'], dir).status, 0);
+
+  result = spawnSync(process.execPath, [cli, 'fmt', '--stdin', '--tabs'], { cwd: dir, env, encoding: 'utf8', input: messy });
+  assert.equal(result.stdout, '<x-a>\n\t<p>a</p>\n</x-a>\n');
+  result = spawnSync(process.execPath, [cli, 'fmt', '--stdin'], { cwd: dir, env, encoding: 'utf8', input: '<x-a>\n<p>\n</x-a>\n' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /closing tag/);
+});
