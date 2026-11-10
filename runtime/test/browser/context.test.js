@@ -88,6 +88,10 @@ test('interoperates with any Context Protocol provider and consumer', async () =
       window.foreignSet = (value) => subscribers.forEach((callback) => callback(value, () => {}));`,
     modules: ['theme-provider', 'theme-label'],
   });
+  // Content shaped like a template is checked for stripped server markup first (remark.js, a
+  // dynamic import): wait until both elements have rendered.
+  await page.waitForSelector('#ours button');
+  await page.waitForSelector('#foreign-consumer span');
   const result = await page.evaluate(async () => {
     const { theme } = await import('/theme.js');
     const { ContextRequestEvent } = await import('@zubra/runtime');

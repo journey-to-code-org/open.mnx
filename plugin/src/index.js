@@ -140,6 +140,10 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   const relativePath = (path) => path.startsWith(process.cwd()) ? path.slice(process.cwd().length + 1) : path;
   const compilerModule = options.compilerModule ?? '@zubra/compiler';
   let dev = false; // Vite's dev server: components hot-reload
+  // The Zubra DevTools in a build, not only in Vite's dev server: components compiled with
+  // --devtools, and @zubra/runtime's development build (which has the hook) instead of its
+  // production one. For demos, staging and previews; it costs bytes, so it's opt-in.
+  const devtoolsInBuilds = options.devtools ?? process.env.ZUBRA_DEVTOOLS === '1';
 
   /** CLI flags → a request for the WebAssembly compiler. */
   function asRequest(args) {
@@ -225,6 +229,14 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     },
 
     async resolveId(source, importer) {
+      // With devtools in builds: @zubra/runtime's development build, wherever it's imported from.
+      if (devtoolsInBuilds && /^@zubra\/runtime(\/|$)/.test(source)) {
+        const resolved = await this.resolve?.(source, importer, { skipSelf: true });
+        if (resolved && /[\\/]dist[\\/]production[\\/]/.test(resolved.id)) {
+          return { ...resolved, id: resolved.id.replace(/([\\/])dist[\\/]production([\\/])/, '$1src$2') };
+        }
+        return resolved;
+      }
       const [specifier, query] = split(source);
       if (!COMPONENT.test(specifier)) return null;
       let path;
@@ -296,7 +308,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
       try {
         // In Vite's dev server, what the browser DevTools panel reads: each part's place in the
         // `.zb` file and the script's signals by name (the runtime's development build reads them).
-        const devtools = dev && meta.framework === 'vite' && !server ? ['--devtools'] : [];
+        const devtools = ((dev && meta.framework === 'vite') || devtoolsInBuilds) && !server ? ['--devtools'] : [];
         output = compile(path, '--emit', 'js', '--keep-imports', '--runtime', runtime, ...styles, ...devtools);
       } catch (error) {
         return fail(this, error, path);

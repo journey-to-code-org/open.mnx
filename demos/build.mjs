@@ -30,6 +30,11 @@ const base = option('--base', process.env.GITHUB_ACTIONS && repository ? `/${rep
 const only = option('--only', '')?.split(',').filter(Boolean);
 if (!base.startsWith('/') || !base.endsWith('/')) throw new Error(`demos: --base must start and end with / (got ${base})`);
 
+// Every demo works with the Zubra DevTools extension: components compiled with --devtools and
+// the runtime's development build (@zubra/unplugin and @zubra/server read this), so a visitor
+// can inspect them. It costs some bytes, which a demo can spare.
+process.env.ZUBRA_DEVTOOLS = '1';
+
 const wasm = existsSync(join(repo, 'compiler/zubra.wasm'));
 if (!wasm) {
   if (args.includes('--require-wasm')) throw new Error('demos: compiler/zubra.wasm is missing (run `npm run build` in compiler/)');

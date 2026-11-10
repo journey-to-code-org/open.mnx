@@ -265,8 +265,12 @@ export function inspect(node) {
   };
 }
 
-/** Open `file` at `line` and `column` in the editor, through Vite's dev server. */
+/** Open `file` at `line` and `column` in the editor, through Vite's dev server (or the page). */
 export function open(file, line = 1, column = 1) {
+  // A page can show the place itself (the playground selects the line in its editor): it
+  // cancels this event. Otherwise Vite's dev server opens the editor.
+  const event = new CustomEvent('zubra:open', { detail: { file, line, column }, cancelable: true });
+  if (!globalThis.dispatchEvent(event)) return Promise.resolve(true);
   return fetch(`/__open-in-editor?file=${encodeURIComponent(`${file}:${line}:${column}`)}`).then((response) => response.ok, () => false);
 }
 

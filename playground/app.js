@@ -350,6 +350,46 @@ createApp({ render: () => h(Wrapped) }).mount('#root');`),
   },
 };
 
+// The Zubra DevTools extension reads `__ZUBRA_DEVTOOLS__` from the page it inspects, and the
+// components run in the preview frames, each with its own. This page's hook passes the
+// extension's calls on to the frame the selected node is in, so the pane works here, including
+// with extension versions that only look at the top page.
+const frameHooks = () => [...document.querySelectorAll('#previews iframe')]
+  .map((frame) => { try { return frame.contentWindow?.__ZUBRA_DEVTOOLS__; } catch { return null; } })
+  .filter(Boolean);
+globalThis.__ZUBRA_DEVTOOLS__ = {
+  version: 1,
+  connect() {
+    for (const hook of frameHooks()) hook.connect();
+    return true;
+  },
+  get ready() {
+    const hooks = frameHooks();
+    return hooks.length > 0 && hooks.every((hook) => hook.ready);
+  },
+  inspect(node) {
+    const hook = node?.ownerDocument?.defaultView?.__ZUBRA_DEVTOOLS__;
+    return hook && hook !== globalThis.__ZUBRA_DEVTOOLS__ ? hook.inspect(node) : { version: 1, component: null };
+  },
+  open(file, line, column) {
+    selectLine(line);
+    return Promise.resolve(true);
+  },
+  get updates() {
+    return frameHooks().reduce((sum, hook) => sum + (hook.updates ?? 0), 0);
+  },
+};
+
+/** Select line `line` (1-based) of the source and scroll it into view. */
+function selectLine(line) {
+  const lines = source.value.split('\n');
+  const start = lines.slice(0, line - 1).reduce((sum, text) => sum + text.length + 1, 0);
+  source.focus();
+  source.setSelectionRange(start, start + (lines[line - 1] ?? '').length);
+  const height = parseFloat(getComputedStyle(source).lineHeight) || 20;
+  source.scrollTop = Math.max(0, (line - 3) * height);
+}
+
 function showPreviews(code) {
   const box = $('#previews');
   const kinds = ['html', ...frameworks];
@@ -362,6 +402,13 @@ function showPreviews(code) {
     const frame = document.createElement('iframe');
     frame.title = `${PREVIEWS[kind].label} preview`;
     frame.srcdoc = PREVIEWS[kind].doc(code, page.value);
+    // The DevTools extension's "open in editor": select the line in the source here.
+    frame.addEventListener('load', () => {
+      frame.contentWindow.addEventListener('zubra:open', (event) => {
+        event.preventDefault();
+        selectLine(event.detail.line);
+      });
+    });
     section.append(heading, frame);
     return section;
   }));
@@ -432,22 +479,41 @@ async function main() {
   async function update() {
     const mine = ++run;
     const text = source.value;
-    const [js, element, html, dts, manifest, server] = await Promise.all([
+    const [js, element, html, dts, manifest, server, preview] = await Promise.all([
       compile(compiler, text, 'js'),
       compile(compiler, text, 'element'),
       compile(compiler, text, 'html', { partial: true }),
       compile(compiler, text, 'dts'),
       compile(compiler, text, 'manifest'),
       compile(compiler, text, 'server'),
+      // What the previews run: the same module, compiled for the Zubra DevTools extension (each
+      // part's line, the script's names). The Runtime module tab shows it without.
+      compile(compiler, text, 'js', { devtools: true }),
     ]);
     if (mine !== run) return; // a newer edit is on its way
     const error = $('#error');
+    const output = $('.pane.output');
+    const tabs = ['#out-element', '#out-js', '#out-html', '#out-dts', '#out-manifest', '#out-server'];
+    // Nothing to compile: everything on the right goes, so it follows the source.
+    if (!text.trim()) {
+      error.hidden = true;
+      delete output.dataset.stale;
+      for (const tab of tabs) show(tab, '// Nothing to compile yet: write a component on the left.', 'js');
+      $('#previews').replaceChildren(Object.assign(document.createElement('p'), { className: 'empty', textContent: 'Nothing to preview yet: write a component on the left.' }));
+      status.textContent = 'Empty';
+      return;
+    }
     if (!js.ok) {
       error.hidden = false;
       error.textContent = js.error;
       status.textContent = 'Compile error';
+      // The tabs show the error, not output from an older version. The preview keeps the last
+      // version that compiled (so it doesn't flash while you type), dimmed and labelled as such.
+      for (const tab of tabs) show(tab, `// Doesn't compile yet:\n${js.error.split('\n').map((line) => `//   ${line}`).join('\n')}`, 'js');
+      output.dataset.stale = '';
       return;
     }
+    delete output.dataset.stale;
     error.hidden = !js.warnings.length;
     error.textContent = js.warnings.join('\n');
     show('#out-js', js.output, 'js');
@@ -460,7 +526,7 @@ async function main() {
     // The server half: what @zubra/actions serves, when the component has 'use server' functions.
     const hasServer = server.ok && /^export (async )?function /m.test(server.output);
     show('#out-server', hasServer ? server.output : "// No 'use server' functions in this component.\n// Export one, and its code shows here instead of in the browser module:\n//\n//   export async function save(formData) { 'use server'; … }", 'js');
-    showPreviews(js.output);
+    showPreviews(preview.ok ? preview.output : js.output);
     status.textContent = `Compiled (${compiler.kind})`;
     const hash = await encode({ source: text, page: page.value });
     history.replaceState(null, '', `#${hash}`);

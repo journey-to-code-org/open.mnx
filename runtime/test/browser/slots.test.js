@@ -357,6 +357,9 @@ test('text alone given to an element whose template starts with a condition is s
     const inner = el.querySelector('.either');
     return `${inner.localName}:${inner.innerHTML.replace(/<!--.*?-->|<\\?zb.*?>/g, '')}`;
   }));
+  // Content shaped like the template is checked for stripped server markup first (remark.js, a
+  // dynamic import), so those elements render a moment later: wait until all of them have.
+  await page.waitForFunction(() => [...document.querySelectorAll('zb-either')].every((el) => el.querySelector('.either')));
   await page.evaluate(() => Promise.all([...document.querySelectorAll('zb-either')].map((el) => el.updateComplete)));
   assert.deepEqual(await read(), ['button:Save <b>now</b>', 'a:Go', 'button:Fallback', 'a:<b>Bold</b>', 'button:Plain'], 'text alone is content too, not server markup');
   await page.evaluate(async () => {

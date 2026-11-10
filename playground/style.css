@@ -45,3 +45,8 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-
   .source { border-right: 0; border-bottom: 1px solid var(--line); }
   .editor { min-height: 14rem; }
 }
+
+/* After a compile error the preview is the last version that compiled: dimmed, and labelled. */
+.pane.output[data-stale] [data-panel=preview] .previews { opacity: 0.4; filter: grayscale(0.6); pointer-events: none; }
+.pane.output[data-stale] [data-panel=preview]::before { content: "Last version that compiled"; display: block; padding: 0.5rem 1rem 0; font: 600 11px system-ui; text-transform: uppercase; letter-spacing: 0.04em; color: var(--danger); }
+.previews .empty { margin: 1rem; color: var(--muted, #667); font: 14px system-ui; }

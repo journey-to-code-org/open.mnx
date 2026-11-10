@@ -40,12 +40,28 @@ async function openPlayground(hash = '') {
   return { page, errors };
 }
 
+// The preview's frame, once it's running. A newer compile replaces the previews, so a frame found
+// just before that is detached: then look again.
 const frame = async (page, kind) => {
-  const handle = await page.waitForSelector(`[data-preview=${kind}] iframe`);
-  const content = await handle.contentFrame();
-  await content.waitForFunction(() => window.previewReady === true);
-  return content;
+  for (let attempt = 0; ; attempt++) {
+    const handle = await page.waitForSelector(`[data-preview=${kind}] iframe`);
+    const content = await handle.contentFrame();
+    try {
+      if (!content) throw new Error('detached');
+      await content.waitForFunction(() => window.previewReady === true);
+      return content;
+    } catch (error) {
+      if (attempt > 20 || !/detached/i.test(String(error?.message))) throw error;
+    }
+  }
 };
+
+/** Chooses an example and waits for its preview: the one running before it is replaced, not reused. */
+async function choose(page, example) {
+  await page.evaluate(() => document.querySelectorAll('[data-preview] iframe').forEach((frame) => { frame.dataset.before = ''; }));
+  await page.selectOption('#example', example);
+  await page.waitForSelector('[data-preview=html] iframe:not([data-before])');
+}
 
 test('compiles in the page and runs the component in every preview', async () => {
   const { page, errors } = await openPlayground();
@@ -149,8 +165,8 @@ test('the examples: slots with hasSlot, a list with directives, a spread, and co
 
 test("'use collection': the note is kept on the device, through a reload", async () => {
   const { page, errors } = await openPlayground();
-  await page.selectOption('#example', 'sync');
-  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('@zubra/sync'));
+  await choose(page, 'sync');
+  assert.match(await page.textContent('#out-js'), /@zubra\/sync/);
   const pad = await frame(page, 'html');
   await pad.waitForFunction(() => document.querySelector('note-pad p')?.textContent === '0 words');
   await pad.fill('note-pad textarea', 'kept on the device');
@@ -170,7 +186,9 @@ test("'use collection': the note is kept on the device, through a reload", async
 
   await page.reload();
   await page.waitForFunction(() => window.playgroundReady === true);
-  await page.selectOption('#example', 'sync');
+  // The link already holds the note-pad, so choosing it compiles it again and replaces the preview
+  // that's running: wait for the new one, not the one about to be removed.
+  await choose(page, 'sync');
   const again = await frame(page, 'html');
   await again.waitForFunction(() => document.querySelector('note-pad textarea')?.value === 'kept on the device');
   assert.equal(await again.textContent('note-pad p'), '4 words');
@@ -217,5 +235,77 @@ test('the source and the output are coloured, and the docs link goes to the docs
   await page.waitForFunction(() => document.querySelector('#out-js .tok-k'));
   assert.equal(await page.getAttribute('#docs-link', 'href'), '../docs/');
   assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('the Zubra DevTools extension works on the playground: its hook reaches the previews, and a line opens in the editor', async () => {
+  const { page, errors } = await openPlayground();
+  await frame(page, 'html');
+  // As the extension calls it, on the page it inspects: connect, then inspect the selected node.
+  const result = await page.evaluate(async () => {
+    const hook = globalThis.__ZUBRA_DEVTOOLS__;
+    hook.connect();
+    for (let i = 0; i < 100 && !hook.ready; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    const preview = document.querySelector('[data-preview=html] iframe').contentDocument;
+    const output = preview.querySelector('hello-counter output');
+    const before = hook.inspect(output);
+    preview.querySelector('hello-counter button.more').click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const after = hook.inspect(output);
+    return {
+      tag: before.component.tag,
+      located: before.component.located,
+      here: before.bindings.filter((binding) => binding.here).map(({ operation, at, dependsOn }) => ({ operation, line: at?.line, dependsOn })),
+      written: after.lastUpdate.written,
+      updates: hook.updates,
+      outside: hook.inspect(document.body).component,
+    };
+  });
+  assert.deepEqual(result, {
+    tag: 'hello-counter', located: true,
+    here: [{ operation: 'textContent = …', line: 15, dependsOn: ['label', 'count'] }],
+    written: ['count'], updates: 1, outside: null,
+  });
+  // The Runtime module tab is still the plain build: the DevTools fields are only in the preview.
+  assert.doesNotMatch(await page.$eval('#out-js', (pre) => pre.textContent), /\bat: \[|\$dev/);
+
+  // "Open in editor" from the pane: the frame's own hook (newer extensions read it) and the
+  // page's both select the line in the source.
+  const selected = () => page.$eval('#source', (area) => area.value.slice(area.selectionStart, area.selectionEnd));
+  await page.evaluate(() => document.querySelector('[data-preview=html] iframe').contentWindow.__ZUBRA_DEVTOOLS__.open('/playground/component.zb', 15, 3));
+  assert.equal(await selected(), '  <output>{label}: {count}</output>');
+  await page.evaluate(() => globalThis.__ZUBRA_DEVTOOLS__.open('/playground/component.zb', 16, 3));
+  assert.match(await selected(), /^  <button type="button" class="more"/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('after a compile error the tabs show it and the preview is marked old; an empty source clears everything', async () => {
+  const { page } = await openPlayground();
+  await frame(page, 'html');
+  const stale = () => page.$eval('.pane.output', (pane) => pane.hasAttribute('data-stale'));
+  const edit = (change) => page.$eval('#source', (area, change) => { area.value = (0, eval)(`(${change})`)(area.value); area.dispatchEvent(new Event('input')); }, change);
+  assert.equal(await stale(), false);
+
+  await edit(`(v) => v.replace(' label="Clicks"', '')`);
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'Compile error');
+  assert.equal(await stale(), true);
+  assert.match(await page.textContent('#error'), /unknown reference `label`/);
+  assert.match(await page.textContent('#out-js'), /^\/\/ Doesn't compile yet:[\s\S]*unknown reference `label`/, 'not the old module');
+  assert.match(await page.textContent('#out-element'), /Doesn't compile yet/);
+  assert.equal(await page.$eval('#previews', (box) => getComputedStyle(box).opacity), '0.4');
+
+  await edit(`(v) => v.replace('<hello-counter count:model={0}>', '<hello-counter count:model={0} label="Taps">')`);
+  await page.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Compiled'));
+  assert.equal(await stale(), false);
+  assert.match(await page.textContent('#out-js'), /Taps/);
+
+  await edit(`() => ''`);
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'Empty');
+  assert.equal(await page.$('#previews iframe'), null, 'no preview of the old component');
+  assert.match(await page.textContent('#previews'), /Nothing to preview yet/);
+  assert.match(await page.textContent('#out-js'), /Nothing to compile yet/);
+  assert.equal(await page.$eval('#error', (box) => box.hidden), true);
+  assert.equal(await stale(), false);
   await page.close();
 });

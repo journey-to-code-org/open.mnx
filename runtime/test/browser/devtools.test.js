@@ -175,6 +175,23 @@ test('the extension\'s pane, on a live page: the selection, Open in editor, and 
   await page.close();
 });
 
+test('a page can open a location itself: open() asks it first', { skip }, async () => {
+  const { page } = await connected();
+  const requests = [];
+  page.on('request', (request) => { if (request.url().includes('__open-in-editor')) requests.push(request.url()); });
+  const opened = await page.evaluate(async () => {
+    let seen = null;
+    const listener = (event) => { seen = event.detail; event.preventDefault(); };
+    addEventListener('zubra:open', listener);
+    const handled = await globalThis.__ZUBRA_DEVTOOLS__.open('/x/dt-panel.zb', 11, 21);
+    removeEventListener('zubra:open', listener);
+    return { handled, seen };
+  });
+  assert.deepEqual(opened, { handled: true, seen: { file: '/x/dt-panel.zb', line: 11, column: 21 } });
+  assert.deepEqual(requests, [], 'no request to the dev server when the page handled it');
+  await page.close();
+});
+
 test('the production build installs no hook', { skip: !production && 'runs with ZUBRA_RUNTIME=production' }, async () => {
   const { page } = await open('<dt-plain></dt-plain>', { modules: ['dt-plain'] });
   assert.equal(await page.evaluate(() => typeof globalThis.__ZUBRA_DEVTOOLS__), 'undefined');

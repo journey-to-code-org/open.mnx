@@ -105,6 +105,8 @@ Components that import the edited one are recompiled too. Other bundlers' watch 
 
 The dev server also compiles each component for the **Zubra DevTools** (`--devtools`): select a node in the browser's Elements panel and the Zubra pane shows its component's `.zb` file and line, its props and state, and each binding's line and the signals it reads (see `editors/devtools`). Builds carry none of it.
 
+To use the DevTools on a build too (a demo, a staging or preview deploy), pass `zubra({ devtools: true })` or set `ZUBRA_DEVTOOLS=1`: components are compiled the same way and `@zubra/runtime` resolves to its development build, which has the hook. It costs some bytes, so production builds leave it off by default.
+
 ## Tests
 
 `npm test` builds real React, Vue and plain Vite apps, runs them in Chromium, type-checks the generated typings with TypeScript, and checks the dev server, `build --watch` and error reporting. It needs a Rust toolchain (the compiler is built from this repository) and Playwright with Chromium.

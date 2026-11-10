@@ -10,6 +10,10 @@ A **Zubra** pane in the browser's Elements panel (Chrome, Edge, Firefox). Select
 
 It's read-only, and it follows the page: it re-reads when the selection changes and when the page updates.
 
+## Try it
+
+Install it, then open the [playground](https://journey-to-code-org.github.io/zubra/playground/): its previews are development builds, so select an element in one and the Zubra pane shows it. Clicking a line selects it in the playground's editor.
+
 ## What it needs
 
 A development build. `@zubra/unplugin` makes one in Vite's dev server: it compiles each component with `--devtools` (which records the source lines and names) and Vite serves the runtime's development build (which has the hook). "Open in editor" goes through Vite's own `/__open-in-editor`, so it opens the editor it finds running (set `LAUNCH_EDITOR`, for instance to `code`, to choose one).
@@ -31,7 +35,7 @@ Until it's in the stores, load it unpacked from this folder:
 
 Then open DevTools on your app, select an element, and find **Zubra** beside Styles and Computed.
 
-To package it for a store: `cd editors/devtools && zip -r ../zubra-devtools.zip . -x 'test/*' package.json README.md`. Before uploading to addons.mozilla.org, `npx web-ext lint --source-dir editors/devtools --self-hosted` runs the same checks its validator does (CI runs it too). The manifest declares that the extension collects no data (`data_collection_permissions`), which addons.mozilla.org requires of new add-ons.
+To package it for a store: `cd editors/devtools && npm run pack`, which writes `editors/zubra-devtools-<version>.zip` (manifest.json at its root, without the tests, scripts, README and package.json). It uses Node alone, so it works on Windows too, where there's no `zip` command. The same zip goes to the Chrome Web Store, Edge Add-ons and Firefox Add-ons. Before uploading to addons.mozilla.org, `npx web-ext lint --source-dir editors/devtools --self-hosted` runs the same checks its validator does (CI runs it too). The manifest declares that the extension collects no data (`data_collection_permissions`), which addons.mozilla.org requires of new add-ons.
 
 ## Tests
 
