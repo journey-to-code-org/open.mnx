@@ -22,7 +22,7 @@ Two binaries share the name. The **Rust CLI** (`zubra`, built with `cargo build 
 
 **Check a component**: `zubra check src/components/x.zb` → read each error's caret line and `help:` → fix → re-run until `no errors`.
 
-**Server HTML for a page in a non-Node server**: start one `zubra serve` per process (the Flask example keeps one behind a lock: `examples/backends/flask-garden/garden/zubra.py`). Per render, write one JSON line:
+**Server HTML for a page in a non-Node server**: start one `zubra serve` per process (the Python package in `clients/python` keeps one behind a lock). Per render, write one JSON line:
 
 ```json
 {"command":"compile","emit":"html","path":"/c/price-tag.zb","files":{"/c/price-tag.zb":"<source>"},"props":{"cents":129900},"partial":true}

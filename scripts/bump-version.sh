@@ -15,6 +15,11 @@ done
 # versions too, beside "resolved": "file:../…".
 perl -0pi -e "s/\"version\": \"[0-9.]+\",(\s*\"resolved\": \"file:)/\"version\": \"$v\",\1/g" sync/package-lock.json
 sed -i -E "/^name = \"zubra\"$/{n;s/^version = \"[0-9.]+\"/version = \"$v\"/}" Cargo.lock
+# The Axum example is its own workspace with its own lockfile, which names this crate's version:
+# left behind, its `cargo test --locked` fails on the first build after a release.
+sed -i -E "/^name = \"zubra\"$/{n;s/^version = \"[0-9.]+\"/version = \"$v\"/}" examples/backends/axum-garden/Cargo.lock
+# zubra-macros compiles with exactly this release of the compiler.
+sed -i -E "s/^(zubra = \{ path = \"\.\.\", version = \"=)[0-9.]+\"/\\1$v\"/" macros/Cargo.toml
 # The packages that need the compiler, runtime or server ask for this release or later in its major.
 range="^$(echo "$v" | sed -E 's/^([0-9]+\.[0-9]+)\..*/\1.0/')"
 for f in plugin/package.json plugin/package-lock.json server/package.json server/package-lock.json actions/package.json actions/package-lock.json sync/package.json sync/package-lock.json; do

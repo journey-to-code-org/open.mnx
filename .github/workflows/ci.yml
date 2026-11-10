@@ -21,6 +21,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      # The release's binary archives (.github/workflows/release.yml).
+      - run: scripts/package-binary.test.sh
 
   runtime:
     name: Runtime (unit, browser, tools)
@@ -313,6 +315,37 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python -m unittest discover -s tests -v
         working-directory: examples/backends/flask-garden
+      # The same garden from Axum: the pages must be the Flask example's HTML. No Node.js, no child process.
+      - name: Start the Flask garden
+        working-directory: examples/backends/flask-garden
+        run: |
+          ZUBRA_COMPILER="$GITHUB_WORKSPACE/target/debug/zubra" python app.py > flask.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fs http://127.0.0.1:5000/ > /dev/null && exit 0; sleep 1; done
+          cat flask.log; exit 1
+      - run: cargo test --locked
+        working-directory: examples/backends/axum-garden
+        env:
+          FLASK_GARDEN_URL: http://127.0.0.1:5000
+
+  python-client:
+    name: Python package (zubra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: cargo build --locked
+      - run: pip install jinja2
+      # The package against the real compiler, then a wheel built and installed the way pip does.
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+        working-directory: clients/python
+        env:
+          ZUBRA_COMPILER: ${{ github.workspace }}/target/debug/zubra
 
   hypermedia:
     name: Hypermedia examples (Hono + htmx, on Node.js and Bun)

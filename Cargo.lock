@@ -1002,6 +1002,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zubra-macros"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zubra",
+]
+
+[[package]]
 name = "zubra-sync"
 version = "0.1.0"
 dependencies = [

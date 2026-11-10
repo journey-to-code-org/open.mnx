@@ -2,6 +2,8 @@
 
 ![Garden plots](../../../demos/shots/flask-garden.jpg)
 
+The same garden from Rust is in [`../axum-garden`](../axum-garden), and its test checks the HTML is identical.
+
 This one needs a server, so it isn't in the [live demos](https://journey-to-code-org.github.io/zubra/); the commands below run it.
 
 A community garden's plot sign-up, in Python: Flask routes, Jinja templates and SQLite (the
@@ -23,7 +25,7 @@ Set `FLASK_DEBUG=1` to recompile components on every request while you edit them
 
 | | |
 |---|---|
-| `garden/zubra.py` | Zubra for Python: `Zubra(components).page().render(name, **props)`, CSS and browser modules. About 100 lines, standard library only. |
+| the `zubra` package | [`clients/python`](../../../clients/python): `Zubra(components).page().render(name, **props)`, CSS and browser modules, Jinja helpers. Standard library only. |
 | `garden/__init__.py` | The Flask app: routes, validation, and `zubra(…)` for templates. |
 | `garden/store.py` | Plots, reservations, the waitlist and harvests, in SQLite. |
 | `templates/` | Jinja pages. `{{ zubra('crop-picker', name='crops', options=crops) }}` renders a component. |
@@ -32,7 +34,7 @@ Set `FLASK_DEBUG=1` to recompile components on every request while you edit them
 
 ## How it works
 
-`zubra.py` keeps one `zubra serve` process: a JSON request per line on its standard input, and a
+The `zubra` package keeps one `zubra serve` process: a JSON request per line on its standard input, and a
 JSON response per line back. Each request carries every component's source, so imports between
 components resolve without the CLI reading the disk:
 

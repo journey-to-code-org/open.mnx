@@ -9,17 +9,30 @@ from pathlib import Path
 from flask import Flask, Response, abort, g, redirect, render_template, request, send_from_directory, url_for
 from markupsafe import Markup
 
-from .zubra import REPO, Zubra
+from zubra import Zubra
 from .store import CROP_NAMES, CROPS, MAX_CROPS, Store
 
 HERE = Path(__file__).resolve().parent.parent
+REPO = HERE.parents[2]
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def repo_compiler() -> str | None:
+    """This repository's own cargo build, when there is one (`cargo build` at the root). A real app
+    doesn't need this: `pip install zubra` brings the compiler, or put one on the PATH."""
+    exe = ".exe" if os.name == "nt" else ""
+    for build in ("release", "debug"):
+        candidate = REPO / "target" / build / f"zubra{exe}"
+        if candidate.is_file():
+            return str(candidate)
+    return None
 
 
 def create_app(*, store: Store | None = None, cache: bool = True) -> Flask:
     app = Flask(__name__, template_folder=str(HERE / "templates"), static_folder=str(HERE / "static"))
     store = store or Store(os.environ.get("GARDEN_DB", ":memory:"))
-    zubra = Zubra(HERE / "components", cache=cache)
+    # ZUBRA_COMPILER still wins; then this checkout's build; then the package's own lookup.
+    zubra = Zubra(HERE / "components", compiler=os.environ.get("ZUBRA_COMPILER") or repo_compiler(), cache=cache)
     # @zubra/runtime's ES modules, served as they are. In a deploy you'd copy runtime/src (or the
     # npm package's files) next to your static files; there's nothing to build.
     runtime = Path(os.environ.get("ZUBRA_RUNTIME", REPO / "runtime" / "src"))

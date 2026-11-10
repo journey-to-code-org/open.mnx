@@ -1,7 +1,10 @@
 # Releases a version when it reaches main: when the version in runtime/package.json (set by
 # scripts/bump-version.sh in the release PR) has no tag yet, this publishes the eight npm packages
 # with provenance (scripts/publish.mjs), then tags the commit and makes the GitHub release, with the
-# version's CHANGELOG.md section as its notes and the VS Code extension's .vsix attached.
+# version's CHANGELOG.md section as its notes and the VS Code extension's .vsix attached. A second
+# job then builds the `zubra` CLI for Linux (glibc and musl, x64 and arm64), macOS (x64, arm64) and
+# Windows (x64) and attaches the archives with a SHA256SUMS file, so servers written in anything
+# can run `zubra serve` without Node or Rust.
 #
 # Pushes that don't change the version do nothing. It can be run again from the Actions tab: npm
 # packages already published are skipped, and the release step only runs while the tag is missing.
@@ -28,14 +31,19 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-permissions:
-  contents: write # the tag and the release
-  id-token: write # trusted publishing (npm and the Marketplace) and npm's provenance
+# Nothing by default: each job asks for what it does. The jobs that build the binaries run
+# cargo and third-party toolchains, and must not hold the token that can publish or write releases.
+permissions: {}
 
 jobs:
   release:
     name: Publish and release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag and the release
+      id-token: write # trusted publishing (npm and the Marketplace) and npm's provenance
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -130,3 +138,115 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         working-directory: editors/vscode
         run: npx --yes @vscode/vsce publish --oidc --packagePath "zubra-$VERSION.vsix"
+
+  # Prebuilt CLI binaries for the release just made, or for a release that is missing them (this
+  # job runs on every push to main, and does nothing once the release has a SHA256SUMS file).
+  binaries-needed:
+    name: Binaries needed?
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      needed: ${{ steps.check.outputs.needed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          if ! gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "v$VERSION has no release yet: nothing to attach binaries to."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif ! gh api "repos/$GH_REPO/contents/scripts/package-binary.sh?ref=v$VERSION" > /dev/null 2>&1; then
+            # The binaries are built from the tag, with the tag's own packaging script. A release
+            # from before that script existed has nothing to build them with, and would fail this
+            # job on every push to main until the next release.
+            echo "v$VERSION was tagged before binaries were built: none for it."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif gh release view "v$VERSION" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
+            echo "v$VERSION already has its binaries."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  binaries:
+    name: Binary (${{ matrix.target }})
+    needs: [release, binaries-needed]
+    if: needs.binaries-needed.outputs.needed == 'true'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest runners, so the glibc binaries run on older distributions.
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          # Static, for Alpine and for containers with no libc to match.
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, musl: true }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04-arm, musl: true }
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The tag, not the commit that triggered the run: the binaries are the release's.
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: ${{ matrix.target }}
+      - name: musl tools
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --bin zubra --target ${{ matrix.target }}
+      - name: Run what was built
+        run: |
+          exe=target/${{ matrix.target }}/release/zubra
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          "$exe" fmt --stdin <<< '<hello-x></hello-x>' | grep -q 'hello-x'
+      # The archive's path from the workspace, not the absolute one the script prints: on Windows
+      # that is a Git Bash path (/d/a/…), which the upload step (not a shell) can't open.
+      - id: pack
+        run: |
+          archive="$(scripts/package-binary.sh ${{ matrix.target }} ${{ needs.release.outputs.version }})"
+          echo "archive=dist/$(basename "$archive")" >> "$GITHUB_OUTPUT"
+          ls -l "dist/$(basename "$archive")"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zubra-${{ matrix.target }}
+          path: ${{ steps.pack.outputs.archive }}
+          if-no-files-found: error
+
+  attach-binaries:
+    name: Attach the binaries to the release
+    needs: [release, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # uploading to the release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zubra-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums, then attach (the checksums go last, as they mark the release complete)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          cd dist
+          ls -l
+          [ "$(ls | wc -l)" -eq 7 ] || { echo "::error::expected 7 archives"; exit 1; }
+          sha256sum * > SHA256SUMS
+          gh release upload "v$VERSION" --clobber $(ls | grep -v '^SHA256SUMS$')
+          gh release upload "v$VERSION" --clobber SHA256SUMS
