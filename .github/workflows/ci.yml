@@ -489,6 +489,16 @@ jobs:
       - run: cargo build --release --locked
       - run: node --test skills/test/skills.test.js
 
+  guide-pages:
+    name: Guide pages (snippets match the example apps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test docs/test/guide-pages.test.js
+
   skills-agent:
     # The skill in use: an agent writes a component from it alone (plan/roadmap-4.0.md, decision 4).
     # Non-blocking, and only where an API key is set, until it has been stable for three releases.
