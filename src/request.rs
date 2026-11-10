@@ -7,7 +7,7 @@
 //! ```json
 //! { "command": "compile", "emit": "js", "path": "/app/inbox.zb",
 //!   "files": { "/app/inbox.zb": "…", "/app/badge.zb": "…" },
-//!   "runtime": "@zubra/runtime", "keepImports": true,
+//!   "runtime": "@zubra/runtime", "keepImports": true, "devtools": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
 //!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true,
 //!   "pending": ["reviews"] }
@@ -176,23 +176,26 @@ fn respond(request: &Map<String, Value>) -> Value {
     let result = match (command, text("emit").unwrap_or("html")) {
         ("check", _) => crate::compile_js_with(source, &path, runtime, Some(".js"), &loader)
             .map(|_| String::new()),
-        ("compile", "js") => match (text("cssImport"), text("cssImportInline")) {
-            (Some(stylesheet), Some(inline)) => crate::compile_js_for_bundler(
+        ("compile", "js") => {
+            let style_imports = match (text("cssImport"), text("cssImportInline")) {
+                (Some(stylesheet), Some(inline)) => Some(StyleImports { stylesheet, inline }),
+                (None, None) => None,
+                _ => return failure("`cssImport` and `cssImportInline` go together"),
+            };
+            let flag = |name: &str| request.get(name).and_then(Value::as_bool).unwrap_or(false);
+            crate::compile_js_options(
                 source,
                 &path,
-                runtime,
-                StyleImports { stylesheet, inline },
+                &crate::JsOptions {
+                    runtime,
+                    component_extension: (!flag("keepImports") && style_imports.is_none())
+                        .then_some(".js"),
+                    style_imports,
+                    devtools: flag("devtools"),
+                },
                 &loader,
-            ),
-            (None, None) => {
-                let keep = request
-                    .get("keepImports")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                crate::compile_js_with(source, &path, runtime, (!keep).then_some(".js"), &loader)
-            }
-            _ => return failure("`cssImport` and `cssImportInline` go together"),
-        },
+            )
+        }
         ("compile", "element") => {
             let keep = request
                 .get("keepImports")

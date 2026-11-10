@@ -28,17 +28,33 @@ const isPlain = (value) => {
 /** The object behind a reactive proxy, or the value itself. */
 export const raw = (value) => (value && typeof value === 'object' && value[RAW]) || value;
 
+// @dev
+/**
+ * For the DevTools hook (devtools.js), in development only: each property signal's object and
+ * key, so it can be named, and `wrote` hears each write through a proxy.
+ */
+export const dev = { propertyOf: new WeakMap(), wrote: null };
+// @dev-end
+
 function track(target, key) {
   let map = signals.get(target);
   if (!map) signals.set(target, (map = new Map()));
   let signal = map.get(key);
-  if (!signal) map.set(key, (signal = new Signal.State(0)));
+  if (!signal) {
+    map.set(key, (signal = new Signal.State(0)));
+    // @dev
+    dev.propertyOf.set(signal, { target, key });
+    // @dev-end
+  }
   signal.get();
 }
 
 function trigger(target, key) {
   const signal = signals.get(target)?.get(key);
   if (signal) signal.set(signal.get() + 1);
+  // @dev
+  if (signal) dev.wrote?.(signal);
+  // @dev-end
 }
 
 const handler = {

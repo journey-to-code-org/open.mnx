@@ -12,6 +12,10 @@ import { Signal } from './signal.js';
 import { wrap, raw } from './deep.js';
 import { effect, scope, root as rootScope, tick, batch } from './effect.js';
 import { RESOURCE } from './resource.js';
+// @dev (left out of the production build: scripts/build-production.js)
+import { dev as devEffects } from './effect.js';
+import { register as devRegister, listened as devListened } from './devhook.js';
+// @dev-end
 
 const { untrack } = Signal.subtle;
 const TEXT = 3;
@@ -690,6 +694,12 @@ function listen(part, node) {
 }
 
 function bind(part, node, hydrating, context) {
+  // @dev
+  // The effects created here are this part's (for the DevTools hook, devtools.js).
+  const outerLabel = devEffects.label;
+  devEffects.label = { part, node };
+  if (part.on && !part.global) devListened(part, node);
+  // @dev-end
   if (part.text) {
     effect(() => {
       const text = part.text();
@@ -764,6 +774,9 @@ function bind(part, node, hydrating, context) {
   } else if (part.slot) {
     bindSlot(part, node, hydrating, context);
   }
+  // @dev
+  devEffects.label = outerLabel;
+  // @dev-end
 }
 
 /** The signal saying whether slot `name` has content (shared by hasSlot() and the slot). */
@@ -1738,6 +1751,9 @@ function defineElement(tag, definition) {
         mount: [], unmount: [], host: this, props: $p, instance: ++instances, ids: 0, filled: new Map(), states: [], kept, hydrated: new Signal.State(false),
         internals: this.#internals, formReset: [], formRestore: [], formDisabled: [],
       };
+      // @dev
+      let named = null; // the script's signals by name (a --devtools build)
+      // @dev-end
       // The element's own root: an effect that inserted it (a list row) doesn't own it, so
       // re-running that effect can't dispose the element's effects.
       this.#scope = rootScope(() => {
@@ -1749,7 +1765,17 @@ function defineElement(tag, definition) {
         const initial = (name, compute) => {
           if (!this.#given.has(name)) this.#signals[name].set(compute());
         };
-        try { parts = setup ? setup($p, (name, detail) => this.#emit(name, detail), initial) : []; } finally { current = previous; }
+        // @dev
+        // A --devtools build hands over its script's signals by name, for the DevTools hook.
+        const dev = (names) => { named = names; };
+        // @dev-end
+        try {
+          parts = setup ? setup($p, (name, detail) => this.#emit(name, detail), initial
+            // @dev
+            , dev
+            // @dev-end
+          ) : [];
+        } finally { current = previous; }
         // A form control with one two-way prop: that's what it submits, and what a form reset
         // restores, unless the script says otherwise.
         const models = Object.keys(props).filter((name) => props[name].model);
@@ -1829,6 +1855,9 @@ function defineElement(tag, definition) {
       // always calls formDisabledCallback after connectedCallback, so this never runs there (the
       // browser tests confirm the behaviour without it); it guards engines that order the
       // callbacks the other way, which the test suite can't currently exercise.
+      // @dev
+      devRegister(this, { tag, definition, props: this.#signals, named, scope: this.#scope });
+      // @dev-end
       if (this.#disabled) for (const fn of this.#hooks.formDisabled) fn(true);
     }
   }

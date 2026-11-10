@@ -26,7 +26,8 @@
     <section class="pane output" aria-label="Output">
       <div role="tablist" aria-label="Output" id="tabs">
         <button type="button" role="tab" data-tab="preview" aria-selected="true">Preview</button>
-        <button type="button" role="tab" data-tab="js">JavaScript</button>
+        <button type="button" role="tab" data-tab="element" title="zubra compile --emit element: the custom element as you'd write it by hand">Element</button>
+        <button type="button" role="tab" data-tab="js" title="zubra compile --emit js: the module for @zubra/runtime, which the preview runs">Runtime module</button>
         <button type="button" role="tab" data-tab="html">Server HTML</button>
         <button type="button" role="tab" data-tab="dts">Typings</button>
         <button type="button" role="tab" data-tab="manifest">Manifest</button>
@@ -36,6 +37,7 @@
       <div class="panel" data-panel="preview">
         <div class="previews" id="previews"></div>
       </div>
+      <pre class="panel code" data-panel="element" hidden><code id="out-element"></code></pre>
       <pre class="panel code" data-panel="js" hidden><code id="out-js"></code></pre>
       <pre class="panel code" data-panel="html" hidden><code id="out-html"></code></pre>
       <pre class="panel code" data-panel="dts" hidden><code id="out-dts"></code></pre>

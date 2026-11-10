@@ -365,6 +365,7 @@ pub fn compile_js(source: &str, runtime: &str, source_name: &str) -> Result<Stri
                 source_name,
                 component_extension: Some(".js"),
                 style_imports: None,
+                devtools: None,
             },
         )
     })
@@ -391,6 +392,40 @@ pub fn compile_js_with(
     component_extension: Option<&str>,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
+    compile_js_options(
+        source,
+        path,
+        &JsOptions {
+            runtime,
+            component_extension,
+            style_imports: None,
+            devtools: false,
+        },
+        loader,
+    )
+}
+
+/// What a component's JavaScript module is compiled with; [`compile_js_options`] takes them all.
+#[derive(Clone, Copy, Debug)]
+pub struct JsOptions<'a> {
+    /// The module specifier the output imports the runtime from.
+    pub runtime: &'a str,
+    /// Rewrite `.zb` imports to this extension, or keep them (`None`, for bundlers).
+    pub component_extension: Option<&'a str>,
+    /// Import the `<style>` through the bundler instead of inlining it.
+    pub style_imports: Option<StyleImports<'a>>,
+    /// For the browser DevTools (`--devtools`): record the path, each part's source location and
+    /// the script's signals by name. For development builds only; it adds bytes.
+    pub devtools: bool,
+}
+
+/// The JavaScript module for the component at `path`, with every option.
+pub fn compile_js_options(
+    source: &str,
+    path: &str,
+    options: &JsOptions<'_>,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
     front(source, Some(path), Some(loader), |source| {
         let component = load(source, path, Some(loader))?;
         let source_name = std::path::Path::new(path).file_name().map_or_else(
@@ -400,10 +435,11 @@ pub fn compile_js_with(
         emit_js::emit(
             &component,
             &emit_js::Options {
-                runtime,
+                runtime: options.runtime,
                 source_name: &source_name,
-                component_extension,
-                style_imports: None,
+                component_extension: options.component_extension,
+                style_imports: options.style_imports,
+                devtools: options.devtools.then_some(path),
             },
         )
     })
@@ -454,22 +490,17 @@ pub fn compile_js_for_bundler(
     style_imports: StyleImports<'_>,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
-    front(source, Some(path), Some(loader), |source| {
-        let component = load(source, path, Some(loader))?;
-        let source_name = std::path::Path::new(path).file_name().map_or_else(
-            || path.to_owned(),
-            |name| name.to_string_lossy().into_owned(),
-        );
-        emit_js::emit(
-            &component,
-            &emit_js::Options {
-                runtime,
-                source_name: &source_name,
-                component_extension: None,
-                style_imports: Some(style_imports),
-            },
-        )
-    })
+    compile_js_options(
+        source,
+        path,
+        &JsOptions {
+            runtime,
+            component_extension: None,
+            style_imports: Some(style_imports),
+            devtools: false,
+        },
+        loader,
+    )
 }
 
 // ---- styles ---------------------------------------------------------------------------------

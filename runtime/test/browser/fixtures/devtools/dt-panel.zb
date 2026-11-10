@@ -1,0 +1,18 @@
+<!-- The DevTools fixture: state, a derived value, a list, a listener and a child component. -->
+<script>
+  import './dt-badge.zb'
+  let count = 0
+  let items = [{ text: "a", done: false }]
+  const doubled = count * 2
+</script>
+<dt-panel label="Panel">
+  <button class="inc" onclick={() => count++}>{label}: {count}</button>
+  <button class="add" onclick={() => items.push({ text: "b", done: true })}>Add</button>
+  <p class="double">{doubled}</p>
+  <ul>
+    <zb-each items={items} as="item">
+      <li class:done={item.done}>{item.text}</li>
+    </zb-each>
+  </ul>
+  <dt-badge value={count}></dt-badge>
+</dt-panel>

@@ -432,8 +432,9 @@ async function main() {
   async function update() {
     const mine = ++run;
     const text = source.value;
-    const [js, html, dts, manifest, server] = await Promise.all([
+    const [js, element, html, dts, manifest, server] = await Promise.all([
       compile(compiler, text, 'js'),
+      compile(compiler, text, 'element'),
       compile(compiler, text, 'html', { partial: true }),
       compile(compiler, text, 'dts'),
       compile(compiler, text, 'manifest'),
@@ -450,6 +451,9 @@ async function main() {
     error.hidden = !js.warnings.length;
     error.textContent = js.warnings.join('\n');
     show('#out-js', js.output, 'js');
+    // The same component as a standard custom element, written to be read (--emit element). What
+    // it doesn't cover (shadow DOM, zb-await, runtime extras) is refused with a reason.
+    show('#out-element', element.ok ? element.output : `// --emit element doesn't cover this component:\n${element.error.split('\n').map((line) => `//   ${line}`).join('\n')}\n//\n// The Runtime module tab is its @zubra/runtime module, which the preview runs.`, 'js');
     show('#out-html', html.ok ? html.output : html.error, 'html');
     show('#out-dts', dts.ok ? dts.output : dts.error, 'js');
     show('#out-manifest', manifest.ok ? manifest.output : manifest.error, 'js');

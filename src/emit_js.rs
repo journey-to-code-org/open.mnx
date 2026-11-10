@@ -23,7 +23,7 @@
 
 use crate::{
     ast::{self, AttributeValue, ComponentAst, Node, Part},
-    diagnostic::Diagnostic,
+    diagnostic::{Diagnostic, Span},
     expression::Expression,
     parser::is_event_attribute,
     validate::{self, needs_text_anchor, Interface, BOOLEAN_ATTRIBUTES, URL_ATTRIBUTES},
@@ -45,6 +45,10 @@ pub struct Options<'a> {
     /// How the `<style>` reaches the page: `None` inlines it in the module; `Some` imports it
     /// through the bundler's CSS pipeline (so Tailwind, PostCSS and preprocessors run on it).
     pub style_imports: Option<StyleImports<'a>>,
+    /// For the browser DevTools (`--devtools`): the component's path, recorded with its host tag's
+    /// location as the definition's `source`, with each part's line and column in it (`at`) and the script's
+    /// signals by name (`$dev`). `None` emits none of it.
+    pub devtools: Option<&'a str>,
 }
 
 /// Module specifiers for a component's stylesheet, as the bundler serves it.
@@ -139,6 +143,8 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         template: String::new(),
         parts: Vec::new(),
         slot_paths: Vec::new(),
+        locations: options.devtools.is_some(),
+        span: None,
     };
     emitter.nodes(&component.nodes, &[], false)?;
 
@@ -230,11 +236,18 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     let list =
         |names: &mut dyn Iterator<Item = &str>| names.map(json).collect::<Vec<_>>().join(", ");
     out.push_str(&format!(
-        "  }},\n  abi: 3,\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}  template: {},\n  setup($p, $emit{}) {{\n",
+        "  }},\n  abi: 3,\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}{}  template: {},\n  setup($p, $emit{}) {{\n",
         component.shadow,
         component.form_associated,
         list(&mut slots.iter().map(String::as_str)),
         list(&mut interface.events.iter().map(|event| event.name.as_str())),
+        // `--devtools`: the file and the host tag's place in it, for the panel's "Open in editor".
+        options.devtools.map_or_else(String::new, |path| format!(
+            "  source: {{ file: {}, at: [{}, {}] }},\n",
+            json(path),
+            component.tag_span.line,
+            component.tag_span.column
+        )),
         // `styled`: the runtime marks slotted content, where light-DOM styles stop.
         match (component.style.is_some(), styles) {
             (false, _) => String::new(),
@@ -243,7 +256,10 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             (true, Some(styles)) => format!("  styled: true,\n  styles: {styles},\n"),
         },
         json(&emitter.template),
-        if interface.props.iter().any(|prop| prop.runtime_default.is_some()) { ", $initial" } else { "" }
+        // `$dev` comes after `$initial`, so a DevTools build names both.
+        if options.devtools.is_some() { ", $initial, $dev" }
+        else if interface.props.iter().any(|prop| prop.runtime_default.is_some()) { ", $initial" }
+        else { "" }
     ));
     // `emit` from the runtime, bound to this element (handlers call it long after setup).
     if let Some(emit) = &component.script.emit {
@@ -305,6 +321,22 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             ));
         }
         out.push_str(&format!("    {call});\n"));
+    }
+    // `--devtools`: the script's signals by name, for the panel (the runtime passes `$dev` only
+    // in development).
+    if options.devtools.is_some() {
+        let mut names: Vec<&str> = Vec::new();
+        for name in script
+            .state
+            .iter()
+            .chain(&script.derived)
+            .chain(&script.signals)
+        {
+            if !names.contains(&name.as_str()) {
+                names.push(name);
+            }
+        }
+        out.push_str(&format!("    $dev?.({{ {} }});\n", names.join(", ")));
     }
     out.push_str("    return [\n");
     for part in &emitter.parts {
@@ -431,6 +463,8 @@ pub(crate) fn child_infos(
                     template: String::new(),
                     parts: Vec::new(),
                     slot_paths: Vec::new(),
+                    locations: false,
+                    span: None,
                 };
                 emitter.nodes(&child.ast.nodes, &[], false)?;
                 let slot_paths = std::mem::take(&mut emitter.slot_paths);
@@ -463,6 +497,8 @@ struct JsPart {
     path: Vec<usize>,
     hydrate: Option<Vec<usize>>,
     body: String,
+    /// Where in the `.zb` file the part was written (only with `--devtools`).
+    at: Option<Span>,
 }
 
 impl JsPart {
@@ -471,18 +507,22 @@ impl JsPart {
             path: path.to_vec(),
             hydrate: None,
             body,
+            at: None,
         }
     }
 
     fn render(&self) -> String {
+        let at = self.at.map_or_else(String::new, |span| {
+            format!(", at: [{}, {}]", span.line, span.column)
+        });
         match &self.hydrate {
             Some(hydrate) => format!(
-                "{{ path: {}, hydrate: {}, {} }}",
+                "{{ path: {}, hydrate: {}, {}{at} }}",
                 path_js(&self.path),
                 path_js(hydrate),
                 self.body
             ),
-            None => format!("{{ path: {}, {} }}", path_js(&self.path), self.body),
+            None => format!("{{ path: {}, {}{at} }}", path_js(&self.path), self.body),
         }
     }
 }
@@ -495,6 +535,24 @@ fn path_js(path: &[usize]) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     )
+}
+
+/// Where a node was written, for `--devtools`: a text node's first expression, an element's or a
+/// directive's opening tag.
+fn node_span(node: &Node) -> Option<Span> {
+    match node {
+        Node::Text(parts) => parts.iter().find_map(|part| match part {
+            Part::Expression { span, .. } => Some(*span),
+            Part::Literal(_) => None,
+        }),
+        Node::Element(element) => Some(element.span),
+        Node::If { span, .. }
+        | Node::Each { span, .. }
+        | Node::Slot { span, .. }
+        | Node::Else { span, .. }
+        | Node::Await { span, .. } => Some(*span),
+        Node::Settled { branch, .. } => Some(branch.span),
+    }
 }
 
 /// What a parent needs to know about a child component it uses.
@@ -527,9 +585,20 @@ struct Emitter<'a> {
     template: String,
     parts: Vec<JsPart>,
     slot_paths: Vec<(String, Vec<usize>)>,
+    /// `--devtools`: stamp each part with `span`, where the markup it comes from was written.
+    locations: bool,
+    span: Option<Span>,
 }
 
 impl<'a> Emitter<'a> {
+    /// Add a part, with its source location when compiling for the DevTools.
+    fn part(&mut self, mut part: JsPart) {
+        if self.locations {
+            part.at = self.span;
+        }
+        self.parts.push(part);
+    }
+
     /// A block's function parameters for its `params` (names or `as` patterns), and the
     /// emitter that reads them.
     fn scoped(&self, params: &[String]) -> (Vec<String>, Emitter<'a>) {
@@ -576,6 +645,8 @@ impl<'a> Emitter<'a> {
             template: String::new(),
             parts: Vec::new(),
             slot_paths: Vec::new(),
+            locations: self.locations,
+            span: self.span,
         }
     }
 
@@ -723,6 +794,7 @@ impl<'a> Emitter<'a> {
             at
         };
         for node in nodes {
+            self.span = node_span(node).or(self.span);
             match node {
                 Node::Text(parts) => {
                     let dynamic = parts
@@ -737,13 +809,13 @@ impl<'a> Emitter<'a> {
                     } else if needs_text_anchor(nodes, node, block_top) {
                         self.template.push_str("<!---->");
                         let anchor = next(path);
-                        self.parts.push(JsPart::at(
+                        self.part(JsPart::at(
                             &anchor,
                             format!("anchor: () => {}", self.text_js(parts)),
                         ));
                     } else {
                         // The element's only child: bind the element's text.
-                        self.parts.push(JsPart::at(
+                        self.part(JsPart::at(
                             path,
                             format!("text: () => {}", self.text_js(parts)),
                         ));
@@ -757,13 +829,14 @@ impl<'a> Emitter<'a> {
                     let target = lower.strip_prefix("zb-").unwrap_or(&lower);
                     for attribute in &element.attributes {
                         if let AttributeValue::Expression(expression, _) = &attribute.value {
+                            self.span = Some(attribute.span);
                             let lower = attribute.name.to_ascii_lowercase();
                             let body = format!(
                                 "global: {}, {}",
                                 json(target),
                                 self.listener(&lower, expression)
                             );
-                            self.parts.push(JsPart::at(&at, body));
+                            self.part(JsPart::at(&at, body));
                         }
                     }
                 }
@@ -788,7 +861,7 @@ impl<'a> Emitter<'a> {
                         self.block(alternate, &[], &region)?
                     };
                     let body = format!("when: () => {}, blocks: [{yes}, {no}]", self.js(test));
-                    self.parts.push(JsPart::at(&region, body));
+                    self.part(JsPart::at(&region, body));
                 }
                 Node::Each {
                     items,
@@ -819,7 +892,7 @@ impl<'a> Emitter<'a> {
                         None => String::new(),
                     };
                     let body = format!("each: () => {}{key}, block: {row}", self.js(items));
-                    self.parts.push(JsPart::at(&region, body));
+                    self.part(JsPart::at(&region, body));
                 }
                 Node::Slot {
                     name,
@@ -860,7 +933,7 @@ impl<'a> Emitter<'a> {
                             self.block(fallback, &[], &region)?
                         };
                         let body = format!("slot: {}, fallback: {fallback}", json(name));
-                        self.parts.push(JsPart::at(&region, body));
+                        self.part(JsPart::at(&region, body));
                     }
                 }
                 Node::Else { span, .. } => {
@@ -909,7 +982,7 @@ impl<'a> Emitter<'a> {
                     if *keep {
                         body.push_str(", keep: true");
                     }
-                    self.parts.push(JsPart::at(&region, body));
+                    self.part(JsPart::at(&region, body));
                 }
                 Node::Settled { caught, branch } => {
                     return Err(Diagnostic::new(
@@ -947,6 +1020,7 @@ impl<'a> Emitter<'a> {
             })
             .collect();
         for attribute in &element.attributes {
+            self.span = Some(attribute.span);
             if attribute.name == crate::parser::SPREAD {
                 if let Some(info) = child {
                     let _ = info;
@@ -969,7 +1043,7 @@ impl<'a> Emitter<'a> {
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                self.parts.push(JsPart::at(path, body));
+                self.part(JsPart::at(path, body));
                 continue;
             }
             let lower = attribute.name.to_ascii_lowercase();
@@ -982,7 +1056,7 @@ impl<'a> Emitter<'a> {
                     AttributeValue::Text(parts) => self.text_js(parts),
                     AttributeValue::Expression(expression, _) => self.js(expression),
                 };
-                self.parts.push(JsPart::at(
+                self.part(JsPart::at(
                     path,
                     format!("property: {}, value: () => {compute}", json(&prop)),
                 ));
@@ -1008,7 +1082,7 @@ impl<'a> Emitter<'a> {
                 }
                 AttributeValue::Expression(expression, _) if is_event_attribute(&lower) => {
                     let body = self.listener(&lower, expression);
-                    self.parts.push(JsPart::at(path, body));
+                    self.part(JsPart::at(path, body));
                 }
                 AttributeValue::Expression(expression, _) if lower.starts_with("class:") => {
                     let body = format!(
@@ -1016,7 +1090,7 @@ impl<'a> Emitter<'a> {
                         json(&attribute.name[6..]),
                         self.js(expression)
                     );
-                    self.parts.push(JsPart::at(path, body));
+                    self.part(JsPart::at(path, body));
                 }
                 AttributeValue::Expression(expression, _) if lower.starts_with("style:") => {
                     let body = format!(
@@ -1024,11 +1098,11 @@ impl<'a> Emitter<'a> {
                         json(&attribute.name[6..]),
                         self.js(expression)
                     );
-                    self.parts.push(JsPart::at(path, body));
+                    self.part(JsPart::at(path, body));
                 }
                 AttributeValue::Expression(expression, _) if lower == "ref" => {
                     let body = format!("ref: () => {}", self.js(expression));
-                    self.parts.push(JsPart::at(path, body));
+                    self.part(JsPart::at(path, body));
                 }
                 value
                     if lower == "class"
@@ -1044,8 +1118,7 @@ impl<'a> Emitter<'a> {
                         AttributeValue::Expression(expression, _) => self.js(expression),
                         AttributeValue::None => unreachable!("handled above"),
                     };
-                    self.parts
-                        .push(JsPart::at(path, format!("classes: () => {compute}")));
+                    self.part(JsPart::at(path, format!("classes: () => {compute}")));
                 }
                 value => {
                     let compute = match value {
@@ -1073,7 +1146,7 @@ impl<'a> Emitter<'a> {
                         "attribute: {}{kind}, value: () => {compute}",
                         json(&attribute.name)
                     );
-                    self.parts.push(JsPart::at(path, body));
+                    self.part(JsPart::at(path, body));
                 }
             }
         }
@@ -1118,10 +1191,12 @@ impl<'a> Emitter<'a> {
                         // A part bound to the content's own parent: can't happen at block top.
                         None => path.to_vec(),
                     };
+                    // (Pushed as is: the part keeps where its own markup was written.)
                     self.parts.push(JsPart {
                         path: path.iter().chain(&part.path).copied().collect(),
                         hydrate: Some(hydrate),
                         body: part.body,
+                        at: part.at,
                     });
                 }
             }

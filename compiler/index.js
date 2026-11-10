@@ -92,7 +92,7 @@ export function sources(path, files = {}) {
 
 /**
  * Compile the component at `path`. Options mirror the CLI's: `emit` (`html` | `js` | `css` |
- * `dts` | `manifest`), `command: 'check'`, `runtime`, `keepImports`, `noImports`, `cssImport` +
+ * `dts` | `manifest`), `command: 'check'`, `runtime`, `keepImports`, `devtools`, `noImports`, `cssImport` +
  * `cssImportInline`, `framework`, `modulePath`, `props`, `slots`.
  */
 export function compileFile(path, options = {}) {
