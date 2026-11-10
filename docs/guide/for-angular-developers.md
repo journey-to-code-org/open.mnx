@@ -26,7 +26,18 @@ The table is for writing components in Zubra; the rest of the page is for using 
 
 ## Using Zubra components in an Angular app
 
-Import the `.zb` file for its side effect, which defines the element, and add `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts the tag. These are the lines of the [booking wizard](../../examples/frameworks/angular-booking) that do it:
+Importing a `.zb` file needs a build that takes Vite plugins. The [booking wizard](../../examples/frameworks/angular-booking) builds with Vite, Analog's plugin (`@analogjs/vite-plugin-angular`, which compiles Angular ahead of time inside Vite) and `@zubra/unplugin`:
+
+<!-- snippet: examples/frameworks/angular-booking/vite.config.js#angular-vite -->
+```js
+plugins: [zubra(), angular({ tsconfig: new URL('./tsconfig.json', import.meta.url).pathname })],
+```
+
+**The Angular CLI's builder doesn't take Vite or esbuild plugins**, so an app built with `ng build` can't import `.zb` files. There, compile the components first, with `zubra compile --emit js` (or `zubra build --lib` for a set of them), and import the `.js` modules it writes; everything below then applies unchanged.
+
+For type checking, add `"types": ["@zubra/unplugin/client"]` to `tsconfig.json`: since TypeScript 6 an import the compiler can't resolve is an error even when it's imported only for its side effect, and those types declare `*.zb`.
+
+Then import the `.zb` file for its side effect, which defines the element, and add `CUSTOM_ELEMENTS_SCHEMA` so Angular accepts the tag:
 
 <!-- snippet: examples/frameworks/angular-booking/src/app/app.ts#angular-imports -->
 ```ts
@@ -49,7 +60,7 @@ import '../components/toggle-switch.zb';
 })
 ```
 
-Angular needs nothing more for the plain parts: `[items]="placeCards"` sets the property (objects and arrays arrive as values), `(stepselect)="step.set($any($event).detail)"` listens for the element's event (`detail` is the payload), and children are the element's slot content.
+In the template, Angular needs nothing more for the plain parts: `[items]="placeCards"` sets the property (objects and arrays arrive as values), `(stepselect)="step.set($any($event).detail)"` listens for the element's event (`detail` is the payload), and children are the element's slot content.
 
 What Angular can't do alone is two-way binding: `[(value)]` listens for `valueChange`, and DOM events are lowercase (`valuechange`). `ZubraModel` solves that by making the element a form control. `zubraModel` alone binds the `value` pair; `zubraModel="checked"` names another `:model` prop:
 
@@ -63,7 +74,9 @@ What Angular can't do alone is two-way binding: `[(value)]` listens for `valueCh
 <toggle-switch zubraModel="checked" [formControlName]="extra.id" [label]="extra.label" [description]="extra.description + ' · ' + extra.per" [extra]="extraPrice(extra.id)"></toggle-switch>
 ```
 
-`ngModel` and `formControl` work the same way. A value can be an object: the wizard's `date-range` holds `{ start, end }` under one `formControlName`, with an ordinary Angular validator on it. The directive is a standalone class in the Angular Package Format, so it compiles ahead of time (peer dependencies `@angular/core` and `@angular/forms`, 16 or later). `npm create zubra` can start an Angular app with all of this set up.
+`[required]` does two things there, and both are wanted: it sets the element's `required` prop, and, next to `formControlName`, it's also the selector of Angular's own `RequiredValidator`, so Angular adds its required validator to the control. That is why the platform's `:invalid` and Angular's `invalid` agree in the test below.
+
+`ngModel` and `formControl` work the same way. A value can be an object: the wizard's `date-range` holds `{ start, end }` under one `formControlName`, with an ordinary Angular validator on it. The directive is a standalone class in the Angular Package Format, so it compiles ahead of time (peer dependencies `@angular/core` and `@angular/forms`). Its peer range starts at Angular 16; what CI builds and runs is Angular 22.2 with TypeScript 6.0 and Analog's plugin 2.9, and no older version is tested. `npm create zubra` can start an Angular app with the Vite setup and one element in a template; the forms part (`ReactiveFormsModule`, `ZubraModel`) is yours to add, as above.
 
 ## What you get with Angular's forms
 
@@ -78,7 +91,10 @@ Each line links the test that checks it. The tests run on every push.
 
 ## What doesn't cross
 
-The general rules, with the reasons, are in [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms cross; render props, framework context and Suspense don't. For Angular in particular:
+The general rules, with the reasons, are in [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms cross; templates passed as inputs (`TemplateRef`, `ngTemplateOutlet`), dependency injection and Angular's own lifecycle don't. For Angular in particular:
+
+- **Dependency injection stops at the element.** `inject()` and `providers` don't reach inside a Zubra component, and a Zubra component can't be a provider for Angular. Pass the value as a property; between Zubra components use `createContext`.
+- **An `ng-template` can't be handed to the element.** It can't render Angular views. Project content into its slots instead (`slot="name"` on the children).
 
 - **Template type checking.** With `CUSTOM_ELEMENTS_SCHEMA`, Angular doesn't check an element's bindings: a wrong property name or type compiles. Zubra's `--emit dts` writes declarations for the element class, but there is no Angular-specific typing yet, so this page doesn't claim typed templates.
 - **Angular's own server rendering** has no row in the framework matrix, so nothing here promises it. Zubra elements render on the server through [`@zubra/server` and the CLI](../server-rendering.md); how that composes with Angular's SSR is untested.

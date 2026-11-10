@@ -24,6 +24,7 @@ export default [
     { file: 'docs/guide/for-react-developers.md', label: 'React developers' },
     { file: 'docs/guide/for-vue-developers.md', label: 'Vue developers' },
     { file: 'docs/guide/for-svelte-developers.md', label: 'Svelte developers' },
+    { file: 'docs/guide/for-angular-developers.md', label: 'Angular developers' },
   ] },
   { group: 'Topics', pages: [
     { file: 'docs/who-this-is-for.md', label: 'Who Zubra is for' },

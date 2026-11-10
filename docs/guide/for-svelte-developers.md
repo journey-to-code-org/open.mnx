@@ -9,7 +9,7 @@ Svelte and Zubra make the same bet: compile components ahead of time, update onl
 | `const doubled = $derived(count * 2)` | `const doubled = count * 2` |
 | `let left = $derived(seconds)`, then `left--` (a writable derived) | `let left = from(seconds)`, then `left--` |
 | `$effect(() => …)` | `effect(() => …)` |
-| `let { value = $bindable(0) } = $props()` | `value:model={0}` on the host |
+| `let { value = $bindable(0) } = $props()` | `value:model={0}` on the host (bound from a Svelte app with the prop and its `on<name>change` event, see below) |
 | `{#if a}…{:else if b}…{:else}…{/if}` | `<zb-if test={a}>…<zb-else-if test={b}>…</zb-else-if><zb-else>…</zb-else></zb-if>` |
 | `{#each items as item (item.id)}` | `<zb-each items={items} as="item" key={item.id}>` |
 | `{#await promise}…{:then v}…{:catch e}…{/await}` | `<zb-await value={promise}>…<zb-then as="v">…</zb-then><zb-catch as="e">…</zb-catch></zb-await>` |
@@ -35,7 +35,7 @@ import './components/grade-buttons.zb';
 import './components/progress-ring.zb';
 ```
 
-Svelte sets props as properties (objects and arrays arrive as values) and listens with `on<name>`, which is the element's lowercase DOM event. `detail` is the payload, and named slots are `slot="…"` on the children:
+Svelte sets props as properties (objects and arrays arrive as values) and listens with `on<name>`, which is the element's lowercase DOM event. `detail` is the payload, and named slots are `slot="…"` on the children. A two-way prop is written as the prop and its `<name>change` event, as `flipped` is here: Svelte 5 refuses `bind:` on a custom element (`bind:value` is a compile error on anything but a form control), so there is no shorter spelling:
 
 <!-- snippet: examples/frameworks/svelte-flashcards/src/App.svelte#svelte-flip -->
 ```svelte
@@ -62,7 +62,10 @@ Each line links the test that checks it. The tests run on every push.
 
 ## What doesn't cross
 
-The general rules, with the reasons, are in [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots, two-way binding and forms cross; render props, framework context and framework lifecycle don't. For Svelte in particular:
+The general rules, with the reasons, are in [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots and forms cross; snippets passed as props, `setContext`/`getContext` and Svelte's own lifecycle don't. For Svelte in particular:
+
+- **`bind:` doesn't work on the element.** Svelte 5 allows `bind:value` only on `<input>`, `<textarea>` and `<select>`, and a component binding only on Svelte components. Pass the prop and listen for `on<name>change`; `bind:this` does work, since the element is a DOM node.
+- **Snippets can't be passed in.** `{#snippet}` and `{@render}` are Svelte's; the element takes slotted children instead.
 
 - **`setContext` / `getContext` don't reach into the element.** Pass the value as a prop; between Zubra components use `createContext`.
 - **Under SvelteKit every Zubra element is `shadow`.** Svelte claims every node it hydrates, so light-DOM content can't be server-rendered there. `@zubra/server` fills the declarative shadow roots before hydration; the plugin adds `zb-props` in the server build ([Server rendering, honestly](../server-rendering.md)).

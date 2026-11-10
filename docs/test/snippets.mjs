@@ -78,17 +78,62 @@ export function snippetProblems(markdown, root, page = 'page') {
   return problems;
 }
 
-/** Relative links (`](../x.md#heading)`) that don't point at a file. Links to http(s), mailto and anchors are skipped. */
+/** A heading's anchor as GitHub and the docs site write it: lowercase, punctuation dropped, spaces to hyphens. */
+export function slug(heading) {
+  return heading.trim().toLowerCase().replace(/`/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
+}
+
+/** The anchors a markdown file has: one per heading, with `-1`, `-2` added to repeats. */
+export function anchors(markdown) {
+  const seen = new Map();
+  const out = new Set();
+  for (const match of markdown.replace(/```[\s\S]*?```/g, '').matchAll(/^#{1,6} (.+)$/gm)) {
+    const base = slug(match[1]);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    out.add(count ? `${base}-${count}` : base);
+  }
+  return out;
+}
+
+/**
+ * Relative links (`](../x.md#heading)`) that don't point at a file, or whose `#heading` isn't a
+ * heading of that markdown file (or of this page, for `](#heading)`). Links to http(s) and mailto are skipped.
+ */
 export function brokenLinks(markdown, pageFile) {
   const broken = [];
   const withoutCode = markdown.replace(/```[\s\S]*?```/g, '');
   for (const match of withoutCode.matchAll(/\]\(([^)\s]+)\)/g)) {
     const target = match[1];
-    if (/^(https?:|mailto:|#)/.test(target)) continue;
-    const path = join(dirname(pageFile), target.split('#')[0]);
-    if (!existsSync(path)) broken.push(target);
+    if (/^(https?:|mailto:)/.test(target)) continue;
+    const [file, anchor] = target.split('#');
+    const path = file ? join(dirname(pageFile), file) : pageFile;
+    if (file && !existsSync(path)) {
+      broken.push(target);
+      continue;
+    }
+    if (anchor && (!file || /\.md$/.test(file))) {
+      const text = file ? readFileSync(path, 'utf8') : markdown;
+      if (!anchors(text).has(anchor.toLowerCase())) broken.push(target);
+    }
   }
   return broken;
+}
+
+/**
+ * Code blocks in the "Using … in a … app" section that don't say where they come from. That section
+ * shows how the framework's app is written, so each block there is quoted from an app CI runs; a block
+ * typed by hand is exactly the one that goes stale.
+ */
+export function unsourcedBlocks(markdown, page = 'page') {
+  const text = markdown.replace(/\r\n/g, '\n');
+  const section = text.match(/^## Using [^\n]*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m);
+  if (!section) return [];
+  const problems = [];
+  for (const match of section[1].matchAll(/(^|\n)([^\n]*)\n```[^\n]*\n([\s\S]*?)\n```/g)) {
+    if (!/<!--\s*snippet:/.test(match[2])) problems.push(`${page}: a code block in "Using …" has no "snippet:" comment: ${match[3].split('\n')[0].slice(0, 60)}`);
+  }
+  return problems;
 }
 
 /**

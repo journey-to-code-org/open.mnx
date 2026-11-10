@@ -2,18 +2,24 @@
 // resolve, and they all have the same sections. (The checks live in snippets.mjs; this file runs them
 // over the pages and tests the checks.)
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { brokenLinks, claimProblems, dedent, pageSnippets, regions, shapeProblems, snippetProblems } from './snippets.mjs';
+import { anchors, brokenLinks, claimProblems, dedent, pageSnippets, regions, shapeProblems, snippetProblems, unsourcedBlocks } from './snippets.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const guide = join(root, 'docs/guide');
 
-/** The framework pages this repository has (added to as each page takes the shared shape). */
-export const PAGES = ['for-angular-developers.md', 'for-vue-developers.md', 'for-svelte-developers.md', 'for-react-developers.md'];
+/** The framework pages this repository has: every `for-…-developers.md` in the guide, so a new page is checked without being listed. */
+export const PAGES = readdirSync(guide).filter((name) => /^for-.+-developers\.md$/.test(name)).sort();
+
+test('the framework pages are found, and each is in the site navigation', () => {
+  for (const name of ['for-angular-developers.md', 'for-react-developers.md', 'for-svelte-developers.md', 'for-vue-developers.md']) assert.ok(PAGES.includes(name), name);
+  const nav = readFileSync(join(root, 'site/src/_data/nav.js'), 'utf8');
+  for (const name of PAGES) assert.ok(nav.includes(`docs/guide/${name}`), `${name} is missing from site/src/_data/nav.js`);
+});
 
 for (const name of PAGES) {
   test(`${name}: snippets match the example apps, links resolve, sections are all there`, () => {
@@ -21,6 +27,7 @@ for (const name of PAGES) {
     const markdown = readFileSync(file, 'utf8');
     assert.deepEqual(snippetProblems(markdown, root, name), []);
     assert.deepEqual(brokenLinks(markdown, file), []);
+    assert.deepEqual(unsourcedBlocks(markdown, name), []);
     assert.deepEqual([...shapeProblems(markdown, name), ...claimProblems(markdown, name)], []);
   });
 }
@@ -85,11 +92,27 @@ test('pageSnippets finds blocks by their comment', () => {
   assert.deepEqual(pageSnippets('```js\nplain\n```\n'), []);
 });
 
-test('links: relative targets must exist; anchors, http and code are ignored', () => {
-  const dir = project({ 'docs/guide/a.md': '', 'docs/x.md': '' });
+test('links: relative targets must exist; http and code are ignored', () => {
+  const dir = project({ 'docs/guide/a.md': '', 'docs/x.md': '# H\n' });
   const page = join(dir, 'docs/guide/page.md');
-  const text = '[ok](a.md) [up](../x.md#h) [web](https://example.com) [anchor](#top) [gone](missing.md)\n```\n[code](nowhere.md)\n```\n';
+  const text = '# Top\n\n[ok](a.md) [up](../x.md#h) [web](https://example.com/#x) [anchor](#top) [gone](missing.md)\n```\n[code](nowhere.md)\n```\n';
   assert.deepEqual(brokenLinks(text, page), ['missing.md']);
+});
+
+test('links: a #heading must be a heading of the file it points at', () => {
+  const dir = project({ 'docs/x.md': '# Title\n\n## What crosses\n\n## Server rendering, honestly\n\n## Twice\n\n## Twice\n' });
+  const page = join(dir, 'docs/guide/page.md');
+  mkdirSync(join(dir, 'docs/guide'), { recursive: true });
+  const text = '# Page\n\n## Here\n\n[a](../x.md#what-crosses) [b](../x.md#server-rendering-honestly) [c](../x.md#twice-1) [d](#here) [e](../x.md#gone) [f](#nowhere)\n';
+  assert.deepEqual(brokenLinks(text, page), ['../x.md#gone', '#nowhere']);
+  assert.deepEqual([...anchors('## `zb-if` and friends\n```\n## not a heading\n```\n')], ['zb-if-and-friends']);
+});
+
+test('a hand-typed block in the Using section is reported; one outside it is not', () => {
+  const page = '# Zubra for Vue developers\n\n```js\nfree()\n```\n\n## Using Zubra components in a Vue app\n\n<!-- snippet: a.vue#x -->\n```vue\n<A />\n```\n\ntext\n\n```vue\n<Typed />\n```\n\n## What you get\n\n```js\nalso free\n```\n';
+  const problems = unsourcedBlocks(page, 'vue.md');
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /<Typed \/>/);
 });
 
 const SHAPE = `# Zubra for Vue developers

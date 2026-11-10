@@ -35,7 +35,7 @@ import { MoneyInput, SegmentedControl, DonutChart } from '@zubra-examples/ui/vue
 import BudgetBar from './components/budget-bar.zb';
 ```
 
-`v-model` binds the `value` and `valuechange` pair, or any `:model` prop with `v-model:name`. The donut's `selected` is one, and the content between its tags goes into the element's slot:
+`v-model` binds the `value` and `valuechange` pair, or any `:model` prop with `v-model:name`. Here `selected` is the app's own ref, bound to the donut's `value`, and the content between the tags goes into the element's slot:
 
 <!-- snippet: examples/frameworks/vue-budget/src/App.vue#vue-donut -->
 ```vue
@@ -65,7 +65,9 @@ Each line links the test that checks it. The tests run on every push.
 
 ## What doesn't cross
 
-The general rules, with the reasons, are in [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots, two-way binding and forms cross; render props, framework context and framework lifecycle don't. For Vue in particular:
+The general rules, with the reasons, are in [What crosses the boundary](../what-crosses-the-boundary.md): props, events, slots, two-way binding and forms cross; scoped slots (a slot that receives data from the element), `provide`/`inject` and Vue's own lifecycle don't. For Vue in particular:
+
+- **Scoped slots.** The element can't call back into a Vue template with slot props. Use a plain slot, and take the data from a prop or an event.
 
 - **`provide` / `inject` don't reach into the element.** Pass the value as a prop; between Zubra components use `createContext`.
 - **Framework lifecycle** (`<KeepAlive>`, transitions, Suspense) can't act on the element. Loading is a prop or an event.
