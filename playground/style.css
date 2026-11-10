@@ -45,3 +45,6 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-
   .source { border-right: 0; border-bottom: 1px solid var(--line); }
   .editor { min-height: 14rem; }
 }
+
+/* After a compile error the preview and outputs are the last version that compiled: dimmed. */
+.pane.output[data-stale] .panel { opacity: 0.4; filter: grayscale(0.6); pointer-events: none; }

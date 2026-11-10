@@ -492,12 +492,16 @@ async function main() {
     ]);
     if (mine !== run) return; // a newer edit is on its way
     const error = $('#error');
+    const output = $('.pane.output');
     if (!js.ok) {
       error.hidden = false;
-      error.textContent = js.error;
+      error.textContent = `${js.error}\nThe preview and the tabs below still show the last version that compiled; fix the error to update them.`;
       status.textContent = 'Compile error';
+      // Dimmed, so what's below the error doesn't read as the result of this edit.
+      output.dataset.stale = '';
       return;
     }
+    delete output.dataset.stale;
     error.hidden = !js.warnings.length;
     error.textContent = js.warnings.join('\n');
     show('#out-js', js.output, 'js');

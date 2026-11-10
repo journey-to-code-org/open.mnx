@@ -261,3 +261,19 @@ test('the Zubra DevTools extension works on the playground: its hook reaches the
   assert.deepEqual(errors, []);
   await page.close();
 });
+
+test('after a compile error, the preview and outputs are marked as the last version that compiled', async () => {
+  const { page } = await openPlayground();
+  await frame(page, 'html');
+  const stale = () => page.$eval('.pane.output', (pane) => pane.hasAttribute('data-stale'));
+  assert.equal(await stale(), false);
+  await page.$eval('#source', (area) => { area.value = area.value.replace(' label="Clicks"', ''); area.dispatchEvent(new Event('input')); });
+  await page.waitForFunction(() => document.querySelector('#status').textContent === 'Compile error');
+  assert.equal(await stale(), true);
+  assert.match(await page.textContent('#error'), /unknown reference `label`[\s\S]*last version that compiled/);
+  assert.equal(await page.$eval('[data-panel=preview]', (panel) => getComputedStyle(panel).opacity), '0.4');
+  await page.$eval('#source', (area) => { area.value = area.value.replace('<hello-counter count:model={0}>', '<hello-counter count:model={0} label="Taps">'); area.dispatchEvent(new Event('input')); });
+  await page.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Compiled'));
+  assert.equal(await stale(), false);
+  await page.close();
+});
