@@ -4,7 +4,8 @@
   [data-leaving] { opacity: 0; }
   .list { position: relative; margin: 0; padding: 0; list-style: none; }
   .row { height: 20px; --zb-move-duration: 400ms; transition: opacity 300ms; }
-  .spinner { animation: turn 1s linear infinite; }
+  .dock { position: fixed; bottom: 0; left: 0; margin: 0; padding: 0; list-style: none; }
+.spinner { animation: turn 1s linear infinite; }
   @keyframes turn { to { rotate: 1turn; } }
 </style>
 <zb-motion open={true} tab={"a"} items={[]} spin={false}>
@@ -23,4 +24,9 @@
       <li class="row">{item.label}</li>
     </zb-each>
   </ul>
+  <ol class="dock">
+    <zb-each items={items} as="item" key={item.id} animate>
+      <li class="row">{item.label}</li>
+    </zb-each>
+  </ol>
 </zb-motion>

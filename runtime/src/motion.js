@@ -96,11 +96,18 @@ export function glide(elements, change) {
   for (const element of elements) if (element.isConnected) before.set(element, element.getBoundingClientRect());
   const result = change();
   for (const [element, was] of before) {
-    if (!element.isConnected || element[LEAVING]) continue;
+    if (!element.isConnected) continue;
     const now = element.getBoundingClientRect();
     const x = was.left - now.left;
     const y = was.top - now.top;
     if (!x && !y) continue;
+    if (element[LEAVING]) {
+      // Held in place as it leaves: where it was on screen, even if its container moved (one
+      // anchored to the bottom shrinks from the top).
+      element.style.top = `${parseFloat(element.style.top) + y}px`;
+      element.style.left = `${parseFloat(element.style.left) + x}px`;
+      continue;
+    }
     const style = getComputedStyle(element);
     const duration = milliseconds(style.getPropertyValue('--zb-move-duration')) ?? 250;
     if (duration <= 0) continue;

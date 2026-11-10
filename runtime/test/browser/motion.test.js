@@ -61,17 +61,32 @@ test('an infinite animation inside does not keep a branch forever', async () => 
 test('keyed rows that stay glide; removed rows leave out of the flow', async () => {
   const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
   await set(page, { items: rows });
-  const three = await page.$('li:nth-child(3)');
+  const three = await page.$('ul li:nth-child(3)');
   await set(page, { items: [rows[2], rows[0]] });
   const moves = await page.evaluate((three) => three.getAnimations().filter((a) => !(a instanceof CSSTransition)).map((a) => a.effect.getKeyframes()[0].transform), three);
   assert.deepEqual(moves, ['translate(0px, 40px)'], 'row three glides up from where it was');
-  const two = await page.$$eval('li', (els) => els.filter((el) => el.hasAttribute('data-leaving')).map((el) => [el.textContent, el.style.position]));
+  const two = await page.$$eval('ul li', (els) => els.filter((el) => el.hasAttribute('data-leaving')).map((el) => [el.textContent, el.style.position]));
   assert.deepEqual(two, [['two', 'absolute']], 'row two leaves, held in place out of the flow');
-  assert.deepEqual(await page.$$eval('li:not([data-leaving])', (els) => els.map((el) => el.textContent)), ['three', 'one']);
-  await page.waitForFunction(() => document.querySelectorAll('li').length === 2, null, { timeout: 3000 });
+  assert.deepEqual(await page.$$eval('ul li:not([data-leaving])', (els) => els.map((el) => el.textContent)), ['three', 'one']);
+  await page.waitForFunction(() => document.querySelectorAll('ul li').length === 2, null, { timeout: 3000 });
   // Rows leaving aren't counted when placing the next change.
   await set(page, { items: [rows[0], rows[2], rows[1]] });
-  assert.deepEqual(await page.$$eval('li:not([data-leaving])', (els) => els.map((el) => el.textContent)), ['one', 'three', 'two']);
+  assert.deepEqual(await page.$$eval('ul li:not([data-leaving])', (els) => els.map((el) => el.textContent)), ['one', 'three', 'two']);
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('a removed row stays where it was on screen, even when its list is anchored to the bottom', async () => {
+  const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
+  await set(page, { items: rows });
+  const top = (page) => page.$eval('.dock li:first-child', (el) => el.getBoundingClientRect().top);
+  const was = await top(page);
+  const one = await page.$('.dock li:first-child');
+  await set(page, { items: [rows[1], rows[2]] });
+  const now = await page.evaluate((one) => [one.hasAttribute('data-leaving'), one.getBoundingClientRect().top], one);
+  assert.deepEqual(now, [true, was], 'it leaves from its own place, though the list shrank from the top');
+  const two = await page.$eval('.dock li:not([data-leaving])', (el) => el.getAnimations().filter((a) => !(a instanceof CSSTransition)).length);
+  assert.equal(two, 0, "the rows that stayed put on screen don't glide");
   assert.deepEqual(messages, []);
   await page.close();
 });
@@ -82,9 +97,9 @@ test('reduced motion: branches and rows go at once, and nothing glides', async (
   await set(page, { open: false, items: rows });
   assert.equal(await count(page, '.panel'), 0);
   assert.equal(await count(page, '[data-leaving]'), 0);
-  const one = await page.$('li');
+  const one = await page.$('ul li');
   await set(page, { items: [rows[2], rows[1]] });
-  assert.equal(await count(page, 'li'), 2);
+  assert.equal(await count(page, 'ul li'), 2);
   assert.equal(await page.evaluate((one) => one.isConnected, one), false);
   assert.equal(await page.evaluate(() => document.getAnimations().length), 0);
   assert.deepEqual(messages, []);
