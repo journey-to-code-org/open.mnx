@@ -7,7 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { completions, contextAt, hostOf, tagAt } from '../analysis.js';
+import { completions, contextAt, hostOf, offsetAt, positionAt, tagAt } from '../analysis.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '../../..');
@@ -66,6 +66,7 @@ before(async () => {
   const init = await call('initialize', { processId: process.pid, rootUri: pathToFileURL(dir).href, capabilities: {}, initializationOptions: { compiler } });
   assert.ok(init.capabilities.completionProvider);
   assert.equal(init.capabilities.documentFormattingProvider, true);
+  assert.equal(init.capabilities.documentRangeFormattingProvider, true);
   notify('initialized', {});
 });
 after(() => {
@@ -146,4 +147,42 @@ test('the analysis knows where the cursor is', () => {
   const plain = '<zb-x a="1"><p zb-</p></zb-x>';
   assert.deepEqual(completions(plain, plain.indexOf('zb-</') + 3, []).map((item) => item.label), ['zb-if', 'zb-else-if', 'zb-else']);
   assert.deepEqual(tagAt(text, text.indexOf('zb-if') + 2), { name: 'zb-if', start: text.indexOf('zb-if'), end: text.indexOf('zb-if') + 5 });
+});
+
+// ---- Format Selection --------------------------------------------------------------------------
+
+function rangeOf(text, from, to) {
+  const start = text.indexOf(from);
+  const end = text.indexOf(to, start) + to.length;
+  return { start: positionAt(text, start), end: positionAt(text, end) };
+}
+function applyEdits(text, edits) {
+  let out = text;
+  const offsets = edits.map((edit) => ({ ...edit, start: offsetAt(text, edit.range.start), end: offsetAt(text, edit.range.end) })).sort((a, b) => b.start - a.start);
+  for (const edit of offsets) out = out.slice(0, edit.start) + edit.newText + out.slice(edit.end);
+  return out;
+}
+async function open(name, text) {
+  const uri = pathToFileURL(join(dir, name)).href;
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  return uri;
+}
+
+test('Format Selection: only the lines it touches, at their depth in the whole file, after a multibyte character', async () => {
+  const text = '<!-- café -->\n<x-r>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</x-r>\n';
+  const uri = await open('range.zb', text);
+  const range = rangeOf(text, '<li>one', '</li>');
+  const edits = await call('textDocument/rangeFormatting', { textDocument: { uri }, range, options: { tabSize: 4, insertSpaces: true } });
+  assert.equal(edits.length, 1);
+  assert.equal(applyEdits(text, edits), '<!-- café -->\n<x-r>\n<ul>\n        <li>one</li>\n<li>two</li>\n</ul>\n</x-r>\n');
+  // Already formatted: no edit. Tabs.
+  const done = '<x-r>\n  <p>a</p>\n</x-r>\n';
+  const second = await open('range-b.zb', done);
+  assert.deepEqual(await call('textDocument/rangeFormatting', { textDocument: { uri: second }, range: rangeOf(done, '<p>', '</p>'), options: { tabSize: 2, insertSpaces: true } }), []);
+  const tabs = await call('textDocument/rangeFormatting', { textDocument: { uri }, range, options: { tabSize: 4, insertSpaces: false } });
+  assert.match(applyEdits(text, tabs), /\n\t\t<li>one<\/li>/);
+  // A file that doesn't parse is left alone.
+  const broken = '<x-r>\n  <p>\n</x-r>\n';
+  const third = await open('range-c.zb', broken);
+  assert.deepEqual(await call('textDocument/rangeFormatting', { textDocument: { uri: third }, range: rangeOf(broken, '<p>', '<p>'), options: { tabSize: 2, insertSpaces: true } }), []);
 });
