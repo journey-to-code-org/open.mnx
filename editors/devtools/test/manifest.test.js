@@ -16,6 +16,14 @@ test('a Manifest V3 devtools extension, asking for no permissions', () => {
   assert.equal(manifest.content_scripts, undefined);
 });
 
+test('Firefox: it declares that it collects no data (addons.mozilla.org requires the key)', () => {
+  const gecko = manifest.browser_specific_settings.gecko;
+  assert.deepEqual(gecko.data_collection_permissions, { required: ['none'] });
+  // The key is understood from Firefox 140 (desktop).
+  assert.ok(Number.parseFloat(gecko.strict_min_version) >= 140, gecko.strict_min_version);
+  assert.ok(Number.parseFloat(manifest.browser_specific_settings.gecko_android.strict_min_version) >= 142);
+});
+
 test('every file it and its pages name exists', () => {
   const named = [manifest.devtools_page, ...Object.values(manifest.icons), 'pane.html'];
   for (const page of ['devtools.html', 'pane.html']) {

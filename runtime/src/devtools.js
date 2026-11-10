@@ -85,8 +85,11 @@ function effectsOf(owner, out = []) {
   return out;
 }
 
-/** The DOM operation a part performs, in the platform's terms. */
-export function operation(part) {
+// Form controls' live state, which the runtime sets as a property (element.js, bindAttribute).
+const LIVE = new Set(['input.value', 'textarea.value', 'select.value', 'input.checked', 'option.selected']);
+
+/** The DOM operation a part performs on `node`, in the platform's terms. */
+export function operation(part, node) {
   if (part.text) return 'textContent = …';
   if (part.anchor) return 'Text.data = …';
   if (part.global) return `${part.global}.addEventListener('${part.on}', …)`;
@@ -97,6 +100,7 @@ export function operation(part) {
   if (part.ref) return 'ref(element)';
   if (part.property) return `.${part.property} = …`;
   if (part.attribute) {
+    if (node && LIVE.has(`${node.localName}.${part.attribute}`)) return `.${part.attribute} = …`;
     if (part.boolean) return `toggleAttribute('${part.attribute}', …)`;
     if (part.prop) return `.${part.prop} = … (or setAttribute('${part.attribute}', …))`;
     return `setAttribute('${part.attribute}', …)`;
@@ -202,7 +206,7 @@ const location = (part) => (Array.isArray(part?.at) ? { line: part.at[0], column
 /** One binding as the pane shows it. */
 function binding(part, node, effect, name, selected) {
   return {
-    operation: operation(part),
+    operation: operation(part, node),
     target: describe(node),
     at: location(part),
     dependsOn: effect ? dependencies(effect.computed, name) : [],

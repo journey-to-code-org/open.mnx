@@ -99,6 +99,13 @@ test('writes count from connecting, for elements that were there before it', { s
   await page.close();
 });
 
+test('a form control\'s live state is named as the property the runtime sets', { skip }, async () => {
+  const { page, inspect } = await connected();
+  assert.deepEqual(onNode(await inspect('dt-panel input.live:not([type])')).map(({ operation }) => operation), ['.value = …']);
+  assert.deepEqual(onNode(await inspect('dt-panel input.live[type=checkbox]')).map(({ operation }) => operation), ['.checked = …']);
+  await page.close();
+});
+
 test('a child component shows what its parent binds onto it', { skip }, async () => {
   const { page, inspect } = await connected();
   await page.click('button.inc');

@@ -27,6 +27,7 @@ The output you learn from: `--emit element` writes the custom element you'd writ
 ### Fixed
 
 - **DevTools: the last update names writes to elements that were on the page before the pane connected.** It said "no named writes" for them until they had been inspected once.
+- **DevTools: a form control's live state is named as the property the runtime sets** (`.value = …`, `.checked = …`), not as `setAttribute` or `toggleAttribute`.
 
 ## 5.3.0 — 2026-11-09
 

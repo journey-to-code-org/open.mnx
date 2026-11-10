@@ -27,11 +27,11 @@ Through `globalThis.__ZUBRA_DEVTOOLS__`, which the runtime's development build d
 Until it's in the stores, load it unpacked from this folder:
 
 - **Chrome or Edge**: open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, choose **Load unpacked**, and pick `editors/devtools`.
-- **Firefox**: open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and pick `editors/devtools/manifest.json`.
+- **Firefox** (140 or later): open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and pick `editors/devtools/manifest.json`.
 
 Then open DevTools on your app, select an element, and find **Zubra** beside Styles and Computed.
 
-To package it for a store: `cd editors/devtools && npm run pack`, which writes `editors/zubra-devtools-<version>.zip` (manifest.json at its root, without the tests, scripts, README and package.json). It uses Node alone, so it works on Windows too, where there's no `zip` command. The same zip goes to the Chrome Web Store, Edge Add-ons and Firefox Add-ons.
+To package it for a store: `cd editors/devtools && npm run pack`, which writes `editors/zubra-devtools-<version>.zip` (manifest.json at its root, without the tests, scripts, README and package.json). It uses Node alone, so it works on Windows too, where there's no `zip` command. The same zip goes to the Chrome Web Store, Edge Add-ons and Firefox Add-ons. Before uploading to addons.mozilla.org, `npx web-ext lint --source-dir editors/devtools --self-hosted` runs the same checks its validator does (CI runs it too). The manifest declares that the extension collects no data (`data_collection_permissions`), which addons.mozilla.org requires of new add-ons.
 
 ## Tests
 
