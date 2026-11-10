@@ -58,6 +58,7 @@ A Zubra component is one `.zb` file: a `<script>`, a `<style>`, and a template w
 | `<zb-if test={…}>…<zb-else-if test={…}>…</zb-else-if><zb-else>…</zb-else></zb-if>` | a condition over several siblings or text |
 | `<zb-each items={list} as="item" index="i" key={item.id}>` | lists; always give a `key` when rows can reorder or be removed from the middle |
 | `<zb-switch value={x}><zb-case is="a">…</zb-case><zb-case is={["b", "c"]}>…</zb-case><zb-else>…</zb-else></zb-switch>` | one value, several cases (status values, enums) |
+| `animate` on `zb-if` / `zb-switch` / keyed `zb-each`, or `zb-animate` beside `zb-if={…}` | content leaves with `[data-leaving]` styles instead of vanishing, and keyed rows glide (`--zb-move-duration`); style coming in with `@starting-style` |
 | `let:total={item.price * item.qty}` on `zb-each` / `zb-then` | a derived name for the row or result, instead of repeating the expression |
 | `<zb-slot>` and `<zb-slot name="x">fallback</zb-slot>` | children; `hasSlot('x')` says whether content was given |
 | `<zb-await value={promiseOrResource}><zb-pending>…</zb-pending><zb-then as="data">…</zb-then><zb-catch as="error">… <button onclick={retry}>Retry</button></zb-catch></zb-await>` | async; `value={[a, b]}` waits for both; `as` may destructure (`as="{ name }"`); `retry()` in zb-catch; `delay={ms}`, `keep` |

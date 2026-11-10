@@ -26,6 +26,7 @@ Each step builds on the last, in about ten minutes each.
 8. [Read the output](08-read-the-output.md): what Zubra compiles to, and the platform rule behind each part.
 9. [Forms that post to the server](09-server-actions.md): `'use server'` functions, with or without JavaScript (`@zubra/actions`).
 10. [State that lives on the device](10-local-state.md): `'use collection'`, stored in the browser and shared when you want (`@zubra/sync`).
+11. [Motion](11-motion.md): content that leaves and lists that glide, with CSS and `animate`.
 
 ## Coming from a framework
 

@@ -289,6 +289,7 @@ const importMap = () => JSON.stringify({
     '@zubra/runtime': `${runtimeUrl}index.js`,
     '@zubra/runtime/spread': `${runtimeUrl}spread.js`,
     '@zubra/runtime/primitives': `${runtimeUrl}primitives.js`,
+    '@zubra/runtime/motion': `${runtimeUrl}motion.js`,
     '@zubra/runtime/': runtimeUrl,
     '@zubra/runtime/react': `${runtimeUrl}react.js`,
     '@zubra/runtime/vue': `${runtimeUrl}vue.js`,

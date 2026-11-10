@@ -1299,6 +1299,8 @@ impl Emitter<'_, '_> {
             "insert" => "insert",
             "list" => "list",
             "when" => "when",
+            "leave" => "leave",
+            "glide" => "glide",
             "clone" => "clone",
             "cloneSvg" => "cloneSvg",
             "fromJson" => "fromJson",
@@ -1476,6 +1478,7 @@ impl Emitter<'_, '_> {
                     test,
                     consequent,
                     alternate,
+                    animate,
                     ..
                 } => {
                     let start = block.marker("if");
@@ -1491,11 +1494,19 @@ impl Emitter<'_, '_> {
                     let test = self.js(block, test);
                     let leaving = if self.slots {
                         ", (start, end) => this.#parkSlotsIn(start, end)"
+                    } else if *animate {
+                        ", null"
                     } else {
                         ""
                     };
+                    // `animate`: the branch going away leaves (the `leave` helper) first.
+                    let (exit, written) = if *animate {
+                        (format!(", {}", self.helper("leave")), " animate")
+                    } else {
+                        (String::new(), "")
+                    };
                     block.updates.push(format!(
-                        "// <zb-if test={{{source}}}>\n{}{when}({start}, {end}, () => {test}, [{yes}, {no}]{leaving})",
+                        "// <zb-if test={{{source}}}{written}>\n{}{when}({start}, {end}, () => {test}, [{yes}, {no}]{leaving}{exit})",
                         block.update_indent()
                     ));
                 }
@@ -1506,6 +1517,7 @@ impl Emitter<'_, '_> {
                     key,
                     lets,
                     children,
+                    animate,
                     ..
                 } => {
                     let start = block.marker("each");
@@ -1516,12 +1528,13 @@ impl Emitter<'_, '_> {
                     };
                     let row = self.row(block, item, &index_name, lets, children)?;
                     let source = format!(
-                        "items={{{}}} as=\"{item}\"{}",
+                        "items={{{}}} as=\"{item}\"{}{}",
                         one_line(&items.to_js_with(&|name| name.to_owned())),
                         key.as_ref().map_or_else(String::new, |(key, _)| format!(
                             " key={{{}}}",
                             one_line(&key.to_js_with(&|name| name.to_owned()))
-                        ))
+                        )),
+                        if *animate { " animate" } else { "" }
                     );
                     let items = self.js(block, items);
                     let key = match key {
@@ -1538,8 +1551,14 @@ impl Emitter<'_, '_> {
                         None => format!("(_, {index_name}) => {index_name}"),
                     };
                     let list = self.helper("list");
+                    // `animate`: removed rows leave, and the rest glide to their new places.
+                    let motion = if *animate {
+                        format!(", {}, {}", self.helper("leave"), self.helper("glide"))
+                    } else {
+                        String::new()
+                    };
                     block.updates.push(format!(
-                        "// <zb-each {source}>\n{}{list}({start}, {end}, () => {items}, {key}, {row})",
+                        "// <zb-each {source}>\n{}{list}({start}, {end}, () => {items}, {key}, {row}{motion})",
                         block.update_indent()
                     ));
                 }
