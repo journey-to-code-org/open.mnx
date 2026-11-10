@@ -40,12 +40,28 @@ async function openPlayground(hash = '') {
   return { page, errors };
 }
 
+// The preview's frame, once it's running. A newer compile replaces the previews, so a frame found
+// just before that is detached: then look again.
 const frame = async (page, kind) => {
-  const handle = await page.waitForSelector(`[data-preview=${kind}] iframe`);
-  const content = await handle.contentFrame();
-  await content.waitForFunction(() => window.previewReady === true);
-  return content;
+  for (let attempt = 0; ; attempt++) {
+    const handle = await page.waitForSelector(`[data-preview=${kind}] iframe`);
+    const content = await handle.contentFrame();
+    try {
+      if (!content) throw new Error('detached');
+      await content.waitForFunction(() => window.previewReady === true);
+      return content;
+    } catch (error) {
+      if (attempt > 20 || !/detached/i.test(String(error?.message))) throw error;
+    }
+  }
 };
+
+/** Chooses an example and waits for its preview: the one running before it is replaced, not reused. */
+async function choose(page, example) {
+  await page.evaluate(() => document.querySelectorAll('[data-preview] iframe').forEach((frame) => { frame.dataset.before = ''; }));
+  await page.selectOption('#example', example);
+  await page.waitForSelector('[data-preview=html] iframe:not([data-before])');
+}
 
 test('compiles in the page and runs the component in every preview', async () => {
   const { page, errors } = await openPlayground();
@@ -149,8 +165,8 @@ test('the examples: slots with hasSlot, a list with directives, a spread, and co
 
 test("'use collection': the note is kept on the device, through a reload", async () => {
   const { page, errors } = await openPlayground();
-  await page.selectOption('#example', 'sync');
-  await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('@zubra/sync'));
+  await choose(page, 'sync');
+  assert.match(await page.textContent('#out-js'), /@zubra\/sync/);
   const pad = await frame(page, 'html');
   await pad.waitForFunction(() => document.querySelector('note-pad p')?.textContent === '0 words');
   await pad.fill('note-pad textarea', 'kept on the device');
@@ -170,7 +186,9 @@ test("'use collection': the note is kept on the device, through a reload", async
 
   await page.reload();
   await page.waitForFunction(() => window.playgroundReady === true);
-  await page.selectOption('#example', 'sync');
+  // The link already holds the note-pad, so choosing it compiles it again and replaces the preview
+  // that's running: wait for the new one, not the one about to be removed.
+  await choose(page, 'sync');
   const again = await frame(page, 'html');
   await again.waitForFunction(() => document.querySelector('note-pad textarea')?.value === 'kept on the device');
   assert.equal(await again.textContent('note-pad p'), '4 words');
