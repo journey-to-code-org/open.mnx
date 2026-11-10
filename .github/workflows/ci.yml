@@ -327,6 +327,26 @@ jobs:
         env:
           FLASK_GARDEN_URL: http://127.0.0.1:5000
 
+  python-client:
+    name: Python package (zubra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: cargo build --locked
+      - run: pip install jinja2
+      # The package against the real compiler, then a wheel built and installed the way pip does.
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+        working-directory: clients/python
+        env:
+          ZUBRA_COMPILER: ${{ github.workspace }}/target/debug/zubra
+
   hypermedia:
     name: Hypermedia examples (Hono + htmx, on Node.js and Bun)
     runs-on: ubuntu-latest
