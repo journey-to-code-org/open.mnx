@@ -15,4 +15,5 @@
     </zb-each>
   </ul>
   <dt-badge value={count}></dt-badge>
+  <input class="live" value={count}><input type="checkbox" class="live" checked={count > 0}>
 </dt-panel>
