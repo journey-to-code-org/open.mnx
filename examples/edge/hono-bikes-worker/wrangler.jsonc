@@ -1,0 +1,11 @@
+{
+  "name": "zubra-hono-bikes",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  // Components are text imports: `import source from '…/price-tag.zb'`.
+  "rules": [{ "type": "Text", "globs": ["**/*.zb"], "fallthrough": true }],
+  // htmx, the shop's stylesheet and @zubra/runtime are static files (npm run build:assets puts them
+  // in public/): a Worker has no disk to serve them from. A path with a file here is answered
+  // before the Worker runs.
+  "assets": { "directory": "./public" }
+}
