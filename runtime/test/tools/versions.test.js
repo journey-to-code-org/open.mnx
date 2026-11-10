@@ -53,3 +53,11 @@ test('every published package names this repository and its folder', () => {
     assert.deepEqual(repository, { type: 'git', url: 'git+https://github.com/journey-to-code-org/zubra.git', directory: path }, path);
   }
 });
+
+test('the Axum example\'s own lockfile and zubra-macros name this release of the crate', () => {
+  // The example is its own workspace: a stale version here fails its `cargo test --locked`.
+  const lock = readFileSync(join(repo, 'examples/backends/axum-garden/Cargo.lock'), 'utf8');
+  assert.match(lock, new RegExp(`name = "zubra"\\nversion = "${version.replaceAll('.', '\\.')}"`));
+  // The macro compiles with exactly the compiler the application links.
+  assert.match(readFileSync(join(repo, 'macros/Cargo.toml'), 'utf8'), new RegExp(`^zubra = \\{ path = "\\.\\.", version = "=${version.replaceAll('.', '\\.')}" \\}$`, 'm'));
+});

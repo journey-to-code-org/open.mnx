@@ -124,3 +124,44 @@ fn a_path_with_escapes_is_refused() {
     assert!(!ok);
     assert!(stderr.contains("without escapes"), "{stderr}");
 }
+
+/// The compiler's own "error" lines (not cargo's "could not compile" summary).
+fn errors(stderr: &str) -> Vec<&str> {
+    stderr
+        .lines()
+        .filter(|line| line.starts_with("error") && !line.contains("could not compile"))
+        .collect()
+}
+
+#[test]
+fn a_failure_is_one_error_wherever_the_macro_is_used() {
+    // As a `let`'s value, as a closure's body with a declared type, and as an argument: a bare
+    // `compile_error!(…);` in these places added a second error about the `;` or the type.
+    for (name, usage) in [
+        ("one-error-let", "fn main() { let _ = zubra_macros::include_zb!(\"components/broken.zb\"); }\n"),
+        ("one-error-static", "static CARD: std::sync::LazyLock<zubra::Component> = std::sync::LazyLock::new(|| zubra_macros::include_zb!(\"components/broken.zb\"));\nfn main() { let _ = CARD.path(); }\n"),
+        ("one-error-argument", "fn show(card: zubra::Component) { let _ = card.path(); }\nfn main() { show(zubra_macros::include_zb!(\"components/broken.zb\")); }\n"),
+    ] {
+        let (ok, stderr) = build(name, "<x-broken>\n  <p>{missing}</p>\n</x-broken>\n", usage);
+        assert!(!ok, "{name}: the build should have failed");
+        let found = errors(&stderr);
+        assert_eq!(found.len(), 1, "{name}: {stderr}");
+        assert!(stderr.contains("components/broken.zb:2"), "{name}: {stderr}");
+    }
+}
+
+#[test]
+fn a_literal_passed_on_by_another_macro_is_taken() {
+    let usage = "macro_rules! component { ($path:literal) => { zubra_macros::include_zb!($path) }; }\nfn main() { let card = component!(\"components/broken.zb\"); assert_eq!(card.tag().unwrap(), \"x-broken\"); }\n";
+    let (ok, stderr) = build(
+        "forwarded-literal",
+        "<x-broken><p>fine</p></x-broken>\n",
+        usage,
+    );
+    assert!(ok, "{stderr}");
+    // Something that isn't a string is still refused when it comes through a macro.
+    let usage = "macro_rules! component { ($path:literal) => { zubra_macros::include_zb!($path) }; }\nfn main() { let _ = component!(42); }\n";
+    let (ok, stderr) = build("forwarded-number", "<x-broken></x-broken>\n", usage);
+    assert!(!ok);
+    assert!(stderr.contains("string literal"), "{stderr}");
+}

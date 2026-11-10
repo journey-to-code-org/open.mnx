@@ -23,6 +23,7 @@ import atexit
 import html as _html
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
@@ -34,9 +35,9 @@ __version__ = "0.1.0"
 
 EXE = ".exe" if sys.platform == "win32" else ""
 HOW_TO = (
-    "zubra: no compiler found. `pip install zubra` on a platform with a prebuilt wheel includes one; "
-    "otherwise download a binary from https://github.com/journey-to-code-org/zubra/releases and put "
-    "it on the PATH, or set ZUBRA_COMPILER to its path."
+    "A platform wheel of this package includes the compiler; otherwise download a binary from "
+    "https://github.com/journey-to-code-org/zubra/releases and put it on the PATH, or set "
+    "ZUBRA_COMPILER to its path."
 )
 
 
@@ -58,13 +59,26 @@ class ZubraError(RuntimeError):
 class Zubra:
     """A folder of components and the compiler process that renders them."""
 
-    def __init__(self, components: str | os.PathLike, *, compiler: str | None = None, cache: bool = True):
+    def __init__(
+        self,
+        components: str | os.PathLike,
+        *,
+        compiler: str | None = None,
+        cache: bool = True,
+        timeout: float | None = 30.0,
+    ):
+        """`timeout` is how long one request may take, in seconds (`None`: no limit). A request
+        that takes longer raises a ZubraError and the compiler process is replaced."""
         self.dir = Path(components)
         self.compiler = compiler or find_compiler()
         if not self.compiler:
-            raise ZubraError(HOW_TO)
+            raise ZubraError(f"zubra: no compiler found. {HOW_TO}")
         self.cache = cache
+        self.timeout = timeout
+        # The process and the queue its output lines arrive on (a thread reads them, so a request
+        # can stop waiting). Only touched while holding the lock.
         self._process: subprocess.Popen | None = None
+        self._lines: queue.Queue[str] | None = None
         self._lock = threading.Lock()  # web servers use threads; one request line at a time
         atexit.register(self.close)
         self._sources: dict[str, str] | None = None
@@ -85,6 +99,51 @@ class Zubra:
             }
         return self._sources
 
+    def _start(self) -> None:
+        """Start `zubra serve`. Called with the lock held."""
+        try:
+            process = subprocess.Popen(
+                [self.compiler, "serve"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+            )
+        except OSError as error:
+            # Not there, not executable, or built for another machine.
+            raise ZubraError(f"zubra: can't run the compiler at {self.compiler!r} ({error}). {HOW_TO}") from error
+        lines: queue.Queue[str] = queue.Queue()
+
+        def read() -> None:
+            try:
+                for line in process.stdout:
+                    lines.put(line)
+            except (OSError, ValueError):
+                pass  # the pipe was closed under it: the process is being stopped
+            lines.put("")  # end of output: the process stopped
+
+        threading.Thread(target=read, name="zubra-serve-output", daemon=True).start()
+        self._process, self._lines = process, lines
+
+    def _stop(self) -> None:
+        """Stop the compiler process, whatever state it is in. Called with the lock held."""
+        process, self._process, self._lines = self._process, None, None
+        if process is None:
+            return
+        try:
+            process.stdin.close()  # end of input: `zubra serve` exits
+        except OSError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        try:
+            process.stdout.close()
+        except OSError:
+            pass
+
     def request(self, name: str, **request) -> str:
         """One request to the compiler for component `name`; the output, or a ZubraError."""
         if name not in self.names:
@@ -92,24 +151,34 @@ class Zubra:
         body = {"path": f"/components/{name}.zb", "files": self._files(), **request}
         with self._lock:
             if self._process is None or self._process.poll() is not None:
-                self._release()
-                self._process = subprocess.Popen(
-                    [self.compiler, "serve"],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    text=True,
-                    encoding="utf-8",
-                )
+                self._stop()
+                self._start()
+            # The protocol is one line out for one line in, in order, so a request that is left
+            # half done would hand its answer to whoever asks next. Whatever ends this one early
+            # (the process dying, a timeout, the caller's thread being interrupted) ends the
+            # process too, while the lock is still held: the next request starts a fresh one.
+            answered = False
             try:
-                self._process.stdin.write(json.dumps(body) + "\n")
-                self._process.stdin.flush()
-                line = self._process.stdout.readline()
-            except (BrokenPipeError, OSError):
-                line = ""
-        if not line:
-            self._release()  # the next request starts a fresh one
-            raise ZubraError(f"{self.compiler} serve stopped")
-        response = json.loads(line)
+                try:
+                    self._process.stdin.write(json.dumps(body) + "\n")
+                    self._process.stdin.flush()
+                    line = self._lines.get(timeout=self.timeout)
+                except (BrokenPipeError, OSError):
+                    line = ""
+                except queue.Empty:
+                    raise ZubraError(
+                        f"{self.compiler} serve didn't answer {name!r} within {self.timeout:g}s; it has been restarted"
+                    ) from None
+                if not line:
+                    raise ZubraError(f"{self.compiler} serve stopped")
+                try:
+                    response = json.loads(line)
+                except ValueError as error:
+                    raise ZubraError(f"{self.compiler} serve answered with something that isn't JSON: {line[:200]!r}") from error
+                answered = True
+            finally:
+                if not answered:
+                    self._stop()
         if not response["ok"]:
             raise ZubraError(response["error"])
         return response["output"]
@@ -134,26 +203,10 @@ class Zubra:
             self._js[key] = self.request(name, emit="js", runtime=runtime)
         return self._js[key]
 
-    def _release(self) -> None:
-        process, self._process = self._process, None
-        if process is not None:
-            for pipe in (process.stdin, process.stdout):
-                try:
-                    pipe.close()
-                except OSError:
-                    pass
-            process.wait()
-
     def close(self) -> None:
         """Stop the compiler process (it also stops when this process exits)."""
-        process = self._process
-        if process is not None:
-            try:
-                process.stdin.close()  # end of input: `zubra serve` exits
-                process.wait(timeout=5)
-            except Exception:
-                process.kill()
-            self._release()
+        with self._lock:
+            self._stop()
 
     def page(self) -> "Page":
         return Page(self)

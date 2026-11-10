@@ -89,12 +89,7 @@ fn respond(request: &Map<String, Value>) -> Value {
                     .to_owned(),
             );
         }
-        let resolved = if specifier.starts_with('/') {
-            normalize(specifier)
-        } else {
-            let base = from.rsplit_once('/').map_or("", |(directory, _)| directory);
-            normalize(&format!("{base}/{specifier}"))
-        };
+        let resolved = resolve(specifier, from);
         files
             .get(&resolved)
             .map(|source| (resolved.clone(), source.clone()))
@@ -400,6 +395,20 @@ fn entry(path: &str, diagnostic: &Diagnostic, severity: &str) -> Value {
 
 fn file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
+}
+
+/// Where a relative `specifier` (`./badge.zb`, `../ui/badge.zb`, or `/abs/badge.zb`) points from
+/// the file `from`, as a normalized path: the same form the sources are keyed by. A `from`
+/// without a directory (`card.zb`) resolves beside it (`badge.zb`), not at the root
+/// (`/badge.zb`), which is no key the caller gave.
+pub(crate) fn resolve(specifier: &str, from: &str) -> String {
+    if specifier.starts_with('/') {
+        return normalize(specifier);
+    }
+    match from.replace('\\', "/").rsplit_once('/') {
+        Some((directory, _)) => normalize(&format!("{directory}/{specifier}")),
+        None => normalize(specifier),
+    }
 }
 
 /// `/app/./x/../badge.zb` → `/app/badge.zb` (lexically; the request has no filesystem).

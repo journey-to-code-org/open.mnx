@@ -139,7 +139,7 @@ impl Page {
   <title>{title} · Garden plots</title>
   <link rel="stylesheet" href="/static/app.css">
   <style data-zb-components>{styles}</style>
-  <script type="importmap">{{ "imports": {{ "@zubra/runtime": "/vendor/zubra/index.js", "@zubra/runtime/spread": "/vendor/zubra/spread.js", "@zubra/runtime/primitives": "/vendor/zubra/primitives.js" }} }}</script>
+  <script type="importmap">{{ "imports": {{ "@zubra/runtime": "/vendor/zubra/index.js", "@zubra/runtime/spread": "/vendor/zubra/spread.js", "@zubra/runtime/primitives": "/vendor/zubra/primitives.js", "@zubra/runtime/motion": "/vendor/zubra/motion.js" }} }}</script>
 </head>
 <body>
   <header class="top">

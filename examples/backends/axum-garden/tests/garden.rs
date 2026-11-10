@@ -206,10 +206,59 @@ async fn components_are_served_as_modules() {
         assert!(module.contains("@zubra/runtime"), "{module}");
         assert_eq!(get(&format!("{base}/components/nope.js")).0, 404);
         assert_eq!(get(&format!("{base}/vendor/zubra/index.js")).0, 200);
+        // Every entry the import map names is served: a component that spreads or animates
+        // imports its own entry of the runtime.
+        let (_, page) = get(&format!("{base}/"));
+        let map = page
+            .split("<script type=\"importmap\">")
+            .nth(1)
+            .and_then(|rest| rest.split("</script>").next())
+            .expect("the layout has an import map");
+        let map: serde_json::Value = serde_json::from_str(map).unwrap();
+        let imports = map["imports"].as_object().unwrap();
+        for entry in ["", "/spread", "/primitives", "/motion"] {
+            let url = imports[&format!("@zubra/runtime{entry}")]
+                .as_str()
+                .unwrap_or_else(|| panic!("@zubra/runtime{entry} is not in the import map"));
+            assert_eq!(get(&format!("{base}{url}")).0, 200, "{url}");
+        }
         assert_eq!(
             get(&format!("{base}/vendor/zubra/..%2Fpackage.json")).0,
             404
         );
+    })
+    .await
+    .unwrap();
+}
+
+/// What a visitor typed is stored and then written into pages other visitors see. It must come
+/// back as text. (This runs without the Flask example: the comparison below only shows the two
+/// agree, which they would if neither escaped.)
+#[tokio::test(flavor = "multi_thread")]
+async fn stored_names_are_escaped_wherever_they_are_shown() {
+    let base = serve().await;
+    tokio::task::spawn_blocking(move || {
+        let name = "<img src=x onerror=alert(1)> \"Q\" & 'R' </script><script>alert(2)</script>";
+        let (status, _, location) = post(
+            &format!("{base}/plots/B1"),
+            &[
+                ("name", name),
+                ("email", "mo@example.org"),
+                ("crops", "kale"),
+                ("household", "2"),
+            ],
+        );
+        assert_eq!(status, 303);
+        assert_eq!(location.as_deref(), Some("/plots/B1?done=reserved"));
+        let escaped = "&lt;img src=x onerror=alert(1)&gt; &#34;Q&#34; &amp; &#39;R&#39; &lt;/script&gt;&lt;script&gt;alert(2)&lt;/script&gt;";
+        let (_, plot) = get(&format!("{base}/plots/B1"));
+        assert!(plot.contains(&format!("Gardened by {escaped}.")), "{plot}");
+        for path in ["/", "/plots/B1", "/plots/B1?done=reserved", "/harvest", "/harvest?plot=B1"] {
+            let (_, page) = get(&format!("{base}{path}"));
+            assert!(!page.contains("<img src=x"), "{path}: {page}");
+            assert!(!page.contains("alert(2)</script>"), "{path}: {page}");
+            assert!(!page.contains("onerror=alert(1)>"), "{path}: {page}");
+        }
     })
     .await
     .unwrap();
@@ -273,9 +322,10 @@ async fn the_pages_match_the_flask_examples() {
             post(&format!("{axum}/plots/B1"), &quoted),
         );
         assert_eq!(normalized(&b.1), normalized(&a.1), "escaping");
-        // And a good one lands in the same place.
+        // And a good one lands in the same place. Its name is stored, then written into other
+        // pages: markup in it has to come back escaped, the same way on both.
         let good = [
-            ("name", "Mo Ali"),
+            ("name", "Mo <b>\"M\"</b> & O'Neil"),
             ("email", "mo@example.org"),
             ("crops", "kale"),
             ("household", "2"),
@@ -290,6 +340,13 @@ async fn the_pages_match_the_flask_examples() {
             get(&format!("{axum}/plots/B1")),
         );
         assert_eq!(normalized(&b.1), normalized(&a.1), "a reserved plot");
+        assert!(
+            b.1.contains("Gardened by Mo &lt;b&gt;&#34;M&#34;&lt;/b&gt; &amp; O&#39;Neil."),
+            "{}",
+            b.1
+        );
+        let (a, b) = (get(&format!("{flask}/")), get(&format!("{axum}/")));
+        assert_eq!(normalized(&b.1), normalized(&a.1), "the map after a signup");
         // Each module is what the Flask example's compiler process writes.
         for name in [
             "crop-picker",

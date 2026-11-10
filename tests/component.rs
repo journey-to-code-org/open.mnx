@@ -153,3 +153,54 @@ fn module_names_children_with_the_js_extension() {
     );
     assert!(!module.contains("badge.zb\""), "{module}");
 }
+
+#[test]
+fn a_path_without_a_directory_resolves_its_imports_beside_it() {
+    // `Component::new("card.zb", …)`, or `include_zb!("card.zb")` for a component next to
+    // Cargo.toml: `./badge.zb` is `badge.zb`, not `/badge.zb`.
+    let badge = r#"<ui-badge text=""><span>{text}</span></ui-badge>"#;
+    let card = "<script>\n  import './badge.zb'\n</script>\n<ui-card label=\"x\"><ui-badge text={label}></ui-badge></ui-card>";
+    for (path, import) in [
+        ("card.zb", "badge.zb"),
+        ("./card.zb", "./badge.zb"),
+        ("card.zb", "./badge.zb"),
+        ("ui/card.zb", "ui/badge.zb"),
+        ("/card.zb", "/badge.zb"),
+        ("..\\shared\\card.zb", "../shared/badge.zb"),
+    ] {
+        let component = Component::new(path, card, &[(import, badge)]);
+        let html = component
+            .render(&serde_json::json!({ "label": "new" }))
+            .unwrap_or_else(|error| panic!("{path} + {import}: {}", error.message));
+        assert!(html.contains("<span>new</span>"), "{path}: {html}");
+        component.check().unwrap();
+        assert!(component.css().is_ok());
+    }
+    // And upwards from a nested one, to a file with no directory.
+    let nested = card.replace("./badge.zb", "../badge.zb");
+    let component = Component::new("ui/card.zb", &nested, &[("badge.zb", badge)]);
+    assert!(component
+        .render(&serde_json::json!({ "label": "up" }))
+        .unwrap()
+        .contains("<span>up</span>"));
+}
+
+#[test]
+fn the_request_api_resolves_them_the_same_way() {
+    let request = serde_json::json!({
+        "emit": "html",
+        "path": "card.zb",
+        "files": {
+            "card.zb": "<script>\n  import './badge.zb'\n</script>\n<ui-card><ui-badge text=\"hi\"></ui-badge></ui-card>",
+            "badge.zb": "<ui-badge text=\"\"><span>{text}</span></ui-badge>",
+        },
+        "props": {},
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(&zubra::handle_request(&request.to_string())).unwrap();
+    assert_eq!(response["ok"], true, "{response}");
+    assert!(response["output"]
+        .as_str()
+        .unwrap()
+        .contains("<span>hi</span>"));
+}

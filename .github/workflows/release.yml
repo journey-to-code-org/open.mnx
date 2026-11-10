@@ -31,14 +31,17 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-permissions:
-  contents: write # the tag and the release
-  id-token: write # trusted publishing (npm and the Marketplace) and npm's provenance
+# Nothing by default: each job asks for what it does. The jobs that build the binaries run
+# cargo and third-party toolchains, and must not hold the token that can publish or write releases.
+permissions: {}
 
 jobs:
   release:
     name: Publish and release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag and the release
+      id-token: write # trusted publishing (npm and the Marketplace) and npm's provenance
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -142,6 +145,8 @@ jobs:
     name: Binaries needed?
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       needed: ${{ steps.check.outputs.needed }}
     steps:
@@ -153,6 +158,12 @@ jobs:
         run: |
           if ! gh release view "v$VERSION" > /dev/null 2>&1; then
             echo "v$VERSION has no release yet: nothing to attach binaries to."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          elif ! gh api "repos/$GH_REPO/contents/scripts/package-binary.sh?ref=v$VERSION" > /dev/null 2>&1; then
+            # The binaries are built from the tag, with the tag's own packaging script. A release
+            # from before that script existed has nothing to build them with, and would fail this
+            # job on every push to main until the next release.
+            echo "v$VERSION was tagged before binaries were built: none for it."
             echo "needed=false" >> "$GITHUB_OUTPUT"
           elif gh release view "v$VERSION" --json assets --jq '.assets[].name' | grep -qx SHA256SUMS; then
             echo "v$VERSION already has its binaries."
@@ -166,6 +177,8 @@ jobs:
     needs: [release, binaries-needed]
     if: needs.binaries-needed.outputs.needed == 'true'
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -200,8 +213,13 @@ jobs:
           exe=target/${{ matrix.target }}/release/zubra
           [ -f "$exe.exe" ] && exe="$exe.exe"
           "$exe" fmt --stdin <<< '<hello-x></hello-x>' | grep -q 'hello-x'
+      # The archive's path from the workspace, not the absolute one the script prints: on Windows
+      # that is a Git Bash path (/d/a/…), which the upload step (not a shell) can't open.
       - id: pack
-        run: echo "archive=$(scripts/package-binary.sh ${{ matrix.target }} ${{ needs.release.outputs.version }})" >> "$GITHUB_OUTPUT"
+        run: |
+          archive="$(scripts/package-binary.sh ${{ matrix.target }} ${{ needs.release.outputs.version }})"
+          echo "archive=dist/$(basename "$archive")" >> "$GITHUB_OUTPUT"
+          ls -l "dist/$(basename "$archive")"
       - uses: actions/upload-artifact@v4
         with:
           name: zubra-${{ matrix.target }}
@@ -212,6 +230,8 @@ jobs:
     name: Attach the binaries to the release
     needs: [release, binaries]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # uploading to the release
     steps:
       - uses: actions/download-artifact@v4
         with:

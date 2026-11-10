@@ -690,7 +690,7 @@ Each release attaches prebuilt `zubra` binaries to its [GitHub release](https://
 | Windows x64 | `…x86_64-pc-windows-msvc.zip` |
 
 ```sh
-version=5.4.0 target=x86_64-unknown-linux-gnu
+version=5.5.0 target=x86_64-unknown-linux-gnu   # 5.5.0 is the first release with binaries
 curl -fsSLO "https://github.com/journey-to-code-org/zubra/releases/download/v$version/zubra-$version-$target.tar.gz"
 curl -fsSL "https://github.com/journey-to-code-org/zubra/releases/download/v$version/SHA256SUMS" | grep "zubra-$version-$target" | sha256sum -c -
 tar -xzf "zubra-$version-$target.tar.gz" && echo "<hi-x></hi-x>" | "zubra-$version-$target/zubra" fmt --stdin

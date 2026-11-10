@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::request::normalize;
+use crate::request::{normalize, resolve};
 use crate::{Diagnostic, HtmlOptions, SlotSource};
 
 /// One component with the sources it imports (and theirs), ready to render, style and serve.
@@ -113,12 +113,7 @@ impl Component {
             {
                 return Err("component imports must be relative paths (./ or ../)".to_owned());
             }
-            let resolved = if specifier.starts_with('/') {
-                normalize(specifier)
-            } else {
-                let base = from.rsplit_once('/').map_or("", |(directory, _)| directory);
-                normalize(&format!("{base}/{specifier}"))
-            };
+            let resolved = resolve(specifier, from);
             self.files
                 .get(&resolved)
                 .map(|source| (resolved.clone(), source.clone()))

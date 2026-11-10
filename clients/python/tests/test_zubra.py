@@ -146,6 +146,128 @@ class Components(unittest.TestCase):
         ))
 
 
+# A stand-in for `zubra serve`, to make the compiler misbehave on cue. It answers each request
+# line with its `props.title` as the output; a title of "slow" takes a second, "garbage" answers
+# with a line that isn't JSON, and "die" exits without answering.
+FAKE_SERVE = """#!{python}
+import json, sys, time
+for line in sys.stdin:
+    title = json.loads(line).get("props", {{}}).get("title", "")
+    if title == "slow":
+        time.sleep(1)
+    if title == "die":
+        sys.exit(3)
+    print("not json at all" if title == "garbage" else json.dumps({{"ok": True, "output": title}}), flush=True)
+"""
+
+
+class WhenTheCompilerMisbehaves(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        (self.dir / "card.zb").write_text(CARD)
+        (self.dir / "badge.zb").write_text(BADGE)
+        self.fake = self.dir / "fake-zubra"
+        self.fake.write_text(FAKE_SERVE.format(python=sys.executable))
+        self.fake.chmod(self.fake.stat().st_mode | stat.S_IXUSR)
+
+    def zubra(self, **options) -> Zubra:
+        made = Zubra(self.dir, compiler=str(self.fake), **options)
+        self.addCleanup(made.close)
+        return made
+
+    def ask(self, zubra: Zubra, title: str) -> str:
+        return zubra.html("card", {"title": title})
+
+    def test_a_request_that_times_out_does_not_leave_its_answer_for_the_next_one(self):
+        zubra = self.zubra(timeout=0.2)
+        self.assertEqual(self.ask(zubra, "first"), "first")
+        with self.assertRaisesRegex(ZubraError, r"didn't answer 'card' within 0\.2s"):
+            self.ask(zubra, "slow")
+        # The slow answer was still on its way. The next caller must get its own.
+        for title in ("second", "third"):
+            self.assertEqual(self.ask(zubra, title), title)
+
+    def test_an_interrupted_request_does_not_leave_its_answer_for_the_next_one(self):
+        # A thread interrupted between sending the request and reading the answer (Ctrl-C in a
+        # dev server, a worker timeout that raises into the thread).
+        zubra = self.zubra()
+        self.assertEqual(self.ask(zubra, "first"), "first")
+        lines = zubra._lines
+        original = lines.get
+
+        def interrupted(*args, **kwargs):
+            lines.get = original
+            raise KeyboardInterrupt
+
+        lines.get = interrupted
+        with self.assertRaises(KeyboardInterrupt):
+            self.ask(zubra, "lost")
+        self.assertFalse(zubra._lock.locked())
+        for title in ("second", "third"):
+            self.assertEqual(self.ask(zubra, title), title)
+
+    def test_no_timeout_waits(self):
+        zubra = self.zubra(timeout=None)
+        self.assertEqual(self.ask(zubra, "slow"), "slow")
+
+    def test_an_answer_that_is_not_json_is_a_zubra_error_and_the_next_request_works(self):
+        zubra = self.zubra()
+        with self.assertRaisesRegex(ZubraError, "isn't JSON: 'not json at all"):
+            self.ask(zubra, "garbage")
+        self.assertEqual(self.ask(zubra, "after"), "after")
+
+    def test_a_compiler_that_exits_mid_request_is_a_zubra_error_and_the_next_request_works(self):
+        zubra = self.zubra()
+        with self.assertRaisesRegex(ZubraError, "serve stopped"):
+            self.ask(zubra, "die")
+        self.assertEqual(self.ask(zubra, "after"), "after")
+
+    def test_a_compiler_that_is_not_there_or_cannot_run_says_how_to_get_one(self):
+        missing = Zubra(self.dir, compiler=str(self.dir / "nope" / "zubra"))
+        with self.assertRaisesRegex(ZubraError, r"can't run the compiler at .*nope.*releases"):
+            self.ask(missing, "x")
+        not_executable = self.dir / "plain-file"
+        not_executable.write_text("not a program")
+        with self.assertRaisesRegex(ZubraError, "can't run the compiler at .*plain-file"):
+            self.ask(Zubra(self.dir, compiler=str(not_executable)), "x")
+        # And it's still a ZubraError the second time: nothing was left half started.
+        with self.assertRaises(ZubraError):
+            self.ask(missing, "x")
+
+    def test_many_threads_through_failures_each_get_their_own_answer(self):
+        zubra = self.zubra(timeout=5)
+        results: dict[str, str] = {}
+        errors: list[BaseException] = []
+
+        def work(title: str):
+            try:
+                results[title] = self.ask(zubra, title)
+            except ZubraError:
+                results[title] = "error"
+            except BaseException as error:  # noqa: BLE001
+                errors.append(error)
+
+        titles = [f"t{n}" for n in range(10)] + ["die", "garbage"] + [f"u{n}" for n in range(10)]
+        threads = [threading.Thread(target=work, args=(title,)) for title in titles]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        for title in titles:
+            self.assertEqual(results[title], "error" if title in ("die", "garbage") else title)
+
+    def test_close_can_be_called_twice_and_a_closed_zubra_starts_again(self):
+        zubra = self.zubra()
+        self.assertEqual(self.ask(zubra, "a"), "a")
+        zubra.close()
+        zubra.close()
+        self.assertIsNone(zubra._process)
+        self.assertEqual(self.ask(zubra, "b"), "b")
+
+
 class Pages(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -264,8 +386,9 @@ class Wheels(unittest.TestCase):
             tmp = Path(tmp)
             binary = tmp / "zubra"
             binary.write_bytes(Path(compiler()).read_bytes())
-            wheel = build_wheel.build(binary.read_bytes(), "x86_64-unknown-linux-gnu", tmp / "dist")
-            self.assertEqual(wheel.name, "zubra-0.1.0-py3-none-manylinux_2_35_x86_64.whl")
+            machine = "aarch64" if os.uname().machine in ("aarch64", "arm64") else "x86_64"
+            wheel = build_wheel.build(binary.read_bytes(), f"{machine}-unknown-linux-musl", tmp / "dist")
+            self.assertEqual(wheel.name, f"zubra-0.1.0-py3-none-manylinux_2_17_{machine}.manylinux2014_{machine}.musllinux_1_1_{machine}.whl")
             with zipfile.ZipFile(wheel) as bundle:
                 names = bundle.namelist()
                 self.assertIn("zubra/__init__.py", names)
@@ -273,7 +396,9 @@ class Wheels(unittest.TestCase):
                 self.assertIn("zubra/bin/zubra", names)
                 self.assertIn("zubra-0.1.0.dist-info/RECORD", names)
                 self.assertEqual(bundle.getinfo("zubra/bin/zubra").external_attr >> 16 & 0o777, 0o755)
-                self.assertIn("Tag: py3-none-manylinux_2_35_x86_64", bundle.read("zubra-0.1.0.dist-info/WHEEL").decode())
+                # One Tag line per platform in the name: an old glibc, and musl.
+                tags = [line for line in bundle.read("zubra-0.1.0.dist-info/WHEEL").decode().splitlines() if line.startswith("Tag: ")]
+                self.assertEqual(tags, [f"Tag: py3-none-manylinux_2_17_{machine}", f"Tag: py3-none-manylinux2014_{machine}", f"Tag: py3-none-musllinux_1_1_{machine}"])
                 # RECORD lists every file with a hash.
                 record = bundle.read("zubra-0.1.0.dist-info/RECORD").decode().splitlines()
                 self.assertEqual(len(record), len(names))
@@ -305,15 +430,26 @@ class Wheels(unittest.TestCase):
     def test_every_release_target_has_a_platform_tag(self):
         import build_wheel
 
-        self.assertEqual(build_wheel.TAGS, {
-            "x86_64-unknown-linux-gnu": "manylinux_2_35_x86_64",
-            "aarch64-unknown-linux-gnu": "manylinux_2_35_aarch64",
-            "x86_64-unknown-linux-musl": "musllinux_1_2_x86_64",
-            "aarch64-unknown-linux-musl": "musllinux_1_2_aarch64",
-            "x86_64-apple-darwin": "macosx_10_12_x86_64",
-            "aarch64-apple-darwin": "macosx_11_0_arm64",
-            "x86_64-pc-windows-msvc": "win_amd64",
-        })
+        # The targets the release workflow builds: each has a wheel, or is covered by one.
+        workflow = (REPO / ".github" / "workflows" / "release.yml").read_text()
+        import re
+        targets = set(re.findall(r"\{ target: ([\w-]+),", workflow))
+        self.assertEqual(len(targets), 7)
+        self.assertEqual(targets, set(build_wheel.TAGS) | set(build_wheel.COVERED_BY))
+        for covered, by in build_wheel.COVERED_BY.items():
+            self.assertIn(by, build_wheel.TAGS, covered)
+        # No Linux wheel asks for a glibc newer than manylinux2014's: the static builds need none.
+        for target, tag in build_wheel.TAGS.items():
+            if "linux" in target:
+                self.assertIn("manylinux_2_17_", tag)
+                self.assertIn("musllinux_1_1_", tag)
+                self.assertNotIn("manylinux_2_35", tag)
+
+    def test_a_glibc_archive_is_refused_with_the_archive_to_use(self):
+        import build_wheel
+
+        with self.assertRaisesRegex(SystemExit, "x86_64-unknown-linux-musl archive"):
+            build_wheel.target_of("zubra-5.4.0-x86_64-unknown-linux-gnu.tar.gz")
 
     def test_a_windows_wheel_names_the_exe(self):
         import build_wheel
@@ -337,7 +473,10 @@ class Wheels(unittest.TestCase):
                 self.skipTest("no built binary to archive")
             path = Path(archive.stdout.strip())
             self.addCleanup(path.unlink)
-            wheel = build_wheel.build(build_wheel.binary_from(path), build_wheel.target_of(path.name), tmp)
+            # The host's archive is a glibc build, which gets no wheel of its own (see TAGS); the
+            # binary is read out of it the same way, so build the wheel for the static target.
+            machine = "aarch64" if os.uname().machine in ("aarch64", "arm64") else "x86_64"
+            wheel = build_wheel.build(build_wheel.binary_from(path), f"{machine}-unknown-linux-musl", tmp)
             with zipfile.ZipFile(wheel) as bundle:
                 # The binary in the archive, which is the debug build the archive was made from.
                 self.assertEqual(bundle.read("zubra/bin/zubra"), (REPO / "target" / "debug" / "zubra").read_bytes())

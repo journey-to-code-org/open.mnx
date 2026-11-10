@@ -19,7 +19,7 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
-use proc_macro::{Literal, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Literal, TokenStream, TokenTree};
 
 #[proc_macro]
 pub fn include_zb(input: TokenStream) -> TokenStream {
@@ -106,12 +106,17 @@ fn string_literal(input: TokenStream) -> Result<String, String> {
             "include_zb! takes one string literal: include_zb!(\"components/card.zb\")".into(),
         );
     }
-    let Some(TokenTree::Literal(literal)) = first else {
-        return Err(
-            "include_zb! takes one string literal: include_zb!(\"components/card.zb\")".into(),
-        );
-    };
-    unquote(&literal)
+    match first {
+        Some(TokenTree::Literal(literal)) => unquote(&literal),
+        // A literal passed on by another macro (`macro_rules! page { ($path:literal) =>
+        // { include_zb!($path) } }`) arrives wrapped in a group with no delimiters.
+        Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::None => {
+            string_literal(group.stream())
+        }
+        _ => {
+            Err("include_zb! takes one string literal: include_zb!(\"components/card.zb\")".into())
+        }
+    }
 }
 
 fn unquote(literal: &Literal) -> Result<String, String> {
@@ -131,8 +136,14 @@ fn quote(text: &str) -> String {
     format!("{text:?}")
 }
 
+/// The error, as an expression of the type the macro stands for: `include_zb!` is used where a
+/// value is expected (`let card = include_zb!(…)`), and a bare `compile_error!(…);` there adds a
+/// second error about the stray `;`, or about a `()` where a `Component` was meant.
 fn compile_error(message: &str) -> TokenStream {
-    format!("::core::compile_error!({});", quote(message))
-        .parse()
-        .expect("a compile_error! call parses")
+    format!(
+        "{{ ::core::compile_error!({}); ::zubra::Component::new(\"\", \"\", &[]) }}",
+        quote(message)
+    )
+    .parse()
+    .expect("a compile_error! call parses")
 }
