@@ -28,20 +28,28 @@ fn element(source: &str) -> String {
 fn animate_marks_the_parts_of_a_whole_chain() {
     let chain = js("<zb-x a={1}><zb-if test={a > 1} animate><p>one</p><zb-else-if test={a}><p>two</p></zb-else-if><zb-else><p>three</p></zb-else></zb-if></zb-x>");
     assert_eq!(
-        chain.matches("animate: true").count(),
+        chain.matches("animate: $motion").count(),
         2,
         "the zb-if and its else-if: {chain}"
     );
     let attribute = js("<zb-x a={1}><p zb-if={a > 1} zb-animate>one</p><p zb-else-if={a}>two</p><p zb-else>three</p></zb-x>");
-    assert_eq!(attribute.matches("animate: true").count(), 2, "{attribute}");
+    assert_eq!(
+        attribute.matches("animate: $motion").count(),
+        2,
+        "{attribute}"
+    );
     let switch = js("<zb-x t={\"a\"}><zb-switch value={t} animate><zb-case is=\"a\">A</zb-case><zb-case is=\"b\">B</zb-case></zb-switch></zb-x>");
-    assert_eq!(switch.matches("animate: true").count(), 2, "{switch}");
+    assert_eq!(switch.matches("animate: $motion").count(), 2, "{switch}");
     let list = js("<zb-x items={[]}><ul><zb-each items={items} as=\"item\" key={item.id} animate><li>{item.id}</li></zb-each></ul></zb-x>");
     assert!(
-        list.contains("text: () => $t($r(item).id) }] }, animate: true"),
+        list.contains("text: () => $t($r(item).id) }] }, animate: $motion"),
         "{list}"
     );
-    // Without it, nothing changes.
+    assert!(
+        chain.contains("import * as $motion from \"@zubra/runtime/motion\";"),
+        "{chain}"
+    );
+    // Without it, nothing changes, and motion isn't imported.
     assert!(!js("<zb-x a={1}><p zb-if={a}>one</p></zb-x>").contains("animate"));
     // The server renders the branch as ever.
     assert_eq!(

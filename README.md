@@ -216,7 +216,7 @@ CSS animates content coming in on its own: `@starting-style` gives a transition 
 - **On the server**, nothing changes: the branch and the rows render as before.
 - Content slotted into a leaving branch returns to the page at once, so put what should fade inside the component's own markup.
 
-The same behaviour is `leave(nodes, { float })` and `glide(elements, change)` in `@zubra/runtime/motion`, for code that adds and removes elements itself, and the `leave` and `glide` helpers in `--emit element` output.
+The same behaviour is `leave(nodes, { float })` and `glide(elements, change)` in `@zubra/runtime/motion` (about 1 KB gzipped), for code that adds and removes elements itself, and the `leave` and `glide` helpers in `--emit element` output. A compiled module imports `@zubra/runtime/motion` only when its component animates, so an import map needs that entry then; `@zubra/server` adds it.
 
 ## Classes, styles, events and references
 

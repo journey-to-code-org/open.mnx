@@ -355,26 +355,38 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             ),
         );
     }
+    // `@zubra/runtime` → `@zubra/runtime/<entry>`; a file (`/vendor/zubra/index.js`) → its sibling.
+    let entry = |name: &str| match options.runtime.rsplit_once('/') {
+        Some((directory, file)) if file.ends_with(".js") || file.ends_with(".mjs") => {
+            format!("{directory}/{name}.js")
+        }
+        _ => format!("{}/{name}", options.runtime.trim_end_matches('/')),
+    };
     // A spread's binder comes from `@zubra/runtime/spread`, imported only when the template uses one.
     if out.contains(&format!("bind: {SPREAD_BINDER}")) {
         let header_end = out.find('\n').map_or(0, |at| at + 1);
-        // `@zubra/runtime` → `@zubra/runtime/spread`; a file (`/vendor/zubra/index.js`) → its sibling.
-        let spread_module = match options.runtime.rsplit_once('/') {
-            Some((directory, file)) if file.ends_with(".js") || file.ends_with(".mjs") => {
-                format!("{directory}/spread.js")
-            }
-            _ => format!("{}/spread", options.runtime.trim_end_matches('/')),
-        };
         out.insert_str(
             header_end,
             &format!(
                 "import {{ spread as {SPREAD_BINDER} }} from {};\n",
-                json(&spread_module)
+                json(&entry("spread"))
             ),
+        );
+    }
+    // `animate`'s leave and glide come from `@zubra/runtime/motion`, likewise.
+    if out.contains(ANIMATE) {
+        let header_end = out.find('\n').map_or(0, |at| at + 1);
+        out.insert_str(
+            header_end,
+            &format!("import * as {MOTION} from {};\n", json(&entry("motion"))),
         );
     }
     Ok(out)
 }
+
+/// The local name of `@zubra/runtime/motion` in compiled modules, and how a part that animates says so.
+const MOTION: &str = "$motion";
+const ANIMATE: &str = ", animate: $motion";
 
 /// The local name of `@zubra/sync`'s binder in compiled modules.
 const COLLECTION: &str = "$collection";
@@ -861,7 +873,7 @@ impl<'a> Emitter<'a> {
                     } else {
                         self.block(alternate, &[], &region)?
                     };
-                    let animate = if *animate { ", animate: true" } else { "" };
+                    let animate = if *animate { ANIMATE } else { "" };
                     let body = format!(
                         "when: () => {}, blocks: [{yes}, {no}]{animate}",
                         self.js(test)
@@ -897,7 +909,7 @@ impl<'a> Emitter<'a> {
                         }
                         None => String::new(),
                     };
-                    let animate = if *animate { ", animate: true" } else { "" };
+                    let animate = if *animate { ANIMATE } else { "" };
                     let body =
                         format!("each: () => {}{key}, block: {row}{animate}", self.js(items));
                     self.part(JsPart::at(&region, body));
