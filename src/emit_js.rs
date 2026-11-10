@@ -1022,21 +1022,26 @@ impl<'a> Emitter<'a> {
         for attribute in &element.attributes {
             self.span = Some(attribute.span);
             if attribute.name == crate::parser::SPREAD {
-                if let Some(info) = child {
-                    let _ = info;
-                    return Err(Diagnostic::new(
-                        attribute.span,
-                        format!("<{}> is a zubra component: pass each prop rather than spreading an object onto it", element.name),
-                    )
-                    .with_help("a spread works on HTML elements and other libraries' custom elements"));
-                }
                 let AttributeValue::Expression(expression, _) = &attribute.value else {
                     unreachable!("a spread is always an expression");
                 };
                 // `bind`: the code that applies it, from its own runtime entry, so components
                 // without a spread don't load it.
+                // On a component, the entries that are its props are set as props.
+                let props = child.map_or_else(String::new, |child| {
+                    let mut names: Vec<_> = child.props.iter().collect();
+                    names.sort();
+                    format!(
+                        ", props: [{}]",
+                        names
+                            .iter()
+                            .map(|name| json(name))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                });
                 let body = format!(
-                    "spread: () => {}, own: [{}], bind: {SPREAD_BINDER}",
+                    "spread: () => {}, own: [{}]{props}, bind: {SPREAD_BINDER}",
                     self.js(expression),
                     own.iter()
                         .map(|name| json(name))

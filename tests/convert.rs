@@ -373,16 +373,28 @@ fn rest_props_anywhere_but_the_returned_element_are_reported() {
 }
 
 #[test]
-fn a_spread_onto_an_element_converts_and_onto_a_component_is_reported() {
-    let source = "import Badge from './badge';\nexport default function UiRow({ attrs = {} }) {\n  return <li {...attrs}><Badge {...attrs} /></li>;\n}\n";
+fn a_spread_converts_onto_an_element_and_onto_a_component() {
+    let source = "import Badge from './badge.zb';\nexport default function UiRow({ attrs = {} }) {\n  return <li {...attrs}><Badge {...attrs} /></li>;\n}\n";
     let conversion = convert(source, "Row.jsx", None).unwrap();
     let messages: Vec<&str> = conversion
         .unsupported
         .iter()
         .map(|d| d.message.as_str())
         .collect();
-    assert_eq!(messages, ["spreading onto a component isn't converted"]);
-    assert!(conversion.output.contains("<li {...attrs}>"));
+    assert!(
+        !messages.iter().any(|message| message.contains("spread")),
+        "{messages:?}"
+    );
+    assert!(
+        conversion.output.contains("<li {...attrs}>"),
+        "{}",
+        conversion.output
+    );
+    assert!(
+        conversion.output.contains("<Badge {...attrs} />"),
+        "{}",
+        conversion.output
+    );
 }
 
 #[test]

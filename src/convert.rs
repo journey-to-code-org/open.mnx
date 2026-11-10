@@ -1354,16 +1354,7 @@ impl<'a> Visit<'a> for Jsx<'_, '_> {
         };
         for item in &element.attributes {
             match item {
-                // A spread onto an element is a zubra spread now (3.5); onto a component, not.
-                JSXAttributeItem::SpreadAttribute(spread)
-                    if tag.is_some_and(|tag| tag.starts_with(char::is_uppercase)) =>
-                {
-                    self.work.unsupported(
-                        spread.span.start,
-                        "spreading onto a component isn't converted",
-                        "pass each prop; a zubra component checks every one",
-                    )
-                }
+                // A spread onto an element or a component is a zubra spread.
                 JSXAttributeItem::SpreadAttribute(_) => {}
                 JSXAttributeItem::Attribute(attribute) => {
                     let JSXAttributeName::Identifier(name) = &attribute.name else {

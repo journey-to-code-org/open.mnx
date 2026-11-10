@@ -1,0 +1,8 @@
+<!-- {...spread} onto a component: its props as props, the rest on its host. Driven through `rest`. -->
+<script>
+  import './badge.zb'
+</script>
+<spread-onto rest={{}}>
+  <zb-badge class="own" {...rest}></zb-badge>
+  <zb-badge label="fixed" {...rest}></zb-badge>
+</spread-onto>
