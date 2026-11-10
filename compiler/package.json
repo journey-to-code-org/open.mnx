@@ -14,6 +14,11 @@
       "types": "./index.d.ts",
       "default": "./index.js"
     },
+    "./wasm": {
+      "types": "./core.d.ts",
+      "default": "./core.js"
+    },
+    "./zubra.wasm": "./zubra.wasm",
     "./library": {
       "types": "./library.d.ts",
       "default": "./library.js"
@@ -22,6 +27,8 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "core.js",
+    "core.d.ts",
     "zubra.wasm",
     "cli.js",
     "library.js",
