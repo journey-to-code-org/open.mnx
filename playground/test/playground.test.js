@@ -219,3 +219,45 @@ test('the source and the output are coloured, and the docs link goes to the docs
   assert.deepEqual(errors, []);
   await page.close();
 });
+
+test('the Zubra DevTools extension works on the playground: its hook reaches the previews, and a line opens in the editor', async () => {
+  const { page, errors } = await openPlayground();
+  await frame(page, 'html');
+  // As the extension calls it, on the page it inspects: connect, then inspect the selected node.
+  const result = await page.evaluate(async () => {
+    const hook = globalThis.__ZUBRA_DEVTOOLS__;
+    hook.connect();
+    for (let i = 0; i < 100 && !hook.ready; i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    const preview = document.querySelector('[data-preview=html] iframe').contentDocument;
+    const output = preview.querySelector('hello-counter output');
+    const before = hook.inspect(output);
+    preview.querySelector('hello-counter button.more').click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const after = hook.inspect(output);
+    return {
+      tag: before.component.tag,
+      located: before.component.located,
+      here: before.bindings.filter((binding) => binding.here).map(({ operation, at, dependsOn }) => ({ operation, line: at?.line, dependsOn })),
+      written: after.lastUpdate.written,
+      updates: hook.updates,
+      outside: hook.inspect(document.body).component,
+    };
+  });
+  assert.deepEqual(result, {
+    tag: 'hello-counter', located: true,
+    here: [{ operation: 'textContent = …', line: 15, dependsOn: ['label', 'count'] }],
+    written: ['count'], updates: 1, outside: null,
+  });
+  // The Runtime module tab is still the plain build: the DevTools fields are only in the preview.
+  assert.doesNotMatch(await page.$eval('#out-js', (pre) => pre.textContent), /\bat: \[|\$dev/);
+
+  // "Open in editor" from the pane: the frame's own hook (newer extensions read it) and the
+  // page's both select the line in the source.
+  const selected = () => page.$eval('#source', (area) => area.value.slice(area.selectionStart, area.selectionEnd));
+  await page.evaluate(() => document.querySelector('[data-preview=html] iframe').contentWindow.__ZUBRA_DEVTOOLS__.open('/playground/component.zb', 15, 3));
+  assert.equal(await selected(), '  <output>{label}: {count}</output>');
+  await page.evaluate(() => globalThis.__ZUBRA_DEVTOOLS__.open('/playground/component.zb', 16, 3));
+  assert.match(await selected(), /^  <button type="button" class="more"/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});

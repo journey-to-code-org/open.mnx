@@ -8,15 +8,18 @@ const pane = document.getElementById('pane');
 const inspected = chrome.devtools.inspectedWindow;
 document.documentElement.dataset.theme = chrome.devtools.panels.themeName === 'dark' ? 'dark' : 'light';
 
-// Runs in the page: connect (which loads the reading side once), then inspect the selection.
+// Runs in the page. The hook is the one in the selected node's own window, so a component inside
+// a same-origin frame (the playground's previews) is read from that frame.
+const HOOK = '(($0 && $0.ownerDocument && $0.ownerDocument.defaultView) || globalThis).__ZUBRA_DEVTOOLS__';
+// Connect (which loads the reading side once), then inspect the selection.
 const READ = `(() => {
-  const hook = globalThis.__ZUBRA_DEVTOOLS__;
+  const hook = ${HOOK};
   if (!hook) return { missing: true };
   hook.connect();
   if (!hook.ready) return { loading: true };
   return hook.inspect($0);
 })()`;
-const UPDATES = 'globalThis.__ZUBRA_DEVTOOLS__?.updates ?? null';
+const UPDATES = `${HOOK}?.updates ?? null`;
 
 const evaluate = (code) => new Promise((resolve) => {
   inspected.eval(code, (result, exception) => resolve(exception ? { error: exception.value ?? exception.description ?? 'the page threw' } : result));
@@ -45,7 +48,7 @@ pane.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-file]');
   if (!button) return;
   const { file, line, column } = button.dataset;
-  evaluate(`globalThis.__ZUBRA_DEVTOOLS__?.open(${JSON.stringify(file)}, ${Number(line)}, ${Number(column)})`);
+  evaluate(`${HOOK}?.open(${JSON.stringify(file)}, ${Number(line)}, ${Number(column)})`);
 });
 
 chrome.devtools.panels.elements.onSelectionChanged.addListener(() => read());
