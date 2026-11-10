@@ -1,7 +1,7 @@
 {
   "name": "zubra",
   "displayName": "Zubra",
-  "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover and go to definition",
+  "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover, go to definition and formatting",
   "version": "5.3.0",
   "publisher": "JourneytoCode",
   "license": "ISC",
@@ -14,7 +14,8 @@
     "vscode": "^1.90.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Formatters"
   ],
   "main": "./extension.js",
   "activationEvents": [],
@@ -56,7 +57,18 @@
           "type": "string",
           "default": "",
           "description": "Path to the Zubra CLI. Empty: use @zubra/compiler (WebAssembly) if installed in the workspace, else `zubra` on PATH."
+        },
+        "zubra.format.printWidth": {
+          "type": "number",
+          "default": 100,
+          "minimum": 20,
+          "description": "Formatting: the line width a tag that starts its line is fitted into before its attributes go one per line. Indentation follows the editor's own settings. Takes effect after reloading the window."
         }
+      }
+    },
+    "configurationDefaults": {
+      "[zubra]": {
+        "editor.defaultFormatter": "JourneytoCode.zubra"
       }
     }
   },
