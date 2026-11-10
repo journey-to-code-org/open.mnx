@@ -81,6 +81,7 @@ before(async () => {
   assert.equal(init.capabilities.documentFormattingProvider, true);
   assert.deepEqual(init.capabilities.codeActionProvider.codeActionKinds, ['refactor.extract']);
   assert.deepEqual(init.capabilities.executeCommandProvider.commands, ['zubra.applyExtractComponent']);
+  assert.equal(init.capabilities.documentRangeFormattingProvider, true);
   notify('initialized', {});
 });
 after(() => {
@@ -166,6 +167,7 @@ test('the analysis knows where the cursor is', () => {
 // ---- Extract to component ---------------------------------------------------------------------
 
 const LIST = "<!-- café: a list -->\n<script>\n  let items = [{ id: 1, name: \"ada\" }]\n  let count = 0\n  function remove() { count = count + 1 }\n</script>\n<zb-list>\n  <ul>\n    <zb-each items={items} as=\"item\" key={item.id}>\n      <li onclick={remove}>{item.name} {count}</li>\n    </zb-each>\n  </ul>\n  <button onclick={() => count++}>more</button>\n</zb-list>\n";
+// ---- Format Selection --------------------------------------------------------------------------
 
 function rangeOf(text, from, to) {
   const start = text.indexOf(from);
@@ -323,4 +325,23 @@ test('zubra.applyExtractComponent: the name comes from the editor and the server
   assert.match(refused.error, /assigns to `count`/);
   assert.deepEqual(clientRequests.slice(before).map((r) => r.method).filter((method) => method === 'workspace/applyEdit'), ['workspace/applyEdit'], 'a refusal applies nothing');
   assert.ok(clientRequests.slice(before).some((r) => r.method === 'window/showMessageRequest' && /assigns to `count`/.test(r.params.message)), 'and says why');
+});
+
+test('Format Selection: only the lines it touches, at their depth in the whole file, after a multibyte character', async () => {
+  const text = '<!-- café -->\n<x-r>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n</x-r>\n';
+  const uri = await open('range.zb', text);
+  const range = rangeOf(text, '<li>one', '</li>');
+  const edits = await call('textDocument/rangeFormatting', { textDocument: { uri }, range, options: { tabSize: 4, insertSpaces: true } });
+  assert.equal(edits.length, 1);
+  assert.equal(applyEdits(text, edits), '<!-- café -->\n<x-r>\n<ul>\n        <li>one</li>\n<li>two</li>\n</ul>\n</x-r>\n');
+  // Already formatted: no edit. Tabs.
+  const done = '<x-r>\n  <p>a</p>\n</x-r>\n';
+  const second = await open('range-b.zb', done);
+  assert.deepEqual(await call('textDocument/rangeFormatting', { textDocument: { uri: second }, range: rangeOf(done, '<p>', '</p>'), options: { tabSize: 2, insertSpaces: true } }), []);
+  const tabs = await call('textDocument/rangeFormatting', { textDocument: { uri }, range, options: { tabSize: 4, insertSpaces: false } });
+  assert.match(applyEdits(text, tabs), /\n\t\t<li>one<\/li>/);
+  // A file that doesn't parse is left alone.
+  const broken = '<x-r>\n  <p>\n</x-r>\n';
+  const third = await open('range-c.zb', broken);
+  assert.deepEqual(await call('textDocument/rangeFormatting', { textDocument: { uri: third }, range: rangeOf(broken, '<p>', '<p>'), options: { tabSize: 2, insertSpaces: true } }), []);
 });

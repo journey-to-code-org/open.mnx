@@ -1,4 +1,7 @@
-<zb-people people={[{ name: "Ada", role: "math" }, { name: "Linus", role: "kernels" }]} tags={["x", "y"]}>
+<zb-people
+  people={[{ name: "Ada", role: "math" }, { name: "Linus", role: "kernels" }]}
+  tags={["x", "y"]}
+>
   <div>
     <ul>
       <zb-each items={people} as="person">

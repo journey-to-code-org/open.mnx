@@ -6,7 +6,13 @@
   <section>
     <h1>{title}</h1>
     <zb-each items={items} as="item" key={item.name}>
-      <zb-badge label={item.name} count={item.unread} info={{ color: item.unread > 0 ? "red" : "gray" }} class="row" data-who={item.name}>
+      <zb-badge
+        label={item.name}
+        count={item.unread}
+        info={{ color: item.unread > 0 ? "red" : "gray" }}
+        class="row"
+        data-who={item.name}
+      >
         <em slot="icon">{item.unread > 0 ? "*" : "-"}</em>{item.unread > 0 ? "unread" : "read"}
       </zb-badge>
     </zb-each>

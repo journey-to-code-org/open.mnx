@@ -34,10 +34,17 @@
   <p zb-if={slots.length === 0} class="empty">Choose a doctor and a day first.</p>
   <div zb-else class="grid" role="radiogroup" aria-label={label} ref={group}>
     <zb-each items={slots} as="slot" key={slot.time}>
-      <button type="button" role="radio" data-time={slot.time} disabled={slot.taken}
+      <button
+        type="button"
+        role="radio"
+        data-time={slot.time}
+        disabled={slot.taken}
         aria-checked={slot.time === value ? "true" : "false"}
         tabindex={slot.time === value || (!value && slot.time === first) ? "0" : "-1"}
-        onclick={() => (value = slot.time)} onkeydown.right.down.prevent={() => move(slot.time, 1)} onkeydown.left.up.prevent={() => move(slot.time, -1)}>{slot.time}</button>
+        onclick={() => (value = slot.time)}
+        onkeydown.right.down.prevent={() => move(slot.time, 1)}
+        onkeydown.left.up.prevent={() => move(slot.time, -1)}
+      >{slot.time}</button>
     </zb-each>
   </div>
 </slot-picker>

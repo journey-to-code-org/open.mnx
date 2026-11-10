@@ -28,7 +28,12 @@
       <p>{latest.text}</p>
       <button type="button" onclick={() => emit('hide')}>Hide on this site</button>
     </section>
-    <button type="button" class="chip" aria-expanded={open ? "true" : "false"} onclick={() => (open = !open)}>
+    <button
+      type="button"
+      class="chip"
+      aria-expanded={open ? "true" : "false"}
+      onclick={() => (open = !open)}
+    >
       <span class="dot" style:background={latest.color}></span>
       {notes.length === 1 ? "1 note" : notes.length + " notes"}
     </button>

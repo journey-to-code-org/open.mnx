@@ -23,6 +23,8 @@ jobs:
       - run: cargo test --workspace --locked
       # The release's binary archives (.github/workflows/release.yml).
       - run: scripts/package-binary.test.sh
+      # The repository's own components are laid out by zubra fmt.
+      - run: cargo run --locked -- fmt --check .
 
   runtime:
     name: Runtime (unit, browser, tools)
@@ -539,6 +541,30 @@ jobs:
         working-directory: editors/devtools
       # What addons.mozilla.org's validator checks, warnings included.
       - run: npx --yes web-ext lint --source-dir editors/devtools --self-hosted --warnings-as-errors
+
+  prettier-plugin:
+    name: Prettier plugin (prettier-plugin-zubra)
+    runs-on: ubuntu-latest
+    env:
+      ZUBRA_REQUIRE_WASM: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The plugin lays the template out with @zubra/compiler's WebAssembly build.
+      - run: cargo build --locked
+      - run: npm run build
+        working-directory: compiler
+      - run: npm ci
+        working-directory: prettier-plugin
+      - run: npm test
+        working-directory: prettier-plugin
 
   skills:
     name: Skills (examples compile, copies in sync)

@@ -94,3 +94,16 @@ test('a refusal comes back as its reason', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a compiler from before range formatting is reported as too old, not trusted', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'zubra-backend-'));
+  try {
+    const old = join(root, 'old-zubra');
+    writeFileSync(old, '#!/bin/sh\ncat >/dev/null\necho \'{"ok":true,"output":"// compiled","error":null,"warnings":[],"diagnostics":[]}\'\n', { mode: 0o755 });
+    const answer = (await createBackend({ compiler: old })).formatRange(join(root, 'a.zb'), '<x-a></x-a>', { start: 0, end: 3 }, {});
+    assert.equal(answer.ok, false);
+    assert.equal(answer.unsupported, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

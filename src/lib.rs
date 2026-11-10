@@ -56,7 +56,7 @@ pub use convert::{convert, convert_component, Conversion};
 pub use diagnostic::{Diagnostic, Span};
 pub use emit_interface::Framework;
 pub use emit_js::StyleImports;
-pub use format::{format, FormatOptions};
+pub use format::{format, format_range, is_ignored as format_is_ignored, FormatOptions, RangeEdit};
 pub use refactor::{extract, Edit, Extraction};
 
 fn parse_json(text: &str, what: &str) -> Result<serde_json::Value, Diagnostic> {

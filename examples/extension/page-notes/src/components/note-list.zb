@@ -24,7 +24,11 @@
       <li data-id={note.id}>
         <span class="stripe" style:background={note.color}></span>
         <div><p>{note.text}</p><time datetime={new Date(note.at).toISOString()}>{when.format(note.at)}</time></div>
-        <button type="button" aria-label={"Delete note: " + note.text} onclick={() => emit('remove', note.id)}>✕</button>
+        <button
+          type="button"
+          aria-label={"Delete note: " + note.text}
+          onclick={() => emit('remove', note.id)}
+        >✕</button>
       </li>
     </zb-each>
   </ol>

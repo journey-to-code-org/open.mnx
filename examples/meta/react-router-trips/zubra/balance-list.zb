@@ -23,7 +23,12 @@
       <li>
         <span>{person.name}</span>
         <span class="track" role="img" aria-label={person.name + ": " + money(person.cents)}>
-          <span class="bar" class:up={person.cents >= 0} class:down={person.cents < 0} style:width={(Math.abs(person.cents) / most) * 50 + "%"}></span>
+          <span
+            class="bar"
+            class:up={person.cents >= 0}
+            class:down={person.cents < 0}
+            style:width={(Math.abs(person.cents) / most) * 50 + "%"}
+          ></span>
         </span>
         <span class="amount" class:down={person.cents < 0}>{money(person.cents)}</span>
       </li>

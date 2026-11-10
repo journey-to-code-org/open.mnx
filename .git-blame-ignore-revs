@@ -1,0 +1,5 @@
+# Revisions git blame skips: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# These are commit ids, so they only work while the commits keep them: merge a branch that adds
+# one with a merge commit (or fast-forward), not a squash or a rebase, or update the id here after.
+# Format the repository with zubra fmt
+e7352e4e6ca792bbb165ac66045c6be01a91e5fb

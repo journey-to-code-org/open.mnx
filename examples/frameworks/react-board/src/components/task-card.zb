@@ -35,13 +35,33 @@
   .avatar.unassigned { background: #8a90a0; }
 </style>
 <task-card card={{ id: "", title: "", points: 0, assignee: "", tags: [], priority: "normal" }}>
-  <article draggable="true" tabindex="0" class:dragging data-priority={card.priority} aria-label={`${card.title}, ${card.points} points${card.assignee ? `, ${card.assignee}` : ""}`} onclick={() => emit('cardopen')} onkeydown.enter={() => emit('cardopen')} onkeydown.shift.left.prevent={() => emit('cardmove', -1)} onkeydown.shift.right.prevent={() => emit('cardmove', 1)} onkeydown.shift.up.prevent={() => emit('cardreorder', -1)} onkeydown.shift.down.prevent={() => emit('cardreorder', 1)} ondragstart={dragstart} ondragend={() => (dragging = false)}>
+  <article
+    draggable="true"
+    tabindex="0"
+    class:dragging
+    data-priority={card.priority}
+    aria-label={`${card.title}, ${card.points} points${card.assignee ? `, ${card.assignee}` : ""}`}
+    onclick={() => emit('cardopen')}
+    onkeydown.enter={() => emit('cardopen')}
+    onkeydown.shift.left.prevent={() => emit('cardmove', -1)}
+    onkeydown.shift.right.prevent={() => emit('cardmove', 1)}
+    onkeydown.shift.up.prevent={() => emit('cardreorder', -1)}
+    onkeydown.shift.down.prevent={() => emit('cardreorder', 1)}
+    ondragstart={dragstart}
+    ondragend={() => (dragging = false)}
+  >
     <h3>{card.title}</h3>
     <ul zb-if={card.tags.length > 0}><zb-each items={card.tags} as="tag" key={tag}><li>{tag}</li></zb-each></ul>
     <footer>
       <span class="points" title="Story points">{card.points}</span>
       <span>{card.priority === "normal" ? "" : `${card.priority} priority`}</span>
-      <span class="avatar" class:unassigned={!card.assignee} style:background={card.assignee ? `hsl(${hue} 55% 40%)` : null} title={card.assignee || "Unassigned"} aria-hidden="true">{initials}</span>
+      <span
+        class="avatar"
+        class:unassigned={!card.assignee}
+        style:background={card.assignee ? `hsl(${hue} 55% 40%)` : null}
+        title={card.assignee || "Unassigned"}
+        aria-hidden="true"
+      >{initials}</span>
     </footer>
   </article>
 </task-card>

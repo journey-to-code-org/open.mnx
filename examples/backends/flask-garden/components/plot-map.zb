@@ -25,12 +25,22 @@
   small { color: #6b705f; }
 </style>
 <plot-map plots={[]} selected="" columns={4}>
-  <ul ref={grid} style:--columns={columns}
-      onkeydown.right.prevent={(event) => step(event, 1)} onkeydown.left.prevent={(event) => step(event, -1)}
-      onkeydown.down.prevent={(event) => step(event, columns)} onkeydown.up.prevent={(event) => step(event, 0 - columns)}>
+  <ul
+    ref={grid}
+    style:--columns={columns}
+    onkeydown.right.prevent={(event) => step(event, 1)}
+    onkeydown.left.prevent={(event) => step(event, -1)}
+    onkeydown.down.prevent={(event) => step(event, columns)}
+    onkeydown.up.prevent={(event) => step(event, 0 - columns)}
+  >
     <zb-each items={plots} as="plot" key={plot.id}>
       <li>
-        <a href={"/plots/" + plot.id} data-status={plot.status} class:selected={plot.id === selected} aria-current={plot.id === selected ? "page" : null}>
+        <a
+          href={"/plots/" + plot.id}
+          data-status={plot.status}
+          class:selected={plot.id === selected}
+          aria-current={plot.id === selected ? "page" : null}
+        >
           <strong>{plot.id}</strong>
           <status-pill status={plot.status} waiting={plot.waiting}></status-pill>
           <small>{plot.size} · {plot.sun} sun</small>

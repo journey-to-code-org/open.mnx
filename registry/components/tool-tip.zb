@@ -61,7 +61,14 @@
   }
 </style>
 <tool-tip text="" delay={300}>
-  <span class="trigger" ref={wrap} onpointerenter={show} onpointerleave={hide} onfocusin={show} onfocusout={hide}>
+  <span
+    class="trigger"
+    ref={wrap}
+    onpointerenter={show}
+    onpointerleave={hide}
+    onfocusin={show}
+    onfocusout={hide}
+  >
     <zb-slot></zb-slot>
     <span popover="manual" role="tooltip" id={tipId} ref={tip} style:position-anchor={`--${tipId}`}><zb-slot name="content">{text}</zb-slot></span>
   </span>
