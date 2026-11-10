@@ -315,6 +315,17 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python -m unittest discover -s tests -v
         working-directory: examples/backends/flask-garden
+      # The same garden from Axum: the pages must be the Flask example's HTML. No Node.js, no child process.
+      - name: Start the Flask garden
+        working-directory: examples/backends/flask-garden
+        run: |
+          ZUBRA_COMPILER="$GITHUB_WORKSPACE/target/debug/zubra" python app.py > flask.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fs http://127.0.0.1:5000/ > /dev/null && exit 0; sleep 1; done
+          cat flask.log; exit 1
+      - run: cargo test --locked
+        working-directory: examples/backends/axum-garden
+        env:
+          FLASK_GARDEN_URL: http://127.0.0.1:5000
 
   hypermedia:
     name: Hypermedia examples (Hono + htmx, on Node.js and Bun)
