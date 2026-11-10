@@ -30,6 +30,7 @@ Each step builds on the last, in about ten minutes each.
 
 ## Coming from a framework
 
+- [Zubra for Angular developers](for-angular-developers.md)
 - [Zubra for React developers](for-react-developers.md)
 - [Zubra for Vue developers](for-vue-developers.md)
 - [Zubra for Svelte developers](for-svelte-developers.md)
