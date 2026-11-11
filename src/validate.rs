@@ -139,7 +139,17 @@ pub fn take_omitted() -> Vec<String> {
 }
 
 /// A place partial rendering left for the browser, and, for an attribute, which one.
-pub type Gap = (Span, Option<String>);
+/// A place partial rendering leaves for the browser: where, the attribute (if it's one), and,
+/// for a gap inside a child component, the child's tag, file and where in it (the span is then
+/// the child's tag in the parent).
+pub type Gap = (Span, Option<String>, Option<ChildGap>);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChildGap {
+    pub tag: String,
+    pub path: String,
+    pub span: Span,
+}
 
 thread_local! {
     /// While `zubra check --server` runs: where partial rendering left something for the browser,
@@ -157,9 +167,9 @@ fn gap(span: Span) {
         if let Some(gaps) = gaps.borrow_mut().as_mut() {
             let at = gaps
                 .iter()
-                .position(|(at, _)| *at == span)
+                .position(|(at, _, child)| *at == span && child.is_none())
                 .unwrap_or_else(|| {
-                    gaps.push((span, None));
+                    gaps.push((span, None, None));
                     gaps.len() - 1
                 });
             LAST_GAP.with(|last| last.set(at));
@@ -171,10 +181,32 @@ fn gap(span: Span) {
 fn gap_attribute(name: &str) {
     GAPS.with(|gaps| {
         let at = LAST_GAP.with(std::cell::Cell::get);
-        if let Some((_, attribute)) = gaps.borrow_mut().as_mut().and_then(|gaps| gaps.get_mut(at)) {
+        if let Some((_, attribute, _)) =
+            gaps.borrow_mut().as_mut().and_then(|gaps| gaps.get_mut(at))
+        {
             attribute.get_or_insert_with(|| name.to_owned());
         }
     });
+}
+
+/// A child component's gaps, reported at its tag in the parent (`at`), each saying where in the
+/// child it is. Its own child components' gaps keep the file they're in.
+fn gaps_in_child(at: Span, tag: &str, path: &str, found: Vec<Gap>) {
+    for (span, attribute, inner) in found {
+        let child = inner.unwrap_or(ChildGap {
+            tag: tag.to_owned(),
+            path: path.to_owned(),
+            span,
+        });
+        GAPS.with(|gaps| {
+            if let Some(gaps) = gaps.borrow_mut().as_mut() {
+                let entry = (at, attribute, Some(child));
+                if !gaps.contains(&entry) {
+                    gaps.push(entry);
+                }
+            }
+        });
+    }
 }
 
 /// Run `render` (a partial HTML render) recording what it leaves for the browser.
@@ -1757,8 +1789,17 @@ impl Context<'_> {
             groups.entry(current.clone()).or_default().push(node);
         }
 
-        let rendered = lower_component(&child.ast, &overrides, &Supply::Lowered(groups))
-            .map_err(|error| error.in_file(&child.path, &child.source))?;
+        // The child's own gaps are in its file: reported at its tag here, saying where in it.
+        let recording = GAPS.with(|gaps| gaps.borrow().is_some());
+        let rendered = if recording {
+            let (rendered, found) =
+                record_gaps(|| lower_component(&child.ast, &overrides, &Supply::Lowered(groups)));
+            gaps_in_child(element.span, &child.ast.tag, &child.path, found);
+            rendered
+        } else {
+            lower_component(&child.ast, &overrides, &Supply::Lowered(groups))
+        }
+        .map_err(|error| error.in_file(&child.path, &child.source))?;
         for (name, value) in rendered.host_attributes {
             attributes.push(ir::Attribute {
                 name,
