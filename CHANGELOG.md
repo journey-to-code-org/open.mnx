@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Sync: a page asks only for what it shows.** `connect({ scope: { seats: 'showing-12/', brands: true } })`: per collection, `true` or a key prefix (or a list of them). Pull, the live stream and presence send nothing outside it, so a page's store holds only its own documents, and each scope keeps its own cursor. `createSyncServer({ scope({ request }) })` imposes one from the server, which a page's can only narrow, and refuses pushes and presence outside it: tenancy by key prefix on one log. The `zubra-sync` binary honours a page's scope. Found by CineStack, where every guest's phone received every seat in every showing.
+
 ## 5.6.0 — 2026-11-11
 
 Sync and Actions on Cloudflare Workers, and five fixes found by building a real app on Zubra (Tailgate, a farm-to-door marketplace): the Sync server can read and write documents itself; a Durable Object holds it on Workers (`@zubra/sync/durable`), with the log in the object's own SQLite; server functions are built ahead of time for the edge (`zubra-actions build`, `@zubra/actions/edge`); and the standup board runs on a Worker in CI. On the server, an unsafe URL from a value is now left out and reported instead of failing the render, rendered components go inside slots, nested form controls submit before JavaScript, and `hydrated()` is `false`.

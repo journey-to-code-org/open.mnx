@@ -79,7 +79,7 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 | | |
 |---|---|
 | `POST /_zb/sync/push` | `{ "changes": [Change] }` → `{ "ok": true }` |
-| `GET /_zb/sync/pull?since=<cursor>` | `{ "changes": [Change], "cursor": … }` |
+| `GET /_zb/sync/pull?since=<cursor>[&scope=<json>]` | `{ "changes": [Change], "cursor": … }` |
 | `Change` | `{ "collection", "key", "field", "value", "clock" }` |
 
 - **The device is the source of truth.** A write lands in the local store first. The connection stamps each changed field with a hybrid logical clock (`<ms>-<counter>-<device>`), queues it (in `localStorage`, so a reload doesn't lose it) and pushes it when it can. Offline, it waits.
@@ -89,6 +89,20 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 - Cross-site pushes are refused, like actions.
 
 Changes arrive over a live channel: `GET /_zb/sync/live?since=<cursor>` is a server-sent event stream of `changes` as they're pushed (and `presence`, below). While it's open there's nothing to poll; when it drops, the connection polls (every 2 seconds by default, and when the browser comes back online) and reopens it from the current cursor. `connect({ live: false })` polls only. A server with several processes needs a shared log and a pub/sub between them; the reference server's subscribers are its own process's.
+
+### Only what the page shows: `scope`
+
+By default a page receives, and stores, every change in the log. A page that shows one showing's seats, or one business's orders, should ask for just those:
+
+```js
+connect({ scope: { seats: 'showing-12/', holds: 'showing-12/', brands: true } });
+```
+
+- **Per collection, `true` or a key prefix**, or a list of prefixes. A collection the scope doesn't name isn't sent. Keys made from several props (`by showing, seat`) are joined with `/`, so a prefix like `'showing-12/'` takes every seat in that showing.
+- **What's out of scope isn't sent:** not by pull, not by the live stream (its backlog or new changes), and not as presence. The page's store never has it.
+- **Each scope keeps its own cursor** (in `localStorage`). A page that moves to another showing reads that showing from the start, not from wherever the last one got to.
+- **The server can impose one:** `createSyncServer({ scope: ({ request }) => ({ orders: `${business(request)}/` }) })`. A page's own scope can only narrow it, and pushes and presence outside it are refused with 403. That's tenancy: each business's documents under its own key prefix, on one log. `authorize` still runs on what's in scope.
+- **The `zubra-sync` binary honours a page's scope.** It has no notion of users, so a server-imposed scope is the JavaScript server's; put the binary behind an app that sets one.
 
 ### The server taking part
 

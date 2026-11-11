@@ -23,6 +23,14 @@ export interface Documents {
   collections(): string[];
 }
 
+/** Per collection, `true` (every document) or a key prefix, or a list of them. */
+export type Scope = Record<string, true | string | string[]>;
+
+/** A scope from a request's `?scope=` (JSON), or null for everything. Throws on anything else. */
+export function parseScope(text: string | null | undefined): Scope | null;
+/** Whether a document is in a scope (null is everything). */
+export function inScope(scope: Scope | null, collection: string, key: string): boolean;
+
 export function createSyncServer(options?: {
   log?: Log;
   /** Default `/_zb/sync`. */
@@ -34,6 +42,12 @@ export function createSyncServer(options?: {
    */
   authorize?: (from: { request: Request; collection: string; key: string; write: boolean; kind: 'change' | 'presence' | 'read' }) => boolean | Promise<boolean>;
   /** Other origins allowed to push. */
+  /**
+   * The scope a request may see and write (tenancy: a business's keys under its own prefix), or
+   * null for everything. A page's own `scope` can only narrow it; pushes and joins outside it are
+   * refused.
+   */
+  scope?: (from: { request: Request }) => Scope | null | Promise<Scope | null>;
   origins?: string[];
   /** How often the live stream sends a keep-alive comment (ms, default 15000). */
   heartbeat?: number;

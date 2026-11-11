@@ -20,6 +20,12 @@
 //   const left = docs.get('stock', 'eggs')?.qty ?? 0;   // read and write with no await between,
 //   if (left > 0) sync.write('stock', 'eggs', { qty: left - 1 });   // and no request interleaves
 //
+// Scope: a page asks only for what it shows. `?scope=` on pull and live is JSON, per collection
+// `true` or a key prefix (or a list of them): `{ "seats": "showing-12/", "brands": true }`.
+// Changes and presence outside it aren't sent. `scope({ request })` imposes one from the server
+// (tenancy: each business's keys under its own prefix), which the page's can only narrow; writes
+// and joins outside it are refused.
+//
 // Live: `GET <mount>/live?since=<cursor>&peer=<id>` is a server-sent event stream: `changes` as
 // they're pushed, and `presence` from the other viewers (POST <mount>/presence). Subscribers are
 // this process's; several server processes need a shared log and a pub/sub between them.
@@ -40,6 +46,41 @@ export function memoryLog() {
       return { changes: changes.slice(from, from + limit), cursor: Math.min(changes.length, from + limit) };
     },
   };
+}
+
+/**
+ * A scope from a request's `?scope=`: `{ collection: true | prefix | [prefixes] }`, or null for
+ * everything. Throws on anything else.
+ */
+export function parseScope(text) {
+  if (text === null || text === undefined || text === '') return null;
+  let scope;
+  try {
+    scope = JSON.parse(text);
+  } catch {
+    throw new TypeError('scope is JSON');
+  }
+  if (scope === null) return null;
+  checkScope(scope);
+  return scope;
+}
+
+function checkScope(scope) {
+  const prefix = (each) => typeof each === 'string' && each.length <= 200;
+  const ok =
+    scope !== null && typeof scope === 'object' && !Array.isArray(scope) && Object.keys(scope).length <= 100 &&
+    Object.values(scope).every((each) => each === true || prefix(each) || (Array.isArray(each) && each.length <= 50 && each.every(prefix)));
+  if (!ok) throw new TypeError('scope is { collection: true | "key prefix" | ["prefixes"] }');
+}
+
+/** Whether a document is in a scope (null is everything). */
+export function inScope(scope, collection, key) {
+  if (!scope) return true;
+  const rule = scope[collection]; // inherited properties (constructor…) are none of these
+  if (rule === true) return true;
+  if (typeof rule === 'string') return key.startsWith(rule);
+  if (Array.isArray(rule)) return rule.some((prefix) => key.startsWith(prefix));
+  return false;
 }
 
 const json = (status, value) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
@@ -108,7 +149,7 @@ function documentsOf() {
   };
 }
 
-export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize = () => true, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
+export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize = () => true, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
   if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
   const base = mount.replace(/\/$/, '');
   // Appends, one after another, so the log's order is the order they were made in.
@@ -175,22 +216,41 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     const at = room.indexOf('/');
     return at > 0 ? { collection: room.slice(0, at), key: room.slice(at + 1) } : null;
   };
-  async function broadcastChanges(changes, cursor) {
-    for (const listener of listeners) {
-      const visible = [];
-      for (const change of changes) {
-        if (await authorize({ request: listener.request, collection: change.collection, key: change.key, write: false, kind: 'read' })) visible.push(change);
-      }
-      listener.send('changes', { changes: visible, cursor });
+  /**
+   * What a request may see: inside the server's scope for it and the page's own, and allowed by
+   * authorize. `where` is `{ request, scopes: [server, page] }`.
+   */
+  const sees = async ({ request, scopes }, collection, key) =>
+    scopes.every((scope) => inScope(scope, collection, key)) && (await authorize({ request, collection, key, write: false, kind: 'read' }));
+  async function visible(where, changes) {
+    const shown = [];
+    for (const change of changes) if (await sees(where, change.collection, change.key)) shown.push(change);
+    return shown;
+  }
+  /** The server's scope for a request and the page's (`?scope=`), or a Response refusing it. */
+  async function scopesOf(request, url) {
+    let page;
+    try {
+      page = parseScope(url.searchParams.get('scope'));
+    } catch (error) {
+      return json(400, { error: error.message });
     }
+    const server = (await serverScope({ request })) ?? null;
+    if (server) checkScope(server);
+    return [server, page];
+  }
+  async function broadcastChanges(changes, cursor) {
+    for (const listener of listeners) listener.send('changes', { changes: await visible(listener, changes), cursor });
   }
   async function broadcastPresence(message) {
     const { collection, key } = roomOf(message.room);
     for (const listener of listeners) {
       if (listener.peer === message.peer) continue;
-      if (await authorize({ request: listener.request, collection, key, write: false, kind: 'read' })) listener.send('presence', message);
+      if (await sees(listener, collection, key)) listener.send('presence', message);
     }
   }
+  /** Whether the server's scope lets this request write to (or join) a document. */
+  const mayWrite = async (request, collection, key) => inScope((await serverScope({ request })) ?? null, collection, key);
   const sameOrigin = (request) => {
     const site = request.headers.get('sec-fetch-site');
     if (site) return site === 'same-origin' || site === 'none';
@@ -211,6 +271,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       const changes = Array.isArray(body?.changes) ? body.changes : null;
       if (!changes || !changes.every(valid)) return json(400, { error: 'Expected { changes: [{ collection, key, field, value, clock }] }' });
       for (const change of changes) {
+        if (!(await mayWrite(request, change.collection, change.key))) return json(403, { error: 'Not yours to change' });
         if (!(await authorize({ request, collection: change.collection, key: change.key, write: true, kind: 'change' }))) return json(403, { error: 'Not yours to change' });
       }
       const appended = changes.map(({ collection, key, field, value, clock }) => ({ collection, key, field, value, clock }));
@@ -233,7 +294,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!room || !okPeer || !okState || JSON.stringify(message.state).length > 4096) {
         return json(400, { error: 'Expected { room: "<collection>/<key>", peer, state: {…} | null }' });
       }
-      if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
+      if (!(await mayWrite(request, room.collection, room.key)) || !(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
       const clean = { room: message.room, peer: message.peer, state: message.state };
       for (const listener of listeners) if (listener.peer === clean.peer) {
         if (clean.state === null) listener.rooms.delete(clean.room);
@@ -258,7 +319,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!room || !peerOk(message.from) || !peerOk(message.to) || !dataOk) {
         return json(400, { error: 'Expected { room, from, to, data: {…} }' });
       }
-      if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
+      if (!(await mayWrite(request, room.collection, room.key)) || !(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
       const clean = { room: message.room, from: message.from, to: message.to, data: message.data };
       for (const listener of listeners) if (listener.peer === clean.to) listener.send('signal', clean);
       return json(200, { ok: true });
@@ -267,6 +328,8 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       const peer = url.searchParams.get('peer') ?? '';
       if (!/^[\w-]{0,40}$/.test(peer)) return json(400, { error: 'Bad peer id' });
       const since = url.searchParams.get('since') ?? '0';
+      const scopes = await scopesOf(request, url);
+      if (scopes instanceof Response) return scopes;
       let listener;
       let timer;
       const stream = new ReadableStream({
@@ -285,7 +348,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
             for (const room of listener.rooms) broadcastPresence({ room, peer, state: null });
             try { controller.close(); } catch {}
           };
-          listener = { peer, request, rooms: new Set(), send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`), close };
+          listener = { peer, request, scopes, rooms: new Set(), send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`), close };
           listeners.add(listener);
           request.signal?.addEventListener('abort', close);
           write('retry: 1000\n\n');
@@ -298,11 +361,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
           for (let first = true; ; first = false) {
             const backlog = await log.after(from);
             if (!backlog.changes.length && !first) break;
-            const visible = [];
-            for (const change of backlog.changes) {
-              if (await authorize({ request, collection: change.collection, key: change.key, write: false, kind: 'read' })) visible.push(change);
-            }
-            listener.send('changes', { changes: visible, cursor: backlog.cursor });
+            listener.send('changes', { changes: await visible(listener, backlog.changes), cursor: backlog.cursor });
             if (!backlog.changes.length || String(backlog.cursor) === String(from)) break;
             from = backlog.cursor;
           }
@@ -316,12 +375,10 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       });
     }
     if (url.pathname === `${base}/pull` && request.method === 'GET') {
+      const scopes = await scopesOf(request, url);
+      if (scopes instanceof Response) return scopes;
       const { changes, cursor } = await log.after(url.searchParams.get('since') ?? '0');
-      const visible = [];
-      for (const change of changes) {
-        if (await authorize({ request, collection: change.collection, key: change.key, write: false, kind: 'read' })) visible.push(change);
-      }
-      return json(200, { changes: visible, cursor });
+      return json(200, { changes: await visible({ request, scopes }, changes), cursor });
     }
     if (url.pathname.startsWith(`${base}/`)) return json(404, { error: 'Not found' });
     return null;
