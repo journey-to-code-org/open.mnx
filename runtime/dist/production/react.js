@@ -15,9 +15,22 @@
 // - `value` + `onValueChange` is React's controlled pattern; any `<prop>` + `<prop>change` pair
 //   works the same way.
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { serverContent } from './server.js';
+import { outletsOf } from './outlet.js';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
+// `renderRow` serves `<zb-outlet name="row">`, `renderDetailPanel` serves `detail-panel`.
+const outletName = (key) => key.slice(6).replace(/[A-Z]/g, (letter, at) => (at ? '-' : '') + letter.toLowerCase());
+const isRenderer = (key, value) => key.length > 6 && key.startsWith('render') && /[A-Z]/.test(key[6]) && typeof value === 'function';
+// A stable key per outlet, for its portal.
+const outletKeys = new WeakMap();
+let nextOutlet = 0;
+const outletKey = (outlet) => {
+  if (!outletKeys.has(outlet)) outletKeys.set(outlet, `zb-outlet-${++nextOutlet}`);
+  return outletKeys.get(outlet);
+};
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 
@@ -56,12 +69,65 @@ export function wrap(Element) {
     const values = {};
     const listeners = {};
     const rest = {};
+    const renderers = {};
     for (const key of Object.keys(all)) {
       if (key === 'children') continue;
       const event = key.length > 2 && key.startsWith('on') ? key.slice(2).toLowerCase() : null;
       if (Object.hasOwn(props, key)) values[key] = all[key];
       else if (event && events.includes(event)) listeners[event] = all[key];
+      else if (isRenderer(key, all[key])) renderers[outletName(key)] = all[key];
       else rest[key] = all[key];
+    }
+
+    // Outlets (experimental, outlet.js): `render<Name>` fills each `<zb-outlet name>` the element
+    // renders, through a portal, so what's rendered there is part of this React tree (context,
+    // state, events). `outlets` maps each claimed outlet to its current item.
+    const served = React.useRef(renderers);
+    served.current = renderers;
+    const [outlets, setOutlets] = React.useState(() => new Map());
+    useIsomorphicLayoutEffect(() => {
+      const node = element.current;
+      const claimed = new Set();
+      const owner = {
+        change: (outlet) => setOutlets((map) => new Map(map).set(outlet, outlet.item)),
+        disconnect: (outlet) => {
+          claimed.delete(outlet);
+          setOutlets((map) => {
+            const next = new Map(map);
+            next.delete(outlet);
+            return next;
+          });
+        },
+      };
+      const take = (outlets) => {
+        if (!outlets.length) return;
+        for (const outlet of outlets) {
+          outlet.owner = owner;
+          claimed.add(outlet);
+        }
+        setOutlets((map) => {
+          const next = new Map(map);
+          for (const outlet of outlets) next.set(outlet, outlet.item);
+          return next;
+        });
+      };
+      const connected = (event) => {
+        if (!Object.hasOwn(served.current, event.outlet.name)) return;
+        event.claim(owner);
+        take([event.outlet]);
+      };
+      node.addEventListener('outletconnect', connected);
+      // Outlets the element rendered before this listener existed.
+      take(outletsOf(node).filter((outlet) => Object.hasOwn(served.current, outlet.name)));
+      return () => {
+        node.removeEventListener('outletconnect', connected);
+        for (const outlet of claimed) outlet.owner = null;
+      };
+    }, []);
+    const portals = [];
+    for (const [outlet, item] of outlets) {
+      const render = renderers[outlet.name];
+      if (render) portals.push(createPortal(render(item), outlet, outletKey(outlet)));
     }
 
     // Subscribe once per event; always call the latest handler.
@@ -115,9 +181,10 @@ export function wrap(Element) {
     // @zubra/server's injectShadowRoots; this works without one.)
     if (React.Children.count(all.children) === 0) {
       const html = typeof window === 'undefined' ? serverContent(Element, { props: json ? JSON.parse(json) : {}, name: rest.name }) : '';
-      return React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true });
+      return React.createElement(React.Fragment, null,
+        React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true }), portals);
     }
-    return React.createElement(tag, host, all.children);
+    return React.createElement(React.Fragment, null, React.createElement(tag, host, all.children), portals);
   });
   Component.displayName = pascal(tag);
   Component.element = Element;

@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Outlets (experimental): a component asks React to render per item.** `<zb-outlet name="row" item={item}>` inside a `zb-each` marks a place the app's framework fills; the React adapter fills outlets from `render<Name>` props (`renderRow={(item) => <Row item={item} />}`) through portals, so the rows keep the app's context, state and handlers, a keyed move keeps each row's state, and a removed row unmounts. A template with an outlet imports `@zubra/runtime/outlet`. Browser tests in React 19 and 18. React only for now, and client-only (the server leaves outlets empty); the protocol (`outletconnect`, `event.claim`) is there for other adapters.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.
