@@ -10,6 +10,11 @@ export interface Change {
 export interface Log {
   append(changes: Change[]): Promise<unknown>;
   after(cursor: string, limit?: number): Promise<{ changes: Change[]; cursor: number | string }>;
+  /**
+   * The cursor after the last change. Optional: with it, a device whose cursor is past the end
+   * (the log was replaced) is answered from the start, with `reset: true`.
+   */
+  head?(): Promise<number>;
 }
 
 /** A log in memory. `keep: 'latest'` keeps each field's latest value only. */

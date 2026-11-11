@@ -343,16 +343,20 @@ fn handle(state: &State, mut request: Request) {
             let Ok(scope) = scope_of(&url) else {
                 return respond_json(request, extra, 400, json!({ "error": BAD_SCOPE }));
             };
-            let since = query(&url, "since")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+            let (since, reset) = start_from(
+                state,
+                query(&url, "since")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+            );
             match after(state, since) {
-                Ok((changes, cursor)) => respond_json(
-                    request,
-                    extra,
-                    200,
-                    json!({ "changes": scoped(&scope, &changes), "cursor": cursor }),
-                ),
+                Ok((changes, cursor)) => {
+                    let mut body = json!({ "changes": scoped(&scope, &changes), "cursor": cursor });
+                    if reset {
+                        body["reset"] = json!(true);
+                    }
+                    respond_json(request, extra, 200, body)
+                }
                 Err(error) => {
                     eprintln!("zubra-sync: {error}");
                     respond_json(
@@ -531,6 +535,24 @@ fn append(state: &State, changes: &[Value]) -> rusqlite::Result<i64> {
     })
 }
 
+/// Where to read from for a device at `since`: from the start, and say so, if it's past the end of
+/// the log (the log was replaced, or the device's cursor is from another one).
+fn start_from(state: &State, since: i64) -> (i64, bool) {
+    let head: i64 = state
+        .db
+        .lock()
+        .expect("db")
+        .query_row("SELECT COALESCE(MAX(seq), 0) FROM changes", [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
+    if since > head {
+        (0, true)
+    } else {
+        (since, false)
+    }
+}
+
 fn after(state: &State, since: i64) -> rusqlite::Result<(Vec<Value>, i64)> {
     let db = state.db.lock().expect("db");
     let mut select = db.prepare_cached(
@@ -615,9 +637,12 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
         events: events.clone(),
     });
     let _ = events.send("retry: 1000\n\n".into());
-    let mut since = query(url, "since")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let (mut since, reset) = start_from(
+        state,
+        query(url, "since")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
+    );
     let mut first = true;
     while let Ok((changes, cursor)) = after(state, since) {
         let empty = changes.is_empty();
@@ -626,11 +651,12 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
         if empty && !first {
             break;
         }
+        let mut data = json!({ "changes": scoped(&scope, &changes), "cursor": cursor });
+        if reset && first {
+            data["reset"] = json!(true);
+        }
         first = false;
-        let _ = events.send(event(
-            "changes",
-            &json!({ "changes": scoped(&scope, &changes), "cursor": cursor }),
-        ));
+        let _ = events.send(event("changes", &data));
         if empty || cursor == since {
             break;
         }

@@ -157,9 +157,10 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
       }
       if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known });
     }
-    // Never move the cursor back (a live backlog can arrive after a newer push).
+    // Never move the cursor back (a live backlog can arrive after a newer push), unless the server
+    // says this device's cursor was past the end of its log: then it starts over from what it sent.
     const next = String(body.cursor);
-    if (!(/^\d+$/.test(next) && /^\d+$/.test(cursor) && Number(next) < Number(cursor))) cursor = next;
+    if (body.reset || !(/^\d+$/.test(next) && /^\d+$/.test(cursor) && Number(next) < Number(cursor))) cursor = next;
     keep(cursorName, cursor);
   }
 

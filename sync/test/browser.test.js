@@ -286,6 +286,33 @@ test('scope: a page gets, and stores, only the documents it asked for, with a cu
   await other.close();
 });
 
+test('a device whose cursor is past the end of the log (a new log) starts over and catches up', async () => {
+  const context = await browser.newContext();
+  // As if this device had read far into a log that has since been replaced.
+  await context.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('zubra-sync:cursor', '999999');
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  const writer = await browser.newContext();
+  const other = await writer.newPage();
+  await other.goto(`${base}/connected?doc=restart1`);
+  await ready(other);
+  await other.fill('.title', 'Written before');
+  await other.waitForTimeout(300);
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=restart1`);
+  await ready(tab);
+  await title(tab, 'Written before');
+  // And it carries on from the log's real cursor: a later change still arrives.
+  await other.fill('.title', 'Written after');
+  await title(tab, 'Written after');
+  assert.ok(Number(await tab.evaluate(() => localStorage.getItem('zubra-sync:cursor'))) < 999999);
+  await context.close();
+  await writer.close();
+});
+
 const board = async (context, doc, connect = false) => {
   const tab = await context.newPage();
   await tab.goto(`${base}/board?doc=${doc}${connect === 'rtc' ? '&rtc' : connect ? '&connect' : ''}`);
