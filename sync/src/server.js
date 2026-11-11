@@ -25,7 +25,7 @@
 // this process's; several server processes need a shared log and a pub/sub between them.
 //
 // On Node, `handle(req, res)` answers sync requests (streaming the live ones) and returns true.
-const MOUNT = '/_zb/sync';
+export const MOUNT = '/_zb/sync';
 
 /** A log in memory: `append(changes)` and `after(cursor)`. */
 export function memoryLog() {
@@ -59,6 +59,25 @@ const valid = (change) =>
   change && typeof change.collection === 'string' && typeof change.key === 'string' && typeof change.field === 'string' &&
   clock.parse(change.clock) !== null && change.field !== '$clocks';
 
+/**
+ * How documents are read, wherever they're kept: `find(collection, key)` → fields or undefined,
+ * `list(collection)` → `[{ key, fields }]`, `names()` → the collections. What a reader gets is a
+ * copy, so changing it changes nothing.
+ */
+export function documentsView({ find, list, names }) {
+  return {
+    /** A document's fields (a copy), or undefined when nothing has been written to it. */
+    get(collection, key) {
+      const fields = find(collection, key);
+      return fields && structuredClone(fields);
+    },
+    /** Every document in a collection: `[{ key, ...fields }]`. */
+    all: (collection) => list(collection).map(({ key, fields }) => ({ key, ...structuredClone(fields) })),
+    /** The collections that have documents, in the order they were first written to. */
+    collections: () => names(),
+  };
+}
+
 /** The documents a log describes, merged by each field's latest clock, as every device merges them. */
 function documentsOf() {
   const docs = new Map();
@@ -81,17 +100,11 @@ function documentsOf() {
         if (!Object.keys(doc.fields).length) docs.delete(id(change.collection, change.key));
       };
     },
-    view: {
-      /** A document's fields (a copy), or undefined when nothing has been written to it. */
-      get(collection, key) {
-        const doc = docs.get(id(collection, key));
-        return doc && { ...doc.fields };
-      },
-      /** Every document in a collection: `[{ key, ...fields }]`. */
-      all(collection) {
-        return [...docs.values()].filter((doc) => doc.collection === collection).map((doc) => ({ key: doc.key, ...doc.fields }));
-      },
-    },
+    view: documentsView({
+      find: (collection, key) => docs.get(id(collection, key))?.fields,
+      list: (collection) => [...docs.values()].filter((doc) => doc.collection === collection),
+      names: () => [...new Set([...docs.values()].map((doc) => doc.collection))],
+    }),
   };
 }
 

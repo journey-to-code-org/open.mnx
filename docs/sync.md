@@ -106,10 +106,43 @@ export async function claim(formData, context) {
 }
 ```
 
-- **`documents()`** reads the log once, then keeps up with every push and write. `get(collection, key)` is a document's fields (a copy); `all(collection)` is every document in a collection with its `key`. Reads are synchronous.
+- **`documents()`** reads the log once, then keeps up with every push and write. `get(collection, key)` is a document's fields (a copy); `all(collection)` is every document in a collection with its `key`; `collections()` names the collections that have any. Reads are synchronous.
 - **`write(collection, key, fields)`** stamps each field with the server's clock (`createSyncServer({ device })`, `server` by default), which is always later than any clock it has seen. So the write wins over everything before it, and a device that writes afterwards wins over it, as between any two devices. The view has it at once; then it's logged and sent to every live page. A server that hasn't read its log yet (it just started) reads it before its first write, so that write comes after every clock in it. If the log refuses a write, `write()` rejects and the documents take it back out; a push the log refuses never reaches them.
 - **To keep a document the server's alone**, refuse `kind: 'change'` for it in `authorize`, and let `kind: 'presence'` through if people should see who else has it open.
 - One process: the view is this process's, like the live subscribers. Several processes need a shared log and should decide such things in one place.
+
+### On Cloudflare Workers: a Durable Object
+
+A Worker has many isolates and no memory they share, so the sync server can't live in one: a change pushed to one isolate would never reach a page listening on another. `@zubra/sync/durable` puts it in a Durable Object instead, one per app, with the log in the object's own SQLite (`durableObjectLog(ctx.storage)`, the table and cursors of `sqliteLog`). The Worker forwards `/_zb/sync/*` to it.
+
+```js
+import { SyncObject, syncStub } from '@zubra/sync/durable';
+
+export class Market extends SyncObject {
+  authorize({ request, collection, kind }) { /* as on Node; secrets are this.env's */ }
+  // The object runs one call at a time: what must not interleave goes in its methods.
+  async claim(order, driver) {
+    if ((await this.documents()).get('orders', order)?.driver) return { error: 'Taken' };
+    await this.write('orders', order, { driver, status: 'claimed' });
+    return { ok: true };
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    const sync = syncStub(env.MARKET);             // the object named 'sync'
+    return (await sync.fetch(request))              // Sync's requests, or null
+      ?? render(await sync.documents('orders'));    // a copy, for this page
+  },
+};
+// wrangler.jsonc: "durable_objects": { "bindings": [{ "name": "MARKET", "class_name": "Market" }] },
+//                 "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Market"] }]
+```
+
+- **One difference from Node**: on Node, a server action reads `documents()` and writes in the same process, with no await between, so nothing interleaves. In a Worker the documents are in the object, and `syncStub(…).documents()` is a copy, not kept current. A read-then-write that must not interleave goes in a method of your `SyncObject` (`sync.stub.claim(…)`), where `this.documents()` is the live view. Don't `fetch()` in the middle of one: waiting on the network lets the object take the next request.
+- **Presence lingers a little longer.** A Durable Object isn't told a page has gone, only that the next keep-alive couldn't be sent, so `SyncObject` sends one every 5 seconds (`static options = { heartbeat }`), and a closed page leaves its rooms within that.
+- **Options**: `static options = { mount, heartbeat, device, table, origins }`; `syncStub(namespace, { name, mount })` must use the same `mount`. A different `name` is a separate object with its own log.
+- **The object is awake while any page listens.** An open live stream holds it in memory, which a Durable Object is billed for by duration; see [Zubra on Cloudflare Workers](edge.md).
 
 ### Without Node: the `zubra-sync` binary
 
