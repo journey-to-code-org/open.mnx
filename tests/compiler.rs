@@ -994,6 +994,36 @@ fn server_rendered_slot_html_is_kept_as_written() {
         html,
         "<zb-panel><main><?zb [!?><p data-x=\"{a}\">{\"json\"}</p><!--astro:end--><script type=\"application/json\">{\"a\":1}</script><input value=\"raw\" onclick=\"go()\"><zb-slot></zb-slot><?zb ]?></main></zb-panel>"
     );
+    // A component the server already rendered keeps its hydration markers (processing
+    // instructions since 5.0), so it can hydrate where it lands.
+    let rendered = serde_json::json!({
+        "default": "<x-inner label=\"hi\"><?zb [?><p>hi</p><?zb ]?></x-inner>"
+    })
+    .to_string();
+    let html = compile_html_from(
+        source,
+        "panel.zb",
+        "{}",
+        &rendered,
+        SlotSource::Html,
+        &loader,
+    )
+    .unwrap();
+    assert_eq!(
+        html,
+        "<zb-panel><main><?zb [!?><x-inner label=\"hi\"><?zb [?><p>hi</p><?zb ]?></x-inner><?zb ]?></main></zb-panel>"
+    );
+    assert!(compile_html_from(
+        source,
+        "panel.zb",
+        "{}",
+        r#"{"default":"<p>x</p><?zb ["}"#,
+        SlotSource::Html,
+        &loader
+    )
+    .unwrap_err()
+    .message
+    .contains("unclosed processing instruction"));
     // The same content is an error as a template (and stays one).
     assert!(compile_html_from(
         source,

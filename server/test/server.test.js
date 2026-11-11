@@ -67,7 +67,7 @@ test("a value that isn't a safe URL is left out, the page still renders, and the
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
-  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list', 'review-panel']);
+  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
   assert.equal(zubra.describe('count-stepper').form, true);
   const url = await listen((req, res) => {
     if (zubra.handle(req, res)) return;
@@ -91,6 +91,30 @@ test('a page: render, finish (CSS, import map, modules), and the browser modules
   const page = await open(url);
   await page.waitForFunction(() => document.querySelector('hello-there p').textContent.startsWith('Hello Ada!'));
   assert.deepEqual(page.errors, [], 'it hydrated the server markup');
+  await page.done();
+});
+
+test('a rendered component in another\'s slot: both render on the server and both hydrate', async () => {
+  const zubra = createZubra({ components });
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    // The child is rendered first, with its hydration markers, and handed over as slot HTML.
+    const child = page.render('slot-child', { label: 'Inside' });
+    const body = page.render('slot-frame', { heading: 'Frame' }, { default: child });
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const html = await (await fetch(url)).text();
+  assert.match(html, /<h2>Frame<\/h2>/);
+  assert.match(html, /<slot-child label="Inside">\s*<\?zb \[\?><p>Inside<\/p><\?zb \]\?>/, 'the child, with its own markers, inside the frame');
+  const page = await open(url);
+  await page.waitForFunction(() => customElements.get('slot-child') && customElements.get('slot-frame'));
+  await page.click('slot-child button');
+  await page.waitForFunction(() => document.querySelector('slot-child button').textContent === 'Clicked 1');
+  await page.click('slot-frame > section > button');
+  await page.waitForFunction(() => document.querySelector('slot-frame div').hidden);
+  assert.equal(await page.evaluate(() => document.querySelectorAll('slot-child p').length), 1, 'hydrated in place, not rendered twice');
+  assert.deepEqual(page.errors, [], 'both hydrated the server markup');
   await page.done();
 });
 

@@ -6,6 +6,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
+- **A rendered component can go inside another's slot on the server.** `page.render('frame', props, { default: page.render('chart', …) })` failed with "doctype and processing instructions are not supported": slot HTML is kept as written, but since 5.0 the hydration markers are processing instructions (`<?zb [?>`), and only comments were kept. Processing instructions are kept now, so both components render on the server and hydrate. Found by Tailgate's dashboards (charts inside `dashboard-shell`).
 - **An unsafe URL from a value no longer fails the server render.** A computed `href`, `src` or `srcset` that isn't safe (a user's `javascript:` link, a `data:` image) is left out of the HTML, as the element leaves it out in the browser, and both say so: the browser in the console, `@zubra/server` through a new `warn` option (`console.warn` by default), naming the attribute and the start of the value. Before, `@zubra/server` threw, so one bad value took the whole page down. Unsafe literal URLs are still compile errors. Found by Tailgate, where a farmer's uploaded logo returned a 500 for the market page.
 
 ## 5.5.0 — 2026-11-10
