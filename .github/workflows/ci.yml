@@ -402,6 +402,31 @@ jobs:
       - run: npm test
         working-directory: examples/edge/hono-bikes-worker
 
+  edge-sync-actions:
+    name: Sync and Actions on a Cloudflare Worker (standup, workerd + Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build --locked
+      # The Worker runs the compiler's WebAssembly build.
+      - run: npm run build
+        working-directory: compiler
+      - run: npm install
+        working-directory: examples/edge/standup-worker
+      - run: npx playwright install --with-deps chromium
+        working-directory: examples/edge/standup-worker
+      # The board in workerd with two browsers, and the log contract on a Durable Object's storage.
+      - run: npm test
+        working-directory: examples/edge/standup-worker
+
   standup:
     name: Local-first example (standup, @zubra/sync)
     runs-on: ubuntu-latest

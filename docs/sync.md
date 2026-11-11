@@ -140,7 +140,7 @@ export default {
 ```
 
 - **One difference from Node**: on Node, a server action reads `documents()` and writes in the same process, with no await between, so nothing interleaves. In a Worker the documents are in the object, and `syncStub(…).documents()` is a copy, not kept current. A read-then-write that must not interleave goes in a method of your `SyncObject` (`sync.stub.claim(…)`), where `this.documents()` is the live view. Don't `fetch()` in the middle of one: waiting on the network lets the object take the next request.
-- **Presence lingers a little longer.** A Durable Object isn't told a page has gone, only that the next keep-alive couldn't be sent, so `SyncObject` sends one every 5 seconds (`static options = { heartbeat }`), and a closed page leaves its rooms within that.
+- **A page that vanishes is noticed a little later.** A page that closes says it's leaving, and is gone from its rooms at once. One whose connection is simply cut (a crash, a dropped network) isn't reported to a Durable Object: it finds out when a keep-alive can't be written, which on workerd is the third after the cut. So `SyncObject` sends one every 2 seconds (`static options = { heartbeat }`), and such a page leaves within about 6.
 - **Options**: `static options = { mount, heartbeat, device, table, origins }`; `syncStub(namespace, { name, mount })` must use the same `mount`. A different `name` is a separate object with its own log.
 - **The object is awake while any page listens.** An open live stream holds it in memory, which a Durable Object is billed for by duration; see [Zubra on Cloudflare Workers](edge.md).
 

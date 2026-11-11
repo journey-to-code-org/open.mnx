@@ -7,7 +7,7 @@ export type Snapshot = Record<string, Array<{ key: string } & Record<string, unk
 export interface SyncObjectOptions {
   /** Default `/_zb/sync`; the Worker's `syncStub` must use the same. */
   mount?: string;
-  /** Keep-alive interval (ms, default 5000), which is also how long presence outlives a closed page. */
+  /** Keep-alive interval (ms, default 2000). A page whose connection is cut is noticed about three keep-alives later. */
   heartbeat?: number;
   /** The server's name in its clocks (default `server`). */
   device?: string;
