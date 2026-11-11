@@ -67,7 +67,7 @@ test("a value that isn't a safe URL is left out, the page still renders, and the
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
-  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
+  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'order-form', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
   assert.equal(zubra.describe('count-stepper').form, true);
   const url = await listen((req, res) => {
     if (zubra.handle(req, res)) return;
@@ -116,6 +116,33 @@ test('a rendered component in another\'s slot: both render on the server and bot
   assert.equal(await page.evaluate(() => document.querySelectorAll('slot-child p').length), 1, 'hydrated in place, not rendered twice');
   assert.deepEqual(page.errors, [], 'both hydrated the server markup');
   await page.done();
+});
+
+test('a form control inside a component submits its value before JavaScript, and only its own after', async () => {
+  const zubra = createZubra({ components });
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    if (req.url.startsWith('/got')) return res.writeHead(200, { 'content-type': 'text/plain' }).end(req.url);
+    const page = zubra.page();
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(page.render('order-form'))));
+  });
+  const html = await (await fetch(url)).text();
+  assert.match(html, /<input type="hidden" name="qty" value="3" data-zb-fallback><\/count-stepper>/);
+  // Without JavaScript the stand-in submits the rendered value.
+  const off = await open(url, { javascript: false });
+  await off.click('button[type=submit]');
+  await off.waitForURL(/\/got/);
+  assert.equal(new URL(off.url()).search, '?qty=3');
+  await off.done();
+  // With it, the element removes the stand-in and submits its own value, once.
+  const on = await open(url);
+  await on.waitForFunction(() => customElements.get('count-stepper') && !document.querySelector('[data-zb-fallback]'));
+  await on.click('count-stepper >> button.more');
+  await on.click('button[type=submit]');
+  await on.waitForURL(/\/got/);
+  assert.equal(new URL(on.url()).search, '?qty=4');
+  assert.deepEqual(on.errors, []);
+  await on.done();
 });
 
 test('the Express, Fastify and Hono adapters', async () => {

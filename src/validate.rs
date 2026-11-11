@@ -1727,7 +1727,7 @@ impl Context<'_> {
                 value: (!value.is_empty()).then(|| vec![Part::Escaped(value)]),
             });
         }
-        let children = if rendered.shadow {
+        let mut children = if rendered.shadow {
             let mut children = vec![Node::Element(ir::Element {
                 name: "template".to_owned(),
                 attributes: vec![ir::Attribute {
@@ -1741,6 +1741,37 @@ impl Context<'_> {
         } else {
             rendered.nodes
         };
+        // A form control with a `name` submits through ElementInternals, which needs JavaScript.
+        // Until then a hidden input carries the value it was rendered with, so the form submits
+        // the same thing; the element removes it when it starts (as on @zubra/server's
+        // framework path, and in the same place: the host's last child).
+        // Not when the value is only known in the browser (the child rendered its default, which
+        // the form must not submit in its place), or when the child sets its own form value.
+        let value_unknown = interface
+            .props
+            .iter()
+            .filter(|prop| prop.model)
+            .any(|prop| {
+                !overrides.contains_key(&prop.name)
+                    && element.attributes.iter().any(|attribute| {
+                        let given = attribute.name.split(':').next().unwrap_or_default();
+                        attribute.name != crate::parser::SPREAD && camel(given) == prop.name
+                    })
+            })
+            || matches!(spread_keys, SpreadKeys::Unknown);
+        // It imports formValue from the runtime (the word in a comment or a string doesn't count).
+        let own_form_value = child.ast.script.imports.iter().any(|import| {
+            import.specifier == "@zubra/runtime"
+                && import
+                    .text
+                    .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+                    .any(|word| word == "formValue")
+        });
+        if child.ast.form_associated && !value_unknown && !own_form_value {
+            if let Some(input) = fallback_input(&attributes, &interface, &overrides) {
+                children.push(input);
+            }
+        }
         Ok(Node::Element(ir::Element {
             name: element.name.clone(),
             attributes,
@@ -2196,6 +2227,55 @@ fn merge_attribute(attributes: &mut Vec<ir::Attribute>, name: &str, text: &str, 
             value: Some(vec![Part::Escaped(text.to_owned())]),
         }),
     }
+}
+
+/// The hidden input that stands in for a form-associated child's value before JavaScript: its
+/// `name` attribute, and its one two-way prop's value (given, or its default). None when there's
+/// nothing to submit, as a native control with no name or an empty value submits nothing.
+fn fallback_input(
+    attributes: &[ir::Attribute],
+    interface: &Interface,
+    overrides: &serde_json::Map<String, Value>,
+) -> Option<Node> {
+    let name = attributes
+        .iter()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case("name"))
+        .and_then(|attribute| attribute.value.as_deref())
+        .map(joined)
+        .filter(|name| !name.is_empty())?;
+    let mut models = interface.props.iter().filter(|prop| prop.model);
+    let model = models.next()?;
+    if models.next().is_some() {
+        return None; // which one the form gets is the component's to say
+    }
+    let value = overrides
+        .get(&model.name)
+        .cloned()
+        .or_else(|| model.default.clone())?;
+    let text = match &value {
+        Value::Null | Value::Bool(false) => return None,
+        Value::Bool(true) => "on".to_owned(),
+        Value::String(text) if text.is_empty() => return None,
+        Value::Array(_) | Value::Object(_) => serde_json::to_string(&value).ok()?,
+        other => expression::to_display_string(other).ok()?,
+    };
+    let attribute = |name: &str, value: String| ir::Attribute {
+        name: name.to_owned(),
+        value: Some(vec![Part::Escaped(value)]),
+    };
+    Some(Node::Element(ir::Element {
+        name: "input".to_owned(),
+        attributes: vec![
+            attribute("type", "hidden".to_owned()),
+            attribute("name", name),
+            attribute("value", text),
+            ir::Attribute {
+                name: "data-zb-fallback".to_owned(),
+                value: None,
+            },
+        ],
+        children: Vec::new(),
+    }))
 }
 
 /// `fontSize` → `font-size`.
