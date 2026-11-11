@@ -46,6 +46,12 @@ export const logContract = [
     await Promise.all([log.append([change(1)]), log.append([change(2), change(3)]), log.append([change(4)])]);
     assert.deepEqual((await log.after(0)).changes.map((c) => c.value), [1, 2, 3, 4]);
   }],
+  ['head() is the cursor after the last change', async (log) => {
+    assert.equal(Number(await log.head()), 0);
+    const cursor = await log.append([change(1), change(2)]);
+    assert.equal(Number(await log.head()), Number(cursor));
+    assert.equal(Number(await log.head()), Number((await log.after(0)).cursor));
+  }],
   ['a batch that fails part-way adds nothing', async (log) => {
     await log.append([change(1)]);
     await assert.rejects(log.append([change(2), { ...change(3), clock: null }]));

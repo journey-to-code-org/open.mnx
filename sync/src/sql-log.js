@@ -80,5 +80,7 @@ export function sqlLog(db, { keep = 'all', table, from = 'changes', label = 'log
       const rows = db.all(`SELECT seq, collection, key, field, value, clock FROM ${table} WHERE seq > ? ORDER BY seq LIMIT ?`, from, limit);
       return { changes: read(rows), cursor: rows.length ? Number(rows[rows.length - 1].seq) : from };
     },
+    /** The cursor after the last change. */
+    head: async () => last(),
   };
 }

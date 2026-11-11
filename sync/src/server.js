@@ -26,6 +26,10 @@
 // (tenancy: each business's keys under its own prefix), which the page's can only narrow; writes
 // and joins outside it are refused.
 //
+// A cursor past the end of the log (the log was replaced, or compacted, or this device's cursor
+// is from another log) starts over: pull and live answer from the beginning, with `reset: true`,
+// and the device takes the new cursor. Logs that can say where they end have `head()`.
+//
 // Live: `GET <mount>/live?since=<cursor>&peer=<id>` is a server-sent event stream: `changes` as
 // they're pushed, and `presence` from the other viewers (POST <mount>/presence). Subscribers are
 // this process's; several server processes need a shared log and a pub/sub between them.
@@ -51,6 +55,7 @@ export function memoryLog({ keep = 'all' } = {}) {
       const from = Number(cursor) || 0;
       return { changes: changes.slice(from, from + limit), cursor: Math.min(changes.length, from + limit) };
     },
+    head: async () => changes.length,
   };
 }
 
@@ -72,6 +77,7 @@ function latestInMemory() {
       const page = [...rows.values()].filter((row) => row.seq > from).sort((a, b) => a.seq - b.seq).slice(0, limit);
       return { changes: page.map((row) => structuredClone(row.change)), cursor: page.length ? page[page.length - 1].seq : from };
     },
+    head: async () => seq,
   };
 }
 
@@ -266,6 +272,13 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     if (server) checkScope(server);
     return [server, page];
   }
+  /** Where to read from for a device at `since`: from the start if it's past the end of the log. */
+  async function startFrom(since) {
+    const head = await log.head?.();
+    const at = Number(since);
+    if (head === undefined || !/^\d+$/.test(String(since)) || at <= Number(head)) return { since, reset: false };
+    return { since: '0', reset: true };
+  }
   async function broadcastChanges(changes, cursor) {
     for (const listener of listeners) listener.send('changes', { changes: await visible(listener, changes), cursor });
   }
@@ -354,9 +367,9 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     if (url.pathname === `${base}/live` && request.method === 'GET') {
       const peer = url.searchParams.get('peer') ?? '';
       if (!/^[\w-]{0,40}$/.test(peer)) return json(400, { error: 'Bad peer id' });
-      const since = url.searchParams.get('since') ?? '0';
       const scopes = await scopesOf(request, url);
       if (scopes instanceof Response) return scopes;
+      const { since, reset } = await startFrom(url.searchParams.get('since') ?? '0');
       let listener;
       let timer;
       const stream = new ReadableStream({
@@ -388,7 +401,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
           for (let first = true; ; first = false) {
             const backlog = await log.after(from);
             if (!backlog.changes.length && !first) break;
-            listener.send('changes', { changes: await visible(listener, backlog.changes), cursor: backlog.cursor });
+            listener.send('changes', { changes: await visible(listener, backlog.changes), cursor: backlog.cursor, ...(reset && first ? { reset: true } : {}) });
             if (!backlog.changes.length || String(backlog.cursor) === String(from)) break;
             from = backlog.cursor;
           }
@@ -404,8 +417,9 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     if (url.pathname === `${base}/pull` && request.method === 'GET') {
       const scopes = await scopesOf(request, url);
       if (scopes instanceof Response) return scopes;
-      const { changes, cursor } = await log.after(url.searchParams.get('since') ?? '0');
-      return json(200, { changes: await visible({ request, scopes }, changes), cursor });
+      const { since, reset } = await startFrom(url.searchParams.get('since') ?? '0');
+      const { changes, cursor } = await log.after(since);
+      return json(200, { changes: await visible({ request, scopes }, changes), cursor, ...(reset ? { reset: true } : {}) });
     }
     if (url.pathname.startsWith(`${base}/`)) return json(404, { error: 'Not found' });
     return null;
