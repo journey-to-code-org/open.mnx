@@ -13,7 +13,7 @@
 //
 // Merging is last-writer-wins per field, by clock. A device that was offline pushes what it
 // wrote when it's back; whichever write has the later clock wins, on every device alike.
-import { onWrite, receive, currentStore, onPresence, receivePresence, peerId } from './index.js';
+import { onWrite, receive, currentStore, onPresence, receivePresence, peerId, startingPull } from './index.js';
 import { mesh } from './webrtc.js';
 
 const CLOCKS = '$clocks';
@@ -222,7 +222,10 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   const loop = setInterval(() => flush().then(() => (open ? undefined : pull())), interval);
   const online = () => flush().then(pull);
   addEventListener('online', online);
-  flush().then(pull).then(listen);
+  // Components wait for this first pull before applying what's stored (index.js: fresh first).
+  const first = flush().then(pull);
+  startingPull(first);
+  first.then(listen);
   return {
     flush,
     pull,
