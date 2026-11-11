@@ -1,39 +1,108 @@
 // How the language server reaches the compiler: the WebAssembly build (@zubra/compiler) when it's
-// installed in the workspace (or beside the server), otherwise the `zubra` CLI (or the one in `compiler`). Both give the same diagnostics,
-// and both format (`format` answers { ok, output } or { ok: false, error }).
+// installed in the project (the nearest one above the file being edited, or above the workspace),
+// otherwise a CLI: the one named, ZUBRA_COMPILER, a cargo build in a zubra checkout, or `zubra` on
+// PATH. Both give the same diagnostics, and both format (`format` answers { ok, output } or
+// { ok: false, error }).
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const parent = (dir) => (dirname(dir) === dir ? null : dirname(dir));
+
 /**
- * Where @zubra/compiler is installed for a workspace: the nearest node_modules above `root` that has it.
- * The server can't rely on its own location for this: in the VS Code extension it sits inside the
- * extension's folder, and the compiler is in the project being edited.
+ * Where @zubra/compiler is installed for a folder: every node_modules above `root` that has it,
+ * nearest first. The server can't rely on its own location for this: in the VS Code extension it
+ * sits inside the extension's folder, and the compiler is in the project being edited.
  */
 export function compilerEntries(root) {
   const found = [];
-  for (let dir = root && resolve(root); dir; dir = dirname(dir) === dir ? null : dirname(dir)) {
+  for (let dir = root && resolve(root); dir; dir = parent(dir)) {
     const entry = join(dir, 'node_modules/@zubra/compiler/index.js');
     if (existsSync(entry)) found.push(entry);
   }
   return found;
 }
 
-export async function createBackend({ compiler, root } = {}) {
-  if (!compiler) {
-    for (const specifier of [...compilerEntries(root).map((entry) => pathToFileURL(entry).href), '@zubra/compiler']) {
-      try {
-        const wasm = await import(specifier);
-        if (wasm.available()) return wasmBackend(wasm);
-      } catch {
-        // Not installed there, or its WebAssembly isn't built.
-      }
+/**
+ * A CLI that `cargo build` made in a zubra checkout at or above `root` (target/debug or
+ * target/release, the newer of the two), as @zubra/server finds it. Null when there's none.
+ */
+export function checkoutCompiler(root, { exe = process.platform === 'win32' ? '.exe' : '' } = {}) {
+  for (let dir = root && resolve(root); dir; dir = parent(dir)) {
+    const built = ['debug', 'release'].map((profile) => join(dir, 'target', profile, `zubra${exe}`)).filter((cli) => existsSync(cli));
+    if (built.length) return built.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+  }
+  return null;
+}
+
+/**
+ * The file to run for `command`. On Windows, spawning without a shell neither searches PATHEXT nor
+ * runs a `.cmd`, so `zubra` installed from npm (a `zubra.cmd` shim) was never found: look it up
+ * here. Elsewhere the command is run as given.
+ */
+export function resolveCommand(command, { platform = process.platform, env = process.env, exists = existsSync } = {}) {
+  if (platform !== 'win32' || win32.extname(command)) return command;
+  const extensions = (env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  const folders = /[\\/]/.test(command) ? [''] : (env.PATH ?? env.Path ?? '').split(';').filter(Boolean);
+  for (const folder of folders) {
+    for (const extension of extensions) {
+      const candidate = folder ? win32.join(folder, command + extension) : command + extension;
+      if (exists(candidate)) return candidate;
     }
   }
-  const chosen = compiler ?? process.env.ZUBRA_COMPILER;
-  if (chosen) return cliBackend(chosen);
-  return cliBackend('zubra');
+  return command;
+}
+
+/**
+ * The backend for a workspace. Without a compiler named, a file below the workspace that has its
+ * own @zubra/compiler (an app with its own node_modules) is answered by that one once `prepare`
+ * has loaded it; everything else by the workspace's. `onUnavailable(message)` is told once when
+ * the CLI can't be run, instead of every file getting an error that isn't about the file.
+ */
+export async function createBackend({ compiler, root, onUnavailable = (message) => console.error(message) } = {}) {
+  if (compiler) return cliBackend(() => resolveCommand(compiler), onUnavailable);
+  const loaded = new Map(); // entry → its backend, or null when its WebAssembly isn't built
+  const load = async (entry) => {
+    if (!loaded.has(entry)) loaded.set(entry, await wasmFrom(pathToFileURL(entry).href));
+    return loaded.get(entry);
+  };
+  let fallback = null;
+  for (const entry of compilerEntries(root)) if ((fallback = await load(entry))) break;
+  fallback ??= await wasmFrom('@zubra/compiler');
+  fallback ??= cliBackend(() => {
+    if (process.env.ZUBRA_COMPILER) return resolveCommand(process.env.ZUBRA_COMPILER);
+    return checkoutCompiler(root) ?? resolveCommand('zubra');
+  }, onUnavailable);
+  const nearest = (path) => {
+    for (const entry of compilerEntries(dirname(resolve(path)))) {
+      const backend = loaded.get(entry);
+      if (backend) return backend;
+    }
+    return fallback;
+  };
+  return {
+    name: fallback.name,
+    /** Loads the @zubra/compiler nearest `path`, if there's one: call before working on a file. */
+    async prepare(path) {
+      for (const entry of compilerEntries(dirname(resolve(path)))) if (await load(entry)) return;
+    },
+    check: (path, ...rest) => nearest(path).check(path, ...rest),
+    manifest: (path, ...rest) => nearest(path).manifest(path, ...rest),
+    format: (path, ...rest) => nearest(path).format(path, ...rest),
+    formatRange: (path, ...rest) => nearest(path).formatRange(path, ...rest),
+    refactor: (path, ...rest) => nearest(path).refactor(path, ...rest),
+  };
+}
+
+async function wasmFrom(specifier) {
+  try {
+    const wasm = await import(specifier);
+    if (wasm.available()) return wasmBackend(wasm);
+  } catch {
+    // Not installed there, or its WebAssembly isn't built.
+  }
+  return null;
 }
 
 function wasmBackend(wasm) {
@@ -101,13 +170,44 @@ function refactored(response) {
   return { ok: false, reason: response?.diagnostics?.[0]?.message ?? response?.error ?? 'the compiler did not answer' };
 }
 
-function cliBackend(compiler) {
-  const run = (args, input) => spawnSync(compiler, args, { encoding: 'utf8', input });
+/** How to run a CLI: a `.cmd` or `.bat` (an npm shim on Windows) only runs through the shell. */
+function runner(command) {
+  if (/\.(cmd|bat)$/i.test(command)) {
+    const quote = (text) => `"${String(text).replace(/"/g, '""')}"`;
+    return (args, input) => spawnSync(quote(command), args.map(quote), { encoding: 'utf8', input, shell: true, windowsHide: true });
+  }
+  return (args, input) => spawnSync(command, args, { encoding: 'utf8', input, windowsHide: true });
+}
+
+/**
+ * The CLI `locate()` names. It's looked for again when it can't be run, so building or installing
+ * it works without restarting the editor. That it can't be run is said once, through
+ * `onUnavailable`, and isn't a diagnostic: it's about the setup, not the file.
+ */
+function cliBackend(locate, onUnavailable) {
+  let command = locate();
+  let told = false;
+  const run = (args, input) => {
+    let result = runner(command)(args, input);
+    if (result.error) {
+      const again = locate();
+      if (again !== command) {
+        command = again;
+        result = runner(command)(args, input);
+      }
+    }
+    if (!result.error) told = false;
+    else if (!told) {
+      told = true;
+      onUnavailable?.(`zubra: couldn't run the compiler \`${command}\` (${result.error.code ?? result.error.message}), so .zb files aren't checked or formatted. Install @zubra/compiler in the project (npm i -D @zubra/compiler), run \`cargo build\` in a zubra checkout, or set the zubra.compiler setting to the CLI's path.`);
+    }
+    return result;
+  };
   return {
     name: 'cli',
     check(path, text) {
       const result = run(['check', path, '--stdin', '--format', 'json'], text);
-      if (result.error) return [{ file: path, line: 1, column: 1, severity: 'error', message: `zubra: couldn't run the compiler \`${compiler}\` (${result.error.code ?? result.error.message}); install @zubra/compiler or the zubra CLI`, help: null }];
+      if (result.error) return [];
       try { return JSON.parse(result.stdout); } catch { return []; }
     },
     manifest(path) {
