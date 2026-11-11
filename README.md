@@ -439,7 +439,7 @@ In the HTML output, `<select value={…}>` marks the matching `<option selected>
 </my-filters>
 ```
 
-The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone.
+The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated))` in shadow DOM, or `my-filters:state(hydrated)` from the page. On the server, `live && …` and `!live || …` are decided by `live` alone. Calling it in the template instead (`<zb-if test={!hydrated()}>`) is the same `false` on the server.
 
 **Server functions.** A script may export a function marked `'use server'`, and only such a function (type-only exports in `<script lang="ts">`, `export interface` and `export type`, declare no value and are allowed; they reach the typings). It never reaches the browser: its name becomes its endpoint's URL, and `<form action={save}>` (or `formaction={save}`) becomes a plain `action="/_zb/action/<tag>/save" method="post"`, so the form works without JavaScript. Imports only the function uses leave the browser module too. `--emit server` writes the server half, and `@zubra/actions` serves it; its script turns those posts into `fetch` requests and fires `action` on the form with the result. `docs/actions.md` has the contract.
 
