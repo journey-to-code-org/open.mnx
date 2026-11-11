@@ -116,6 +116,24 @@ test('the build: one file per component with server functions, imports that stil
   assert.deepEqual(Object.keys(actions), routes);
 });
 
+test('the build reaches a component in a nested folder, its static and dynamic imports included, and both entries agree', async () => {
+  const nested = new URL('./nested', import.meta.url).pathname;
+  const out = join(dir, 'nested-out');
+  const routes = await buildActions({ components: nested, out });
+  assert.deepEqual(routes, ['/_zb/action/note-form/save']);
+  assert.deepEqual(readdirSync(out).sort(), ['forms__parts__note-form.server.js', 'index.js']);
+  const half = readFileSync(join(out, 'forms__parts__note-form.server.js'), 'utf8');
+  assert.match(half, /import \{ tidy \} from '\.\.\/\.\.\/.*test\/nested\/lib\/tidy\.js'/);
+  assert.match(half, /await import\('\.\.\/\.\.\/.*test\/nested\/lib\/stamp\.js'\)/, 'the dynamic import too');
+  const { actions } = await import(pathToFileURL(join(out, 'index.js')).href);
+  const fromEdge = createEdge({ actions });
+  const fromNode = await createNode({ components: nested, cacheDir: join(dir, 'nested-cache') });
+  const save = () => new Request('http://shop/_zb/action/note-form/save', { method: 'POST', body: form({ note: '  buy   eggs ' }), headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' } });
+  const [a, b] = [await (await fromEdge.fetch(save())).json(), await (await fromNode.fetch(save())).json()];
+  assert.deepEqual(a, { note: 'buy eggs', at: 'now' });
+  assert.deepEqual(a, b);
+});
+
 test('the build refuses two components defining one URL, and the command says how to use it', async () => {
   const src = mkdirp(join(dir, 'twice'));
   const source = readFileSync(join(components, 'login-form.zb'), 'utf8').replace("'../users.js'", `'${join(components, '..', 'users.js')}'`);

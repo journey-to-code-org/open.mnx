@@ -31,9 +31,9 @@ export async function serverHalves(root) {
 /** A component's path without its extension, flattened into one file name: `forms/login.zb` → `forms__login`. */
 export const flatName = (relativePath) => relativePath.split(/[\\/]/).join('__').replace(SOURCE, '');
 
-/** Rewrite each relative import (`'./x'`, `'../x'`) with `to(specifier)`. */
+/** Rewrite each relative import (`'./x'`, `'../x'`) with `to(specifier)`: static, re-exports, and `import('./x')`. */
 export function rewriteImports(code, to) {
-  return code.replace(/(\bfrom\s*|\bimport\s*)(['"])(\.{1,2}\/[^'"]+)\2/g, (_, keyword, quote, specifier) => `${keyword}${quote}${to(specifier)}${quote}`);
+  return code.replace(/(\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.{1,2}\/[^'"]+)\2/g, (_, keyword, quote, specifier) => `${keyword}${quote}${to(specifier)}${quote}`);
 }
 
 function sources(dir, out = []) {
