@@ -8,10 +8,12 @@ export { MOUNT };
 
 /**
  * `owner` is the object: its `authorize(…)`, if it has one, decides as `createSyncServer`'s does.
- * `heartbeat` is shorter than on Node (5 s): a Durable Object isn't told when a page goes away,
- * only that the next keep-alive couldn't be written, so this is how long presence lingers.
+ * `heartbeat` is shorter than on Node (2 s, not 15): a Durable Object isn't told when a page's
+ * connection is cut, only that a keep-alive couldn't be written, which on workerd is the third
+ * after the cut. So a crashed page's presence lingers about three keep-alives (6 s). A page that
+ * closes normally says it's leaving and is gone at once.
  */
-export function syncObject(ctx, owner, { mount = MOUNT, heartbeat = 5_000, device = 'server', table = 'changes', origins = [] } = {}) {
+export function syncObject(ctx, owner, { mount = MOUNT, heartbeat = 2_000, device = 'server', table = 'changes', origins = [] } = {}) {
   const sync = createSyncServer({
     log: durableObjectLog(ctx.storage, { table }),
     mount,

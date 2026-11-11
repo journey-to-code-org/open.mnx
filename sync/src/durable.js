@@ -6,7 +6,7 @@
 //   import { SyncObject, syncStub } from '@zubra/sync/durable';
 //
 //   export class Market extends SyncObject {
-//     static options = { heartbeat: 5000 };                  // createSyncServer's, and `table`
+//     static options = { device: 'market' };                 // createSyncServer's, and `table`
 //     authorize({ request, collection, key, kind }) { … }    // as on Node; secrets are this.env's
 //     async take(key, qty) {
 //       const left = (await this.documents()).get('stock', key)?.qty ?? 0;

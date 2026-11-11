@@ -1,0 +1,35 @@
+<!--
+  Who leads today's standup. Its state is a document ('use collection meta', keyed by `doc`), so
+  every open board shows the lead as soon as it's taken; `current` is the lead when the page was
+  rendered, for the page before JavaScript. The form posts to `take`, a 'use server' function: a
+  plain post without JavaScript, fetch with it.
+-->
+<script>
+  'use collection meta'
+
+  let lead = ""
+  let message = ""
+
+  export async function take(formData, { board }) {
+    'use server'
+    const name = String(formData.get('name') ?? '').trim()
+    if (!name) return { error: 'Your name, please' }
+    return board.lead(name)
+  }
+
+  const shown = lead || current
+</script>
+<style>
+  :host { display: block; margin-bottom: 1.5rem; }
+  .lead { font-weight: 600; }
+  form { display: flex; gap: 0.5rem; }
+  .message { color: #c62f3f; }
+</style>
+<lead-picker doc="today" current="" notice="">
+  <p class="lead">{shown ? shown + " is leading today" : "Nobody is leading yet"}</p>
+  <form action={take} onaction={(event) => (message = event.detail.value?.error ?? "")}>
+    <input name="name" aria-label="Your name" required />
+    <button type="submit">Lead today</button>
+  </form>
+  <p class="message" zb-if={message || notice}>{message || notice}</p>
+</lead-picker>
