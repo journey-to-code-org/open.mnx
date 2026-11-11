@@ -58,7 +58,7 @@ jobs:
       - name: Install the other static examples
         run: for app in todo planner recipes meta/eleventy-trails; do (cd "examples/$app" && npm ci); done
       - run: node demos/build.mjs --require-wasm --out _site
-      - run: npx playwright install --with-deps chromium
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
         working-directory: examples/frameworks
       - name: Every demo loads under the base path
         run: GALLERY=_site GALLERY_BASE="/${GITHUB_REPOSITORY#*/}/" node --test "demos/test/*.test.js"
