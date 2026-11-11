@@ -22,6 +22,19 @@ const harnesses = {
       restart: async () => { sync = createSyncServer({ log }); },
     };
   },
+  "createSyncServer on a log that keeps each field's latest value": () => {
+    const log = memoryLog({ keep: 'latest' });
+    let sync = createSyncServer({ log });
+    return {
+      push: (changes) => sync.fetch(pushRequest(changes)),
+      pull: async (since = 0) => (await sync.fetch(request(`/pull?since=${since}`))).json(),
+      live: (peer) => sync.fetch(request(`/live?since=0&peer=${peer}`)),
+      documents: () => sync.documents(),
+      write: (...args) => sync.write(...args),
+      restart: async () => { sync = createSyncServer({ log }); },
+      latest: true,
+    };
+  },
   'a SyncObject, through syncStub': () => {
     const ns = namespace();
     const sync = syncStub(ns);

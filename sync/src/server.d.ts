@@ -12,7 +12,8 @@ export interface Log {
   after(cursor: string, limit?: number): Promise<{ changes: Change[]; cursor: number | string }>;
 }
 
-export function memoryLog(): Log;
+/** A log in memory. `keep: 'latest'` keeps each field's latest value only. */
+export function memoryLog(options?: { keep?: 'all' | 'latest' }): Log;
 
 export interface Documents {
   /** A document's fields (a copy), or undefined when nothing has been written to it. */
