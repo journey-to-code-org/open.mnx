@@ -6,3 +6,9 @@ export declare function wrap(Element: ZubraElementClass): DefineComponent<Record
 
 /** The component's two-way bindings: `<prop>` + `<prop>change` pairs. */
 export declare function models(meta: Pick<ElementMeta, 'props' | 'events'>): { prop: string; event: string }[];
+
+/** Route links inside Zubra components through Vue Router (or any push) until the scope ends. */
+export declare function useRouteLinks(
+  navigate: (to: string, link: import('./navigation.js').RoutedLink) => unknown,
+  options?: import('./navigation.js').RouteLinksOptions,
+): () => void;

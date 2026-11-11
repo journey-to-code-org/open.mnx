@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Links inside components go through the app's router.** `routeLinks(navigate)` from `@zubra/runtime/navigation` hands a click on a plain `<a href>` inside a Zubra component to the app's router, so it navigates without reloading the page: React Router (`useRouteLinks(useNavigate())`) and Next.js (`useRouteLinks(useRouter().push)`) from `@zubra/runtime/react`, Vue Router from `@zubra/runtime/vue`, SvelteKit's `goto` and Angular's `navigateByUrl` directly. New-tab and modified clicks, `target`, `download`, `rel="external"`, other origins, same-page `#…` links and clicks already handled are left alone, as are the app's own links; without JavaScript it's a link. Not a router. A router already on the Navigation API (Baseline since January 2026) needs none of it. Browser tests with a hand-written router, React Router and Vue Router.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

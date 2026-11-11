@@ -12,8 +12,9 @@
 //   `v-model:<prop>`, and `v-model` binds the `value` pair (or the only pair, if there's one).
 // - Other attributes and listeners (class, style, @click, …) go to the element; slots become its
 //   children, named slots with `slot="name"`.
-import { defineComponent, h, withDirectives, Text, Comment, Fragment } from 'vue';
+import { defineComponent, h, withDirectives, Text, Comment, Fragment, getCurrentScope, onScopeDispose } from 'vue';
 import { serverContent } from './server.js';
+import { routeLinks } from './navigation.js';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 const pascal = (tag) => tag.split(/[-.]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('');
@@ -122,4 +123,15 @@ export function wrap(Element) {
       };
     },
   });
+}
+
+/**
+ * Route links inside Zubra components through Vue Router (or any `push`) until the current effect
+ * scope ends: `useRouteLinks((to) => router.push(to))` in a component's `setup`. Returns the
+ * function that stops it.
+ */
+export function useRouteLinks(navigate, options) {
+  const stop = routeLinks(navigate, options);
+  if (getCurrentScope()) onScopeDispose(stop);
+  return stop;
 }

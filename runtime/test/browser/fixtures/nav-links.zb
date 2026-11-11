@@ -1,0 +1,14 @@
+<!-- Links a component renders: routed through the app's router when one is wired up. -->
+<zb-nav-links>
+  <nav>
+    <a class="go" href="/b?x=1#top">B</a>
+    <a class="plain" href="/e">E</a>
+    <a class="hash" href="#section">Section</a>
+    <a class="blank" href="/b" target="_blank">New tab</a>
+    <a class="download" href="/file.txt" download>File</a>
+    <a class="external" href="/b" rel="external">Reload</a>
+    <a class="away" href="https://example.com/">Away</a>
+    <a class="handled" href="/b" onclick={(event) => event.preventDefault()}>Handled</a>
+  </nav>
+  <zb-slot></zb-slot>
+</zb-nav-links>

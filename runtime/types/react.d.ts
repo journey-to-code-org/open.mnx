@@ -11,3 +11,9 @@ export declare function wrap<E extends HTMLElement>(
 ): React.ForwardRefExoticComponent<
   React.HTMLAttributes<E> & Record<string, unknown> & { children?: React.ReactNode } & React.RefAttributes<E>
 > & { readonly element: ZubraElementClass<E> };
+
+/** Route links inside Zubra components through the app's router while mounted. */
+export declare function useRouteLinks(
+  navigate: (to: string, link: import('./navigation.js').RoutedLink) => unknown,
+  options?: import('./navigation.js').RouteLinksOptions,
+): void;
