@@ -419,6 +419,12 @@ jobs:
       # The Worker runs the compiler's WebAssembly build.
       - run: npm run build
         working-directory: compiler
+      # The example links @zubra/actions from the repository, so its build script (which compiles
+      # the server functions with @zubra/server, a peer dependency) resolves imports from actions/.
+      - run: npm ci
+        working-directory: actions
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm install
         working-directory: examples/edge/standup-worker
       - run: npx playwright install --with-deps chromium
