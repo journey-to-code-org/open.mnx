@@ -1,0 +1,8 @@
+<!-- A child with hydration markers (its zb-if), to be rendered into another component's slot. -->
+<script>
+  let n = 0
+</script>
+<slot-child label="">
+  <p zb-if={label}>{label}</p>
+  <button type="button" onclick={() => n++}>Clicked {n}</button>
+</slot-child>

@@ -559,6 +559,18 @@ impl<'a> TemplateParser<'a> {
             if self.html && self.cursor.starts_with_ignore_ascii_case("<!doctype") {
                 return Err(self.error("a doctype can't be slot content"));
             }
+            if self.html && self.starts_with("<?") {
+                // A server's processing instructions are kept, like its comments: since 5.0
+                // they're the hydration markers of components it already rendered (`<?zb [?>`).
+                // HTML ends one at the first `>`.
+                let Some(end) = self.cursor.rest().find('>') else {
+                    return Err(self.error("unclosed processing instruction in slot content"));
+                };
+                let instruction = self.cursor.rest()[..=end].to_owned();
+                self.cursor.advance(end + 1);
+                nodes.push(Node::Text(vec![Part::Literal(instruction)]));
+                continue;
+            }
             if self.starts_with("<!") || self.starts_with("<?") {
                 return Err(self
                     .error("doctype and processing instructions are not supported in templates"));

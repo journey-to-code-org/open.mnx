@@ -4,7 +4,10 @@ export interface ComponentInfo { tag: string; shadow: boolean; form: boolean; pr
 export interface Page {
   /** The components this page rendered, in order. */
   readonly used: string[];
-  /** A component's server-rendered HTML (by its file name, or its tag). */
+  /**
+   * A component's server-rendered HTML (by its file name, or its tag). `slots` are HTML, kept as
+   * written: other components' `render()` output included, so one can be put inside another.
+   */
   render(name: string, props?: Record<string, unknown>, slots?: Record<string, string>): string;
   /** The used components' CSS and the import map, for `<head>`. */
   head(): string;
