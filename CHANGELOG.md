@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Testing a library through every framework: `@zubra/runtime/testing`.** `mount(Element, { framework, props, slots })` puts a component in the page as plain HTML, through the React adapter or through the Vue adapter, so one test runs the way each kind of consumer uses it: events reach the framework's own handlers (`events('valuechange')` lists their `detail`s), `set(props)` re-renders through the framework, slots are its children, and a `<prop>change` event updates the prop as a two-way binding would (so React's controlled pattern doesn't put the old value back). `frameworks()` lists the installed ones. It works in any browser test runner; `examples/testing-vitest` runs the registry's star rating through all three in Vitest's browser mode, in CI.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

@@ -540,6 +540,12 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # A library's tests in Vitest browser mode, through plain HTML, React and Vue
+      # (@zubra/runtime/testing).
+      - run: npm ci
+        working-directory: examples/testing-vitest
+      - run: npm test
+        working-directory: examples/testing-vitest
       # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
       # job that runs the rest of the server's tests doesn't build; here they must run.
       - run: npm ci

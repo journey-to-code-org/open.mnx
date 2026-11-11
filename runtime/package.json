@@ -45,6 +45,11 @@
       "production": "./dist/production/motion.js",
       "default": "./src/motion.js"
     },
+    "./testing": {
+      "types": "./types/testing.d.ts",
+      "production": "./dist/production/testing.js",
+      "default": "./src/testing.js"
+    },
     "./react": {
       "types": "./types/react.d.ts",
       "production": "./dist/production/react.js",

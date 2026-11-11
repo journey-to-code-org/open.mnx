@@ -30,7 +30,7 @@ Two binaries share the name. The **Rust CLI** (`zubra`, built with `cargo build 
 
 and read one line back: `{"ok":true,"output":"<price-tag …>…</price-tag>","error":null,"warnings":[],"diagnostics":[]}` (`warnings` as rendered strings, `diagnostics` as data). `files` carries every `.zb` the component imports, keyed by the paths the imports resolve to. Serve the browser the `js` output of each component the page used, and `@zubra/runtime`.
 
-**Publish components**: `npx zubra build --lib src/components --out dist && cd dist && npm publish`. Consumers need no Zubra tooling.
+**Publish components**: `npx zubra build --lib src/components --out dist && cd dist && npm publish`. Consumers need no Zubra tooling. To test them the way each framework's consumers use them, mount them with `mount(Element, { framework })` from `@zubra/runtime/testing` (`html`, `react`, `vue`; `frameworks()` lists the installed ones) in a browser test runner, as `examples/testing-vitest` does.
 
 **Bring a React component in**: `npx zubra convert src/Thing.jsx`, read the report, finish what it names by hand, then `zubra check` the result.
 
