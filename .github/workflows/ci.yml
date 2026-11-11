@@ -419,8 +419,12 @@ jobs:
       # The Worker runs the compiler's WebAssembly build.
       - run: npm run build
         working-directory: compiler
-      # The example links @zubra/actions from the repository, so its build script (which compiles
-      # the server functions with @zubra/server, a peer dependency) resolves imports from actions/.
+      # The example links @zubra/actions and @zubra/server from the repository, so their imports
+      # resolve from their own folders: the build script compiles the server functions with them.
+      - run: npm ci
+        working-directory: server
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm ci
         working-directory: actions
         env:
