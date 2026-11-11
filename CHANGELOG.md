@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 5.7.0 — 2026-11-11
+
+Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.
+
 ### Added
 
 - **Sync: a page asks only for what it shows.** `connect({ scope: { seats: 'showing-12/', brands: true } })`: per collection, `true` or a key prefix (or a list of them). Pull, the live stream and presence send nothing outside it, so a page's store holds only its own documents, and each scope keeps its own cursor. `createSyncServer({ scope({ request }) })` imposes one from the server, which a page's can only narrow, and refuses pushes and presence outside it: tenancy by key prefix on one log. The `zubra-sync` binary honours a page's scope. Found by CineStack, where every guest's phone received every seat in every showing.
