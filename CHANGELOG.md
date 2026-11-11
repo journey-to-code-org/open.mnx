@@ -8,6 +8,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 - **Sync: a page asks only for what it shows.** `connect({ scope: { seats: 'showing-12/', brands: true } })`: per collection, `true` or a key prefix (or a list of them). Pull, the live stream and presence send nothing outside it, so a page's store holds only its own documents, and each scope keeps its own cursor. `createSyncServer({ scope({ request }) })` imposes one from the server, which a page's can only narrow, and refuses pushes and presence outside it: tenancy by key prefix on one log. The `zubra-sync` binary honours a page's scope. Found by CineStack, where every guest's phone received every seat in every showing.
 - **Sync: a log that keeps each field's latest value.** `sqliteLog(path, { keep: 'latest' })`, and the same option on `memoryLog` and `durableObjectLog`: a newer clock replaces a field's row and takes the next cursor, an older one is dropped, so the log doesn't grow with every change and a new device reads what's there now. Opening an existing full log this way carries each field's latest value across, after the old cursors. The SQL logs now share one implementation. Found by CineStack, where seats are held and released all evening.
+- **Sync: a field a component doesn't declare is a guarantee now**, documented and tested on both servers: a server-written field with no `let` (the kit's hold `since`) is kept on the device and in the log through the component's own edits.
 
 ### Fixed
 
