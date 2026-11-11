@@ -1,0 +1,10 @@
+<!-- A form with a form-associated component inside it, rendered by the compiler as a child. -->
+<script>
+  import './count-stepper.zb'
+</script>
+<order-form>
+  <form method="get" action="/got">
+    <count-stepper name="qty" value={3} label="Quantity"></count-stepper>
+    <button type="submit">Order</button>
+  </form>
+</order-form>

@@ -139,7 +139,17 @@ pub fn take_omitted() -> Vec<String> {
 }
 
 /// A place partial rendering left for the browser, and, for an attribute, which one.
-pub type Gap = (Span, Option<String>);
+/// A place partial rendering leaves for the browser: where, the attribute (if it's one), and,
+/// for a gap inside a child component, the child's tag, file and where in it (the span is then
+/// the child's tag in the parent).
+pub type Gap = (Span, Option<String>, Option<ChildGap>);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChildGap {
+    pub tag: String,
+    pub path: String,
+    pub span: Span,
+}
 
 thread_local! {
     /// While `zubra check --server` runs: where partial rendering left something for the browser,
@@ -157,9 +167,9 @@ fn gap(span: Span) {
         if let Some(gaps) = gaps.borrow_mut().as_mut() {
             let at = gaps
                 .iter()
-                .position(|(at, _)| *at == span)
+                .position(|(at, _, child)| *at == span && child.is_none())
                 .unwrap_or_else(|| {
-                    gaps.push((span, None));
+                    gaps.push((span, None, None));
                     gaps.len() - 1
                 });
             LAST_GAP.with(|last| last.set(at));
@@ -171,10 +181,32 @@ fn gap(span: Span) {
 fn gap_attribute(name: &str) {
     GAPS.with(|gaps| {
         let at = LAST_GAP.with(std::cell::Cell::get);
-        if let Some((_, attribute)) = gaps.borrow_mut().as_mut().and_then(|gaps| gaps.get_mut(at)) {
+        if let Some((_, attribute, _)) =
+            gaps.borrow_mut().as_mut().and_then(|gaps| gaps.get_mut(at))
+        {
             attribute.get_or_insert_with(|| name.to_owned());
         }
     });
+}
+
+/// A child component's gaps, reported at its tag in the parent (`at`), each saying where in the
+/// child it is. Its own child components' gaps keep the file they're in.
+fn gaps_in_child(at: Span, tag: &str, path: &str, found: Vec<Gap>) {
+    for (span, attribute, inner) in found {
+        let child = inner.unwrap_or(ChildGap {
+            tag: tag.to_owned(),
+            path: path.to_owned(),
+            span,
+        });
+        GAPS.with(|gaps| {
+            if let Some(gaps) = gaps.borrow_mut().as_mut() {
+                let entry = (at, attribute, Some(child));
+                if !gaps.contains(&entry) {
+                    gaps.push(entry);
+                }
+            }
+        });
+    }
 }
 
 /// Run `render` (a partial HTML render) recording what it leaves for the browser.
@@ -1109,6 +1141,13 @@ impl Context<'_> {
         state: &LowerState,
     ) -> Result<Option<Value>, Diagnostic> {
         if partial() {
+            // `hydrated()` written in the template, not first bound in the script: false on the
+            // server, as `const live = hydrated()` is. Before anything else reads the call.
+            if let Expression::Runtime { source, .. } = expression {
+                if let Some(known) = self.without_hydrated(source) {
+                    return self.evaluate_known(&known, span, state);
+                }
+            }
             let mut runtime = expression.is_runtime();
             let mut runtime_name = false;
             expression.for_each_identifier(&mut |name| {
@@ -1151,8 +1190,31 @@ impl Context<'_> {
             .ok()
     }
 
+    /// `source` with each call to `hydrated()` (by the names it's imported as) written as
+    /// `false`, parsed; `None` when it calls none.
+    fn without_hydrated(&self, source: &str) -> Option<Expression> {
+        let calls = hydrated_calls(source, &self.component.script.hydrated);
+        let changed = !calls.is_empty();
+        let mut text = source.to_owned();
+        for (start, end) in calls.into_iter().rev() {
+            text.replace_range(start..end, "false");
+        }
+        if !changed {
+            return None;
+        }
+        // Parsed as the template parser does: the build-time subset, or else JavaScript for the
+        // browser (which the short-circuit rule can still decide on the server).
+        expression::parse(&text).ok().or_else(|| {
+            let names = crate::runtime_expression::parse(&text).ok()?;
+            Some(Expression::Runtime {
+                source: text,
+                names,
+            })
+        })
+    }
+
     /// `name && rest`, `!name && rest`, `name || rest`, `!name || rest`, where `name` is known
-    /// at render time and decides the result without `rest`.
+    /// at render time (or a literal) and decides the result without `rest`.
     fn short_circuit(&self, source: &str, state: &LowerState) -> Option<Value> {
         let text = source.trim_start();
         let (negated, text) = match text.strip_prefix('!') {
@@ -1180,8 +1242,16 @@ impl Context<'_> {
         if !and && !or {
             return None;
         }
-        let Some(Binding::Value(value)) = self.binding(name, state) else {
-            return None;
+        // A literal first operand (`hydrated()` written in the template becomes `false`).
+        let literal = match name {
+            "true" => Some(Value::Bool(true)),
+            "false" => Some(Value::Bool(false)),
+            _ => None,
+        };
+        let value = match (&literal, self.binding(name, state)) {
+            (Some(value), _) => value,
+            (None, Some(Binding::Value(value))) => value,
+            _ => return None,
         };
         let value = if negated {
             Value::Bool(!expression::is_truthy(value))
@@ -1719,15 +1789,24 @@ impl Context<'_> {
             groups.entry(current.clone()).or_default().push(node);
         }
 
-        let rendered = lower_component(&child.ast, &overrides, &Supply::Lowered(groups))
-            .map_err(|error| error.in_file(&child.path, &child.source))?;
+        // The child's own gaps are in its file: reported at its tag here, saying where in it.
+        let recording = GAPS.with(|gaps| gaps.borrow().is_some());
+        let rendered = if recording {
+            let (rendered, found) =
+                record_gaps(|| lower_component(&child.ast, &overrides, &Supply::Lowered(groups)));
+            gaps_in_child(element.span, &child.ast.tag, &child.path, found);
+            rendered
+        } else {
+            lower_component(&child.ast, &overrides, &Supply::Lowered(groups))
+        }
+        .map_err(|error| error.in_file(&child.path, &child.source))?;
         for (name, value) in rendered.host_attributes {
             attributes.push(ir::Attribute {
                 name,
                 value: (!value.is_empty()).then(|| vec![Part::Escaped(value)]),
             });
         }
-        let children = if rendered.shadow {
+        let mut children = if rendered.shadow {
             let mut children = vec![Node::Element(ir::Element {
                 name: "template".to_owned(),
                 attributes: vec![ir::Attribute {
@@ -1741,6 +1820,37 @@ impl Context<'_> {
         } else {
             rendered.nodes
         };
+        // A form control with a `name` submits through ElementInternals, which needs JavaScript.
+        // Until then a hidden input carries the value it was rendered with, so the form submits
+        // the same thing; the element removes it when it starts (as on @zubra/server's
+        // framework path, and in the same place: the host's last child).
+        // Not when the value is only known in the browser (the child rendered its default, which
+        // the form must not submit in its place), or when the child sets its own form value.
+        let value_unknown = interface
+            .props
+            .iter()
+            .filter(|prop| prop.model)
+            .any(|prop| {
+                !overrides.contains_key(&prop.name)
+                    && element.attributes.iter().any(|attribute| {
+                        let given = attribute.name.split(':').next().unwrap_or_default();
+                        attribute.name != crate::parser::SPREAD && camel(given) == prop.name
+                    })
+            })
+            || matches!(spread_keys, SpreadKeys::Unknown);
+        // It imports formValue from the runtime (the word in a comment or a string doesn't count).
+        let own_form_value = child.ast.script.imports.iter().any(|import| {
+            import.specifier == "@zubra/runtime"
+                && import
+                    .text
+                    .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+                    .any(|word| word == "formValue")
+        });
+        if child.ast.form_associated && !value_unknown && !own_form_value {
+            if let Some(input) = fallback_input(&attributes, &interface, &overrides) {
+                children.push(input);
+            }
+        }
         Ok(Node::Element(ir::Element {
             name: element.name.clone(),
             attributes,
@@ -2196,6 +2306,98 @@ fn merge_attribute(attributes: &mut Vec<ir::Attribute>, name: &str, text: &str, 
             value: Some(vec![Part::Escaped(text.to_owned())]),
         }),
     }
+}
+
+/// Where `source` (a template expression) calls one of `names` with no arguments, as byte ranges
+/// in source order: found in the parsed expression, so a name in a string, a template literal's
+/// text or a comment isn't a call.
+fn hydrated_calls(source: &str, names: &[String]) -> Vec<(usize, usize)> {
+    use oxc_ast::ast::{CallExpression, Expression as Js};
+    use oxc_ast_visit::{walk, Visit};
+
+    struct Calls<'n> {
+        names: &'n [String],
+        found: Vec<(usize, usize)>,
+    }
+    impl<'a> Visit<'a> for Calls<'_> {
+        fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+            if let Js::Identifier(callee) = &call.callee {
+                if call.arguments.is_empty()
+                    && self.names.iter().any(|name| callee.name == name.as_str())
+                {
+                    self.found
+                        .push((call.span.start as usize, call.span.end as usize));
+                    return;
+                }
+            }
+            walk::walk_call_expression(self, call);
+        }
+    }
+    if names.is_empty() || !names.iter().any(|name| source.contains(name.as_str())) {
+        return Vec::new();
+    }
+    let allocator = oxc_allocator::Allocator::default();
+    let Ok(expression) =
+        oxc_parser::Parser::new(&allocator, source, oxc_span::SourceType::mjs()).parse_expression()
+    else {
+        return Vec::new();
+    };
+    let mut calls = Calls {
+        names,
+        found: Vec::new(),
+    };
+    calls.visit_expression(&expression);
+    calls.found.sort_unstable();
+    calls.found
+}
+
+/// The hidden input that stands in for a form-associated child's value before JavaScript: its
+/// `name` attribute, and its one two-way prop's value (given, or its default). None when there's
+/// nothing to submit, as a native control with no name or an empty value submits nothing.
+fn fallback_input(
+    attributes: &[ir::Attribute],
+    interface: &Interface,
+    overrides: &serde_json::Map<String, Value>,
+) -> Option<Node> {
+    let name = attributes
+        .iter()
+        .find(|attribute| attribute.name.eq_ignore_ascii_case("name"))
+        .and_then(|attribute| attribute.value.as_deref())
+        .map(joined)
+        .filter(|name| !name.is_empty())?;
+    let mut models = interface.props.iter().filter(|prop| prop.model);
+    let model = models.next()?;
+    if models.next().is_some() {
+        return None; // which one the form gets is the component's to say
+    }
+    let value = overrides
+        .get(&model.name)
+        .cloned()
+        .or_else(|| model.default.clone())?;
+    let text = match &value {
+        Value::Null | Value::Bool(false) => return None,
+        Value::Bool(true) => "on".to_owned(),
+        Value::String(text) if text.is_empty() => return None,
+        Value::Array(_) | Value::Object(_) => serde_json::to_string(&value).ok()?,
+        other => expression::to_display_string(other).ok()?,
+    };
+    let attribute = |name: &str, value: String| ir::Attribute {
+        name: name.to_owned(),
+        value: Some(vec![Part::Escaped(value)]),
+    };
+    Some(Node::Element(ir::Element {
+        name: "input".to_owned(),
+        attributes: vec![
+            attribute("type", "hidden".to_owned()),
+            attribute("name", name),
+            attribute("value", text),
+            ir::Attribute {
+                name: "data-zb-fallback".to_owned(),
+                value: None,
+            },
+        ],
+        children: Vec::new(),
+    }))
 }
 
 /// `fontSize` → `font-size`.

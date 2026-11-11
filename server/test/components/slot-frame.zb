@@ -1,0 +1,10 @@
+<script>
+  let open = true
+</script>
+<slot-frame heading="">
+  <section>
+    <h2>{heading}</h2>
+    <button type="button" onclick={() => (open = !open)}>{open ? "Hide" : "Show"}</button>
+    <div hidden={!open}><zb-slot></zb-slot></div>
+  </section>
+</slot-frame>
