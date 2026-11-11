@@ -10,7 +10,11 @@
 </script>
 
 <photo-form>
-  <form action={upload} enctype="multipart/form-data" onaction={(event) => (message = event.detail.error ?? event.detail.value?.error ?? `${event.detail.value.name} ${event.detail.value.size}`)}>
+  <form
+    action={upload}
+    enctype="multipart/form-data"
+    onaction={(event) => (message = event.detail.error ?? event.detail.value?.error ?? `${event.detail.value.name} ${event.detail.value.size}`)}
+  >
     <input name="caption" />
     <input name="photo" type="file" />
     <button type="submit">Upload</button>
