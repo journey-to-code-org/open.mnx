@@ -99,12 +99,10 @@ export function createActionsCore({ routes, client = null, origins = [], onError
     if (wantsJson) {
       return new Response(JSON.stringify(value ?? null), {
         status,
-        headers: { 'content-type': 'application/json', ...(status === 413 && { connection: 'close' }) },
+        headers: { 'content-type': 'application/json' },
       });
     }
     const headers = new Headers({ location: back(request) });
-    // A post over the limit wasn't read to its end: don't reuse the connection.
-    if (status === 413) headers.set('connection', 'close');
     const cookie = encodeURIComponent(JSON.stringify({ action: url.pathname, value: value ?? null }));
     // A cookie holds about 4 KB; a bigger result reaches only the enhanced path.
     if (cookie.length < 3800) {
