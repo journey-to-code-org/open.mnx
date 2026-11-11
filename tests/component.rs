@@ -251,4 +251,13 @@ fn a_nested_form_control_carries_its_value_for_a_form_submitted_before_javascrip
         "<script>\n  import { formValue } from '@zubra/runtime'\n  formValue(() => value * 10)\n</script>\n<x-step form-associated value:model={1}><output>{value}</output></x-step>\n",
     );
     assert!(!html.contains("data-zb-fallback"), "{html}");
+    // The name only in a comment (or under another import): the child doesn't set its own value.
+    let html = render(
+        "<script>\n  import './step.zb'\n</script>\n<x-form n={0}><form><x-step name=\"qty\" value={2}></x-step></form></x-form>\n",
+        "<script>\n  import { hydrated } from '@zubra/runtime'\n  // Unlike a stepper that calls formValue(), this one submits its value as it is.\n  const live = hydrated()\n</script>\n<x-step form-associated value:model={1}><output>{value}</output></x-step>\n",
+    );
+    assert!(
+        html.contains(r#"<input type="hidden" name="qty" value="2" data-zb-fallback>"#),
+        "{html}"
+    );
 }

@@ -1759,7 +1759,14 @@ impl Context<'_> {
                     })
             })
             || matches!(spread_keys, SpreadKeys::Unknown);
-        let own_form_value = child.source.contains("formValue(");
+        // It imports formValue from the runtime (the word in a comment or a string doesn't count).
+        let own_form_value = child.ast.script.imports.iter().any(|import| {
+            import.specifier == "@zubra/runtime"
+                && import
+                    .text
+                    .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$')
+                    .any(|word| word == "formValue")
+        });
         if child.ast.form_associated && !value_unknown && !own_form_value {
             if let Some(input) = fallback_input(&attributes, &interface, &overrides) {
                 children.push(input);
@@ -2222,7 +2229,6 @@ fn merge_attribute(attributes: &mut Vec<ir::Attribute>, name: &str, text: &str, 
     }
 }
 
-/// `fontSize` → `font-size`.
 /// The hidden input that stands in for a form-associated child's value before JavaScript: its
 /// `name` attribute, and its one two-way prop's value (given, or its default). None when there's
 /// nothing to submit, as a native control with no name or an empty value submits nothing.
@@ -2272,6 +2278,7 @@ fn fallback_input(
     }))
 }
 
+/// `fontSize` → `font-size`.
 fn kebab_case(name: &str) -> String {
     let mut out = String::new();
     for character in name.chars() {
