@@ -111,6 +111,33 @@ fn partial() -> bool {
     PARTIAL.with(std::cell::Cell::get)
 }
 
+thread_local! {
+    /// URLs and srcsets from values that a render left out because they weren't safe, said in a
+    /// sentence each, for the server to warn about (`take_omitted`).
+    static OMITTED: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Note an attribute left out of the HTML because its value wasn't a safe URL. Only the start of
+/// the value is kept (enough to recognise `data:` or `javascript:`): it may be a user's.
+fn omit_unsafe(attribute: &str, value: &str) {
+    let start: String = value.trim_start().chars().take(24).collect();
+    let more = if value.trim_start().chars().count() > 24 {
+        "…"
+    } else {
+        ""
+    };
+    OMITTED.with(|omitted| {
+        omitted.borrow_mut().push(format!(
+            "left `{attribute}` out of the HTML: its value isn't a safe URL (`{start}{more}`)"
+        ));
+    });
+}
+
+/// What renders since the last call left out (see `omit_unsafe`), emptying the list.
+pub fn take_omitted() -> Vec<String> {
+    OMITTED.with(|omitted| std::mem::take(&mut *omitted.borrow_mut()))
+}
+
 /// A place partial rendering left for the browser, and, for an attribute, which one.
 pub type Gap = (Span, Option<String>);
 
@@ -1944,15 +1971,15 @@ impl Context<'_> {
                     if text.trim().is_empty() {
                         continue;
                     }
-                    let as_attribute = ast::Attribute {
-                        name: name.clone(),
-                        value: AttributeValue::None,
-                        span: *span,
-                    };
-                    if lower_name == "srcset" {
-                        check_srcset(&as_attribute, text)?;
+                    // A value, not the author's text: left out, as the browser leaves it out.
+                    let safe = if lower_name == "srcset" {
+                        is_safe_srcset(text)
                     } else {
-                        check_url(&as_attribute, text)?;
+                        is_safe_url(text)
+                    };
+                    if !safe {
+                        omit_unsafe(&name, text);
+                        continue;
                     }
                 }
             }
@@ -1995,15 +2022,22 @@ impl Context<'_> {
                 let dynamic = parts
                     .iter()
                     .any(|part| matches!(part, AstPart::Expression { .. }));
-                if is_url && dynamic {
-                    check_url(attribute, &joined(&lowered))?;
+                // A URL built from values: an unsafe one is left out of the HTML, as the
+                // element leaves it out (and says so in the console) when it starts. Values can
+                // come from a page's users; one of them must not be able to fail the render.
+                if is_url && dynamic && !is_safe_url(&joined(&lowered)) {
+                    omit_unsafe(&attribute.name, &joined(&lowered));
+                    return Ok(None);
                 }
                 if is_srcset && dynamic {
                     let text = joined(&lowered);
                     if text.trim().is_empty() {
                         return Ok(None);
                     }
-                    check_srcset(attribute, &text)?;
+                    if !is_safe_srcset(&text) {
+                        omit_unsafe(&attribute.name, &text);
+                        return Ok(None);
+                    }
                 }
                 Some(lowered)
             }
@@ -2037,15 +2071,18 @@ impl Context<'_> {
                     _ => expression::to_display_string(&value)
                         .map_err(|message| Diagnostic::new(*span, message))?,
                 };
-                if is_url {
-                    check_url(attribute, &text)?;
+                // An unsafe value is left out, as the browser leaves it out (see above).
+                if is_url && !is_safe_url(&text) {
+                    omit_unsafe(&attribute.name, &text);
+                    return Ok(None);
                 }
-                if is_srcset {
-                    // No candidates yet (a prop's "" default): no attribute, as in the browser.
-                    if text.trim().is_empty() {
-                        return Ok(None);
-                    }
-                    check_srcset(attribute, &text)?;
+                // No candidates yet (a prop's "" default): no attribute. An unsafe one: left out.
+                if is_srcset && text.trim().is_empty() {
+                    return Ok(None);
+                }
+                if is_srcset && !is_safe_srcset(&text) {
+                    omit_unsafe(&attribute.name, &text);
+                    return Ok(None);
                 }
                 Some(vec![Part::Escaped(text)])
             }
@@ -2257,18 +2294,6 @@ fn check_attribute_statically(attribute: &ast::Attribute) -> Result<(), Diagnost
     Ok(())
 }
 
-fn check_url(attribute: &ast::Attribute, value: &str) -> Result<(), Diagnostic> {
-    if is_safe_url(value) {
-        Ok(())
-    } else {
-        Err(Diagnostic::new(
-            attribute.span,
-            format!("unsafe URL in `{}` attribute", attribute.name),
-        )
-        .with_help("allowed: relative URLs, http:, https:, mailto: and tel:"))
-    }
-}
-
 /// A srcset's value: every candidate's URL is safe. Empty candidates (a trailing comma) are
 /// skipped, as browsers do; a value with no candidate at all is rejected.
 pub fn is_safe_srcset(value: &str) -> bool {
@@ -2277,18 +2302,6 @@ pub fn is_safe_srcset(value: &str) -> bool {
         .filter_map(|candidate| candidate.split_whitespace().next())
         .peekable();
     urls.peek().is_some() && urls.all(is_safe_url)
-}
-
-fn check_srcset(attribute: &ast::Attribute, value: &str) -> Result<(), Diagnostic> {
-    if is_safe_srcset(value) {
-        Ok(())
-    } else {
-        Err(Diagnostic::new(
-            attribute.span,
-            format!("unsafe or empty URL candidate in `{}`", attribute.name),
-        )
-        .with_help("each candidate's URL must be relative, http: or https:"))
-    }
 }
 
 fn validate_srcset(attribute: &ast::Attribute) -> Result<(), Diagnostic> {

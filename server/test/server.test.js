@@ -48,6 +48,23 @@ test('imports adds import map entries for other packages the components import',
   assert.match(html, /"@zubra\/sync":"\/sync\/index\.js"/);
 });
 
+test("a value that isn't a safe URL is left out, the page still renders, and the server says what it dropped", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-omitted-'));
+  try {
+    writeFileSync(join(dir, 'farm-logo.zb'), '<farm-logo src="" name=""><img src={src} alt={name}></farm-logo>\n');
+    const warned = [];
+    const zubra = createZubra({ components: dir, warn: (message) => warned.push(message) });
+    const page = zubra.page();
+    const html = page.render('farm-logo', { src: 'data:text/html,<script>alert(1)</script>', name: 'Hollow Creek' });
+    assert.match(html, /<img alt="Hollow Creek">/);
+    assert.deepEqual(warned, ["@zubra/server: <farm-logo>: left `src` out of the HTML: its value isn't a safe URL (`data:text/html,<script>a…`)"]);
+    page.render('farm-logo', { src: '/logos/hollow-creek.webp', name: 'Hollow Creek' });
+    assert.equal(warned.length, 1, 'a safe URL says nothing');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
   assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'review-list', 'review-panel']);

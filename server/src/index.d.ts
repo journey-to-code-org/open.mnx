@@ -66,6 +66,8 @@ export interface ZubraOptions {
    * except in production; `ZUBRA_DEVTOOLS=1` turns it on there too).
    */
   devtools?: boolean;
+  /** Told when a render leaves out an attribute whose value isn't a safe URL (default `console.warn`). */
+  warn?: (message: string) => void;
 }
 
 export declare function createZubra(options?: ZubraOptions): Zubra;

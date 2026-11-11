@@ -51,7 +51,6 @@ fn a_spread_known_only_in_the_browser_is_left_for_the_element() {
 #[test]
 fn what_an_attribute_couldn_t_do_a_known_spread_can_t() {
     for (attrs, message) in [
-        (r#"{ href: "javascript:alert(1)" }"#, "unsafe URL"),
         (r#"{ onclick: "alert(1)" }"#, "a handler as text"),
         (r#"{ innerHTML: "<b>x</b>" }"#, "can't set `innerHTML`"),
         (r#"{ style: "color: red" }"#, "must be an object"),
@@ -71,6 +70,13 @@ fn what_an_attribute_couldn_t_do_a_known_spread_can_t() {
             error.message
         );
     }
+}
+
+#[test]
+fn a_spread_leaves_out_an_unsafe_url_as_the_browser_does() {
+    let source = "<script>\n  const attrs = { href: \"javascript:alert(1)\", title: \"t\" }\n</script>\n<x-a><a {...attrs}>go</a></x-a>";
+    let html = compile(source, "{}").unwrap();
+    assert!(html.contains(r#"<a title="t">go</a>"#), "{html}");
 }
 
 #[test]

@@ -338,7 +338,7 @@ fn reports_v0_2_syntax_with_migration_help() {
 // ---- safety ---------------------------------------------------------------------------------
 
 #[test]
-fn rejects_unsafe_static_and_dynamic_urls() {
+fn rejects_unsafe_literal_urls_and_leaves_out_unsafe_values() {
     assert_error(
         "<zb-link><a href=\"javascript:alert(1)\">Open</a></zb-link>",
         "{}",
@@ -349,21 +349,29 @@ fn rejects_unsafe_static_and_dynamic_urls() {
         "{}",
         "unsafe URL",
     );
-    assert_error(
-        GREETING,
-        r#"{"name":"x","url":"data:text/html,bad"}"#,
-        "unsafe URL in `href`",
-    );
-    assert_error(
+    // A URL made from values (a page's users may have written them) is left out of the HTML,
+    // as the element leaves it out in the browser: one bad value can't fail the page.
+    let html = compile(GREETING, r#"{"name":"x","url":"data:text/html,bad"}"#).unwrap();
+    assert!(html.contains("<a>Visit</a>"), "{html}");
+    assert!(!html.contains("href"), "{html}");
+    let html = compile(
         "<zb-link host=\"evil\"><a href=\"//{host}.example\">Open</a></zb-link>",
         "{}",
-        "unsafe URL",
-    );
-    assert_error(
+    )
+    .unwrap();
+    assert!(html.contains("<a>Open</a>"), "{html}");
+    let html = compile(
         "<zb-link scheme=\"javascript\"><a href=\"{scheme}:alert(1)\">Open</a></zb-link>",
         "{}",
-        "unsafe URL",
-    );
+    )
+    .unwrap();
+    assert!(html.contains("<a>Open</a>"), "{html}");
+    let html = compile(
+        "<zb-pic src=\"\"><img src={src} alt=\"\"></zb-pic>",
+        r#"{"src":"javascript:alert(1)"}"#,
+    )
+    .unwrap();
+    assert!(html.contains(r#"<img alt="">"#), "{html}");
     // An unsafe literal URL in a branch that isn't rendered is still rejected.
     assert_error(
         "<zb-x><main><zb-if test={true}><p>Shown</p><zb-else><a href=\"javascript:bad()\">x</a></zb-else></zb-if></main></zb-x>",
@@ -401,17 +409,20 @@ fn validates_srcset_and_srcdoc() {
         "data:image/png;base64,AAAA 1x",
         " , ",
     ] {
-        assert_error(
+        // A value: left out, as in the browser.
+        let html = compile(
             source,
             &serde_json::to_string(&json!({ "s": unsafe_value })).unwrap(),
-            "unsafe or empty URL candidate",
-        );
+        )
+        .unwrap();
+        assert!(!html.contains("srcset"), "{unsafe_value}: {html}");
     }
-    assert_error(
+    let html = compile(
         "<zb-pic s={{}}><img {...s}></zb-pic>",
         r#"{"s":{"srcset":"/a 1x, javascript:alert(1) 2x"}}"#,
-        "unsafe or empty URL candidate",
-    );
+    )
+    .unwrap();
+    assert!(html.contains("<img></zb-pic>"), "{html}");
     assert_error(
         "<zb-frame c=\"x\"><iframe srcdoc={c}></iframe></zb-frame>",
         "{}",

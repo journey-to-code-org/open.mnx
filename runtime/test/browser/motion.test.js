@@ -18,19 +18,30 @@ const set = (page, values) => page.evaluate(async (values) => {
 // leaves at once (nobody saw it), which these tests aren't about.
 const drawn = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 const count = (page, selector) => page.$$eval(selector, (els) => els.length);
-const leaving = (page, selector) => page.$$eval(selector, (els) => els.map((el) => [el.textContent, el.hasAttribute('data-leaving'), el.inert]));
 const gone = (page, selector) => page.waitForFunction((selector) => !document.querySelector(selector), selector, { timeout: 3000 });
 const rows = [{ id: 1, label: 'one' }, { id: 2, label: 'two' }, { id: 3, label: 'three' }];
 
 test('a leaving branch stays, marked and inert, until its transition ends', async () => {
   const { page, messages } = await open('<zb-motion></zb-motion>', { modules: ['motion'] });
   await drawn(page);
-  await set(page, { open: false });
-  assert.deepEqual(await leaving(page, '.panel'), [['Panel', true, true]], 'the old branch is still here, leaving');
-  assert.deepEqual(await leaving(page, '.closed'), [['Closed', false, false]], 'the new one is in beside it');
-  assert.deepEqual(await leaving(page, '.note'), [['Note', true, true]], 'zb-animate beside zb-if does the same');
-  const order = await page.$$eval('.panel, .closed', (els) => els.map((el) => el.className));
-  assert.deepEqual(order, ['panel', 'closed'], 'it leaves where it was');
+  // One look, straight after the change: the transition is 300 ms, and a slow browser can take
+  // longer than that over several round trips, so the old branch would be gone before the last.
+  const now = await page.evaluate(async () => {
+    const el = document.querySelector('zb-motion');
+    el.open = false;
+    await el.updateComplete;
+    const state = (selector) => [...document.querySelectorAll(selector)].map((each) => [each.textContent, each.hasAttribute('data-leaving'), each.inert]);
+    return {
+      panel: state('.panel'),
+      closed: state('.closed'),
+      note: state('.note'),
+      order: [...document.querySelectorAll('.panel, .closed')].map((each) => each.className),
+    };
+  });
+  assert.deepEqual(now.panel, [['Panel', true, true]], 'the old branch is still here, leaving');
+  assert.deepEqual(now.closed, [['Closed', false, false]], 'the new one is in beside it');
+  assert.deepEqual(now.note, [['Note', true, true]], 'zb-animate beside zb-if does the same');
+  assert.deepEqual(now.order, ['panel', 'closed'], 'it leaves where it was');
   await gone(page, '.panel');
   await gone(page, '.note');
   assert.equal(await count(page, '.closed'), 1);
