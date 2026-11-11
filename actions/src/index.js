@@ -79,8 +79,37 @@ export function toRequest(req) {
     if (Array.isArray(value)) value.forEach((each) => headers.append(name, each));
     else if (value !== undefined) headers.set(name, value);
   }
-  const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : req;
+  const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : bodyOf(req);
   return new Request(`${protocol}://${host}${req.url}`, { method: req.method, headers, body, duplex: 'half' });
+}
+
+/**
+ * A Node request's body as a web stream. Cancelling it (a post over maxBytes) discards the rest
+ * rather than destroying the request, so the connection survives to carry the answer: a browser
+ * still sending gets it instead of a reset. Node discards what's left once the response ends.
+ */
+function bodyOf(req) {
+  let data;
+  return new ReadableStream({
+    start(controller) {
+      data = (chunk) => controller.enqueue(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+      req.on('data', data);
+      req.once('end', () => {
+        try {
+          controller.close();
+        } catch {}
+      });
+      req.once('error', (error) => {
+        try {
+          controller.error(error);
+        } catch {}
+      });
+    },
+    cancel() {
+      req.off('data', data);
+      req.resume();
+    },
+  });
 }
 
 /** Write a fetch Response to a Node response. */

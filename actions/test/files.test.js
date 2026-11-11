@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createActions } from '../src/index.js';
-import { createServer } from 'node:http';
+import { createServer, get, request } from 'node:http';
 
 const components = fileURLToPath(new URL('./files', import.meta.url));
 const URL_UPLOAD = 'http://localhost/_zb/action/photo-form/upload';
@@ -53,7 +53,6 @@ test('a post over maxBytes is refused with 413 before the function runs', async 
   const response = await post(actions, form(photo(5000)), { accept: 'application/json' });
   assert.equal(response.status, 413);
   assert.deepEqual(await response.json(), { error: 'Too large' });
-  assert.equal(response.headers.get('connection'), 'close');
   assert.equal(ran.length, 0, 'not even context() ran');
   const fits = await post(actions, form(photo(3000)), { accept: 'application/json' });
   assert.equal((await fits.json()).size, 3000);
@@ -85,7 +84,6 @@ test('without JavaScript, a post over the limit goes back to the page with the e
   const actions = await make({ maxBytes: 4096 });
   const response = await post(actions, form(photo(5000)), { referer: 'http://localhost/listing' });
   assert.equal(response.status, 303);
-  assert.equal(response.headers.get('connection'), 'close');
   const next = new Request('http://localhost/listing', { headers: { cookie: response.headers.get('set-cookie').split(';')[0] } });
   assert.deepEqual(actions.result(next).value, { error: 'Too large' });
 });
@@ -110,6 +108,34 @@ test("Node's http: a refused upload is answered without reading it all, and the 
     const refused = await fetch(`${base}/_zb/action/photo-form/upload`, { method: 'POST', body: form(photo(1024 * 1024)), headers: { accept: 'application/json' } });
     assert.equal(refused.status, 413);
     assert.equal(await (await fetch(`${base}/`)).text(), 'page');
+    // Sent in chunks with no declared size: counted, and still answered rather than cut off.
+    // (Node's http client: fetch gives up on a streamed upload that's answered before it ends.)
+    const { status, text } = await new Promise((done, fail) => {
+      const sending = request(`${base}/_zb/action/photo-form/upload`, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'multipart/form-data; boundary=zz', 'transfer-encoding': 'chunked' } }, (res) => {
+        let text = '';
+        res.on('data', (chunk) => (text += chunk));
+        res.on('end', () => done({ status: res.statusCode, text }));
+      });
+      sending.on('error', fail);
+      const chunk = Buffer.alloc(16384, 97);
+      let sent = 0;
+      (function write() {
+        while (sent < 1024 * 1024) {
+          sent += chunk.length;
+          if (!sending.write(chunk)) return sending.once('drain', write);
+        }
+        sending.end();
+      })();
+    });
+    assert.equal(status, 413);
+    assert.deepEqual(JSON.parse(text), { error: 'Too large' });
+    // On a new connection: fetch's pool may hand back the one it gave up on mid-upload.
+    const page = await new Promise((done, fail) => get(`${base}/`, { agent: false }, (res) => {
+      let text = '';
+      res.on('data', (chunk) => (text += chunk));
+      res.on('end', () => done(text));
+    }).on('error', fail));
+    assert.equal(page, 'page', 'and it keeps serving');
   } finally {
     server.close();
   }
