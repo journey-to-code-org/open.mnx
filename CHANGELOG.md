@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 5.6.0 — 2026-11-11
+
+Sync and Actions on Cloudflare Workers, and five fixes found by building a real app on Zubra (Tailgate, a farm-to-door marketplace): the Sync server can read and write documents itself; a Durable Object holds it on Workers (`@zubra/sync/durable`), with the log in the object's own SQLite; server functions are built ahead of time for the edge (`zubra-actions build`, `@zubra/actions/edge`); and the standup board runs on a Worker in CI. On the server, an unsafe URL from a value is now left out and reported instead of failing the render, rendered components go inside slots, nested form controls submit before JavaScript, and `hydrated()` is `false`.
+
 ### Added
 
 - **The standup board on a Cloudflare Worker** (`examples/edge/standup-worker`), the proof for Sync and Actions on Workers: its Sync server is a Durable Object, its "Lead today" form posts to a server function that races through the object, and its pages come from `@zubra/server/edge`. A CI job runs it in workerd with two browsers (the page before JavaScript, typing and presence, two people racing for the lead, the form without JavaScript, the log surviving a restart) and runs Sync's log contract inside a Durable Object. `docs/edge.md` has the section.
