@@ -44,24 +44,42 @@ export function memoryLog() {
 
 const json = (status, value) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 
+// A clock is `<15-digit ms>-<5-digit counter>-<device>`, so clocks compare as strings.
+const CLOCK = /^(\d{15})-(\d{5})-[\w-]+$/;
+const clock = {
+  format: (time, counter, device) => `${String(time).padStart(15, '0')}-${String(counter).padStart(5, '0')}-${device}`,
+  /** `{ time, counter }`, or null when it isn't a clock. */
+  parse(text) {
+    const match = typeof text === 'string' && CLOCK.exec(text);
+    return match ? { time: Number(match[1]), counter: Number(match[2]) } : null;
+  },
+};
+
 const valid = (change) =>
   change && typeof change.collection === 'string' && typeof change.key === 'string' && typeof change.field === 'string' &&
-  typeof change.clock === 'string' && /^\d{15}-\d{5}-[\w-]+$/.test(change.clock) && change.field !== '$clocks';
-
-const pad = (number, width) => String(number).padStart(width, '0');
+  clock.parse(change.clock) !== null && change.field !== '$clocks';
 
 /** The documents a log describes, merged by each field's latest clock, as every device merges them. */
 function documentsOf() {
   const docs = new Map();
   const id = (collection, key) => `${collection}\u0000${key}`;
   return {
+    /** Applies a change if its clock is the field's latest; returns what undoes it, if it did. */
     apply(change) {
       let doc = docs.get(id(change.collection, change.key));
       if (!doc) docs.set(id(change.collection, change.key), (doc = { collection: change.collection, key: change.key, fields: {}, clocks: {} }));
       const known = doc.clocks[change.field];
-      if (known && known >= change.clock) return;
+      if (known && known >= change.clock) return null;
+      const had = change.field in doc.fields;
+      const before = doc.fields[change.field];
       doc.clocks[change.field] = change.clock;
       doc.fields[change.field] = change.value;
+      return () => {
+        if (doc.clocks[change.field] !== change.clock) return; // something newer came since: it stands
+        if (had) [doc.clocks[change.field], doc.fields[change.field]] = [known, before];
+        else delete doc.clocks[change.field], delete doc.fields[change.field];
+        if (!Object.keys(doc.fields).length) docs.delete(id(change.collection, change.key));
+      };
     },
     view: {
       /** A document's fields (a copy), or undefined when nothing has been written to it. */
@@ -80,38 +98,47 @@ function documentsOf() {
 export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize = () => true, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
   if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
   const base = mount.replace(/\/$/, '');
+  // Appends, one after another, so the log's order is the order they were made in.
+  let appending = Promise.resolve();
   // The server's clock: later than any clock it has seen, so its writes win over what came
   // before them (and lose to what devices write after, as any device's would).
   let lastTime = 0;
   let counter = 0;
-  const tick = (seen = 0) => {
-    const now = Math.max(Date.now(), lastTime, seen);
+  const tick = () => {
+    const now = Math.max(Date.now(), lastTime);
     counter = now === lastTime ? counter + 1 : 0;
     lastTime = now;
-    return `${pad(now, 15)}-${pad(counter, 5)}-${device}`;
+    return clock.format(now, counter, device);
   };
   const see = (change) => {
-    const time = Number(change.clock.slice(0, 15));
+    const { time, counter: seen } = clock.parse(change.clock);
     if (time > lastTime) {
       lastTime = time;
-      counter = Number(change.clock.slice(16, 21));
+      counter = seen;
     } else if (time === lastTime) {
-      counter = Math.max(counter, Number(change.clock.slice(16, 21)));
+      counter = Math.max(counter, seen);
     }
   };
   // The documents, built from the log the first time they're asked for, then kept current.
+  // While they're being built, what's recorded goes into the view being built too (applying a
+  // change twice changes nothing), so nothing that arrives during the read is missed.
   let docs = null;
+  let built = null;
   let building = null;
+  /** Puts changes in the documents; returns what takes them back out (for a write the log refused). */
   const record = (changes) => {
+    const undo = [];
     for (const change of changes) {
       see(change);
-      docs?.apply(change);
+      const taken = (docs ?? built)?.apply(change);
+      if (taken) undo.push(taken);
     }
+    return () => undo.reverse().forEach((take) => take());
   };
   async function documents() {
     if (docs) return docs.view;
     building ??= (async () => {
-      const built = documentsOf();
+      built = documentsOf();
       for (let cursor = 0; ; ) {
         const page = await log.after(cursor, 5000);
         for (const change of page.changes) {
@@ -121,16 +148,13 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
         if (!page.changes.length || String(page.cursor) === String(cursor)) break;
         cursor = page.cursor;
       }
-      // Changes recorded while the log was read are in it already, or arrive through record()
-      // from now on; applying one twice changes nothing.
       docs = built;
       return built.view;
     })();
     return building;
   }
-  // Appends, one after another, so the log's order is the order they were made in.
-  let appending = Promise.resolve();
-  const append = (changes) => (appending = appending.then(() => log.append(changes)));
+  // One that fails rejects for its own caller only; the next still runs.
+  const append = (changes) => (appending = appending.catch(() => {}).then(() => log.append(changes)));
   // Live subscribers: { peer, request, send(event, data), rooms }.
   const listeners = new Set();
   const encoder = new TextEncoder();
@@ -177,8 +201,8 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
         if (!(await authorize({ request, collection: change.collection, key: change.key, write: true, kind: 'change' }))) return json(403, { error: 'Not yours to change' });
       }
       const appended = changes.map(({ collection, key, field, value, clock }) => ({ collection, key, field, value, clock }));
-      record(appended);
       const cursor = await append(appended);
+      record(appended); // once it's logged: the documents never hold what the log doesn't
       await broadcastChanges(appended, cursor);
       return json(200, { ok: true });
     }
@@ -330,13 +354,24 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     if (typeof collection !== 'string' || typeof key !== 'string' || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
       throw new TypeError('sync.write(collection, key, { field: value, … })');
     }
-    const changes = Object.entries(fields).map(([field, value]) => {
-      if (field === '$clocks') throw new TypeError('sync.write: `$clocks` is not a field');
-      return { collection, key, field, value, clock: tick() };
-    });
+    if ('$clocks' in fields) throw new TypeError('sync.write: `$clocks` is not a field');
+    // A server that hasn't read its log yet (it just started, or a Durable Object was evicted)
+    // hasn't seen the clocks in it: read it first, so this write comes after all of them. Once
+    // the documents exist this doesn't wait, so a check and a write with no await between stay
+    // one step.
+    if (!docs) await documents();
+    const changes = Object.entries(fields).map(([field, value]) => ({ collection, key, field, value, clock: tick() }));
     if (!changes.length) return [];
-    record(changes);
-    const cursor = await append(changes);
+    // In the documents at once, so a check before this call and the write are one step; taken
+    // back out if the log refuses it.
+    const undo = record(changes);
+    let cursor;
+    try {
+      cursor = await append(changes);
+    } catch (error) {
+      undo();
+      throw error;
+    }
     await broadcastChanges(changes, cursor);
     return changes;
   }

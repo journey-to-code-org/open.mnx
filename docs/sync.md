@@ -107,7 +107,7 @@ export async function claim(formData, context) {
 ```
 
 - **`documents()`** reads the log once, then keeps up with every push and write. `get(collection, key)` is a document's fields (a copy); `all(collection)` is every document in a collection with its `key`. Reads are synchronous.
-- **`write(collection, key, fields)`** stamps each field with the server's clock (`createSyncServer({ device })`, `server` by default), which is always later than any clock it has seen. So the write wins over everything before it, and a device that writes afterwards wins over it, as between any two devices. The view has it at once; then it's logged and sent to every live page.
+- **`write(collection, key, fields)`** stamps each field with the server's clock (`createSyncServer({ device })`, `server` by default), which is always later than any clock it has seen. So the write wins over everything before it, and a device that writes afterwards wins over it, as between any two devices. The view has it at once; then it's logged and sent to every live page. A server that hasn't read its log yet (it just started) reads it before its first write, so that write comes after every clock in it. If the log refuses a write, `write()` rejects and the documents take it back out; a push the log refuses never reaches them.
 - **To keep a document the server's alone**, refuse `kind: 'change'` for it in `authorize`, and let `kind: 'presence'` through if people should see who else has it open.
 - One process: the view is this process's, like the live subscribers. Several processes need a shared log and should decide such things in one place.
 
