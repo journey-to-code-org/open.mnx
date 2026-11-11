@@ -6,6 +6,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
+- **A sync log in a Cloudflare Durable Object: `durableObjectLog(ctx.storage)`** from the new `@zubra/sync/durable`. The same table and cursors as `sqliteLog`, over the object's own SQLite, one transaction per batch; `table` names it if the object keeps tables of its own. Every log Sync ships now passes one contract (order, cursors and paging, JSON values, a failed batch adding nothing), and the edge example runs it on workerd's storage. The first part of Sync and Actions on Workers (`plan/roadmap-durable-objects.md`).
 - **The Sync server can take part: `sync.documents()` and `sync.write()`.** `documents()` is every document as the devices merge it, kept current, with synchronous reads; `write(collection, key, fields)` writes as the server, with a clock later than any it has seen, to the log and every live page. A server action can now check and decide what two people both want (the last item, a job two drivers claim) and every page showing it follows. Tailgate wrote these 40 lines itself; they're in `@zubra/sync/server` now.
 - **`authorize` is told what kind of request it is**: `kind` is `'change'`, `'presence'` or `'read'`. A rule that kept a collection the server's alone used to refuse joining its documents' presence rooms too, since both are writes; now it can tell them apart. `write` is unchanged.
 
