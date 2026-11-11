@@ -12,7 +12,7 @@ Each framework's app in `examples/frameworks/` (or `examples/meta/` for the serv
 | Events reach the idiomatic handler, once | the framework's own listener syntax, asserted to fire with `detail`, with no re-subscription per render (`runtime/test/browser/adapters.test.js`) |
 | An inner native event of the same name doesn't leak | `runtime/test/browser/events.test.js` |
 | `before…` cancellation | `preventDefault()` in the handler keeps the old value (`adapters.test.js`) |
-| Two-way binding without loops | `v-model`, `bind:value`, `zubraModel`, the controlled pattern, each asserted to update both ways and settle |
+| Two-way binding without loops | `v-model`, `zubraModel`, the controlled pattern (which is also how Svelte and Solid write it: the prop and its change event), each asserted to update both ways and settle |
 | Children and named slots | content from the framework placed, reordered, filtered and removed through the host; fallbacks come back |
 | Forms | Zubra controls submit with the framework's form, validate (`:invalid`), reset, and sit in a disabled `<fieldset>` (`runtime/test/browser/forms.test.js`, each app's form) |
 | Server rendering and hydration | the server HTML contains the element's markup; hydration logs nothing; the parser's nodes are kept (`examples/meta/*`, each with a no-JavaScript test) |

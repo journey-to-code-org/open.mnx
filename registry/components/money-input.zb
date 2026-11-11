@@ -36,6 +36,15 @@
 <money-input form-associated value:model={null} symbol="$" required={false} min={0} label="Amount">
   <div class="box">
     <span aria-hidden="true">{symbol}</span>
-    <input inputmode="decimal" autocomplete="off" aria-label={label} placeholder="0.00" value={shown} oninput={input} onfocus={focus} onblur={() => (focused = false)}>
+    <input
+      inputmode="decimal"
+      autocomplete="off"
+      aria-label={label}
+      placeholder="0.00"
+      value={shown}
+      oninput={input}
+      onfocus={focus}
+      onblur={() => (focused = false)}
+    >
   </div>
 </money-input>

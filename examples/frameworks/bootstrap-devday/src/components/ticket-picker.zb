@@ -36,9 +36,16 @@
 <ticket-picker shadow form-associated value:model="" tickets={[]} label="Ticket">
   <div class="grid" role="radiogroup" aria-label={label} ref={group}>
     <zb-each items={tickets} as="ticket" index="index" key={ticket.id}>
-      <button type="button" role="radio" data-id={ticket.id} aria-checked={ticket.id === value ? "true" : "false"}
+      <button
+        type="button"
+        role="radio"
+        data-id={ticket.id}
+        aria-checked={ticket.id === value ? "true" : "false"}
         tabindex={ticket.id === value || (!value && index === 0) ? "0" : "-1"}
-        onclick={() => (value = ticket.id)} onkeydown.right.down.prevent={() => move(index, 1)} onkeydown.left.up.prevent={() => move(index, -1)}>
+        onclick={() => (value = ticket.id)}
+        onkeydown.right.down.prevent={() => move(index, 1)}
+        onkeydown.left.up.prevent={() => move(index, -1)}
+      >
         <span class="name">{ticket.name}</span>
         <span class="price">€{ticket.price}</span>
         <span class="perks">{ticket.perks}</span>

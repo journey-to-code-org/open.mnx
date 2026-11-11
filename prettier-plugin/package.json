@@ -1,0 +1,39 @@
+{
+  "name": "prettier-plugin-zubra",
+  "version": "5.5.0",
+  "description": "Prettier for .zb components: <script> and <style> bodies by Prettier, the template by zubra fmt",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journey-to-code-org/zubra.git",
+    "directory": "prettier-plugin"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "keywords": [
+    "prettier",
+    "prettier-plugin",
+    "zubra",
+    "web-components"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "dependencies": {
+    "@zubra/compiler": "file:../compiler"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}

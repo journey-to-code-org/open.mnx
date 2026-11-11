@@ -50,7 +50,22 @@
   <div class="grid" role="group" aria-label={label} ref={grid}>
     <zb-each items={columns} as="column" key={column.week}>
       <zb-each items={column.days} as="cell" key={cell.key}>
-        <button type="button" data-day={cell.key} data-level={cell.level} data-today={cell.key === today ? "" : null} disabled={cell.level < 0} title={cell.label} aria-label={cell.label} aria-pressed={cell.count >= goal ? "true" : "false"} tabindex={cell.key === today ? "0" : "-1"} onclick={() => emit('daytoggle', cell.key)} onkeydown.up.prevent={() => move(cell.key, -1)} onkeydown.down.prevent={() => move(cell.key, 1)} onkeydown.left.prevent={() => move(cell.key, -7)} onkeydown.right.prevent={() => move(cell.key, 7)}></button>
+        <button
+          type="button"
+          data-day={cell.key}
+          data-level={cell.level}
+          data-today={cell.key === today ? "" : null}
+          disabled={cell.level < 0}
+          title={cell.label}
+          aria-label={cell.label}
+          aria-pressed={cell.count >= goal ? "true" : "false"}
+          tabindex={cell.key === today ? "0" : "-1"}
+          onclick={() => emit('daytoggle', cell.key)}
+          onkeydown.up.prevent={() => move(cell.key, -1)}
+          onkeydown.down.prevent={() => move(cell.key, 1)}
+          onkeydown.left.prevent={() => move(cell.key, -7)}
+          onkeydown.right.prevent={() => move(cell.key, 7)}
+        ></button>
       </zb-each>
     </zb-each>
   </div>

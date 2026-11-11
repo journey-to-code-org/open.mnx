@@ -43,13 +43,24 @@
 </style>
 <todo-app items={[{ id: 1, text: "Try zubra 2.0", done: true }, { id: 2, text: "Write a component", done: false }]}>
   <form onsubmit.prevent={add}>
-    <input aria-label="New item" placeholder="What needs doing?" value={draft} oninput={(event) => (draft = event.target.value)}>
+    <input
+      aria-label="New item"
+      placeholder="What needs doing?"
+      value={draft}
+      oninput={(event) => (draft = event.target.value)}
+    >
     <button type="submit">Add</button>
   </form>
   <ul zb-if={shown.length > 0}>
     <zb-each items={shown} as="item" key={item.id}>
       <li>
-        <todo-item text={item.text} done={item.done} ontoggle={() => toggle(item.id)} onrename={(event) => rename(item.id, event.detail)} onremove={() => remove(item.id)}></todo-item>
+        <todo-item
+          text={item.text}
+          done={item.done}
+          ontoggle={() => toggle(item.id)}
+          onrename={(event) => rename(item.id, event.detail)}
+          onremove={() => remove(item.id)}
+        ></todo-item>
       </li>
     </zb-each>
   </ul>

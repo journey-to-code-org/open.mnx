@@ -74,10 +74,35 @@
   [role=menuitem]:disabled { color: var(--muted, #98a2b3); cursor: default; }
 </style>
 <dropdown-menu label="Options" items={[]}>
-  <button type="button" class="trigger" id={buttonId} ref={button} popovertarget={menuId} aria-haspopup="menu" aria-expanded={open ? "true" : "false"} style:anchor-name={`--${menuId}`} onkeydown={keys}><zb-slot name="label">{label}</zb-slot></button>
-  <div popover id={menuId} role="menu" aria-labelledby={buttonId} ref={menu} style:position-anchor={`--${menuId}`} ontoggle={toggled} onfocusout={left}>
+  <button
+    type="button"
+    class="trigger"
+    id={buttonId}
+    ref={button}
+    popovertarget={menuId}
+    aria-haspopup="menu"
+    aria-expanded={open ? "true" : "false"}
+    style:anchor-name={`--${menuId}`}
+    onkeydown={keys}
+  ><zb-slot name="label">{label}</zb-slot></button>
+  <div
+    popover
+    id={menuId}
+    role="menu"
+    aria-labelledby={buttonId}
+    ref={menu}
+    style:position-anchor={`--${menuId}`}
+    ontoggle={toggled}
+    onfocusout={left}
+  >
     <zb-each items={items} as="item" key={item.value}>
-      <button type="button" role="menuitem" tabindex="-1" disabled={!!item.disabled} onclick={() => choose(item)}>{item.label}</button>
+      <button
+        type="button"
+        role="menuitem"
+        tabindex="-1"
+        disabled={!!item.disabled}
+        onclick={() => choose(item)}
+      >{item.label}</button>
     </zb-each>
   </div>
 </dropdown-menu>

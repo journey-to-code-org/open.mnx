@@ -43,7 +43,14 @@
   .tip { position: absolute; top: 0.25rem; right: 0.25rem; padding: 0.2rem 0.5rem; border-radius: 0.4rem; background: var(--ink, #1d2130); color: var(--surface, #ffffff); font-size: 0.8125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 </style>
 <line-chart points={[]} label="Price">
-  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${label}: ${points.length} points from ${low.toFixed(2)} to ${high.toFixed(2)}`} onpointermove={move} onpointerleave={leave}>
+  <svg
+    viewBox={`0 0 ${W} ${H}`}
+    preserveAspectRatio="none"
+    role="img"
+    aria-label={`${label}: ${points.length} points from ${low.toFixed(2)} to ${high.toFixed(2)}`}
+    onpointermove={move}
+    onpointerleave={leave}
+  >
     <line class="grid" x1="0" x2={W} y1="12" y2="12"></line>
     <line class="grid" x1="0" x2={W} y1={H - 12} y2={H - 12}></line>
     <path class="area" d={area}></path>

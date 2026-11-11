@@ -33,14 +33,24 @@
 <todo-item text done={false}>
   <zb-if test={editing}>
     <form onsubmit.prevent={save}>
-      <input aria-label="Edit item" value={draft} oninput={(event) => (draft = event.target.value)} onblur={save}>
+      <input
+        aria-label="Edit item"
+        value={draft}
+        oninput={(event) => (draft = event.target.value)}
+        onblur={save}
+      >
     </form>
     <zb-else>
       <label>
         <input type="checkbox" checked={done} onchange={() => emit('toggle')}>
         <span class:done ondblclick={edit}>{text}</span>
       </label>
-      <button type="button" class="remove" aria-label="Remove {text}" onclick={() => emit('remove')}>×</button>
+      <button
+        type="button"
+        class="remove"
+        aria-label="Remove {text}"
+        onclick={() => emit('remove')}
+      >×</button>
     </zb-else>
   </zb-if>
 </todo-item>

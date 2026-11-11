@@ -53,9 +53,36 @@ impl Default for FormatOptions {
     }
 }
 
+/// The comment that opts a file out: `<!-- zubra-fmt-ignore -->` as the first thing in it.
+pub const IGNORE_COMMENT: &str = "zubra-fmt-ignore";
+
+/// Whether the file opts out of formatting: its first non-blank content is the comment
+/// `<!-- zubra-fmt-ignore -->`. For a fixture that is malformed on purpose, or a file laid out by
+/// hand. It is read before parsing, so a file that doesn't parse can opt out too.
+pub fn is_ignored(source: &str) -> bool {
+    source
+        .trim_start_matches(['\u{feff}', ' ', '\t', '\r', '\n'])
+        .strip_prefix("<!--")
+        .and_then(|rest| rest.split_once("-->"))
+        .is_some_and(|(comment, _)| comment.trim() == IGNORE_COMMENT)
+}
+
+/// Whether the file's lines end in CRLF: its first line break decides. The formatter keeps the
+/// file's line endings, so a CRLF checkout (Windows with `core.autocrlf`) isn't "unformatted".
+pub(crate) fn uses_crlf(source: &str) -> bool {
+    source
+        .find('\n')
+        .is_some_and(|at| at > 0 && source.as_bytes()[at - 1] == b'\r')
+}
+
 /// `source` formatted. An error when it doesn't parse (the compiler's own error), or is a JSX
-/// component.
+/// component. A file that opts out ([`is_ignored`]) is returned as it is, and line endings are
+/// kept: a CRLF file stays CRLF.
 pub fn format(source: &str, options: &FormatOptions) -> Result<String, Diagnostic> {
+    if is_ignored(source) {
+        return Ok(source.to_owned());
+    }
+    let crlf = uses_crlf(source);
     let source = source.replace("\r\n", "\n").replace('\r', "\n");
     if crate::jsx::looks_like_jsx(&source) {
         return Err(Diagnostic::new(
@@ -78,7 +105,225 @@ pub fn format(source: &str, options: &FormatOptions) -> Result<String, Diagnosti
         )
         .with_help("please report it: https://github.com/journey-to-code-org/zubra/issues"));
     }
-    Ok(formatted)
+    Ok(if crlf {
+        formatted.replace('\n', "\r\n")
+    } else {
+        formatted
+    })
+}
+
+/// A change to a file: `start..end` (bytes of the original) replaced by `text`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RangeEdit {
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
+}
+
+/// The edit that formats what `start..end` (bytes of `source`) touches, or `None` when that part
+/// is already formatted. The whole file is laid out (nesting depth and line widths depend on
+/// what comes before), and the edit is the output for the tokens the range covers: from the
+/// whitespace before the first (it carries the first line's indentation) to the end of the
+/// last. The range is widened to whole lines. So it is exactly what formatting the file would write there, and nothing else changes.
+/// Like [`format`], an error when the file doesn't parse, nothing for a file that opts out, and
+/// the edit's line breaks are the file's own. An offset inside a character counts as the
+/// character's start, so no offset an editor sends can be out of place.
+pub fn format_range(
+    source: &str,
+    start: usize,
+    end: usize,
+    options: &FormatOptions,
+) -> Result<Option<RangeEdit>, Diagnostic> {
+    if is_ignored(source) {
+        return Ok(None);
+    }
+    let crlf = uses_crlf(source);
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    if crate::jsx::looks_like_jsx(&normalized) {
+        return Err(Diagnostic::new(
+            Span::new(1, 1),
+            "zubra fmt formats HTML-first .zb files; this is a JSX component",
+        )
+        .with_help("format JSX components (.zb.tsx, .zb.jsx) with Prettier"));
+    }
+    parser::parse(&normalized)?;
+    let tokens = scan(&normalized)?;
+    let (formatted, marks) = Printer::new(options).print_marked(&tokens);
+    if let Err(error) = parser::parse(&formatted) {
+        return Err(Diagnostic::new(
+            Span::new(1, 1),
+            format!(
+                "the formatter wrote markup that doesn't parse ({}), so the file is left as it was",
+                error.message
+            ),
+        )
+        .with_help("please report it: https://github.com/journey-to-code-org/zubra/issues"));
+    }
+    // Offsets in the text with LF line endings, which is what was scanned.
+    let (start, end) = (
+        normalized_offset(source, start.min(source.len())),
+        normalized_offset(source, end.min(source.len())),
+    );
+    // An offset inside a multi-byte character (a client counting in other units, or a stale
+    // one) is moved back to the character's start: slicing there would panic.
+    let floor = |mut offset: usize| {
+        while !normalized.is_char_boundary(offset) {
+            offset -= 1;
+        }
+        offset
+    };
+    let (start, mut end) = (floor(start.min(end)), floor(end.max(start)));
+    // Whole lines: a cursor, or a selection that starts or ends mid-line, formats its lines
+    // (and a selection that ends at the start of a line leaves that line alone).
+    if end > start && normalized.as_bytes().get(end - 1) == Some(&b'\n') {
+        end -= 1;
+    }
+    let start = normalized[..start].rfind('\n').map_or(0, |at| at + 1);
+    let end = normalized[end..]
+        .find('\n')
+        .map_or(normalized.len(), |at| end + at);
+    let mut ranges = Vec::with_capacity(tokens.len());
+    let mut at = 0;
+    for token in &tokens {
+        let length = match token {
+            Token::Space(text) | Token::Text(text) | Token::Comment(text) | Token::Body(text) => {
+                text.len()
+            }
+            Token::Open { raw, .. } | Token::Close { raw, .. } => raw.len(),
+        };
+        ranges.push(at..at + length);
+        at += length;
+    }
+    let covered = |index: usize| {
+        let range = &ranges[index];
+        if start == end {
+            range.start <= start && start < range.end
+        } else {
+            range.start < end && range.end > start
+        }
+    };
+    let content = |index: usize| !matches!(tokens[index], Token::Space(_));
+    let Some(first) = (0..tokens.len()).find(|&index| covered(index) && content(index)) else {
+        return Ok(None);
+    };
+    let last = (first..tokens.len())
+        .rev()
+        .find(|&index| covered(index) && content(index))
+        .unwrap_or(first);
+    // The whitespace before the first token is part of the window.
+    let first = if first > 0 && !content(first - 1) {
+        first - 1
+    } else {
+        first
+    };
+    let (from, to) = (ranges[first].start, ranges[last].end);
+    let text = formatted[marks[first]..marks[last + 1]].to_owned();
+    if normalized[from..to] == text {
+        return Ok(None);
+    }
+    Ok(Some(RangeEdit {
+        start: original_offset(source, from),
+        end: original_offset(source, to),
+        text: if crlf {
+            text.replace('\n', "\r\n")
+        } else {
+            text
+        },
+    }))
+}
+
+/// A byte offset in `source` as an offset in the same text with `\r\n` and `\r` as `\n`.
+pub(crate) fn normalized_offset(source: &str, offset: usize) -> usize {
+    let bytes = source.as_bytes();
+    let pairs = (0..offset.saturating_sub(1))
+        .filter(|&index| bytes[index] == b'\r' && bytes[index + 1] == b'\n')
+        .count();
+    offset - pairs
+}
+
+/// The inverse: where an offset in the normalized text is in `source`.
+pub(crate) fn original_offset(source: &str, normalized: usize) -> usize {
+    let bytes = source.as_bytes();
+    let (mut seen, mut index) = (0, 0);
+    while index < bytes.len() && seen < normalized {
+        if bytes[index] == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+            index += 1;
+        }
+        index += 1;
+        seen += 1;
+    }
+    index
+}
+
+// ---- the file's pieces by position, for tools that work on a selection ---------------------
+
+/// What a piece of a file is, as far as its boundaries matter.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PieceKind {
+    /// Whitespace between things.
+    Space,
+    /// A run of text without whitespace in it (a word, an entity).
+    Text,
+    /// A `{…}` in the template, whole: an expression, or markup in braces.
+    Braces,
+    /// `<!-- … -->`.
+    Comment,
+    /// A start tag, whole, attributes included (`void` or self-closing: it has no end tag).
+    Open { childless: bool },
+    /// An end tag.
+    Close,
+    /// The text inside a `<script>` or `<style>`.
+    Body,
+}
+
+/// One piece of the file: every byte of the file is in exactly one, in order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct Piece {
+    pub kind: PieceKind,
+    pub start: usize,
+    pub end: usize,
+    /// The tag's name, for a start or end tag.
+    pub name: String,
+}
+
+/// `source` as its pieces. A selection that doesn't start and end on a piece's edge is inside a
+/// tag, a comment, an expression or a word. An error when the file doesn't scan.
+pub(crate) fn pieces(source: &str) -> Result<Vec<Piece>, Diagnostic> {
+    let mut at = 0;
+    Ok(scan(source)?
+        .into_iter()
+        .map(|token| {
+            let (kind, length, name) = match &token {
+                Token::Space(text) => (PieceKind::Space, text.len(), ""),
+                Token::Text(text) if text.starts_with('{') => (PieceKind::Braces, text.len(), ""),
+                Token::Text(text) => (PieceKind::Text, text.len(), ""),
+                Token::Comment(text) => (PieceKind::Comment, text.len(), ""),
+                Token::Body(text) => (PieceKind::Body, text.len(), ""),
+                Token::Open {
+                    name,
+                    self_closing,
+                    raw,
+                    ..
+                } => (
+                    PieceKind::Open {
+                        childless: *self_closing
+                            || VOID_ELEMENTS.contains(&name.to_ascii_lowercase().as_str()),
+                    },
+                    raw.len(),
+                    *name,
+                ),
+                Token::Close { name, raw } => (PieceKind::Close, raw.len(), *name),
+            };
+            let piece = Piece {
+                kind,
+                start: at,
+                end: at + length,
+                name: name.to_owned(),
+            };
+            at += length;
+            piece
+        })
+        .collect())
 }
 
 // ---- scanning: the file as tokens, every byte accounted for -------------------------------
@@ -297,6 +542,9 @@ struct Printer {
     verbatim: usize,
     /// The last thing printed opened an element: the next line break starts its content.
     just_opened: bool,
+    /// Where in `out` each token's output starts (and a last one for the end): what a range
+    /// edit is cut from.
+    marks: Vec<usize>,
 }
 
 impl Printer {
@@ -307,6 +555,7 @@ impl Printer {
             depth: 0,
             verbatim: 0,
             just_opened: false,
+            marks: Vec::new(),
         }
     }
 
@@ -330,9 +579,14 @@ impl Printer {
         (indent, width)
     }
 
-    fn print(mut self, tokens: &[Token<'_>]) -> String {
+    fn print(self, tokens: &[Token<'_>]) -> String {
+        self.print_marked(tokens).0
+    }
+
+    fn print_marked(mut self, tokens: &[Token<'_>]) -> (String, Vec<usize>) {
         let mut top_level_gap: Option<usize> = None; // line breaks seen between top-level items
         for (index, token) in tokens.iter().enumerate() {
+            self.marks.push(self.out.len());
             // At the top level (outside the host tag) nothing is template: lay items out.
             if self.depth == 0 && self.verbatim == 0 {
                 if let Token::Space(space) = token {
@@ -361,10 +615,11 @@ impl Printer {
                 Token::Close { name, raw } => self.close(name, raw),
             }
         }
+        self.marks.push(self.out.len());
         let trimmed = self.out.trim_end().len();
         self.out.truncate(trimmed);
         self.out.push('\n');
-        self.out
+        (self.out, self.marks)
     }
 
     fn space(&mut self, space: &str, next: Option<&Token<'_>>) {
@@ -571,11 +826,46 @@ mod tests {
     }
 
     #[test]
-    fn crlf_becomes_lf() {
+    fn line_endings_are_kept() {
         assert_eq!(
             fmt("<x-a>\r\n<p>a</p>\r\n</x-a>\r\n"),
+            "<x-a>\r\n  <p>a</p>\r\n</x-a>\r\n"
+        );
+        // A formatted CRLF file is formatted: `--check` has nothing to say about it.
+        let formatted = "<script>\r\n  let a = 1\r\n</script>\r\n<x-a>\r\n  <p>a</p>\r\n</x-a>\r\n";
+        assert_eq!(fmt(formatted), formatted);
+        // The first line break decides; a stray one of the other kind follows it.
+        assert_eq!(
+            fmt("<x-a>\r\n<p>a</p>\n</x-a>\r\n"),
+            "<x-a>\r\n  <p>a</p>\r\n</x-a>\r\n"
+        );
+        assert_eq!(
+            fmt("<x-a>\n<p>a</p>\r\n</x-a>\n"),
             "<x-a>\n  <p>a</p>\n</x-a>\n"
         );
+    }
+
+    #[test]
+    fn a_file_that_opts_out_is_left_alone_even_when_it_does_not_parse() {
+        for source in [
+            "<!-- zubra-fmt-ignore -->\n<x-a>\n<p>\n</x-a>\n",
+            "\n  <!--zubra-fmt-ignore-->\n<x-a>\n      <p>a</p>\n</x-a>\n",
+        ] {
+            assert!(is_ignored(source));
+            assert_eq!(fmt(source), source);
+            assert_eq!(
+                format_range(source, 0, source.len(), &FormatOptions::default()).unwrap(),
+                None
+            );
+        }
+        // Only as the first thing in the file, and only that comment.
+        for source in [
+            "<x-a>\n<!-- zubra-fmt-ignore -->\n<p>a</p>\n</x-a>\n",
+            "<!-- about zubra-fmt-ignore -->\n<x-a>\n<p>a</p>\n</x-a>\n",
+        ] {
+            assert!(!is_ignored(source));
+            assert_ne!(fmt(source), source);
+        }
     }
 
     #[test]
@@ -597,5 +887,121 @@ mod tests {
             let once = fmt(source);
             assert_eq!(fmt(&once), once);
         }
+    }
+
+    fn range(source: &str, from: &str, to: &str) -> Option<(String, RangeEdit)> {
+        let start = source.find(from).unwrap();
+        let end = source[start..].find(to).unwrap() + start + to.len();
+        let edit = format_range(source, start, end, &FormatOptions::default()).unwrap()?;
+        let mut out = source.to_owned();
+        out.replace_range(edit.start..edit.end, &edit.text);
+        Some((out, edit))
+    }
+
+    #[test]
+    fn a_range_formats_the_lines_it_touches_and_nothing_else() {
+        let source =
+            "<x-a>\n<p>\n        hi {name}\n</p>\n      <ul>\n<li>one</li>\n</ul>\n</x-a>\n";
+        let (out, _) = range(source, "<li>one", "</li>").unwrap();
+        // Only the <li> line is re-indented, at its depth in the whole file.
+        assert_eq!(
+            out,
+            "<x-a>\n<p>\n        hi {name}\n</p>\n      <ul>\n    <li>one</li>\n</ul>\n</x-a>\n"
+        );
+        let (out, _) = range(source, "hi {name}", "hi {name}").unwrap();
+        assert_eq!(
+            out,
+            "<x-a>\n<p>\n    hi {name}\n</p>\n      <ul>\n<li>one</li>\n</ul>\n</x-a>\n"
+        );
+    }
+
+    #[test]
+    fn the_range_of_everything_is_the_whole_format() {
+        let source = "<!-- a -->\n\n\n<script>let a = 1</script>   <style>p{}</style>\n<x-a>\n<p>\n  <b   x = \"1\">hi</b>\n</p>\n</x-a>\n";
+        let edit = format_range(source, 0, source.len(), &FormatOptions::default())
+            .unwrap()
+            .unwrap();
+        let mut out = source.to_owned();
+        out.replace_range(edit.start..edit.end, &edit.text);
+        assert_eq!(
+            format(&out, &FormatOptions::default()).unwrap(),
+            format(source, &FormatOptions::default()).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_formatted_range_has_no_edit_and_a_cursor_formats_its_line() {
+        let source = "<x-a>\n  <p>a</p>\n</x-a>\n";
+        assert_eq!(range(source, "<p>a</p>", "</p>"), None);
+        let ragged = "<x-a>\n<p>a</p>\n</x-a>\n";
+        let at = ragged.find("a</p>").unwrap();
+        let edit = format_range(ragged, at, at, &FormatOptions::default())
+            .unwrap()
+            .unwrap();
+        assert_eq!(edit.text, "\n  <p>a</p>");
+        // A selection that ends at the start of a line leaves that line alone; one that reaches
+        // into it formats it.
+        let space = ragged.find("\n<p>").unwrap();
+        assert!(
+            format_range(ragged, space, space + 1, &FormatOptions::default())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            format_range(ragged, space, space + 2, &FormatOptions::default())
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn a_range_in_a_crlf_file_is_in_the_file_s_own_offsets() {
+        let source = "<x-a>\r\n<p>\r\nx\r\n</p>\r\n<i>y</i>\r\n</x-a>\r\n";
+        let start = source.find("x\r\n").unwrap();
+        let edit = format_range(source, start, start + 1, &FormatOptions::default())
+            .unwrap()
+            .unwrap();
+        let mut out = source.to_owned();
+        out.replace_range(edit.start..edit.end, &edit.text);
+        // The edit's line breaks are the file's: no bare LF in a CRLF file.
+        assert_eq!(edit.text, "\r\n    x");
+        assert_eq!(
+            out,
+            "<x-a>\r\n<p>\r\n    x\r\n</p>\r\n<i>y</i>\r\n</x-a>\r\n"
+        );
+    }
+
+    #[test]
+    fn an_offset_inside_a_character_is_that_character_s_start() {
+        // "é" is two bytes and "日本" three each: every byte offset in the file must be safe.
+        let source = "<x-a>\n<p>caf\u{e9} \u{65e5}\u{672c}</p>\n      <i>\u{1f600}</i>\n</x-a>\n";
+        let whole = format(source, &FormatOptions::default()).unwrap();
+        for start in 0..=source.len() {
+            for end in [start, (start + 1).min(source.len()), source.len()] {
+                let edit = format_range(source, start, end, &FormatOptions::default()).unwrap();
+                if let Some(edit) = edit {
+                    let mut out = source.to_owned();
+                    out.replace_range(edit.start..edit.end, &edit.text);
+                    assert!(
+                        whole.contains(edit.text.trim_start_matches('\n')),
+                        "{start}..{end}"
+                    );
+                }
+            }
+        }
+        // And past the end.
+        assert!(format_range(
+            source,
+            source.len() + 9,
+            source.len() + 99,
+            &FormatOptions::default()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_range_refuses_what_the_formatter_refuses() {
+        let broken = "<x-a>\n  <p>\n</x-a>\n";
+        assert!(format_range(broken, 0, 3, &FormatOptions::default()).is_err());
     }
 }

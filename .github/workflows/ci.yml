@@ -21,6 +21,10 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      # The release's binary archives (.github/workflows/release.yml).
+      - run: scripts/package-binary.test.sh
+      # The repository's own components are laid out by zubra fmt.
+      - run: cargo run --locked -- fmt --check .
 
   runtime:
     name: Runtime (unit, browser, tools)
@@ -313,6 +317,37 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - run: python -m unittest discover -s tests -v
         working-directory: examples/backends/flask-garden
+      # The same garden from Axum: the pages must be the Flask example's HTML. No Node.js, no child process.
+      - name: Start the Flask garden
+        working-directory: examples/backends/flask-garden
+        run: |
+          ZUBRA_COMPILER="$GITHUB_WORKSPACE/target/debug/zubra" python app.py > flask.log 2>&1 &
+          for attempt in $(seq 1 30); do curl -fs http://127.0.0.1:5000/ > /dev/null && exit 0; sleep 1; done
+          cat flask.log; exit 1
+      - run: cargo test --locked
+        working-directory: examples/backends/axum-garden
+        env:
+          FLASK_GARDEN_URL: http://127.0.0.1:5000
+
+  python-client:
+    name: Python package (zubra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: cargo build --locked
+      - run: pip install jinja2
+      # The package against the real compiler, then a wheel built and installed the way pip does.
+      - run: python -W error::ResourceWarning -m unittest discover -s tests -v
+        working-directory: clients/python
+        env:
+          ZUBRA_COMPILER: ${{ github.workspace }}/target/debug/zubra
 
   hypermedia:
     name: Hypermedia examples (Hono + htmx, on Node.js and Bun)
@@ -339,6 +374,33 @@ jobs:
       # The tests run the server on Node.js and on Bun.
       - run: npm test
         working-directory: examples/hypermedia/hono-bikes
+
+  edge-worker:
+    name: Hono bike shop on a Cloudflare Worker (workerd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build --locked
+      # The Worker runs the compiler's WebAssembly build.
+      - run: npm run build
+        working-directory: compiler
+      - run: npm ci
+        working-directory: examples/hypermedia/hono-bikes
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm install
+        working-directory: examples/edge/hono-bikes-worker
+      # Runs the Worker in workerd and compares its HTML to the Node.js app's.
+      - run: npm test
+        working-directory: examples/edge/hono-bikes-worker
 
   standup:
     name: Local-first example (standup, @zubra/sync)
@@ -443,6 +505,12 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
+      # job that runs the rest of the server's tests doesn't build; here they must run.
+      - run: npm ci
+        working-directory: server
+      - run: node --test test/edge.test.js
+        working-directory: server
       # The playground compiling with zubra.wasm in the page.
       - run: node --test "playground/test/*.test.js"
 
@@ -474,6 +542,30 @@ jobs:
       # What addons.mozilla.org's validator checks, warnings included.
       - run: npx --yes web-ext lint --source-dir editors/devtools --self-hosted --warnings-as-errors
 
+  prettier-plugin:
+    name: Prettier plugin (prettier-plugin-zubra)
+    runs-on: ubuntu-latest
+    env:
+      ZUBRA_REQUIRE_WASM: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The plugin lays the template out with @zubra/compiler's WebAssembly build.
+      - run: cargo build --locked
+      - run: npm run build
+        working-directory: compiler
+      - run: npm ci
+        working-directory: prettier-plugin
+      - run: npm test
+        working-directory: prettier-plugin
+
   skills:
     name: Skills (examples compile, copies in sync)
     runs-on: ubuntu-latest
@@ -488,6 +580,16 @@ jobs:
           node-version: 22
       - run: cargo build --release --locked
       - run: node --test skills/test/skills.test.js
+
+  guide-pages:
+    name: Guide pages (snippets match the example apps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test docs/test/guide-pages.test.js
 
   skills-agent:
     # The skill in use: an agent writes a component from it alone (plan/roadmap-4.0.md, decision 4).

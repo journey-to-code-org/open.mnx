@@ -29,10 +29,20 @@
   .again b { color: #d0403a; } .hard b { color: #c47f00; } .good b { color: #1b8a52; } .easy b { color: #2c6fd8; }
 </style>
 <grade-buttons disabled={false} keys={true}>
-  <zb-document onkeydown.1={(event) => key(event, 0)} onkeydown.2={(event) => key(event, 1)} onkeydown.3={(event) => key(event, 2)} onkeydown.4={(event) => key(event, 3)}></zb-document>
+  <zb-document
+    onkeydown.1={(event) => key(event, 0)}
+    onkeydown.2={(event) => key(event, 1)}
+    onkeydown.3={(event) => key(event, 2)}
+    onkeydown.4={(event) => key(event, 3)}
+  ></zb-document>
   <div role="group" aria-label="How well did you know it?">
     <zb-each items={GRADES} as="grade" index="index" key={grade.label}>
-      <button type="button" class={grade.tone} disabled={disabled} onclick={() => emit('grade', index)}><b>{grade.label}</b><small>{grade.detail}</small><kbd>{index + 1}</kbd></button>
+      <button
+        type="button"
+        class={grade.tone}
+        disabled={disabled}
+        onclick={() => emit('grade', index)}
+      ><b>{grade.label}</b><small>{grade.detail}</small><kbd>{index + 1}</kbd></button>
     </zb-each>
   </div>
 </grade-buttons>

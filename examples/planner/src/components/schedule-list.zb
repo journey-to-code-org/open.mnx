@@ -34,14 +34,31 @@
       <li>
         <time>{item.time}</time>
         <span>{item.title}<zb-if test={warning(item)}><span class="warn">{warning(item)}</span></zb-if></span>
-        <button type="button" class="icon" aria-label={`Remove ${item.title}`} onclick={() => act('schedule.remove', event.id, item.id)}>✕</button>
+        <button
+          type="button"
+          class="icon"
+          aria-label={`Remove ${item.title}`}
+          onclick={() => act('schedule.remove', event.id, item.id)}
+        >✕</button>
       </li>
     </zb-each>
   </ol>
   <p zb-else class="empty">No schedule yet. Add the first item below.</p>
   <form onsubmit.prevent={add}>
-    <input type="time" required aria-label="Time" value={time} oninput={(e) => (time = e.target.value)}>
-    <input required placeholder="What happens" aria-label="What happens" value={title} oninput={(e) => (title = e.target.value)}>
+    <input
+      type="time"
+      required
+      aria-label="Time"
+      value={time}
+      oninput={(e) => (time = e.target.value)}
+    >
+    <input
+      required
+      placeholder="What happens"
+      aria-label="What happens"
+      value={title}
+      oninput={(e) => (title = e.target.value)}
+    >
     <button type="submit" class="primary">Add</button>
   </form>
 </schedule-list>

@@ -5,3 +5,6 @@ node_modules/
 
 # Store packages from `npm run pack` (editors/devtools)
 editors/*.zip
+
+# Release binaries (scripts/package-binary.sh)
+/dist/

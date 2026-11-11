@@ -29,16 +29,24 @@
     <h2>{name}</h2>
     <label>
       Today
-      <textarea name="today" rows="3" value={today}
+      <textarea
+        name="today"
+        rows="3"
+        value={today}
         oninput={(event) => (today = event.target.value)}
         onfocus={() => (editing = true)}
-        onblur={() => (editing = false)}></textarea>
+        onblur={() => (editing = false)}
+      ></textarea>
     </label>
     <label class="blocked">
-      <input type="checkbox" name="blocked" checked={blocked} onchange={(event) => (blocked = event.target.checked)} />
+      <input
+        type="checkbox"
+        name="blocked"
+        checked={blocked}
+        onchange={(event) => (blocked = event.target.checked)}
+      />
       Blocked
     </label>
     <p class="presence" zb-if={busy > 0}>{busy === 1 ? "Someone else is editing this" : busy + " others are editing this"}</p>
   </article>
-
 </standup-card>

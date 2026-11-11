@@ -2,8 +2,10 @@
 import { computed, reactive, ref, watch } from 'vue';
 // Shared components come from a library (built with `zubra build --lib`, see ../ui), as Vue
 // components; the app's own are .zb files next to it.
+// zubra-snippet:start vue-imports
 import { MoneyInput, SegmentedControl, DonutChart } from '@zubra-examples/ui/vue';
 import BudgetBar from './components/budget-bar.zb';
+// zubra-snippet:end vue-imports
 import { CATEGORIES, INCOME, load, save, monthOf, shiftMonth, money } from './data.js';
 
 const state = reactive(load());
@@ -79,10 +81,12 @@ const toneOf = (t) => (t.kind === 'income' ? 'income' : `t${CATEGORIES.find((c) 
   <div class="grid">
     <section class="panel chart">
       <h2>Where it went</h2>
+      <!-- zubra-snippet:start vue-donut -->
       <DonutChart v-if="segments.length" v-model="selected" :segments="segments" label="Spending by category">
         <span class="middle-label">{{ selected || 'Spent' }}</span>
         <strong class="middle-total">{{ money(selected ? segments.find((s) => s.label === selected)?.value ?? 0 : spent) }}</strong>
       </DonutChart>
+      <!-- zubra-snippet:end vue-donut -->
       <p v-else class="empty">No spending this month.</p>
     </section>
 
@@ -104,7 +108,9 @@ const toneOf = (t) => (t.kind === 'income' ? 'income' : `t${CATEGORIES.find((c) 
       <h2>Add</h2>
       <form ref="form" @submit.prevent="add" novalidate>
         <SegmentedControl v-model="draft.kind" :options="[{ value: 'expense', label: 'Expense' }, { value: 'income', label: 'Income' }]" label="Kind" />
+        <!-- zubra-snippet:start vue-money -->
         <MoneyInput v-model="draft.amount" name="amount" :required="true" :min="0.01" label="Amount" />
+        <!-- zubra-snippet:end vue-money -->
         <select v-model="draft.category" aria-label="Category">
           <option v-for="name in draft.kind === 'income' ? INCOME : CATEGORIES.map((c) => c.name)" :key="name">{{ name }}</option>
         </select>

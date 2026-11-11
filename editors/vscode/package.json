@@ -2,7 +2,7 @@
   "name": "zubra",
   "displayName": "Zubra",
   "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover, go to definition and formatting",
-  "version": "5.4.1",
+  "version": "5.5.0",
   "publisher": "JourneytoCode",
   "license": "ISC",
   "repository": {
@@ -70,6 +70,22 @@
       "[zubra]": {
         "editor.defaultFormatter": "JourneytoCode.zubra"
       }
+    },
+    "commands": [
+      {
+        "command": "zubra.extractComponent",
+        "title": "Zubra: Extract to Component…",
+        "category": "Zubra"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "zubra.extractComponent",
+          "when": "editorLangId == zubra && editorHasSelection",
+          "group": "1_modification"
+        }
+      ]
     }
   },
   "scripts": {

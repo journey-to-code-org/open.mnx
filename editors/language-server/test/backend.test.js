@@ -60,3 +60,50 @@ test('both backends format, and pass the layout options on', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a compiler from before the refactor command is reported as too old, not trusted', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'zubra-backend-'));
+  try {
+    // Older compilers ignore an unknown command and compile the file: the answer is JavaScript.
+    const old = join(root, 'old-zubra');
+    writeFileSync(old, '#!/bin/sh\ncat >/dev/null\necho \'{"ok":true,"output":"// compiled","error":null,"warnings":[],"diagnostics":[]}\'\n', { mode: 0o755 });
+    const cli = await createBackend({ compiler: old });
+    const answer = cli.refactor(join(root, 'a.zb'), '<x-a><p>x</p></x-a>', { start: 5, end: 13, tag: 'a-b' });
+    assert.equal(answer.ok, false);
+    assert.equal(answer.unsupported, true);
+    // The WebAssembly build the same.
+    mkdirSync(join(root, 'node_modules/@zubra/compiler'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/@zubra/compiler/package.json'), '{"name":"@zubra/compiler","type":"module","main":"index.js"}');
+    writeFileSync(join(root, 'node_modules/@zubra/compiler/index.js'), FAKE.replace('({ diagnostics: [] })', "({ ok: true, output: '// compiled', diagnostics: [] })"));
+    const wasm = await createBackend({ root });
+    assert.equal(wasm.name, 'wasm');
+    assert.equal(wasm.refactor(join(root, 'a.zb'), '<x-a><p>x</p></x-a>', { start: 5, end: 13, tag: 'a-b' }).unsupported, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a refusal comes back as its reason', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'zubra-backend-'));
+  try {
+    const refusing = join(root, 'refusing-zubra');
+    writeFileSync(refusing, '#!/bin/sh\ncat >/dev/null\necho \'{"ok":false,"output":null,"error":"x","warnings":[],"diagnostics":[{"message":"the selection contains a <zb-slot>"}]}\'\n', { mode: 0o755 });
+    const answer = (await createBackend({ compiler: refusing })).refactor(join(root, 'a.zb'), '<x-a></x-a>', { start: 0, end: 1, tag: 'a-b' });
+    assert.deepEqual(answer, { ok: false, reason: 'the selection contains a <zb-slot>' });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a compiler from before range formatting is reported as too old, not trusted', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'zubra-backend-'));
+  try {
+    const old = join(root, 'old-zubra');
+    writeFileSync(old, '#!/bin/sh\ncat >/dev/null\necho \'{"ok":true,"output":"// compiled","error":null,"warnings":[],"diagnostics":[]}\'\n', { mode: 0o755 });
+    const answer = (await createBackend({ compiler: old })).formatRange(join(root, 'a.zb'), '<x-a></x-a>', { start: 0, end: 3 }, {});
+    assert.equal(answer.ok, false);
+    assert.equal(answer.unsupported, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

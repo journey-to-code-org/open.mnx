@@ -2,13 +2,16 @@ import { Component, CUSTOM_ELEMENTS_SCHEMA, computed, signal } from '@angular/co
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
 import { inject } from '@angular/core';
-import { ZubraModel } from '@zubra/runtime/angular';
 import { EXTRAS, PLACES, usd } from './data';
+// The guide's Angular page quotes the next lines and the @Component below (docs/guide/for-angular-developers.md).
+// zubra-snippet:start angular-imports
+import { ZubraModel } from '@zubra/runtime/angular';
 import '../components/step-indicator.zb';
 import '../components/choice-cards.zb';
 import '../components/date-range.zb';
 import '../components/quantity-stepper.zb';
 import '../components/toggle-switch.zb';
+// zubra-snippet:end angular-imports
 
 interface Dates {
   start: string;
@@ -20,6 +23,7 @@ const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOSt
 const nightsOf = ({ start, end }: Dates) => (start && end ? Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 86400000)) : 0);
 const stayValid = (control: AbstractControl): ValidationErrors | null => (nightsOf(control.value as Dates) >= 1 ? null : { dates: true });
 
+// zubra-snippet:start angular-component
 @Component({
   selector: 'booking-app',
   imports: [ReactiveFormsModule, ZubraModel],
@@ -27,6 +31,7 @@ const stayValid = (control: AbstractControl): ValidationErrors | null => (nights
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
+// zubra-snippet:end angular-component
 export class App {
   readonly steps = ['Trip', 'Room', 'Extras', 'Details'];
   readonly extras = EXTRAS;
