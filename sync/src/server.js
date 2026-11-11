@@ -91,6 +91,10 @@ function documentsOf() {
       all(collection) {
         return [...docs.values()].filter((doc) => doc.collection === collection).map((doc) => ({ key: doc.key, ...doc.fields }));
       },
+      /** The collections that have documents, in the order they were first written to. */
+      collections() {
+        return [...new Set([...docs.values()].map((doc) => doc.collection))];
+      },
     },
   };
 }

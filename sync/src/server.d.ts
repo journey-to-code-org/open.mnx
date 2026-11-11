@@ -19,6 +19,8 @@ export interface Documents {
   get(collection: string, key: string): Record<string, unknown> | undefined;
   /** Every document in a collection, each with its key. */
   all(collection: string): Array<{ key: string } & Record<string, unknown>>;
+  /** The collections that have documents, in the order they were first written to. */
+  collections(): string[];
 }
 
 export function createSyncServer(options?: {
