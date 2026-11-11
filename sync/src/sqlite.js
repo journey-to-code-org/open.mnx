@@ -1,46 +1,39 @@
-// A sync log that survives a restart: one SQLite table, through the runtime's own SQLite (Node's
-// `node:sqlite`, Bun's `bun:sqlite`), so there's nothing to install.
+// A sync log that survives a restart: SQLite, through the runtime's own (Node's `node:sqlite`,
+// Bun's `bun:sqlite`), so there's nothing to install.
 //
 //   import { createSyncServer } from '@zubra/sync/server';
 //   import { sqliteLog } from '@zubra/sync/sqlite';
 //   const sync = createSyncServer({ log: await sqliteLog('sync.db') });
 //
-// The cursor is the row id. Rows are only ever appended.
-export async function sqliteLog(path = ':memory:') {
+// `keep: 'latest'` keeps each field's latest value only, so the log doesn't grow with every
+// change and a new device reads what's there now (see sql-log.js). By default it keeps every
+// change, in a table `changes` that the zubra-sync binary reads too.
+import { sqlLog } from './sql-log.js';
+
+export async function sqliteLog(path = ':memory:', { keep = 'all' } = {}) {
   const db = await open(path);
-  db.exec(`CREATE TABLE IF NOT EXISTS changes (
-    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-    collection TEXT NOT NULL,
-    key TEXT NOT NULL,
-    field TEXT NOT NULL,
-    value TEXT,
-    clock TEXT NOT NULL
-  )`);
-  const insert = db.prepare('INSERT INTO changes (collection, key, field, value, clock) VALUES (?, ?, ?, ?, ?)');
-  const select = db.prepare('SELECT seq, collection, key, field, value, clock FROM changes WHERE seq > ? ORDER BY seq LIMIT ?');
-  const last = db.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM changes');
-  return {
-    async append(changes) {
-      db.exec('BEGIN');
-      try {
-        for (const { collection, key, field, value, clock } of changes) {
-          insert.run(collection, key, field, JSON.stringify(value ?? null), clock);
+  const statements = new Map();
+  const statement = (sql) => statements.get(sql) ?? statements.set(sql, db.prepare(sql)).get(sql);
+  const log = sqlLog(
+    {
+      exec: (sql) => db.exec(sql),
+      run: (sql, ...args) => statement(sql).run(...args),
+      all: (sql, ...args) => statement(sql).all(...args),
+      transaction(fn) {
+        db.exec('BEGIN');
+        try {
+          const result = fn();
+          db.exec('COMMIT');
+          return result;
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
         }
-        db.exec('COMMIT');
-      } catch (error) {
-        db.exec('ROLLBACK');
-        throw error;
-      }
-      return Number(last.get().seq);
+      },
     },
-    async after(cursor, limit = 1000) {
-      const rows = select.all(Number(cursor) || 0, limit);
-      const changes = rows.map(({ collection, key, field, value, clock }) => ({ collection, key, field, value: JSON.parse(value), clock }));
-      const cursorNow = rows.length ? Number(rows[rows.length - 1].seq) : Number(cursor) || 0;
-      return { changes, cursor: cursorNow };
-    },
-    close: () => db.close(),
-  };
+    { keep, label: 'sqliteLog' },
+  );
+  return { ...log, close: () => db.close() };
 }
 
 async function open(path) {

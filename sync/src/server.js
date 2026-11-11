@@ -33,8 +33,14 @@
 // On Node, `handle(req, res)` answers sync requests (streaming the live ones) and returns true.
 export const MOUNT = '/_zb/sync';
 
-/** A log in memory: `append(changes)` and `after(cursor)`. */
-export function memoryLog() {
+/**
+ * A log in memory: `append(changes)` and `after(cursor)`. `keep: 'latest'` keeps each field's
+ * latest value only (a newer clock replaces it and takes the next cursor, an older one is dropped),
+ * as `sqliteLog(path, { keep: 'latest' })` does.
+ */
+export function memoryLog({ keep = 'all' } = {}) {
+  if (keep === 'latest') return latestInMemory();
+  if (keep !== 'all') throw new TypeError("memoryLog: `keep` is 'all' or 'latest'");
   const changes = [];
   return {
     async append(more) {
@@ -44,6 +50,27 @@ export function memoryLog() {
     async after(cursor, limit = 1000) {
       const from = Number(cursor) || 0;
       return { changes: changes.slice(from, from + limit), cursor: Math.min(changes.length, from + limit) };
+    },
+  };
+}
+
+function latestInMemory() {
+  const rows = new Map(); // collection, key, field → { change, seq }
+  let seq = 0;
+  return {
+    async append(more) {
+      for (const change of more) {
+        const id = JSON.stringify([change.collection, change.key, change.field]);
+        const had = rows.get(id);
+        if (had && had.change.clock >= change.clock) continue;
+        rows.set(id, { change: structuredClone(change), seq: ++seq });
+      }
+      return seq;
+    },
+    async after(cursor, limit = 1000) {
+      const from = Number(cursor) || 0;
+      const page = [...rows.values()].filter((row) => row.seq > from).sort((a, b) => a.seq - b.seq).slice(0, limit);
+      return { changes: page.map((row) => structuredClone(row.change)), cursor: page.length ? page[page.length - 1].seq : from };
     },
   };
 }
