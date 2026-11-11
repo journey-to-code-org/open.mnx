@@ -7,6 +7,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 ### Added
 
 - **Sync: `documents().all(collection, prefix)`** gives only the documents whose key starts with `prefix` (`all('seats', 'show-12/')`), as `scope` does for pages. With it, `documents()` and `write()` are a synchronous store in a few lines, for code that keeps its rules apart from where documents live: reads with no `await`, and a write in the documents before its promise settles. Documented, and tested on each log and inside a Durable Object, including after an eviction.
+- **Actions: files, and a limit on what a post may be.** A file input reaches a server function as a `File` on both paths (documented and tested in a browser, with and without JavaScript). `createActions({ maxBytes })` caps a post, files and fields together, at 10 MB by default: a bigger one gets `{ error: 'Too large' }` (413), isn't read to its end, and the function doesn't run. **Before, a post of any size was read into memory**; set `maxBytes: Infinity` for that. For listing photos, logos and damage reports.
 
 ### Fixed
 

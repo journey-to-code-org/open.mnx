@@ -94,6 +94,23 @@ It's HTTP, so any server can implement it, and `curl` can call an action.
 - `beforeaction` fires first and is cancelable (`detail: { formData }`).
 - A form opts out of the script with `data-zb-native`. Forms in a shadow root aren't seen by the document's listener; call `enhance(shadowRoot)` from `@zubra/actions/client`.
 
+## Files
+
+A file input posts its file with the rest of the form: give the form `enctype="multipart/form-data"`, and the function gets a `File` from the `FormData`, on both paths (the script sends the form's own `FormData`).
+
+```js
+export async function addPhoto(formData) {
+  'use server'
+  const photo = formData.get('photo');
+  if (!(photo instanceof File) || !photo.size) return { error: 'Choose a photo' };
+  if (!photo.type.startsWith('image/')) return { error: 'Not an image' };
+  await save(photo.name, new Uint8Array(await photo.arrayBuffer()));
+}
+```
+
+- **A post is read up to `maxBytes`**, files and fields together: 10 MB by default (`createActions({ maxBytes: 2_000_000 })`, `Infinity` for no limit). A bigger one isn't read to its end and the function doesn't run: the script's `action` event gets `{ error: 'Too large', status: 413 }`, and without JavaScript the page gets `{ error: 'Too large' }` back as the result. A post that declares its size is refused before any of it is read; one that doesn't is counted as it arrives.
+- The whole post is in memory while the function runs, so keep the limit to what one request should hold. The type, the name and what's inside are the browser's say-so: check them like any other field.
+
 ## Without JavaScript
 
 The page the form came from gets the result back once:
@@ -112,6 +129,7 @@ The adapters do this for you: `c.get('zubraAction')` (Hono), `res.locals.zubraAc
 - **The client never decides anything.** A server function validates its `FormData` like any endpoint: the form's `required` and `type="email"` are conveniences, not checks.
 - **A thrown error is never shown.** The client gets a generic error; `onError(error, request)` gets the real one.
 - **Unknown actions are 404**, and only `'use server'` functions have URLs.
+- **A post is read only up to `maxBytes`** (10 MB by default), so one request can't fill the server's memory.
 
 ## Limits, for now
 

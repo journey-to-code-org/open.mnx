@@ -33,6 +33,8 @@ const CLIENT = readFileSync(new URL('./client.js', import.meta.url), 'utf8');
  * (bare imports resolve from there, so keep it inside the project). `origins`: other origins
  * allowed to post (behind a proxy that rewrites Origin, say). `onError(error, request)`: called
  * when a function throws; the client gets a generic error, never the message or stack.
+ * `maxBytes`: the largest post read, files and fields together (10 MB by default; `Infinity`
+ * for none). A bigger one gets `{ error: 'Too large' }` (413) and the function doesn't run.
  */
 export async function createActions({
   components = 'components',
@@ -40,6 +42,7 @@ export async function createActions({
   origins = [],
   onError = (error) => console.error(error),
   context = () => ({}),
+  maxBytes,
 } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/actions: no components folder at ${root}`);
@@ -53,7 +56,7 @@ export async function createActions({
     writeFileSync(module, rewriteImports(output, (specifier) => pathToFileURL(resolve(dirname(path), specifier)).href));
     maps.push((await import(`${pathToFileURL(module).href}?t=${Date.now()}`)).actions);
   }
-  const core = createActionsCore({ routes: routesFrom(...maps), client: CLIENT, origins, onError, context });
+  const core = createActionsCore({ routes: routesFrom(...maps), client: CLIENT, origins, onError, context, maxBytes });
 
   /** Node's http: answers ours and returns true, or returns false without reading the body. */
   async function handle(req, res) {
