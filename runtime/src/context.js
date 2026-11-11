@@ -1,0 +1,100 @@
+// Context from the app: a `<zb-context>` element that answers the Context Protocol for the
+// elements inside it, so an app's theme, locale or current user reaches every component without
+// being passed down as props.
+//
+//   <zb-context .context=${theme} .value=${'dark'}>   …elements that inject(theme)…   </zb-context>
+//
+// It's a plain custom element with two properties, so every framework can use it as it is:
+// Svelte `<zb-context {context} {value}>`, Solid `prop:context`, Angular `[context]`, Lit
+// `.context`, plain HTML `el.value = …`. React and Vue have `ZubraContext` components
+// (`@zubra/runtime/react`, `@zubra/runtime/vue`) that wrap it. The element is `display:
+// contents`, so it adds no box to the layout.
+//
+// The value can be a plain value or a signal; subscribers hear each change either way. Any
+// Context Protocol consumer is answered: Zubra's `inject()`, Lit's `@consume`, and so on. A
+// consumer that asked before the element was given its context asks again when the element
+// announces it with a `context-provider` event (children connect after their parent, so one
+// given its context before it's in the document is there when they first ask).
+import { Signal } from './signal.js';
+import { effect, root } from './effect.js';
+import { ContextProviderEvent } from './element.js';
+
+const isSignal = (value) => value instanceof Signal.State || value instanceof Signal.Computed;
+const unwrap = (value) => (isSignal(value) ? value.get() : value);
+
+const Base = globalThis.HTMLElement ?? class {};
+
+export class ZubraContextElement extends Base {
+  #context = undefined;
+  #value = undefined;
+  #subscribers = new Set();
+  #watching = null; // the effect following a signal value
+
+  constructor() {
+    super();
+    this.addEventListener('context-request', (event) => {
+      if (this.#context === undefined || event.context !== this.#context || event.contextTarget === this) return;
+      event.stopPropagation();
+      const current = Signal.subtle.untrack(() => unwrap(this.#value));
+      if (!event.subscribe) return event.callback(current);
+      const subscriber = { callback: event.callback };
+      subscriber.unsubscribe = () => this.#subscribers.delete(subscriber);
+      this.#subscribers.add(subscriber);
+      event.callback(current, subscriber.unsubscribe);
+    });
+  }
+
+  /** The context key this element provides (from `createContext()`, or any protocol key). */
+  get context() {
+    return this.#context;
+  }
+
+  set context(key) {
+    if (key === this.#context) return;
+    // Consumers of the old key keep what they have, but stop hearing from this element.
+    this.#subscribers.clear();
+    this.#context = key;
+    this.#announce();
+  }
+
+  /** The value, or a signal holding it. */
+  get value() {
+    return this.#value;
+  }
+
+  set value(next) {
+    if (Object.is(next, this.#value)) return;
+    this.#value = next;
+    this.#watching?.dispose();
+    this.#watching = null;
+    if (isSignal(next)) {
+      let first = true;
+      this.#watching = root(() => effect(() => {
+        const value = next.get();
+        if (first) first = false;
+        else Signal.subtle.untrack(() => this.#notify(value));
+      }));
+    }
+    this.#notify(Signal.subtle.untrack(() => unwrap(next)));
+  }
+
+  connectedCallback() {
+    if (!this.style.display) this.style.display = 'contents';
+  }
+
+  #notify(value) {
+    for (const subscriber of [...this.#subscribers]) subscriber.callback(value, subscriber.unsubscribe);
+  }
+
+  #announce() {
+    if (this.#context !== undefined && this.isConnected) this.dispatchEvent(new ContextProviderEvent(this.#context, this));
+  }
+}
+
+/** Define `<zb-context>` (once; a no-op where there's no `customElements`, as on a server). */
+export function defineContextElement() {
+  const registry = globalThis.customElements;
+  if (registry && !registry.get('zb-context')) registry.define('zb-context', ZubraContextElement);
+}
+
+defineContextElement();

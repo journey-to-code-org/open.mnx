@@ -14,6 +14,7 @@
 //   children, named slots with `slot="name"`.
 import { defineComponent, h, withDirectives, Text, Comment, Fragment } from 'vue';
 import { serverContent } from './server.js';
+import './context.js';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 const pascal = (tag) => tag.split(/[-.]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('');
@@ -123,3 +124,20 @@ export function wrap(Element) {
     },
   });
 }
+
+/**
+ * Provide a Context Protocol value to every element inside: an app's theme, locale or current user,
+ * read by components with `inject(context)` (or Lit's `@consume`).
+ *
+ *   <ZubraContext :context="theme" :value="dark ? 'dark' : 'light'">…</ZubraContext>
+ *
+ * `value` can also be a signal. It renders a `<zb-context>` element, which is `display: contents`.
+ */
+export const ZubraContext = defineComponent({
+  name: 'ZubraContext',
+  props: { context: { default: undefined }, value: { default: undefined } },
+  setup(given, { slots }) {
+    // Set as DOM properties when the element is created, before its children are inserted.
+    return () => h('zb-context', { '.context': given.context, '.value': given.value, style: 'display: contents' }, slots.default?.());
+  },
+});

@@ -45,6 +45,11 @@
       "production": "./dist/production/motion.js",
       "default": "./src/motion.js"
     },
+    "./context": {
+      "types": "./types/context.d.ts",
+      "production": "./dist/production/context.js",
+      "default": "./src/context.js"
+    },
     "./react": {
       "types": "./types/react.d.ts",
       "production": "./dist/production/react.js",

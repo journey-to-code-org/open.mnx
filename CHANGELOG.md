@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Context from the app: `<zb-context>` and `ZubraContext`.** Components already read context with `inject()`; now the app can provide it. `@zubra/runtime/context` defines `<zb-context>`, a `display: contents` element that answers the Context Protocol for the elements inside it with its `value` (a value or a signal, followed either way) for its `context` key. React and Vue get a `ZubraContext` component (`<ZubraContext context={theme} value={mode}>`); Svelte, Solid, Angular, Lit and plain HTML set the element's two properties. Consumers that asked before it had its key ask again when it announces one, and nested providers answer for their own subtree. Lit's `@consume` is answered too. Browser tests in plain HTML, React 19, React 18 and Vue 3.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

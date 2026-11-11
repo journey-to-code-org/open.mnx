@@ -29,9 +29,21 @@ Every framework uses the element the same way underneath: **properties in, DOM e
 
 A library from `zubra build --lib` has the same per element: `@acme/ui/star-rating` (the element), `@acme/ui/react` and `@acme/ui/vue` (wrappers), typings, and `custom-elements.json` for editors and Storybook.
 
+## Context from the app
+
+Components that `inject(theme)` read it from the nearest `<zb-context>` around them, so the app can provide a theme, locale or current user once instead of passing it to every element. `value` can be a plain value or a signal.
+
+| Framework | Provide it |
+|---|---|
+| React | `<ZubraContext context={theme} value={mode}>…</ZubraContext>` from `@zubra/runtime/react` |
+| Vue | `<ZubraContext :context="theme" :value="mode">…</ZubraContext>` from `@zubra/runtime/vue` |
+| Svelte, Solid, Angular, Lit, plain HTML | `import '@zubra/runtime/context'`, then `<zb-context>` with its `context` and `value` properties: `<zb-context {context} {value}>`, `prop:context`, `[context]="theme" [value]="mode"`, `.context=${theme}`, `el.value = …` |
+
+`theme` is the key from `createContext()` that the components import. Any Context Protocol consumer is answered, Lit's `@consume` included.
+
 ## What crosses, and what doesn't
 
-Props, events, two-way binding, slots, form participation, refs to the host and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
+Props, events, two-way binding, slots, form participation, refs to the host and server rendering cross the element boundary. Render props, the framework's own context objects (provide the value through `<zb-context>` instead, above), Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
 
 ## Server rendering in a framework
 

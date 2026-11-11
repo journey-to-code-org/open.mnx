@@ -72,3 +72,15 @@ test('the Vue wrapper declares the props, events and v-model it supports', () =>
   const OnlyPair = wrapVue(element({ size: 1 }, ['sizechange']));
   assert.ok(OnlyPair.emits.includes('update:modelValue'), 'v-model binds the only pair when there is one');
 });
+
+test('ZubraContext renders <zb-context> on the server, React and Vue alike', async () => {
+  const { ZubraContext } = await import('../src/react.js');
+  const key = Object.freeze({ defaultValue: 'light' });
+  assert.equal(renderToString(React.createElement(ZubraContext, { context: key, value: 'dark' }, React.createElement('p', null, 'x'))),
+    '<zb-context style="display:contents"><p>x</p></zb-context>', 'the key and value are set in the browser');
+  const { createSSRApp, h } = await import('vue');
+  const { renderToString: vueToString } = await import('vue/server-renderer');
+  const { ZubraContext: VueContext } = await import('../src/vue.js');
+  const html = await vueToString(createSSRApp({ render: () => h(VueContext, { context: key, value: 'dark' }, () => [h('p', 'x')]) }));
+  assert.equal(html, '<zb-context style="display: contents"><p>x</p></zb-context>');
+});
