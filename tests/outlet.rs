@@ -23,6 +23,9 @@ fn a_template_with_an_outlet_imports_the_outlet_module() {
         "<zb-x><zb-outlet name=\"a\"></zb-outlet></zb-x>",
         "/vendor/zubra/index.js",
     );
-    assert!(file.contains("import \"/vendor/zubra/outlet.js\";"), "{file}");
+    assert!(
+        file.contains("import \"/vendor/zubra/outlet.js\";"),
+        "{file}"
+    );
     assert!(!js("<zb-x><p>plain</p></zb-x>", "@zubra/runtime").contains("runtime/outlet"));
 }
