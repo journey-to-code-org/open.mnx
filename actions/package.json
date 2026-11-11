@@ -14,6 +14,14 @@
       "types": "./src/client.d.ts",
       "default": "./src/client.js"
     },
+    "./edge": {
+      "types": "./src/edge.d.ts",
+      "default": "./src/edge.js"
+    },
+    "./build": {
+      "types": "./src/build.d.ts",
+      "default": "./src/build.js"
+    },
     "./express": "./src/express.js",
     "./fastify": "./src/fastify.js",
     "./hono": "./src/hono.js"
@@ -34,8 +42,12 @@
     "hono": "4.13.17",
     "playwright": "1.63.0"
   },
+  "bin": {
+    "zubra-actions": "./bin/zubra-actions.js"
+  },
   "files": [
     "src",
+    "bin",
     "README.md"
   ],
   "engines": {
