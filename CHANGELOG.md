@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **`zubra build --embed`: components for sites with no build step.** One flat folder of ES modules with relative imports (an entry that defines every component, each component, and the production runtime it uses), so a single `<script type="module">` from any static host or CDN is enough, including Shopify's asset folder, which allows no subfolders. Beside it: an HTML snippet per component (Webflow's Embed, Squarespace's code block, any CMS); a WordPress plugin with a block per component (a sidebar field per prop, previewed by the server render) and a shortcode per component (`[star_rating max="10"]`, content into the slots), loading the components as a script module only on pages that use one; and a Shopify theme app extension with an app block per component, its props as settings. All from the components' interfaces; `@zubra/compiler/embed` has `buildEmbed()`. A component that imports an npm package is refused, by name. Tests: the folder's imports, the Liquid blocks rendered with LiquidJS, the plugin run under PHP, and the components loaded in Chromium from one script tag.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

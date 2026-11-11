@@ -540,6 +540,11 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # Embed builds loaded in a browser (Playwright comes with runtime/).
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: runtime
+      - run: node --test test/embed.test.js
+        working-directory: compiler
       # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
       # job that runs the rest of the server's tests doesn't build; here they must run.
       - run: npm ci
