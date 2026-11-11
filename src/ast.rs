@@ -121,6 +121,9 @@ pub struct Script {
     pub presence: Vec<String>,
     /// `let others = peers()`: the other viewers' presence, as an array.
     pub peers: Option<String>,
+    /// The local names `hydrated` is imported as from `@zubra/runtime`: a call is `false` on
+    /// the server, in the script (`const live = hydrated()`) and in the template alike.
+    pub hydrated: Vec<String>,
     /// `'use …'` directives Zubra doesn't know (`'use client'`, `'use colection tasks'`): warnings
     /// with a hint. They did nothing before 5.3, so in 5.x they compile, as they did; 6.0 makes
     /// them errors.

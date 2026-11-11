@@ -65,7 +65,7 @@ test('the edge entry depends on nothing a Worker lacks', () => {
 test('names, interfaces, renders, modules, head and scripts are the Node entry\'s', { skip }, () => {
   const { node, edge } = both();
   assert.deepEqual([...edge.names].sort(), [...node.names].sort());
-  assert.equal(edge.names.length, 8);
+  assert.equal(edge.names.length, Object.keys(sources).length, 'every component it was given');
   for (const name of node.names) {
     assert.deepEqual(edge.describe(name), node.describe(name), `describe ${name}`);
     assert.equal(edge.render(name), node.render(name), `render ${name}`);

@@ -52,6 +52,8 @@ export const currentStore = () => theStore();
 const bound = new Map();
 const docId = (collection, key) => `${collection}\u0000${key}`;
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('zubra-sync');
+// Outside a browser (Node, a test), an open channel would keep the process from exiting.
+channel?.unref?.();
 channel?.addEventListener('message', ({ data }) =>
   data.kind === 'presence' ? receivePresence(data) : deliver(data.collection, data.key, data.fields, null));
 

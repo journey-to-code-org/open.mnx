@@ -44,13 +44,40 @@ const actions = await createActions({ components: 'components' });
 
 // Node's http
 if (await actions.handle(req, res)) return;
-// fetch-style servers (Bun, Deno, workers)
+// fetch-style servers (Bun, Deno)
 const response = await actions.fetch(request);
 ```
 
 Or an adapter: `@zubra/actions/hono` (`app.use(await actions(options))`), `@zubra/actions/express` (mount it before any body parser), `@zubra/actions/fastify` (`app.register(actions, options)`).
 
 Put `actions.script()` on pages with action forms. It's a small module that sends those forms with `fetch` instead of navigating.
+
+### Without a disk: Cloudflare Workers
+
+`createActions` compiles the components folder when it starts, and a Worker has neither the folder nor a way to import code it generates. Build the server functions ahead of time instead, and bundle them like any other module:
+
+```sh
+npx zubra-actions build components --out src/actions   # src/actions/index.js exports `actions`
+```
+
+```js
+import { actions } from './actions/index.js';
+import { createActions } from '@zubra/actions/edge';
+
+const forms = createActions({ actions, context: ({ request, env }) => ({ user: who(request, env.SECRET) }) });
+
+export default {
+  async fetch(request, env) {
+    return (await forms.fetch(request, { env })) ?? page(request, forms.result(request));
+  },
+};
+```
+
+- The answers are the Node entry's, from the same code: its tests send both entries the same posts and compare status, headers and body.
+- `context` gets `{ request }` and whatever you pass as `fetch`'s second argument (`{ env, ctx }` in a Worker).
+- The enhancing script isn't served from the Worker: copy `@zubra/actions/client` into your static assets as `/_zb/actions.js` (or pass its source as `client`).
+- The build writes `<component>.server.js` for each component with server functions, with relative imports pointing back at the source, and `index.js`. Rebuild when a server function changes (add it to your `dev` and `deploy` scripts). It refuses two components defining one URL, as the Node entry does.
+- With `@zubra/sync/durable`, a function that must not interleave with another request (the last item, a job two drivers claim) calls a method on the sync object: see [Sync on Workers](sync.md#on-cloudflare-workers-a-durable-object).
 
 ## The contract
 

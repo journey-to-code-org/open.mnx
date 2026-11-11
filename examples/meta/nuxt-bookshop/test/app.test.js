@@ -4,6 +4,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -13,17 +14,41 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Inside this repository: the CLI from `cargo build`, unless zubra.wasm is built (see README).
 const cli = join(root, '../../../target/debug', process.platform === 'win32' ? 'zubra.exe' : 'zubra');
 if (!process.env.ZUBRA_COMPILER && existsSync(cli)) process.env.ZUBRA_COMPILER = cli;
-const port = 4900 + Math.floor(Math.random() * 200);
-const base = `http://127.0.0.1:${port}`;
+let base; // where the server says it listens
 let server, browser;
+
+/** A port nothing is listening on (the OS picks it), so two runs can't collide. */
+const freePort = () => new Promise((resolve) => {
+  const probe = createServer().listen(0, '127.0.0.1', () => {
+    const { port } = probe.address();
+    probe.close(() => resolve(port));
+  });
+});
 
 before(async () => {
   execFileSync(process.execPath, [join(root, 'node_modules/nuxt/bin/nuxt.mjs'), 'build'], { cwd: root, stdio: 'pipe' });
+  const port = await freePort();
   server = spawn(process.execPath, [join(root, '.output/server/index.mjs')], { cwd: root, stdio: 'pipe', env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' } });
-  await new Promise((resolve, reject) => {
-    server.stdout.on('data', (chunk) => String(chunk).includes('Listening') && resolve());
-    server.on('exit', (code) => reject(new Error(`the server exited with ${code}`)));
+  let output = '';
+  base = await new Promise((resolve, reject) => {
+    server.stderr.on('data', (chunk) => (output += chunk));
+    server.stdout.on('data', (chunk) => {
+      output += chunk;
+      const url = /Listening on:?\s*(https?:\/\/\S+)/.exec(output)?.[1];
+      if (url) resolve(url.replace(/\/$/, '').replace('[::]', '127.0.0.1').replace('0.0.0.0', '127.0.0.1'));
+    });
+    server.on('exit', (code) => reject(new Error(`the server exited with ${code}:\n${output}`)));
   });
+  // Then until it answers: the line can come a moment before the socket takes connections.
+  for (let tries = 0; ; tries++) {
+    try {
+      await fetch(`${base}/api/reset`, { method: 'POST' });
+      break;
+    } catch (error) {
+      if (tries === 50) throw new Error(`the server said ${base} but doesn't answer there:\n${output}`, { cause: error });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
   browser = await chromium.launch();
 });
 after(async () => {

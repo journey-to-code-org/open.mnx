@@ -70,7 +70,7 @@ connect({ url: '/_zb/sync' });
 ```js
 // on the server (a fetch handler: Node through a small adapter, Bun, Deno, workers)
 import { createSyncServer } from '@zubra/sync/server';
-const sync = createSyncServer({ authorize: ({ request, collection, key, write }) => true });
+const sync = createSyncServer({ authorize: ({ request, collection, key, kind }) => true });
 const response = await sync.fetch(request); // null if it isn't a sync request
 ```
 
@@ -84,11 +84,65 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 
 - **The device is the source of truth.** A write lands in the local store first. The connection stamps each changed field with a hybrid logical clock (`<ms>-<counter>-<device>`), queues it (in `localStorage`, so a reload doesn't lose it) and pushes it when it can. Offline, it waits.
 - **The server keeps a log, in order, and doesn't merge.** Every device applies the same rule to the same changes: for each field, the change with the later clock wins. So they converge, whichever order the changes arrive in. The clock of each field's winning write is stored beside the document (`$clocks`).
-- **`authorize`** decides who may write a document and who sees its changes.
+- **`authorize`** decides who may write a document and who sees its changes. It's told what's asked: `kind` is `'change'` (a push), `'presence'` (joining a document's room; nothing is stored) or `'read'` (a change about to be sent to this request), and `write` is true for the first two.
 - **The log** is in memory by default. `sqliteLog(path)` from `@zubra/sync/sqlite` keeps it in a SQLite file through the runtime's own SQLite (`node:sqlite` on Node 22.5+, `bun:sqlite` on Bun), so it survives a restart with nothing to install. Any `{ append(changes), after(cursor, limit) }` works too.
 - Cross-site pushes are refused, like actions.
 
 Changes arrive over a live channel: `GET /_zb/sync/live?since=<cursor>` is a server-sent event stream of `changes` as they're pushed (and `presence`, below). While it's open there's nothing to poll; when it drops, the connection polls (every 2 seconds by default, and when the browser comes back online) and reopens it from the current cursor. `connect({ live: false })` polls only. A server with several processes needs a shared log and a pub/sub between them; the reference server's subscribers are its own process's.
+
+### The server taking part
+
+Devices decide most things themselves, and last writer wins is right for what one person owns. Some things two people can both want: the last item in stock, a job two drivers tap at once. The server decides those, in a [server action](actions.md), and its decision is a write to the same documents, so every page showing them follows.
+
+```js
+const docs = await sync.documents();   // every document, as the devices merge it, kept current
+
+export async function claim(formData, context) {
+  'use server'
+  const order = docs.get('orders', formData.get('order'));
+  if (order?.driver) return { error: 'Taken' };
+  // No await between the check and the write: no other request can come in between.
+  await sync.write('orders', formData.get('order'), { driver: context.user.id, status: 'claimed' });
+}
+```
+
+- **`documents()`** reads the log once, then keeps up with every push and write. `get(collection, key)` is a document's fields (a copy); `all(collection)` is every document in a collection with its `key`; `collections()` names the collections that have any. Reads are synchronous.
+- **`write(collection, key, fields)`** stamps each field with the server's clock (`createSyncServer({ device })`, `server` by default), which is always later than any clock it has seen. So the write wins over everything before it, and a device that writes afterwards wins over it, as between any two devices. The view has it at once; then it's logged and sent to every live page. A server that hasn't read its log yet (it just started) reads it before its first write, so that write comes after every clock in it. If the log refuses a write, `write()` rejects and the documents take it back out; a push the log refuses never reaches them.
+- **To keep a document the server's alone**, refuse `kind: 'change'` for it in `authorize`, and let `kind: 'presence'` through if people should see who else has it open.
+- One process: the view is this process's, like the live subscribers. Several processes need a shared log and should decide such things in one place.
+
+### On Cloudflare Workers: a Durable Object
+
+A Worker has many isolates and no memory they share, so the sync server can't live in one: a change pushed to one isolate would never reach a page listening on another. `@zubra/sync/durable` puts it in a Durable Object instead, one per app, with the log in the object's own SQLite (`durableObjectLog(ctx.storage)`, the table and cursors of `sqliteLog`). The Worker forwards `/_zb/sync/*` to it.
+
+```js
+import { SyncObject, syncStub } from '@zubra/sync/durable';
+
+export class Market extends SyncObject {
+  authorize({ request, collection, kind }) { /* as on Node; secrets are this.env's */ }
+  // The object runs one call at a time: what must not interleave goes in its methods.
+  async claim(order, driver) {
+    if ((await this.documents()).get('orders', order)?.driver) return { error: 'Taken' };
+    await this.write('orders', order, { driver, status: 'claimed' });
+    return { ok: true };
+  }
+}
+
+export default {
+  async fetch(request, env) {
+    const sync = syncStub(env.MARKET);             // the object named 'sync'
+    return (await sync.fetch(request))              // Sync's requests, or null
+      ?? render(await sync.documents('orders'));    // a copy, for this page
+  },
+};
+// wrangler.jsonc: "durable_objects": { "bindings": [{ "name": "MARKET", "class_name": "Market" }] },
+//                 "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Market"] }]
+```
+
+- **One difference from Node**: on Node, a server action reads `documents()` and writes in the same process, with no await between, so nothing interleaves. In a Worker the documents are in the object, and `syncStub(…).documents()` is a copy, not kept current. A read-then-write that must not interleave goes in a method of your `SyncObject` (`sync.stub.claim(…)`), where `this.documents()` is the live view. Don't `fetch()` in the middle of one: waiting on the network lets the object take the next request.
+- **A page that vanishes is noticed a little later.** A page that closes says it's leaving, and is gone from its rooms at once. One whose connection is simply cut (a crash, a dropped network) isn't reported to a Durable Object: it finds out when a keep-alive can't be written, which on workerd is the third after the cut. So `SyncObject` sends one every 2 seconds (`static options = { heartbeat }`), and such a page leaves within about 6.
+- **Options**: `static options = { mount, heartbeat, device, table, origins }`; `syncStub(namespace, { name, mount })` must use the same `mount`. A different `name` is a separate object with its own log.
+- **The object is awake while any page listens.** An open live stream holds it in memory, which a Durable Object is billed for by duration; see [Zubra on Cloudflare Workers](edge.md).
 
 ### Without Node: the `zubra-sync` binary
 
@@ -121,7 +175,7 @@ Some state should be seen by the other viewers of a document but never stored: w
 - **`peers()` is an array** of the other viewers, `{ peer, ...presence }`: each one's id and its presence fields by name (`other.cursor` above). Each tab is one peer; your own tab isn't in it. On the server it's empty, and a `presence()` value renders as its starting value.
 - **Without a server**, presence reaches the other tabs of the same site (BroadcastChannel). **With `connect()`**, it reaches other devices too: `POST /_zb/sync/presence { room, peer, state }`, and the live stream's `presence` events.
 - **It's cheap on purpose.** At most one message a frame, however fast the pointer moves; a heartbeat every 10 seconds; a viewer not heard from for 30 seconds has gone. Closing a tab says goodbye (`pagehide`), and the server says it for a device whose connection drops.
-- **Nothing is stored**, on the device or the server. `authorize` decides who may join a room (`write: true`) and who sees its presence (`write: false`).
+- **Nothing is stored**, on the device or the server. `authorize` decides who may join a room (`kind: 'presence'`) and who sees its presence (`kind: 'read'`).
 
 ### Device to device: `connect({ webrtc: true })`
 

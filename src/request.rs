@@ -13,7 +13,8 @@
 //!   "pending": ["reviews"] }
 //! ```
 //!
-//! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }`: `output` is the
+//! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }` (and `omitted`, on
+//! success: attributes a render left out because their values weren't safe URLs): `output` is the
 //! compiled text, `error` and `warnings` are rendered for a terminal, and `diagnostics` has
 //! each one as `{ file, line, column, severity, message, help }` for editors. `command: "check"`
 //! runs every check without producing output, and `command: "format"` answers with the source
@@ -265,6 +266,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         .collect();
     let runtime = text("runtime").unwrap_or("@zubra/runtime");
     let command = text("command").unwrap_or("compile");
+    crate::validate::take_omitted(); // nothing left over from an earlier request
     let result = match (command, text("emit").unwrap_or("html")) {
         ("check", _) => crate::compile_js_with(source, &path, runtime, Some(".js"), &loader)
             .map(|_| String::new()),
@@ -420,12 +422,16 @@ fn respond(request: &Map<String, Value>) -> Value {
             "diagnostics": diagnostics,
         });
     }
+    // What a render left out because it wasn't safe (a user's `javascript:` link): the HTML is
+    // still whole, and the server can say what it dropped.
+    let omitted = crate::validate::take_omitted();
     match result {
         Ok(output) => json!({
             "ok": true,
             "output": if command == "check" { Value::Null } else { Value::String(output) },
             "error": null,
             "warnings": rendered_warnings,
+            "omitted": omitted,
             "diagnostics": diagnostics,
         }),
         Err(error) => {
@@ -506,6 +512,55 @@ mod tests {
 
     fn call(request: Value) -> Value {
         serde_json::from_str(&handle(&request.to_string())).unwrap()
+    }
+
+    #[test]
+    fn a_render_says_what_it_left_out_because_it_was_not_a_safe_url() {
+        let source = r#"<zb-pic url="" pic="" set="" rest={{}}><a href={url}>Go</a><img src={pic} srcset={set} alt=""><a {...rest}>More</a></zb-pic>"#;
+        let files = json!({ "/app/pic.zb": source });
+        let render = |props: Value| {
+            call(json!({ "path": "/app/pic.zb", "files": files, "emit": "html", "props": props }))
+        };
+        let response = render(json!({
+            "url": "javascript:alert(document.cookie)",
+            "pic": "data:image/png;base64,AAAA",
+            "set": "javascript:x 1x",
+            "rest": { "href": "javascript:y" },
+        }));
+        assert_eq!(response["ok"], true, "{response}");
+        let html = response["output"].as_str().unwrap();
+        assert!(
+            html.contains(r#"><a>Go</a><img alt=""><a>More</a></zb-pic>"#),
+            "{html}"
+        );
+        let omitted: Vec<&str> = response["omitted"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m.as_str().unwrap())
+            .collect();
+        assert_eq!(omitted.len(), 4, "{omitted:?}");
+        assert!(omitted[0].starts_with("left `href` out of the HTML: its value isn't a safe URL (`javascript:alert(documen…`)"), "{omitted:?}");
+        assert!(
+            omitted
+                .iter()
+                .any(|m| m.contains("`src`") && m.contains("`data:image/png;base64,AA…`")),
+            "{omitted:?}"
+        );
+        assert!(
+            omitted.iter().any(|m| m.contains("`srcset`")),
+            "{omitted:?}"
+        );
+        assert_eq!(
+            omitted.iter().filter(|m| m.contains("`href`")).count(),
+            2,
+            "the spread's href too: {omitted:?}"
+        );
+        // Safe values, and nothing carried over from the render before.
+        let response = render(
+            json!({ "url": "/farms/1", "pic": "/logo.webp", "set": "/a.webp 1x", "rest": {} }),
+        );
+        assert_eq!(response["omitted"], json!([]), "{response}");
     }
 
     const BADGE: &str = "<zb-badge label=\"x\"><b>{label}</b></zb-badge>";

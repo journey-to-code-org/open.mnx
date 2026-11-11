@@ -266,5 +266,27 @@ fn check_server_reports_what_the_servers_html_leaves_out() {
         1,
         "{text}"
     );
+    // A gap inside a child component is reported at the child's tag in this file, saying where
+    // in the child it is (not at the child's line and column, as if they were this file's).
+    fs::write(
+        dir.join("badge.zb"),
+        "<script>\n  const at = Date.now()\n</script>\n<style>\n  span { color: red; }\n</style>\n<zb-badge>\n  <span>{at}</span>\n</zb-badge>\n",
+    )
+    .unwrap();
+    let card = dir.join("card.zb");
+    fs::write(
+        &card,
+        "<script>\n  import './badge.zb'\n</script>\n<zb-card>\n  <zb-badge></zb-badge>\n</zb-card>\n",
+    )
+    .unwrap();
+    let (ok, stdout, stderr) = zubra(&["check", "--server", card.to_str().unwrap()]);
+    assert!(ok, "a warning, not an error");
+    let text = format!("{stdout}{stderr}");
+    assert!(
+        text.contains("inside <zb-badge> (badge.zb:8:")
+            && text.contains("card.zb:5:")
+            && !text.contains("card.zb:8:"),
+        "{text}"
+    );
     fs::remove_dir_all(&dir).ok();
 }

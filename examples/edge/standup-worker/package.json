@@ -1,0 +1,25 @@
+{
+  "name": "zubra-example-standup-worker",
+  "private": true,
+  "type": "module",
+  "description": "The standup board on a Cloudflare Worker, with no server of its own: @zubra/sync in a Durable Object (SyncObject, its log in the object's SQLite), a form that posts to a 'use server' function (@zubra/actions/edge), pages from @zubra/server/edge. Its tests run it in workerd with two browsers.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && wrangler dev --local",
+    "test": "npm run build && node --test --test-concurrency=1 \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@zubra/actions": "file:../../../actions",
+    "@zubra/compiler": "file:../../../compiler",
+    "@zubra/runtime": "file:../../../runtime",
+    "@zubra/server": "file:../../../server",
+    "@zubra/sync": "file:../../../sync"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0",
+    "wrangler": "4.45.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "zubra-standup",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  // Components are text imports: `import source from '…/standup-card.zb'`.
+  "rules": [{ "type": "Text", "globs": ["**/*.zb"], "fallthrough": true }],
+  // The runtime, @zubra/sync's browser modules and the actions script are static files (npm run
+  // build puts them in public/). A path with a file here is answered before the Worker runs.
+  "assets": { "directory": "./public" },
+  // One Durable Object holds the board's sync server, its log in the object's own SQLite.
+  "durable_objects": { "bindings": [{ "name": "BOARD", "class_name": "Board" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Board"] }]
+}

@@ -1,0 +1,10 @@
+{
+  // A Worker for the tests only: @zubra/sync's log contract, run inside a Durable Object on its own
+  // SQLite storage (not the stand-in the Node tests use).
+  "name": "zubra-log-contract",
+  "main": "worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [{ "name": "LOGS", "class_name": "Logs" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Logs"] }]
+}

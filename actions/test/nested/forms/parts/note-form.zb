@@ -1,0 +1,18 @@
+<script>
+  import { tidy } from '../../lib/tidy.js'
+
+  let saved = ""
+  export async function save(formData) {
+    'use server'
+    const { stamp } = await import('../../lib/stamp.js')
+    return { note: tidy(String(formData.get('note') ?? '')), at: stamp() }
+  }
+</script>
+
+<note-form>
+  <form action={save} onaction={(event) => (saved = event.detail.value.note)}>
+    <input name="note" aria-label="Note" />
+    <button type="submit">Save</button>
+    <p>{saved}</p>
+  </form>
+</note-form>
