@@ -48,6 +48,35 @@ export async function receive(collection, key, fields) {
 /** @internal The store in use. */
 export const currentStore = () => theStore();
 
+// Fresh first: a page connected to a log reads it before a component applies what this device
+// stored last time, so a returning visitor never sees last visit's state over the server's (or
+// over a page the server just rendered). Offline, the pull fails at once and stored values show.
+const FRESH_WAIT = 1500; // and never longer than this
+let firstPull = null;
+/** @internal connect() hands over its first pull, as it starts. */
+export const startingPull = (pull) => {
+  firstPull = Promise.resolve(pull).catch(() => {});
+};
+/**
+ * Before reading a stored document: wait until the page's own scripts have run (they finish before
+ * DOMContentLoaded, and connect() is one of them), then for the first pull if there is a connection.
+ */
+const fresh = () =>
+  scriptsDone().then(() => (firstPull ? Promise.race([firstPull, new Promise((done) => setTimeout(done, FRESH_WAIT))]) : undefined));
+let scripts = null;
+const scriptsDone = () =>
+  (scripts ??= (() => {
+    if (typeof document === 'undefined' || document.readyState === 'complete') return Promise.resolve();
+    // Navigation timing says whether DOMContentLoaded has already started (readyState is
+    // 'interactive' both while module scripts run and after).
+    const navigation = globalThis.performance?.getEntriesByType?.('navigation')?.[0];
+    if (navigation && navigation.domContentLoadedEventStart > 0) return Promise.resolve();
+    return new Promise((done) => {
+      document.addEventListener('DOMContentLoaded', done, { once: true });
+      setTimeout(done, FRESH_WAIT);
+    });
+  })());
+
 // Every bound element, by document, so a write reaches the others (this tab and, below, others).
 const bound = new Map();
 const docId = (collection, key) => `${collection}\u0000${key}`;
@@ -142,8 +171,8 @@ export function collection(name, keys, props, fields, presenceFields = null, pee
     let cancelled = false;
     // What the fields hold as loading starts, to tell what someone changed while it loaded.
     const before = Signal.subtle.untrack(values);
-    theStore()
-      .get(name, key)
+    fresh()
+      .then(() => theStore().get(name, key))
       .then((doc = {}) => {
         if (cancelled) return;
         // An edit made before the document arrived is newer than it: keep the edit (and save

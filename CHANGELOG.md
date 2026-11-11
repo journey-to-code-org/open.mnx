@@ -11,6 +11,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
+- **Sync: a returning visitor sees what the log has now, not what their device stored last time.** On a connected page, a component waits for the first pull (at most 1.5 seconds, and not at all once it fails, as it does offline) before applying its stored document. Before, a stored value showed until the pull landed: a seat that had been taken since the last visit showed free. Found by CineStack.
 - **Sync: a device whose cursor is past the end of the log starts over.** When the log was replaced or wiped, a device that had read far into the old one heard nothing until the new log passed its cursor. Pull and the live stream now answer it from the start, with `reset: true`, and the device takes the new cursor. Logs gain `head()` (the built-in ones and the `zubra-sync` binary have it; it's optional for your own).
 
 ## 5.6.0 — 2026-11-11

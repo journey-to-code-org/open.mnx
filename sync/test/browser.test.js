@@ -19,6 +19,7 @@ const viaBinary = process.env.ZUBRA_SYNC_BACKEND === 'binary';
 let binary = null;
 let presencePosts = 0;
 let dropSignals = 0; // a test can lose the next few signaling messages on purpose
+let slowPulls = 0; // and hold the next few pulls for 400 ms
 
 findCompiler();
 const compiler = await import('@zubra/compiler');
@@ -45,6 +46,10 @@ before(async () => {
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (req.url.startsWith('/_zb/sync/presence')) presencePosts += 1;
+    if (req.url.startsWith('/_zb/sync/pull') && slowPulls > 0) {
+      slowPulls -= 1;
+      await new Promise((done) => setTimeout(done, 400));
+    }
     if (req.url.startsWith('/_zb/sync/signal') && dropSignals > 0) {
       dropSignals -= 1;
       req.resume();
@@ -311,6 +316,76 @@ test('a device whose cursor is past the end of the log (a new log) starts over a
   assert.ok(Number(await tab.evaluate(() => localStorage.getItem('zubra-sync:cursor'))) < 999999);
   await context.close();
   await writer.close();
+});
+
+test('fresh first: a returning device never shows what it stored last time over what the log has now', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=fresh1`);
+  await ready(tab);
+  await tab.fill('.title', 'Last visit');
+  await tab.waitForTimeout(400); // pushed, and stored on this device
+  await tab.goto('about:blank');
+  // While it's away, someone else changes it.
+  const away = await browser.newContext();
+  const other = await away.newPage();
+  await other.goto(`${base}/connected?doc=fresh1`);
+  await ready(other);
+  await title(other, 'Last visit');
+  await other.fill('.title', 'Changed since');
+  await other.waitForTimeout(400);
+  await away.close();
+  // It comes back. Every value the title shows from the very start is recorded; its first pull
+  // takes 400 ms, so a stored value applied before it would be on screen for that long.
+  await tab.addInitScript(() => {
+    window.shown = [];
+    const look = () => {
+      const value = document.querySelector('task-item .title')?.value;
+      if (value !== undefined && value !== window.shown.at(-1)) window.shown.push(value);
+      requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  });
+  slowPulls = 1;
+  await tab.goto(`${base}/connected?doc=fresh1`);
+  await title(tab, 'Changed since');
+  const shown = await tab.evaluate(() => window.shown);
+  assert.ok(!shown.includes('Last visit'), `never the stored value: ${JSON.stringify(shown)}`);
+  await context.close();
+});
+
+test('fresh first: offline, the stored document still shows, straight away', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=fresh2`);
+  await ready(tab);
+  await tab.fill('.title', 'Kept on the device');
+  await tab.waitForTimeout(400);
+  // Offline: every request to the log fails, as it does without a network.
+  await tab.route('**/_zb/sync/**', (route) => route.abort('internetdisconnected'));
+  const started = Date.now();
+  await tab.goto(`${base}/connected?doc=fresh2`);
+  await ready(tab);
+  await title(tab, 'Kept on the device');
+  assert.ok(Date.now() - started < 1500, 'a failed pull doesn\'t hold it back for the full wait');
+  await context.close();
+});
+
+test('fresh first: a pull that never answers holds the stored document back for 1.5 s at most', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=fresh3`);
+  await ready(tab);
+  await tab.fill('.title', 'Stored here');
+  await tab.waitForTimeout(400);
+  await tab.route('**/_zb/sync/pull**', () => {}); // never answered
+  const started = Date.now();
+  await tab.goto(`${base}/connected?doc=fresh3`);
+  await ready(tab);
+  await title(tab, 'Stored here');
+  const waited = Date.now() - started;
+  assert.ok(waited >= 1400 && waited < 3500, `waited ${waited} ms`);
+  await context.close();
 });
 
 const board = async (context, doc, connect = false) => {
