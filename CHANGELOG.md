@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Server templates in Django, Rails and Laravel.** Clients of `zubra serve` for more server languages, each with the same shape as the Python package (a long-lived compiler process behind a lock, a page per request that collects the CSS and modules, a replaced process after a timeout or a crash, so no request gets another's answer), plus their framework's template helpers. **Django** (`zubra.django`): `{% zubra "plot-map" plots=plots %}`, `{% zubra_head %}`, `{% zubra_scripts %}`, a middleware and a module view. **Ruby** (`clients/ruby`, the `zubra` gem): `Zubra.new("components")`, and for Rails `<%= zubra "plot-map", plots: @plots %>`, `zubra_head`, `zubra_scripts`, a Railtie, a Rack middleware and a mountable module endpoint. **PHP** (`clients/php`, `zubra/zubra`): `new Zubra\Zubra(...)`, and for Laravel `@zubra('plot-map', [...])`, `@zubraHead`, `@zubraScripts`, a discovered service provider, a module route and a middleware. In all three the middleware fills in the head and scripts after the response is rendered, so a layout's `<head>` gets the CSS of components its view renders further down. Tests run each against the real compiler; a new CI job runs the Ruby and PHP ones.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

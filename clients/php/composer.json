@@ -1,0 +1,19 @@
+{
+  "name": "zubra/zubra",
+  "description": "Render Zubra web components from PHP and Laravel: the zubra compiler as a long-lived process, with Blade directives",
+  "type": "library",
+  "license": "ISC",
+  "keywords": ["web-components", "ssr", "laravel", "blade"],
+  "homepage": "https://github.com/journey-to-code-org/zubra/tree/main/clients/php",
+  "require": {
+    "php": ">=8.1"
+  },
+  "autoload": {
+    "psr-4": { "Zubra\\": "src/" }
+  },
+  "extra": {
+    "laravel": {
+      "providers": ["Zubra\\Laravel\\ZubraServiceProvider"]
+    }
+  }
+}
