@@ -243,6 +243,35 @@ test('connected: a device that was offline catches up both ways, and concurrent 
   await b.context.close();
 });
 
+test('a long time offline: edits wait one per field, outlive the tab, and merge when it next opens', async () => {
+  const a = await device('away');
+  const b = await device('away');
+  await a.context.setOffline(true);
+  // A long session offline: a few hundred keystrokes and a checkbox, with pushes failing meanwhile.
+  await a.tab.click('.title');
+  await a.tab.keyboard.type('notes from the river '.repeat(15), { delay: 0 });
+  await a.tab.check('input[type=checkbox]');
+  await a.tab.waitForTimeout(300);
+  const waiting = await a.tab.evaluate(() => JSON.parse(localStorage.getItem('zubra-sync:outbox')).map((c) => c.field).sort());
+  assert.deepEqual(waiting, ['completed', 'title'], 'one change per field, not one per keystroke');
+  // The tab is closed before the network comes back; the others carry on.
+  await a.tab.close();
+  await b.tab.fill('.title', 'B, while A was away');
+  await b.tab.waitForTimeout(300);
+  // Back online, the app is opened again: what waited goes, and the newer title stands.
+  await a.context.setOffline(false);
+  const again = await a.context.newPage();
+  await again.goto(`${base}/connected?doc=away`);
+  await ready(again);
+  await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
+  await title(again, 'B, while A was away');
+  assert.equal(await again.locator('.state').textContent(), 'done');
+  assert.equal(await again.evaluate(() => JSON.parse(localStorage.getItem('zubra-sync:outbox')).length), 0);
+  assert.equal(await b.tab.inputValue('.title'), 'B, while A was away');
+  await a.context.close();
+  await b.context.close();
+});
+
 test('live: a change arrives over the event stream, without waiting for a poll', async () => {
   const a = await browser.newContext();
   const b = await browser.newContext();

@@ -11,6 +11,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
+- **Sync: a device offline for hours queues one change per field, not one per keystroke.** The queue of changes waiting to be pushed kept every edit, and rewrote all of them to `localStorage` on each one, so a long session of typing offline grew it without bound until `localStorage` refused it, and from then on a closed tab lost the edits. A newer change now replaces what's waiting for the same field (this device's later write would win anyway); a queue saved before this loads that way too. Proved in a browser: a long offline session, the tab closed before the network came back, another device writing meanwhile, and the app opened again.
 - **`class:` and `style:` on a child component set its host element**, as on any element, in both outputs. They were refused as unknown props (`<quantity-stepper class:out={…}>`: "has no prop `class:out`"). Found by Tailgate.
 
 ## 5.7.0 — 2026-11-11
