@@ -4,6 +4,11 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **The Sync server can take part: `sync.documents()` and `sync.write()`.** `documents()` is every document as the devices merge it, kept current, with synchronous reads; `write(collection, key, fields)` writes as the server, with a clock later than any it has seen, to the log and every live page. A server action can now check and decide what two people both want (the last item, a job two drivers claim) and every page showing it follows. Tailgate wrote these 40 lines itself; they're in `@zubra/sync/server` now.
+- **`authorize` is told what kind of request it is**: `kind` is `'change'`, `'presence'` or `'read'`. A rule that kept a collection the server's alone used to refuse joining its documents' presence rooms too, since both are writes; now it can tell them apart. `write` is unchanged.
+
 ### Fixed
 
 - **`zubra check --server` points at the right place for a gap inside a child component.** It reported the child's line and column as if they were the parent file's, often landing on a CSS rule. Now the warning is at the child's tag in the parent and says where in the child it is: `inside <user-avatar> (user-avatar.zb:26:60): …`. Found by Tailgate.

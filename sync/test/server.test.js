@@ -136,3 +136,84 @@ test('presence: rooms you may not join are refused (authorize)', async () => {
   const sync = createSyncServer({ authorize: ({ key }) => key !== 'private' });
   assert.equal((await say(sync, { room: 'boards/private', peer: 'p1', state: {} })).status, 403);
 });
+
+// ---- the server taking part: authorize's kind, documents(), write() ------------------------
+
+test('authorize() is told what kind of request it is: a change, presence, or a read', async () => {
+  const seen = [];
+  const sync = createSyncServer({
+    authorize: ({ kind, write, collection }) => {
+      seen.push(`${kind}:${write}`);
+      // Orders are the server's to write, but anyone may be in an order's room.
+      return !(collection === 'orders' && kind === 'change');
+    },
+  });
+  assert.equal((await push(sync, [{ ...change('status', 'delivered'), collection: 'orders' }])).status, 403);
+  assert.equal((await say(sync, { room: 'orders/o1', peer: 'p1', state: { looking: 'driver' } })).status, 200);
+  await push(sync, [change('title', 'x')]);
+  await pull(sync);
+  assert.deepEqual([...new Set(seen)].sort(), ['change:true', 'presence:true', 'read:false']);
+});
+
+test('documents(): every document as the devices merge it, from the log and kept current', async () => {
+  const sync = createSyncServer();
+  await push(sync, [change('title', 'first'), change('done', false)]);
+  await push(sync, [change('title', 'stale', '000000000000000-00000-old')]); // earlier clock: loses
+  const docs = await sync.documents();
+  assert.deepEqual(docs.get('tasks', 't1'), { title: 'first', done: false });
+  await push(sync, [change('done', true, '000000000000009-00000-dev2')]);
+  assert.deepEqual(docs.get('tasks', 't1'), { title: 'first', done: true }, 'kept current');
+  assert.deepEqual(docs.all('tasks'), [{ key: 't1', title: 'first', done: true }]);
+  assert.equal(docs.get('tasks', 'nope'), undefined);
+  // A copy: changing what it returns changes nothing.
+  docs.get('tasks', 't1').title = 'mutated';
+  assert.equal(docs.get('tasks', 't1').title, 'first');
+});
+
+test('write(): the server writes to the log and to every live page, and wins over what came before', { timeout: 5000 }, async () => {
+  const sync = createSyncServer();
+  // A device whose clock runs ahead: the server's next write still comes after it.
+  await push(sync, [{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
+  const stream = events(await live(sync, 'p1'));
+  await stream.next(); // the backlog
+  const written = await sync.write('orders', 'o1', { status: 'claimed', driver: 'jules' });
+  assert.equal(written.length, 2);
+  assert.ok(written.every((c) => c.clock > '999999999999999-00003-fast' && c.clock.endsWith('-server')), written[0].clock);
+  const next = (await stream.next()).value;
+  assert.equal(next.event, 'changes');
+  assert.deepEqual(next.data.changes.map((c) => [c.field, c.value]), [['status', 'claimed'], ['driver', 'jules']]);
+  assert.deepEqual((await sync.documents()).get('orders', 'o1'), { status: 'claimed', driver: 'jules' });
+  assert.deepEqual((await pull(sync)).changes.map((c) => c.value), ['placed', 'claimed', 'jules']);
+  await stream.return();
+  await assert.rejects(() => sync.write('orders', 'o1', { $clocks: {} }), /not a field/);
+  await assert.rejects(() => sync.write('orders', 'o1', null), /sync\.write/);
+});
+
+test('documents() and write(): a check and a write with no await between can\'t be interleaved', async () => {
+  const sync = createSyncServer();
+  await sync.write('stock', 'squash', { qty: 1 });
+  const docs = await sync.documents();
+  // Two requests for the last one, at once: each checks, then writes.
+  const order = async () => {
+    await Promise.resolve(); // whatever came before (parsing the request, …)
+    const left = docs.get('stock', 'squash')?.qty ?? 0;
+    if (left < 1) return 'sold out';
+    const done = sync.write('stock', 'squash', { qty: left - 1 });
+    await done;
+    return 'ordered';
+  };
+  assert.deepEqual((await Promise.all([order(), order()])).sort(), ['ordered', 'sold out']);
+  assert.equal(docs.get('stock', 'squash').qty, 0);
+});
+
+test('documents() is built from a log that already has changes, once, however many ask', async () => {
+  const sync = createSyncServer();
+  for (let i = 0; i < 7; i++) await push(sync, [change('n', i, `00000000000001${i}-00000-dev1`)]);
+  const [a, b] = await Promise.all([sync.documents(), sync.documents()]);
+  assert.equal(a, b);
+  assert.equal(a.get('tasks', 't1').n, 6);
+});
+
+test('the server\'s device name is checked', () => {
+  assert.throws(() => createSyncServer({ device: 'has space' }), /device/);
+});
