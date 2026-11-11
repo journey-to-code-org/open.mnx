@@ -84,6 +84,8 @@ before(async () => {
     if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, connectTo, 'board-view'));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
+    // Connected with a scope (?scope= is the JSON connect() gets), live, polling once a minute.
+    if (url.pathname === '/scoped') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000, scope: JSON.parse(url.searchParams.get('scope')) }));
     res.end(page('<task-item doc="a"></task-item>'));
   });
   await new Promise((done) => server.listen(0, done));
@@ -250,6 +252,38 @@ test('live: a change arrives over the event stream, without waiting for a poll',
   await title(two, 'Over the stream');
   await a.close();
   await b.close();
+});
+
+test('scope: a page gets, and stores, only the documents it asked for, with a cursor of its own', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  const scope = { tasks: 'mine' };
+  await tab.goto(`${base}/scoped?doc=mine1&scope=${encodeURIComponent(JSON.stringify(scope))}`);
+  await ready(tab);
+  await tab.waitForTimeout(300); // the live stream opens
+  // Another device writes one document out of the page's scope, then one in it.
+  const other = await browser.newContext();
+  const writer = await other.newPage();
+  await writer.goto(`${base}/connected?doc=theirs1`);
+  await ready(writer);
+  await writer.fill('.title', 'Not for that page');
+  await writer.goto(`${base}/connected?doc=mine1`);
+  await ready(writer);
+  await writer.fill('.title', 'For that page');
+  await title(tab, 'For that page');
+  const keys = await tab.evaluate(() => new Promise((done) => {
+    const open = indexedDB.open('zubra-sync');
+    open.onsuccess = () => {
+      const request = open.result.transaction('docs').objectStore('docs').getAllKeys();
+      request.onsuccess = () => done(request.result.map((key) => key.join('/')));
+    };
+  }));
+  assert.ok(keys.includes('tasks/mine1'), keys.join(', '));
+  assert.ok(!keys.includes('tasks/theirs1'), `stored only what it asked for: ${keys.join(', ')}`);
+  const cursors = await tab.evaluate(() => Object.keys(localStorage).filter((name) => name.startsWith('zubra-sync:cursor')));
+  assert.deepEqual(cursors, [`zubra-sync:cursor:${JSON.stringify(scope)}`]);
+  await context.close();
+  await other.close();
 });
 
 const board = async (context, doc, connect = false) => {
