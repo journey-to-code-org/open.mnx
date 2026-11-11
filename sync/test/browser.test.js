@@ -388,6 +388,44 @@ test('fresh first: a pull that never answers holds the stored document back for 
   await context.close();
 });
 
+test('a field the component doesn\'t declare is kept, on the device and in the log, through its edits', async () => {
+  // The server writes a field task-item has no `let` for (the kit's hold ceiling writes `since`).
+  if (viaBinary) {
+    await fetch(`${binary.base}/_zb/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ changes: [
+      { collection: 'tasks', key: 'extra1', field: 'title', value: 'From the server', clock: '000000000000100-00000-server' },
+      { collection: 'tasks', key: 'extra1', field: 'since', value: 1731300000000, clock: '000000000000100-00001-server' },
+    ] }) });
+  } else {
+    await sync.write('tasks', 'extra1', { title: 'From the server', since: 1731300000000 });
+  }
+  const context = await browser.newContext();
+  const errors = [];
+  const tab = await context.newPage();
+  tab.on('pageerror', (error) => errors.push(error.message));
+  tab.on('console', (message) => message.type() === 'error' && errors.push(message.text()));
+  await tab.goto(`${base}/connected?doc=extra1`);
+  await ready(tab);
+  await title(tab, 'From the server');
+  await tab.fill('.title', 'Edited here');
+  await tab.waitForTimeout(400); // saved and pushed
+  const stored = await tab.evaluate(() => new Promise((done) => {
+    const open = indexedDB.open('zubra-sync');
+    open.onsuccess = () => {
+      const request = open.result.transaction('docs').objectStore('docs').get(['tasks', 'extra1']);
+      request.onsuccess = () => done(request.result);
+    };
+  }));
+  assert.equal(stored.title, 'Edited here');
+  assert.equal(stored.since, 1731300000000, 'kept on the device');
+  const source = viaBinary ? binary.base : base;
+  const log = (await (await fetch(`${source}/_zb/sync/pull?since=0`)).json()).changes.filter((c) => c.key === 'extra1');
+  assert.deepEqual(log.filter((c) => c.field === 'since').map((c) => c.value), [1731300000000], 'never pushed back or overwritten');
+  assert.equal(log.at(-1).field, 'title', 'the edit pushed only the field it changed');
+  if (!viaBinary) assert.deepEqual((await sync.documents()).get('tasks', 'extra1'), { title: 'Edited here', since: 1731300000000 });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 const board = async (context, doc, connect = false) => {
   const tab = await context.newPage();
   await tab.goto(`${base}/board?doc=${doc}${connect === 'rtc' ? '&rtc' : connect ? '&connect' : ''}`);

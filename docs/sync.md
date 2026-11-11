@@ -46,6 +46,7 @@ The fields are the script's top-level `let`s, minus the ones wrapped in `ephemer
 - **Values are JSON.** Strings, numbers, booleans, `null`, arrays and plain objects (nested changes included). A `Date` is stored as its ISO string.
 - **Same document, same state.** Elements showing one document follow each other, in the page and in other tabs of the same site (BroadcastChannel).
 - **Merging is last-writer-wins, per field.** Two tabs writing the same field: the later write is the value. Different fields merge.
+- **A document can hold fields a component doesn't declare.** The server (or another component on the same collection) may write a field with no `let` here, such as a hold's `since`. It's kept on the device and in the log, and this component's edits push only the fields it changed, so they never overwrite or drop it.
 - **The server renders the defaults** (and an `ephemeral()` value, which it can evaluate); the element loads its document once it starts.
 
 ## Stores
