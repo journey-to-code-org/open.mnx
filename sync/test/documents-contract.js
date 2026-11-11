@@ -40,7 +40,8 @@ export const documentsContract = [
     assert.deepEqual(next.data.changes.map((c) => [c.field, c.value]), [['status', 'claimed'], ['driver', 'jules']]);
     await stream.return();
     assert.deepEqual((await h.documents()).get('orders', 'o1'), { status: 'claimed', driver: 'jules' });
-    assert.deepEqual((await h.pull()).changes.map((c) => c.value), ['placed', 'claimed', 'jules']);
+    // The log has all three, or (keeping each field's latest) the two that stand.
+    assert.deepEqual((await h.pull()).changes.map((c) => c.value), h.latest ? ['claimed', 'jules'] : ['placed', 'claimed', 'jules']);
   }],
   ['write refuses what isn’t fields', async (h) => {
     await assert.rejects(() => h.write('orders', 'o1', { $clocks: {} }), /not a field/);

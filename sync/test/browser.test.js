@@ -19,6 +19,7 @@ const viaBinary = process.env.ZUBRA_SYNC_BACKEND === 'binary';
 let binary = null;
 let presencePosts = 0;
 let dropSignals = 0; // a test can lose the next few signaling messages on purpose
+let slowPulls = 0; // and hold the next few pulls for 400 ms
 
 findCompiler();
 const compiler = await import('@zubra/compiler');
@@ -45,6 +46,10 @@ before(async () => {
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (req.url.startsWith('/_zb/sync/presence')) presencePosts += 1;
+    if (req.url.startsWith('/_zb/sync/pull') && slowPulls > 0) {
+      slowPulls -= 1;
+      await new Promise((done) => setTimeout(done, 400));
+    }
     if (req.url.startsWith('/_zb/sync/signal') && dropSignals > 0) {
       dropSignals -= 1;
       req.resume();
@@ -84,6 +89,8 @@ before(async () => {
     if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, connectTo, 'board-view'));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
+    // Connected with a scope (?scope= is the JSON connect() gets), live, polling once a minute.
+    if (url.pathname === '/scoped') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000, scope: JSON.parse(url.searchParams.get('scope')) }));
     res.end(page('<task-item doc="a"></task-item>'));
   });
   await new Promise((done) => server.listen(0, done));
@@ -250,6 +257,173 @@ test('live: a change arrives over the event stream, without waiting for a poll',
   await title(two, 'Over the stream');
   await a.close();
   await b.close();
+});
+
+test('scope: a page gets, and stores, only the documents it asked for, with a cursor of its own', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  const scope = { tasks: 'mine' };
+  await tab.goto(`${base}/scoped?doc=mine1&scope=${encodeURIComponent(JSON.stringify(scope))}`);
+  await ready(tab);
+  await tab.waitForTimeout(300); // the live stream opens
+  // Another device writes one document out of the page's scope, then one in it.
+  const other = await browser.newContext();
+  const writer = await other.newPage();
+  await writer.goto(`${base}/connected?doc=theirs1`);
+  await ready(writer);
+  await writer.fill('.title', 'Not for that page');
+  await writer.goto(`${base}/connected?doc=mine1`);
+  await ready(writer);
+  await writer.fill('.title', 'For that page');
+  await title(tab, 'For that page');
+  const keys = await tab.evaluate(() => new Promise((done) => {
+    const open = indexedDB.open('zubra-sync');
+    open.onsuccess = () => {
+      const request = open.result.transaction('docs').objectStore('docs').getAllKeys();
+      request.onsuccess = () => done(request.result.map((key) => key.join('/')));
+    };
+  }));
+  assert.ok(keys.includes('tasks/mine1'), keys.join(', '));
+  assert.ok(!keys.includes('tasks/theirs1'), `stored only what it asked for: ${keys.join(', ')}`);
+  const cursors = await tab.evaluate(() => Object.keys(localStorage).filter((name) => name.startsWith('zubra-sync:cursor')));
+  assert.deepEqual(cursors, [`zubra-sync:cursor:${JSON.stringify(scope)}`]);
+  await context.close();
+  await other.close();
+});
+
+test('a device whose cursor is past the end of the log (a new log) starts over and catches up', async () => {
+  const context = await browser.newContext();
+  // As if this device had read far into a log that has since been replaced.
+  await context.addInitScript(() => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('zubra-sync:cursor', '999999');
+      sessionStorage.setItem('seeded', '1');
+    }
+  });
+  const writer = await browser.newContext();
+  const other = await writer.newPage();
+  await other.goto(`${base}/connected?doc=restart1`);
+  await ready(other);
+  await other.fill('.title', 'Written before');
+  await other.waitForTimeout(300);
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=restart1`);
+  await ready(tab);
+  await title(tab, 'Written before');
+  // And it carries on from the log's real cursor: a later change still arrives.
+  await other.fill('.title', 'Written after');
+  await title(tab, 'Written after');
+  assert.ok(Number(await tab.evaluate(() => localStorage.getItem('zubra-sync:cursor'))) < 999999);
+  await context.close();
+  await writer.close();
+});
+
+test('fresh first: a returning device never shows what it stored last time over what the log has now', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=fresh1`);
+  await ready(tab);
+  await tab.fill('.title', 'Last visit');
+  await tab.waitForTimeout(400); // pushed, and stored on this device
+  await tab.goto('about:blank');
+  // While it's away, someone else changes it.
+  const away = await browser.newContext();
+  const other = await away.newPage();
+  await other.goto(`${base}/connected?doc=fresh1`);
+  await ready(other);
+  await title(other, 'Last visit');
+  await other.fill('.title', 'Changed since');
+  await other.waitForTimeout(400);
+  await away.close();
+  // It comes back. Every value the title shows from the very start is recorded; its first pull
+  // takes 400 ms, so a stored value applied before it would be on screen for that long.
+  await tab.addInitScript(() => {
+    window.shown = [];
+    const look = () => {
+      const value = document.querySelector('task-item .title')?.value;
+      if (value !== undefined && value !== window.shown.at(-1)) window.shown.push(value);
+      requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  });
+  slowPulls = 1;
+  await tab.goto(`${base}/connected?doc=fresh1`);
+  await title(tab, 'Changed since');
+  const shown = await tab.evaluate(() => window.shown);
+  assert.ok(!shown.includes('Last visit'), `never the stored value: ${JSON.stringify(shown)}`);
+  await context.close();
+});
+
+test('fresh first: offline, the stored document still shows, straight away', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=fresh2`);
+  await ready(tab);
+  await tab.fill('.title', 'Kept on the device');
+  await tab.waitForTimeout(400);
+  // Offline: every request to the log fails, as it does without a network.
+  await tab.route('**/_zb/sync/**', (route) => route.abort('internetdisconnected'));
+  const started = Date.now();
+  await tab.goto(`${base}/connected?doc=fresh2`);
+  await ready(tab);
+  await title(tab, 'Kept on the device');
+  assert.ok(Date.now() - started < 1500, 'a failed pull doesn\'t hold it back for the full wait');
+  await context.close();
+});
+
+test('fresh first: a pull that never answers holds the stored document back for 1.5 s at most', async () => {
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  await tab.goto(`${base}/connected?doc=fresh3`);
+  await ready(tab);
+  await tab.fill('.title', 'Stored here');
+  await tab.waitForTimeout(400);
+  await tab.route('**/_zb/sync/pull**', () => {}); // never answered
+  const started = Date.now();
+  await tab.goto(`${base}/connected?doc=fresh3`);
+  await ready(tab);
+  await title(tab, 'Stored here');
+  const waited = Date.now() - started;
+  assert.ok(waited >= 1400 && waited < 3500, `waited ${waited} ms`);
+  await context.close();
+});
+
+test('a field the component doesn\'t declare is kept, on the device and in the log, through its edits', async () => {
+  // The server writes a field task-item has no `let` for (the kit's hold ceiling writes `since`).
+  if (viaBinary) {
+    await fetch(`${binary.base}/_zb/sync/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ changes: [
+      { collection: 'tasks', key: 'extra1', field: 'title', value: 'From the server', clock: '000000000000100-00000-server' },
+      { collection: 'tasks', key: 'extra1', field: 'since', value: 1731300000000, clock: '000000000000100-00001-server' },
+    ] }) });
+  } else {
+    await sync.write('tasks', 'extra1', { title: 'From the server', since: 1731300000000 });
+  }
+  const context = await browser.newContext();
+  const errors = [];
+  const tab = await context.newPage();
+  tab.on('pageerror', (error) => errors.push(error.message));
+  tab.on('console', (message) => message.type() === 'error' && errors.push(message.text()));
+  await tab.goto(`${base}/connected?doc=extra1`);
+  await ready(tab);
+  await title(tab, 'From the server');
+  await tab.fill('.title', 'Edited here');
+  await tab.waitForTimeout(400); // saved and pushed
+  const stored = await tab.evaluate(() => new Promise((done) => {
+    const open = indexedDB.open('zubra-sync');
+    open.onsuccess = () => {
+      const request = open.result.transaction('docs').objectStore('docs').get(['tasks', 'extra1']);
+      request.onsuccess = () => done(request.result);
+    };
+  }));
+  assert.equal(stored.title, 'Edited here');
+  assert.equal(stored.since, 1731300000000, 'kept on the device');
+  const source = viaBinary ? binary.base : base;
+  const log = (await (await fetch(`${source}/_zb/sync/pull?since=0`)).json()).changes.filter((c) => c.key === 'extra1');
+  assert.deepEqual(log.filter((c) => c.field === 'since').map((c) => c.value), [1731300000000], 'never pushed back or overwritten');
+  assert.equal(log.at(-1).field, 'title', 'the edit pushed only the field it changed');
+  if (!viaBinary) assert.deepEqual((await sync.documents()).get('tasks', 'extra1'), { title: 'Edited here', since: 1731300000000 });
+  assert.deepEqual(errors, []);
+  await context.close();
 });
 
 const board = async (context, doc, connect = false) => {

@@ -46,6 +46,7 @@ The fields are the script's top-level `let`s, minus the ones wrapped in `ephemer
 - **Values are JSON.** Strings, numbers, booleans, `null`, arrays and plain objects (nested changes included). A `Date` is stored as its ISO string.
 - **Same document, same state.** Elements showing one document follow each other, in the page and in other tabs of the same site (BroadcastChannel).
 - **Merging is last-writer-wins, per field.** Two tabs writing the same field: the later write is the value. Different fields merge.
+- **A document can hold fields a component doesn't declare.** The server (or another component on the same collection) may write a field with no `let` here, such as a hold's `since`. It's kept on the device and in the log, and this component's edits push only the fields it changed, so they never overwrite or drop it.
 - **The server renders the defaults** (and an `ephemeral()` value, which it can evaluate); the element loads its document once it starts.
 
 ## Stores
@@ -79,16 +80,35 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 | | |
 |---|---|
 | `POST /_zb/sync/push` | `{ "changes": [Change] }` → `{ "ok": true }` |
-| `GET /_zb/sync/pull?since=<cursor>` | `{ "changes": [Change], "cursor": … }` |
+| `GET /_zb/sync/pull?since=<cursor>[&scope=<json>]` | `{ "changes": [Change], "cursor": … }` |
 | `Change` | `{ "collection", "key", "field", "value", "clock" }` |
 
 - **The device is the source of truth.** A write lands in the local store first. The connection stamps each changed field with a hybrid logical clock (`<ms>-<counter>-<device>`), queues it (in `localStorage`, so a reload doesn't lose it) and pushes it when it can. Offline, it waits.
 - **The server keeps a log, in order, and doesn't merge.** Every device applies the same rule to the same changes: for each field, the change with the later clock wins. So they converge, whichever order the changes arrive in. The clock of each field's winning write is stored beside the document (`$clocks`).
 - **`authorize`** decides who may write a document and who sees its changes. It's told what's asked: `kind` is `'change'` (a push), `'presence'` (joining a document's room; nothing is stored) or `'read'` (a change about to be sent to this request), and `write` is true for the first two.
 - **The log** is in memory by default. `sqliteLog(path)` from `@zubra/sync/sqlite` keeps it in a SQLite file through the runtime's own SQLite (`node:sqlite` on Node 22.5+, `bun:sqlite` on Bun), so it survives a restart with nothing to install. Any `{ append(changes), after(cursor, limit) }` works too.
+- **A log that doesn't grow with every change:** `sqliteLog(path, { keep: 'latest' })` (and `memoryLog`, `durableObjectLog`, with the same option) keeps each field's latest value only. A change with a newer clock replaces the field's row and takes the next cursor; one with an older clock is dropped. A new device reads what's there now, not the evening's history of every seat held and released. Devices merge the same either way: what's dropped would have lost to the newer write on every device anyway. Opening a file that has the full log as `keep: 'latest'` carries each field's latest value across, numbered after the old cursors, so devices that had read the old log miss nothing. The `zubra-sync` binary keeps every change.
 - Cross-site pushes are refused, like actions.
 
+**Fresh first.** On a connected page, a component waits for the connection's first pull before it applies what this device stored last time, so a returning visitor never sees last visit's state over what the log (or the page the server just rendered) says now. Until then it shows what it was rendered with. Offline, the pull fails at once and the stored document shows straight away; a pull that doesn't answer holds it back for 1.5 seconds at most. Call `connect()` in the page's own scripts (they all run before `DOMContentLoaded`, which is what a component waits for before looking).
+
+**A cursor past the end of the log starts over.** If a device asks for changes after a cursor the log has never reached (the log was replaced, or wiped, or the device's cursor came from another one), pull and the live stream answer with everything in its scope from the beginning, with `"reset": true`, and the device takes the new cursor. Without this, it would hear nothing until the new log grew past its old cursor. Logs say where they end with `head()`; the built-in ones and the `zubra-sync` binary do. What a device already has with newer clocks than the new log's stays, by the same last-writer-wins rule.
+
 Changes arrive over a live channel: `GET /_zb/sync/live?since=<cursor>` is a server-sent event stream of `changes` as they're pushed (and `presence`, below). While it's open there's nothing to poll; when it drops, the connection polls (every 2 seconds by default, and when the browser comes back online) and reopens it from the current cursor. `connect({ live: false })` polls only. A server with several processes needs a shared log and a pub/sub between them; the reference server's subscribers are its own process's.
+
+### Only what the page shows: `scope`
+
+By default a page receives, and stores, every change in the log. A page that shows one showing's seats, or one business's orders, should ask for just those:
+
+```js
+connect({ scope: { seats: 'showing-12/', holds: 'showing-12/', brands: true } });
+```
+
+- **Per collection, `true` or a key prefix**, or a list of prefixes. A collection the scope doesn't name isn't sent. Keys made from several props (`by showing, seat`) are joined with `/`, so a prefix like `'showing-12/'` takes every seat in that showing.
+- **What's out of scope isn't sent:** not by pull, not by the live stream (its backlog or new changes), and not as presence. The page's store never has it.
+- **Each scope keeps its own cursor** (in `localStorage`). A page that moves to another showing reads that showing from the start, not from wherever the last one got to.
+- **The server can impose one:** `createSyncServer({ scope: ({ request }) => ({ orders: `${business(request)}/` }) })`. A page's own scope can only narrow it, and pushes and presence outside it are refused with 403. That's tenancy: each business's documents under its own key prefix, on one log. `authorize` still runs on what's in scope.
+- **The `zubra-sync` binary honours a page's scope.** It has no notion of users, so a server-imposed scope is the JavaScript server's; put the binary behind an app that sets one.
 
 ### The server taking part
 

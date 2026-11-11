@@ -7,7 +7,8 @@ export interface DurableObjectStorageLike {
 }
 
 /**
- * A sync log in a Durable Object's SQLite: the table and cursors `sqliteLog` uses. `table` names
- * the table (default `changes`), if the object keeps tables of its own.
+ * A sync log in a Durable Object's SQLite: the tables and cursors `sqliteLog` uses. `keep:
+ * 'latest'` keeps each field's latest value only. `table` names the table (default `changes`, or
+ * `latest`), if the object keeps tables of its own.
  */
-export function durableObjectLog(storage: DurableObjectStorageLike, options?: { table?: string }): Log;
+export function durableObjectLog(storage: DurableObjectStorageLike, options?: { table?: string; keep?: 'all' | 'latest' }): Log;

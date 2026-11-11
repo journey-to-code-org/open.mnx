@@ -4,8 +4,8 @@
 //! the same SQLite table as `sqliteLog()`, so the two are interchangeable, file included:
 //!
 //!   POST /_zb/sync/push      { changes: [Change] }            → { ok: true }
-//!   GET  /_zb/sync/pull?since=<cursor>                        → { changes, cursor }
-//!   GET  /_zb/sync/live?since=<cursor>&peer=<id>              → server-sent events: changes, presence
+//!   GET  /_zb/sync/pull?since=<cursor>[&scope=<json>]         → { changes, cursor }
+//!   GET  /_zb/sync/live?since=<cursor>&peer=<id>[&scope=…]    → server-sent events: changes, presence
 //!   POST /_zb/sync/presence  { room, peer, state | null }     → { ok: true }
 //!
 //! It has no notion of users: run it behind the app (a reverse proxy at `/_zb/sync`, after the
@@ -75,6 +75,8 @@ struct Listener {
     id: u64,
     peer: String,
     rooms: HashSet<String>,
+    /// What the page asked for (`?scope=`); None is everything.
+    scope: Option<Value>,
     events: Sender<String>,
 }
 
@@ -187,6 +189,93 @@ fn query<'a>(url: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
+/// `%xx` and `+` in a query value, as `encodeURIComponent` and forms write them.
+fn decode(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'%' => {
+                let hex = std::str::from_utf8(bytes.get(at + 1..at + 3)?).ok()?;
+                out.push(u8::from_str_radix(hex, 16).ok()?);
+                at += 3;
+            }
+            b'+' => {
+                out.push(b' ');
+                at += 1;
+            }
+            byte => {
+                out.push(byte);
+                at += 1;
+            }
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// The page's `?scope=` (docs/sync.md): `{ collection: true | "prefix" | ["prefixes"] }`.
+/// `Ok(None)` when there's none (or it's `null`), `Err` when it isn't one.
+fn scope_of(url: &str) -> Result<Option<Value>, ()> {
+    let Some(raw) = query(url, "scope").filter(|raw| !raw.is_empty()) else {
+        return Ok(None);
+    };
+    let scope: Value = decode(raw)
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .ok_or(())?;
+    if scope.is_null() {
+        return Ok(None);
+    }
+    let prefix = |each: &Value| each.as_str().is_some_and(|text| text.len() <= 200);
+    let ok = scope.as_object().is_some_and(|rules| {
+        rules.len() <= 100
+            && rules.values().all(|rule| {
+                rule == &Value::Bool(true)
+                    || prefix(rule)
+                    || rule
+                        .as_array()
+                        .is_some_and(|list| list.len() <= 50 && list.iter().all(prefix))
+            })
+    });
+    if ok {
+        Ok(Some(scope))
+    } else {
+        Err(())
+    }
+}
+
+/// Whether a document is in a scope (None is everything).
+fn in_scope(scope: &Option<Value>, collection: &str, key: &str) -> bool {
+    let Some(scope) = scope else { return true };
+    match scope.get(collection) {
+        Some(Value::Bool(true)) => true,
+        Some(Value::String(prefix)) => key.starts_with(prefix.as_str()),
+        Some(Value::Array(list)) => list.iter().any(|prefix| {
+            prefix
+                .as_str()
+                .is_some_and(|prefix| key.starts_with(prefix))
+        }),
+        _ => false,
+    }
+}
+
+/// The changes a scope lets through.
+fn scoped(scope: &Option<Value>, changes: &[Value]) -> Vec<Value> {
+    changes
+        .iter()
+        .filter(|change| {
+            in_scope(
+                scope,
+                change["collection"].as_str().unwrap_or_default(),
+                change["key"].as_str().unwrap_or_default(),
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+const BAD_SCOPE: &str = "scope is { collection: true | \"key prefix\" | [\"prefixes\"] }";
+
 fn read_json(request: &mut Request) -> Option<Value> {
     let mut body = String::new();
     request
@@ -247,25 +336,27 @@ fn handle(state: &State, mut request: Request) {
                 }
             };
             let cleaned: Vec<Value> = changes.iter().map(clean_change).collect();
-            broadcast(
-                state,
-                "changes",
-                &json!({ "changes": cleaned, "cursor": cursor }),
-                None,
-            );
+            broadcast_changes(state, &cleaned, cursor);
             respond_json(request, extra, 200, json!({ "ok": true }));
         }
         (Method::Get, "/pull") => {
-            let since = query(&url, "since")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+            let Ok(scope) = scope_of(&url) else {
+                return respond_json(request, extra, 400, json!({ "error": BAD_SCOPE }));
+            };
+            let (since, reset) = start_from(
+                state,
+                query(&url, "since")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
+            );
             match after(state, since) {
-                Ok((changes, cursor)) => respond_json(
-                    request,
-                    extra,
-                    200,
-                    json!({ "changes": changes, "cursor": cursor }),
-                ),
+                Ok((changes, cursor)) => {
+                    let mut body = json!({ "changes": scoped(&scope, &changes), "cursor": cursor });
+                    if reset {
+                        body["reset"] = json!(true);
+                    }
+                    respond_json(request, extra, 200, body)
+                }
                 Err(error) => {
                     eprintln!("zubra-sync: {error}");
                     respond_json(
@@ -310,7 +401,7 @@ fn handle(state: &State, mut request: Request) {
                     }
                 }
             }
-            broadcast(state, "presence", &clean, Some(&peer));
+            broadcast_presence(state, &clean, &peer);
             respond_json(request, extra, 200, json!({ "ok": true }));
         }
         (Method::Post, "/signal") => {
@@ -444,6 +535,24 @@ fn append(state: &State, changes: &[Value]) -> rusqlite::Result<i64> {
     })
 }
 
+/// Where to read from for a device at `since`: from the start, and say so, if it's past the end of
+/// the log (the log was replaced, or the device's cursor is from another one).
+fn start_from(state: &State, since: i64) -> (i64, bool) {
+    let head: i64 = state
+        .db
+        .lock()
+        .expect("db")
+        .query_row("SELECT COALESCE(MAX(seq), 0) FROM changes", [], |row| {
+            row.get(0)
+        })
+        .unwrap_or(0);
+    if since > head {
+        (0, true)
+    } else {
+        (since, false)
+    }
+}
+
 fn after(state: &State, since: i64) -> rusqlite::Result<(Vec<Value>, i64)> {
     let db = state.db.lock().expect("db");
     let mut select = db.prepare_cached(
@@ -477,11 +586,26 @@ fn event(name: &str, data: &Value) -> String {
     format!("event: {name}\ndata: {data}\n\n")
 }
 
-fn broadcast(state: &State, name: &str, data: &Value, except_peer: Option<&str>) {
-    let text = event(name, data);
+/// Changes to every live page, each getting what its scope lets through (an empty batch still
+/// moves its cursor on). A page whose stream is gone is dropped.
+fn broadcast_changes(state: &State, changes: &[Value], cursor: i64) {
     let mut listeners = state.listeners.lock().expect("listeners");
     listeners.retain(|listener| {
-        except_peer == Some(listener.peer.as_str()) || listener.events.send(text.clone()).is_ok()
+        let data = json!({ "changes": scoped(&listener.scope, changes), "cursor": cursor });
+        listener.events.send(event("changes", &data)).is_ok()
+    });
+}
+
+/// Presence to every other live page whose scope has the room's document.
+fn broadcast_presence(state: &State, message: &Value, except_peer: &str) {
+    let room = message["room"].as_str().unwrap_or_default();
+    let (collection, key) = room.split_once('/').unwrap_or((room, ""));
+    let text = event("presence", message);
+    let mut listeners = state.listeners.lock().expect("listeners");
+    listeners.retain(|listener| {
+        listener.peer == except_peer
+            || !in_scope(&listener.scope, collection, key)
+            || listener.events.send(text.clone()).is_ok()
     });
 }
 
@@ -496,6 +620,9 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
     {
         return respond_json(request, extra, 400, json!({ "error": "Bad peer id" }));
     }
+    let Ok(scope) = scope_of(url) else {
+        return respond_json(request, extra, 400, json!({ "error": BAD_SCOPE }));
+    };
     let (events, receiver) = channel();
     let id = {
         let mut next = state.next.lock().expect("next");
@@ -506,12 +633,16 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
         id,
         peer: peer.clone(),
         rooms: HashSet::new(),
+        scope: scope.clone(),
         events: events.clone(),
     });
     let _ = events.send("retry: 1000\n\n".into());
-    let mut since = query(url, "since")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let (mut since, reset) = start_from(
+        state,
+        query(url, "since")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
+    );
     let mut first = true;
     while let Ok((changes, cursor)) = after(state, since) {
         let empty = changes.is_empty();
@@ -520,11 +651,12 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
         if empty && !first {
             break;
         }
+        let mut data = json!({ "changes": scoped(&scope, &changes), "cursor": cursor });
+        if reset && first {
+            data["reset"] = json!(true);
+        }
         first = false;
-        let _ = events.send(event(
-            "changes",
-            &json!({ "changes": changes, "cursor": cursor }),
-        ));
+        let _ = events.send(event("changes", &data));
         if empty || cursor == since {
             break;
         }
@@ -562,11 +694,10 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
     };
     if let Some(listener) = gone {
         for room in listener.rooms {
-            broadcast(
+            broadcast_presence(
                 state,
-                "presence",
                 &json!({ "room": room, "peer": peer, "state": null }),
-                Some(&peer),
+                &peer,
             );
         }
     }
