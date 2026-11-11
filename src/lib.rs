@@ -293,15 +293,25 @@ pub fn server_gaps(
     rendered?;
     let mut found: Vec<(Diagnostic, bool)> = gaps
         .into_iter()
-        .map(|(span, attribute)| {
+        .map(|(span, attribute, child)| {
             let form = attribute.as_deref().is_some_and(|name| {
                 matches!(name.to_ascii_lowercase().as_str(), "checked" | "selected" | "value" | "disabled")
             });
-            let message = match &attribute {
+            let mut message = match &attribute {
                 Some(name) if form => format!("`{name}` is computed in the browser, so the server's HTML leaves it out: without JavaScript, the form shows (and submits) the wrong thing"),
                 Some(name) => format!("`{name}` is computed in the browser, so the server's HTML leaves it out"),
                 None => "this is computed in the browser, so the server's HTML leaves it empty".to_owned(),
             };
+            // A gap inside a child component: reported at its tag here, naming where it is.
+            if let Some(child) = &child {
+                let file = std::path::Path::new(&child.path)
+                    .file_name()
+                    .map_or(child.path.as_str(), |name| name.to_str().unwrap_or_default());
+                message = format!(
+                    "inside <{}> ({file}:{}:{}): {message}",
+                    child.tag, child.span.line, child.span.column
+                );
+            }
             let help = "the server renders literals, props, member access, arithmetic, comparisons, logic, ternaries, template literals, arrow functions from the script and deterministic built-ins; compute the rest before rendering and pass it as a prop";
             (Diagnostic::new(span, message).with_help(help), form)
         })
