@@ -204,3 +204,51 @@ fn the_request_api_resolves_them_the_same_way() {
         .unwrap()
         .contains("<span>hi</span>"));
 }
+
+#[test]
+fn a_nested_form_control_carries_its_value_for_a_form_submitted_before_javascript() {
+    const STEPPER: &str =
+        "<x-step form-associated value:model={1}><output>{value}</output></x-step>\n";
+    let render = |parent: &str, child: &str| {
+        Component::new("/app/form.zb", parent, &[("/app/step.zb", child)])
+            .render(&json!({ "n": 4 }))
+            .unwrap()
+    };
+    let input = r#"<input type="hidden" name="qty" value="2" data-zb-fallback>"#;
+    // Named, with a value known on the server: the host's last child is the stand-in.
+    let html = render(
+        "<script>\n  import './step.zb'\n</script>\n<x-form n={0}><form><x-step name=\"qty\" value={2}></x-step></form></x-form>\n",
+        STEPPER,
+    );
+    assert!(
+        html.contains(&format!("<output>2</output>{input}</x-step>")),
+        "{html}"
+    );
+    // The default is what it renders, so it's what it submits.
+    let html = render(
+        "<script>\n  import './step.zb'\n</script>\n<x-form n={0}><form><x-step name=\"qty\"></x-step></form></x-form>\n",
+        STEPPER,
+    );
+    assert!(
+        html.contains(r#"name="qty" value="1" data-zb-fallback"#),
+        "{html}"
+    );
+    // No name, nothing to submit.
+    let html = render(
+        "<script>\n  import './step.zb'\n</script>\n<x-form n={0}><form><x-step value={2}></x-step></form></x-form>\n",
+        STEPPER,
+    );
+    assert!(!html.contains("data-zb-fallback"), "{html}");
+    // A value only the browser knows: the child renders its default, which mustn't be submitted.
+    let html = render(
+        "<script>\n  import './step.zb'\n  const later = Date.now()\n</script>\n<x-form n={0}><form><x-step name=\"qty\" value={later}></x-step></form></x-form>\n",
+        STEPPER,
+    );
+    assert!(!html.contains("data-zb-fallback"), "{html}");
+    // A control that sets its own form value: only it knows what that is.
+    let html = render(
+        "<script>\n  import './step.zb'\n</script>\n<x-form n={0}><form><x-step name=\"qty\" value={2}></x-step></form></x-form>\n",
+        "<script>\n  import { formValue } from '@zubra/runtime'\n  formValue(() => value * 10)\n</script>\n<x-step form-associated value:model={1}><output>{value}</output></x-step>\n",
+    );
+    assert!(!html.contains("data-zb-fallback"), "{html}");
+}
