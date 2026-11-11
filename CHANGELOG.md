@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Fixed
+
+- **The editor no longer marks every `.zb` file red when it can't find the compiler.** "couldn't run the compiler `zubra` (ENOENT)" was an error at line 1 of each open file, though nothing was wrong with them. Now it's one warning, and the language server looks in more places first: a cargo build in a zubra checkout (`target/debug` or `target/release`, as `@zubra/server` already did), the `@zubra/compiler` nearest the file rather than only the workspace's (an example app with its own `node_modules`), and on Windows the `zubra.cmd` npm installs, which spawning without a shell never ran. A compiler built or installed afterwards is picked up without reloading the window.
+
 ## 5.6.0 — 2026-11-11
 
 Sync and Actions on Cloudflare Workers, and five fixes found by building a real app on Zubra (Tailgate, a farm-to-door marketplace): the Sync server can read and write documents itself; a Durable Object holds it on Workers (`@zubra/sync/durable`), with the log in the object's own SQLite; server functions are built ahead of time for the edge (`zubra-actions build`, `@zubra/actions/edge`); and the standup board runs on a Worker in CI. On the server, an unsafe URL from a value is now left out and reported instead of failing the render, rendered components go inside slots, nested form controls submit before JavaScript, and `hydrated()` is `false`.

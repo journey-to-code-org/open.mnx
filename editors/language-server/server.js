@@ -6,7 +6,9 @@
 // (`--stdio`).
 //
 // initializationOptions: { compiler?: "/path/to/zubra", printWidth?: number } — otherwise
-// @zubra/compiler (WebAssembly) when installed, else `zubra` on PATH. printWidth is the width a
+// @zubra/compiler (WebAssembly) when installed (the nearest above the file), else ZUBRA_COMPILER,
+// a cargo build in a zubra checkout, or `zubra` on PATH. A compiler that can't be run is shown once
+// as a warning, not as an error in every file. printWidth is the width a
 // tag is fitted into when formatting (default 100); indentation comes from the editor.
 import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind, CodeActionKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -31,7 +33,11 @@ const client = { createsFiles: false, appliesEdits: false, actionLiterals: false
 
 connection.onInitialize(async (params) => {
   const folder = params.workspaceFolders?.[0]?.uri ?? params.rootUri;
-  backend = await createBackend({ ...params.initializationOptions, root: folder ? fileURLToPath(folder) : undefined });
+  backend = await createBackend({
+    ...params.initializationOptions,
+    root: folder ? fileURLToPath(folder) : undefined,
+    onUnavailable: (message) => connection.window.showWarningMessage(message),
+  });
   printWidth = Number(params.initializationOptions?.printWidth) || undefined;
   const edits = params.capabilities?.workspace?.workspaceEdit;
   const actions = params.capabilities?.textDocument?.codeAction;
@@ -82,9 +88,13 @@ function componentsOf(uri, text) {
 const timers = new Map();
 function validate(document) {
   clearTimeout(timers.get(document.uri));
-  timers.set(document.uri, setTimeout(() => {
+  timers.set(document.uri, setTimeout(async () => {
     const path = pathOf(document.uri);
-    const text = document.getText();
+    await backend.prepare?.(path);
+    // The newest text, after loading: it may have changed meanwhile, or closed.
+    const current = documents.get(document.uri);
+    if (!current) return;
+    const text = current.getText();
     const diagnostics = backend.check(path, text)
       .filter((diagnostic) => resolve(diagnostic.file) === path || diagnostic.file === path)
       .map((diagnostic) => {

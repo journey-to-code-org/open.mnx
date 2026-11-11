@@ -16,8 +16,12 @@ Language support for [Zubra](https://journey-to-code-org.github.io/zubra/): `.zb
 Diagnostics, completion and formatting use the Zubra compiler. The extension finds it in this order:
 
 1. The `zubra.compiler` setting, a path to the `zubra` command.
-2. `@zubra/compiler` (WebAssembly) installed in your workspace: `npm i -D @zubra/compiler`.
-3. `zubra` on your `PATH`.
+2. `@zubra/compiler` (WebAssembly) installed in your project: `npm i -D @zubra/compiler`. A file in a folder with its own `node_modules` (an app inside the workspace) uses that folder's.
+3. The `ZUBRA_COMPILER` environment variable.
+4. In a checkout of the zubra repository, the CLI `cargo build` made (`target/debug` or `target/release`, the newer).
+5. `zubra` on your `PATH` (on Windows, the `zubra.cmd` npm installs too).
+
+If none of them can be run, the extension says so once, in a warning, and doesn't mark your files. Building or installing one then works without reloading the window.
 
 Highlighting needs none of them.
 
