@@ -60,7 +60,7 @@ test('Fastify', async () => {
   app.get('/page', (request) => JSON.stringify(request.zubraAction?.value ?? null));
   const base = await app.listen({ port: 0 });
   try {
-    await roundTrip(base.replace('127.0.0.1', 'localhost').replace('[::1]', 'localhost'));
+    await roundTrip(base);
   } finally {
     await app.close();
   }
