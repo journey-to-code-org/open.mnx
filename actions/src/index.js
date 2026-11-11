@@ -14,7 +14,8 @@
 // - Anything else (the browser's own post) gets 303 See Other back to the page it came from, with
 //   the return value in a one-use cookie, so the page can render it (`result()`).
 // - A cross-site post is refused (Origin / Sec-Fetch-Site), so forms on other sites can't call it.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createActionsCore, routesFrom, MOUNT, SCRIPT_PATH, COOKIE } from './core.js';
@@ -53,7 +54,11 @@ export async function createActions({
   for (const { path, output } of await serverHalves(root)) {
     const module = join(cacheDir, `${flatName(relative(root, path))}.server.mjs`);
     // The server half lives in the cache folder, so its relative imports point back at the source.
-    writeFileSync(module, rewriteImports(output, (specifier) => pathToFileURL(resolve(dirname(path), specifier)).href));
+    // Written beside it and renamed into place, so another process starting at the same moment
+    // (a second worker, a parallel test) never imports a half-written file and finds no actions.
+    const writing = `${module}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(writing, rewriteImports(output, (specifier) => pathToFileURL(resolve(dirname(path), specifier)).href));
+    renameSync(writing, module);
     maps.push((await import(`${pathToFileURL(module).href}?t=${Date.now()}`)).actions);
   }
   const core = createActionsCore({ routes: routesFrom(...maps), client: CLIENT, origins, onError, context, maxBytes });
