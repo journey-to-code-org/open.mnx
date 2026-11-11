@@ -7,7 +7,18 @@
 //   const sync = createSyncServer();
 //   const response = await sync.fetch(request);   // a Response, or null if not ours
 //
-// `authorize({ request, collection, key, write })` may refuse a change or hide one (return false).
+// `authorize({ request, collection, key, write, kind })` may refuse a change or hide one (return
+// false). `kind` says what's asked: 'read' (a change being sent to this request), 'change' (one
+// it pushed) or 'presence' (joining a document's room, or signaling in it: nothing is stored).
+// `write` is true for the last two.
+//
+// The server can take part too. `await sync.documents()` is every document as the devices see
+// it (last writer wins, per field), kept current; `sync.write(collection, key, fields)` writes as
+// the server, to the log and to every live page:
+//
+//   const docs = await sync.documents();
+//   const left = docs.get('stock', 'eggs')?.qty ?? 0;   // read and write with no await between,
+//   if (left > 0) sync.write('stock', 'eggs', { qty: left - 1 });   // and no request interleaves
 //
 // Live: `GET <mount>/live?since=<cursor>&peer=<id>` is a server-sent event stream: `changes` as
 // they're pushed, and `presence` from the other viewers (POST <mount>/presence). Subscribers are
@@ -33,12 +44,117 @@ export function memoryLog() {
 
 const json = (status, value) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 
+// A clock is `<15-digit ms>-<5-digit counter>-<device>`, so clocks compare as strings.
+const CLOCK = /^(\d{15})-(\d{5})-[\w-]+$/;
+const clock = {
+  format: (time, counter, device) => `${String(time).padStart(15, '0')}-${String(counter).padStart(5, '0')}-${device}`,
+  /** `{ time, counter }`, or null when it isn't a clock. */
+  parse(text) {
+    const match = typeof text === 'string' && CLOCK.exec(text);
+    return match ? { time: Number(match[1]), counter: Number(match[2]) } : null;
+  },
+};
+
 const valid = (change) =>
   change && typeof change.collection === 'string' && typeof change.key === 'string' && typeof change.field === 'string' &&
-  typeof change.clock === 'string' && /^\d{15}-\d{5}-[\w-]+$/.test(change.clock) && change.field !== '$clocks';
+  clock.parse(change.clock) !== null && change.field !== '$clocks';
 
-export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize = () => true, origins = [], heartbeat = 15_000 } = {}) {
+/** The documents a log describes, merged by each field's latest clock, as every device merges them. */
+function documentsOf() {
+  const docs = new Map();
+  const id = (collection, key) => `${collection}\u0000${key}`;
+  return {
+    /** Applies a change if its clock is the field's latest; returns what undoes it, if it did. */
+    apply(change) {
+      let doc = docs.get(id(change.collection, change.key));
+      if (!doc) docs.set(id(change.collection, change.key), (doc = { collection: change.collection, key: change.key, fields: {}, clocks: {} }));
+      const known = doc.clocks[change.field];
+      if (known && known >= change.clock) return null;
+      const had = change.field in doc.fields;
+      const before = doc.fields[change.field];
+      doc.clocks[change.field] = change.clock;
+      doc.fields[change.field] = change.value;
+      return () => {
+        if (doc.clocks[change.field] !== change.clock) return; // something newer came since: it stands
+        if (had) [doc.clocks[change.field], doc.fields[change.field]] = [known, before];
+        else delete doc.clocks[change.field], delete doc.fields[change.field];
+        if (!Object.keys(doc.fields).length) docs.delete(id(change.collection, change.key));
+      };
+    },
+    view: {
+      /** A document's fields (a copy), or undefined when nothing has been written to it. */
+      get(collection, key) {
+        const doc = docs.get(id(collection, key));
+        return doc && { ...doc.fields };
+      },
+      /** Every document in a collection: `[{ key, ...fields }]`. */
+      all(collection) {
+        return [...docs.values()].filter((doc) => doc.collection === collection).map((doc) => ({ key: doc.key, ...doc.fields }));
+      },
+    },
+  };
+}
+
+export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize = () => true, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
+  if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
   const base = mount.replace(/\/$/, '');
+  // Appends, one after another, so the log's order is the order they were made in.
+  let appending = Promise.resolve();
+  // The server's clock: later than any clock it has seen, so its writes win over what came
+  // before them (and lose to what devices write after, as any device's would).
+  let lastTime = 0;
+  let counter = 0;
+  const tick = () => {
+    const now = Math.max(Date.now(), lastTime);
+    counter = now === lastTime ? counter + 1 : 0;
+    lastTime = now;
+    return clock.format(now, counter, device);
+  };
+  const see = (change) => {
+    const { time, counter: seen } = clock.parse(change.clock);
+    if (time > lastTime) {
+      lastTime = time;
+      counter = seen;
+    } else if (time === lastTime) {
+      counter = Math.max(counter, seen);
+    }
+  };
+  // The documents, built from the log the first time they're asked for, then kept current.
+  // While they're being built, what's recorded goes into the view being built too (applying a
+  // change twice changes nothing), so nothing that arrives during the read is missed.
+  let docs = null;
+  let built = null;
+  let building = null;
+  /** Puts changes in the documents; returns what takes them back out (for a write the log refused). */
+  const record = (changes) => {
+    const undo = [];
+    for (const change of changes) {
+      see(change);
+      const taken = (docs ?? built)?.apply(change);
+      if (taken) undo.push(taken);
+    }
+    return () => undo.reverse().forEach((take) => take());
+  };
+  async function documents() {
+    if (docs) return docs.view;
+    building ??= (async () => {
+      built = documentsOf();
+      for (let cursor = 0; ; ) {
+        const page = await log.after(cursor, 5000);
+        for (const change of page.changes) {
+          see(change);
+          built.apply(change);
+        }
+        if (!page.changes.length || String(page.cursor) === String(cursor)) break;
+        cursor = page.cursor;
+      }
+      docs = built;
+      return built.view;
+    })();
+    return building;
+  }
+  // One that fails rejects for its own caller only; the next still runs.
+  const append = (changes) => (appending = appending.catch(() => {}).then(() => log.append(changes)));
   // Live subscribers: { peer, request, send(event, data), rooms }.
   const listeners = new Set();
   const encoder = new TextEncoder();
@@ -50,7 +166,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     for (const listener of listeners) {
       const visible = [];
       for (const change of changes) {
-        if (await authorize({ request: listener.request, collection: change.collection, key: change.key, write: false })) visible.push(change);
+        if (await authorize({ request: listener.request, collection: change.collection, key: change.key, write: false, kind: 'read' })) visible.push(change);
       }
       listener.send('changes', { changes: visible, cursor });
     }
@@ -59,7 +175,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     const { collection, key } = roomOf(message.room);
     for (const listener of listeners) {
       if (listener.peer === message.peer) continue;
-      if (await authorize({ request: listener.request, collection, key, write: false })) listener.send('presence', message);
+      if (await authorize({ request: listener.request, collection, key, write: false, kind: 'read' })) listener.send('presence', message);
     }
   }
   const sameOrigin = (request) => {
@@ -82,10 +198,11 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       const changes = Array.isArray(body?.changes) ? body.changes : null;
       if (!changes || !changes.every(valid)) return json(400, { error: 'Expected { changes: [{ collection, key, field, value, clock }] }' });
       for (const change of changes) {
-        if (!(await authorize({ request, collection: change.collection, key: change.key, write: true }))) return json(403, { error: 'Not yours to change' });
+        if (!(await authorize({ request, collection: change.collection, key: change.key, write: true, kind: 'change' }))) return json(403, { error: 'Not yours to change' });
       }
       const appended = changes.map(({ collection, key, field, value, clock }) => ({ collection, key, field, value, clock }));
-      const cursor = await log.append(appended);
+      const cursor = await append(appended);
+      record(appended); // once it's logged: the documents never hold what the log doesn't
       await broadcastChanges(appended, cursor);
       return json(200, { ok: true });
     }
@@ -103,7 +220,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!room || !okPeer || !okState || JSON.stringify(message.state).length > 4096) {
         return json(400, { error: 'Expected { room: "<collection>/<key>", peer, state: {…} | null }' });
       }
-      if (!(await authorize({ request, ...room, write: true }))) return json(403, { error: 'Not yours to join' });
+      if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
       const clean = { room: message.room, peer: message.peer, state: message.state };
       for (const listener of listeners) if (listener.peer === clean.peer) {
         if (clean.state === null) listener.rooms.delete(clean.room);
@@ -128,7 +245,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!room || !peerOk(message.from) || !peerOk(message.to) || !dataOk) {
         return json(400, { error: 'Expected { room, from, to, data: {…} }' });
       }
-      if (!(await authorize({ request, ...room, write: true }))) return json(403, { error: 'Not yours to join' });
+      if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
       const clean = { room: message.room, from: message.from, to: message.to, data: message.data };
       for (const listener of listeners) if (listener.peer === clean.to) listener.send('signal', clean);
       return json(200, { ok: true });
@@ -170,7 +287,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
             if (!backlog.changes.length && !first) break;
             const visible = [];
             for (const change of backlog.changes) {
-              if (await authorize({ request, collection: change.collection, key: change.key, write: false })) visible.push(change);
+              if (await authorize({ request, collection: change.collection, key: change.key, write: false, kind: 'read' })) visible.push(change);
             }
             listener.send('changes', { changes: visible, cursor: backlog.cursor });
             if (!backlog.changes.length || String(backlog.cursor) === String(from)) break;
@@ -189,7 +306,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       const { changes, cursor } = await log.after(url.searchParams.get('since') ?? '0');
       const visible = [];
       for (const change of changes) {
-        if (await authorize({ request, collection: change.collection, key: change.key, write: false })) visible.push(change);
+        if (await authorize({ request, collection: change.collection, key: change.key, write: false, kind: 'read' })) visible.push(change);
       }
       return json(200, { changes: visible, cursor });
     }
@@ -228,5 +345,36 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
     return true;
   }
 
-  return { fetch, handle };
+  /**
+   * Write `fields` to a document as the server: to the documents view at once (so a check
+   * before it, with no await between, can't be interleaved), then to the log and every live
+   * page. Resolves to the changes written.
+   */
+  async function write(collection, key, fields) {
+    if (typeof collection !== 'string' || typeof key !== 'string' || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
+      throw new TypeError('sync.write(collection, key, { field: value, … })');
+    }
+    if ('$clocks' in fields) throw new TypeError('sync.write: `$clocks` is not a field');
+    // A server that hasn't read its log yet (it just started, or a Durable Object was evicted)
+    // hasn't seen the clocks in it: read it first, so this write comes after all of them. Once
+    // the documents exist this doesn't wait, so a check and a write with no await between stay
+    // one step.
+    if (!docs) await documents();
+    const changes = Object.entries(fields).map(([field, value]) => ({ collection, key, field, value, clock: tick() }));
+    if (!changes.length) return [];
+    // In the documents at once, so a check before this call and the write are one step; taken
+    // back out if the log refuses it.
+    const undo = record(changes);
+    let cursor;
+    try {
+      cursor = await append(changes);
+    } catch (error) {
+      undo();
+      throw error;
+    }
+    await broadcastChanges(changes, cursor);
+    return changes;
+  }
+
+  return { fetch, handle, documents, write };
 }

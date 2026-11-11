@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSyncServer } from '../src/server.js';
+import { createSyncServer, memoryLog } from '../src/server.js';
 import { backends } from './backends.js';
 
 const change = (field, value, clock = '000000000000001-00000-dev1') => ({ collection: 'tasks', key: 't1', field, value, clock });
@@ -135,4 +135,167 @@ test(`${backend.name}: presence: malformed messages are refused`, async () => {
 test('presence: rooms you may not join are refused (authorize)', async () => {
   const sync = createSyncServer({ authorize: ({ key }) => key !== 'private' });
   assert.equal((await say(sync, { room: 'boards/private', peer: 'p1', state: {} })).status, 403);
+});
+
+// ---- the server taking part: authorize's kind, documents(), write() ------------------------
+
+test('authorize() is told what kind of request it is, at every place it is asked', { timeout: 5000 }, async () => {
+  let seen = [];
+  const sync = createSyncServer({
+    authorize: ({ kind, write, collection }) => {
+      seen.push(`${kind}:${write}`);
+      // Orders are the server's to write, but anyone may be in an order's room.
+      return !(collection === 'orders' && kind === 'change');
+    },
+  });
+  const step = async (what) => {
+    seen = [];
+    await what();
+    return seen;
+  };
+  // A refused push: asked once, as a change.
+  assert.deepEqual(await step(async () => assert.equal((await push(sync, [{ ...change('status', 'delivered'), collection: 'orders' }])).status, 403)), ['change:true']);
+  // An accepted push with nobody listening: a change, and no reads.
+  assert.deepEqual(await step(() => push(sync, [change('title', 'x')])), ['change:true']);
+  // A live page's backlog: each change it would be sent is a read.
+  let stream;
+  assert.deepEqual(await step(async () => { stream = events(await live(sync, 'p1')); await stream.next(); }), ['read:false']);
+  // A push with that page listening: the change, then a read for the page it's sent to.
+  assert.deepEqual(await step(async () => { await push(sync, [change('title', 'y', '000000000000002-00000-dev1')]); await stream.next(); }), ['change:true', 'read:false']);
+  // Joining a room: presence, then a read for the other page it's shown to.
+  assert.deepEqual(await step(async () => { assert.equal((await say(sync, { room: 'orders/o1', peer: 'p2', state: { looking: 'driver' } })).status, 200); await stream.next(); }), ['presence:true', 'read:false']);
+  // A pull: a read per change.
+  assert.deepEqual(await step(() => pull(sync)), ['read:false', 'read:false']);
+  await stream.return();
+});
+
+test('documents(): every document as the devices merge it, from the log and kept current', async () => {
+  const sync = createSyncServer();
+  await push(sync, [change('title', 'first'), change('done', false)]);
+  await push(sync, [change('title', 'stale', '000000000000000-00000-old')]); // earlier clock: loses
+  const docs = await sync.documents();
+  assert.deepEqual(docs.get('tasks', 't1'), { title: 'first', done: false });
+  await push(sync, [change('done', true, '000000000000009-00000-dev2')]);
+  assert.deepEqual(docs.get('tasks', 't1'), { title: 'first', done: true }, 'kept current');
+  assert.deepEqual(docs.all('tasks'), [{ key: 't1', title: 'first', done: true }]);
+  assert.equal(docs.get('tasks', 'nope'), undefined);
+  // A copy: changing what it returns changes nothing.
+  docs.get('tasks', 't1').title = 'mutated';
+  assert.equal(docs.get('tasks', 't1').title, 'first');
+});
+
+test('write(): the server writes to the log and to every live page, and wins over what came before', { timeout: 5000 }, async () => {
+  const sync = createSyncServer();
+  // A device whose clock runs ahead: the server's next write still comes after it.
+  await push(sync, [{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
+  const stream = events(await live(sync, 'p1'));
+  await stream.next(); // the backlog
+  const written = await sync.write('orders', 'o1', { status: 'claimed', driver: 'jules' });
+  assert.equal(written.length, 2);
+  assert.ok(written.every((c) => c.clock > '999999999999999-00003-fast' && c.clock.endsWith('-server')), written[0].clock);
+  const next = (await stream.next()).value;
+  assert.equal(next.event, 'changes');
+  assert.deepEqual(next.data.changes.map((c) => [c.field, c.value]), [['status', 'claimed'], ['driver', 'jules']]);
+  assert.deepEqual((await sync.documents()).get('orders', 'o1'), { status: 'claimed', driver: 'jules' });
+  assert.deepEqual((await pull(sync)).changes.map((c) => c.value), ['placed', 'claimed', 'jules']);
+  await stream.return();
+  await assert.rejects(() => sync.write('orders', 'o1', { $clocks: {} }), /not a field/);
+  await assert.rejects(() => sync.write('orders', 'o1', null), /sync\.write/);
+});
+
+test('documents() and write(): a check and a write with no await between can\'t be interleaved', async () => {
+  const sync = createSyncServer();
+  await sync.write('stock', 'squash', { qty: 1 });
+  const docs = await sync.documents();
+  // Two requests for the last one, at once: each checks, then writes.
+  const order = async () => {
+    await Promise.resolve(); // whatever came before (parsing the request, …)
+    const left = docs.get('stock', 'squash')?.qty ?? 0;
+    if (left < 1) return 'sold out';
+    const done = sync.write('stock', 'squash', { qty: left - 1 });
+    await done;
+    return 'ordered';
+  };
+  assert.deepEqual((await Promise.all([order(), order()])).sort(), ['ordered', 'sold out']);
+  assert.equal(docs.get('stock', 'squash').qty, 0);
+});
+
+test('documents() is built from a log that already has changes, once, however many ask', async () => {
+  const sync = createSyncServer();
+  for (let i = 0; i < 7; i++) await push(sync, [change('n', i, `00000000000001${i}-00000-dev1`)]);
+  const [a, b] = await Promise.all([sync.documents(), sync.documents()]);
+  assert.equal(a, b);
+  assert.equal(a.get('tasks', 't1').n, 6);
+});
+
+test('the server\'s device name is checked', () => {
+  assert.throws(() => createSyncServer({ device: 'has space' }), /device/);
+});
+
+test('a change that comes in while documents() is first reading the log is in them', async () => {
+  // A log whose reads and appends finish when the test says: each read sees the log as it was
+  // when it was asked, so a push can land between the build's last read and its end.
+  const log = memoryLog();
+  const held = [];
+  const hold = () => new Promise((release) => held.push(release));
+  const gated = {
+    async append(changes) { await hold(); return log.append(changes); },
+    async after(...args) { const page = await log.after(...args); await hold(); return page; },
+  };
+  const waitFor = async (n) => { while (held.length < n) await new Promise((r) => setTimeout(r, 1)); };
+  await log.append([change('title', 'before')]);
+  const sync = createSyncServer({ log: gated });
+  const building = sync.documents();
+  await waitFor(1);
+  held.shift()(); // the build's first page: 'before'
+  await waitFor(1); // its second read is taken (nothing new yet) and held
+  const pushed = push(sync, [{ ...change('title', 'pushed', '000000000000005-00000-dev1'), key: 't2' }]);
+  await waitFor(2);
+  held.splice(1, 1)[0](); // the push is logged and recorded while the build still holds its last read…
+  assert.equal((await pushed).status, 200);
+  held.shift()(); // …which then comes back with nothing new, and the build ends
+  const docs = await building;
+  assert.deepEqual(docs.get('tasks', 't1'), { title: 'before' });
+  assert.deepEqual(docs.get('tasks', 't2'), { title: 'pushed' }, 'the push that landed during the build');
+});
+
+test("a server that starts on a log writes after every clock in it, without documents() first", async () => {
+  const log = memoryLog();
+  await log.append([{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
+  // A restart (or an evicted Durable Object): a new server on the same log.
+  const sync = createSyncServer({ log });
+  const [written] = await sync.write('orders', 'o1', { status: 'claimed' });
+  assert.ok(written.clock > '999999999999999-00003-fast', written.clock);
+  assert.deepEqual((await sync.documents()).get('orders', 'o1'), { status: 'claimed' });
+});
+
+test('one append that fails fails only its own push; the next ones are logged', async () => {
+  const log = memoryLog();
+  let fail = true;
+  const flaky = { append: async (changes) => { if (fail) { fail = false; throw new Error('disk full'); } return log.append(changes); }, after: (...args) => log.after(...args) };
+  const sync = createSyncServer({ log: flaky });
+  await assert.rejects(push(sync, [change('title', 'lost')]), /disk full/);
+  assert.equal((await push(sync, [change('title', 'kept', '000000000000002-00000-dev1')])).status, 200);
+  await sync.write('tasks', 't9', { title: 'also kept' });
+  assert.deepEqual((await pull(sync)).changes.map((c) => c.value), ['kept', 'also kept']);
+});
+
+test("what the log refuses isn't in the documents: a failed push, and a failed write taken back", async () => {
+  const log = memoryLog();
+  let fail = 0;
+  const flaky = { append: async (changes) => { if (fail) { fail--; throw new Error('disk full'); } return log.append(changes); }, after: (...args) => log.after(...args) };
+  const sync = createSyncServer({ log: flaky });
+  await sync.write('stock', 'eggs', { qty: 3, price: 450 });
+  const docs = await sync.documents();
+  fail = 1;
+  await assert.rejects(push(sync, [{ ...change('qty', 99, '999999999999990-00000-dev1'), collection: 'stock', key: 'eggs' }]), /disk full/);
+  assert.equal(docs.get('stock', 'eggs').qty, 3, 'a push the log refused');
+  fail = 1;
+  await assert.rejects(sync.write('stock', 'eggs', { qty: 2 }), /disk full/);
+  assert.deepEqual(docs.get('stock', 'eggs'), { qty: 3, price: 450 }, 'a write the log refused, taken back');
+  fail = 1;
+  await assert.rejects(sync.write('stock', 'beans', { qty: 1 }));
+  assert.equal(docs.get('stock', 'beans'), undefined, 'a new document taken back entirely');
+  await sync.write('stock', 'eggs', { qty: 2 });
+  assert.equal(docs.get('stock', 'eggs').qty, 2);
 });
