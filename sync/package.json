@@ -21,6 +21,10 @@
     "./sqlite": {
       "types": "./src/sqlite.d.ts",
       "default": "./src/sqlite.js"
+    },
+    "./durable": {
+      "types": "./src/durable.d.ts",
+      "default": "./src/durable.js"
     }
   },
   "scripts": {
