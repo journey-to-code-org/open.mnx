@@ -37,6 +37,8 @@ export interface EdgeOptions {
   devtools?: boolean;
   /** More import map entries; use it to point `@zubra/runtime` at a CDN, or at your static assets. */
   imports?: Record<string, string>;
+  /** Told when a render leaves out an attribute whose value isn't a safe URL (default `console.warn`). */
+  warn?: (message: string) => void;
 }
 
 export declare function createZubra(options: EdgeOptions): EdgeZubra;

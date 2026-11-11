@@ -19,7 +19,7 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null }) {
+export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message) }) {
   const memo = new Map();
   const once = (key, make) => {
     if (!cache || !memo.has(key)) memo.set(key, make());
@@ -42,8 +42,15 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
   const byTag = () => once('tags', () => new Map([...files.keys()].map((name) => [describe(name).tag, name])));
   const nameOf = (nameOrTag) => (files.has(nameOrTag) ? nameOrTag : byTag().get(nameOrTag));
 
-  const render = (name, props = {}, slots = {}, pending = []) =>
-    call(pathOf(name), { emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
+  const render = (name, props = {}, slots = {}, pending = []) => {
+    const path = pathOf(name);
+    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
+    if (!response.ok) throw new Error(response.error);
+    // A value that isn't a safe URL (a user's `javascript:` link) is left out, as the element
+    // leaves it out in the browser; the page still renders, and this says what was dropped.
+    for (const message of response.omitted ?? []) warn(`@zubra/server: <${name}>: ${message}`);
+    return response.output;
+  };
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
   const js = (name) => once(`js:${name}`, () => {
     const path = pathOf(name);

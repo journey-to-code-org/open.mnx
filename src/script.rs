@@ -349,6 +349,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         body.replace_range(range.clone(), &blank);
     }
     script.body = body;
+    script.hydrated = hydrated_names.clone();
     // `hydrated()` is false until the element starts, so on the server it's `false`.
     for (index, text) in calls.clone() {
         let call = text.split_whitespace().collect::<String>();
