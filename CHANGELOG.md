@@ -6,7 +6,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
-- **An unsafe URL from a value no longer fails the server render.** A computed `href`, `src` or `srcset` that isn't safe (a user's `javascript:` link, a `data:` image) is left out of the HTML, as the element leaves it out in the browser, where it's also reported. Before, `@zubra/server` threw, so one bad value took the whole page down. Unsafe literal URLs are still compile errors. Found by Tailgate, where a farmer's uploaded logo returned a 500 for the market page.
+- **An unsafe URL from a value no longer fails the server render.** A computed `href`, `src` or `srcset` that isn't safe (a user's `javascript:` link, a `data:` image) is left out of the HTML, as the element leaves it out in the browser, and both say so: the browser in the console, `@zubra/server` through a new `warn` option (`console.warn` by default), naming the attribute and the start of the value. Before, `@zubra/server` threw, so one bad value took the whole page down. Unsafe literal URLs are still compile errors. Found by Tailgate, where a farmer's uploaded logo returned a 500 for the market page.
 
 ## 5.5.0 — 2026-11-10
 

@@ -111,6 +111,33 @@ fn partial() -> bool {
     PARTIAL.with(std::cell::Cell::get)
 }
 
+thread_local! {
+    /// URLs and srcsets from values that a render left out because they weren't safe, said in a
+    /// sentence each, for the server to warn about (`take_omitted`).
+    static OMITTED: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Note an attribute left out of the HTML because its value wasn't a safe URL. Only the start of
+/// the value is kept (enough to recognise `data:` or `javascript:`): it may be a user's.
+fn omit_unsafe(attribute: &str, value: &str) {
+    let start: String = value.trim_start().chars().take(24).collect();
+    let more = if value.trim_start().chars().count() > 24 {
+        "…"
+    } else {
+        ""
+    };
+    OMITTED.with(|omitted| {
+        omitted.borrow_mut().push(format!(
+            "left `{attribute}` out of the HTML: its value isn't a safe URL (`{start}{more}`)"
+        ));
+    });
+}
+
+/// What renders since the last call left out (see `omit_unsafe`), emptying the list.
+pub fn take_omitted() -> Vec<String> {
+    OMITTED.with(|omitted| std::mem::take(&mut *omitted.borrow_mut()))
+}
+
 /// A place partial rendering left for the browser, and, for an attribute, which one.
 pub type Gap = (Span, Option<String>);
 
@@ -1951,6 +1978,7 @@ impl Context<'_> {
                         is_safe_url(text)
                     };
                     if !safe {
+                        omit_unsafe(&name, text);
                         continue;
                     }
                 }
@@ -1998,11 +2026,16 @@ impl Context<'_> {
                 // element leaves it out (and says so in the console) when it starts. Values can
                 // come from a page's users; one of them must not be able to fail the render.
                 if is_url && dynamic && !is_safe_url(&joined(&lowered)) {
+                    omit_unsafe(&attribute.name, &joined(&lowered));
                     return Ok(None);
                 }
                 if is_srcset && dynamic {
                     let text = joined(&lowered);
-                    if text.trim().is_empty() || !is_safe_srcset(&text) {
+                    if text.trim().is_empty() {
+                        return Ok(None);
+                    }
+                    if !is_safe_srcset(&text) {
+                        omit_unsafe(&attribute.name, &text);
                         return Ok(None);
                     }
                 }
@@ -2040,10 +2073,15 @@ impl Context<'_> {
                 };
                 // An unsafe value is left out, as the browser leaves it out (see above).
                 if is_url && !is_safe_url(&text) {
+                    omit_unsafe(&attribute.name, &text);
                     return Ok(None);
                 }
-                // No candidates yet (a prop's "" default), or an unsafe one: no attribute.
-                if is_srcset && (text.trim().is_empty() || !is_safe_srcset(&text)) {
+                // No candidates yet (a prop's "" default): no attribute. An unsafe one: left out.
+                if is_srcset && text.trim().is_empty() {
+                    return Ok(None);
+                }
+                if is_srcset && !is_safe_srcset(&text) {
+                    omit_unsafe(&attribute.name, &text);
                     return Ok(None);
                 }
                 Some(vec![Part::Escaped(text)])
