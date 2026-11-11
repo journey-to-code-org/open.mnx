@@ -45,6 +45,11 @@
       "production": "./dist/production/motion.js",
       "default": "./src/motion.js"
     },
+    "./forms": {
+      "types": "./types/forms.d.ts",
+      "production": "./dist/production/forms.js",
+      "default": "./src/forms.js"
+    },
     "./react": {
       "types": "./types/react.d.ts",
       "production": "./dist/production/react.js",
@@ -106,6 +111,8 @@
     "@angular/forms": "22.2.5",
     "@angular/platform-browser": "22.2.5",
     "@babel/core": "8.1.0",
+    "@felte/vanilla": "0.3.14",
+    "@tanstack/react-form": "1.33.5",
     "@types/react": "19.3.0",
     "@zag-js/combobox": "1.47.0",
     "@zag-js/vanilla": "1.47.0",
@@ -116,10 +123,12 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-dom18": "npm:react-dom@18.3.1",
+    "react-hook-form": "7.92.0",
     "react18": "npm:react@18.3.1",
     "rxjs": "7.8.2",
     "signal-polyfill": "0.2.2",
     "typescript": "^7.0.2",
+    "vee-validate": "4.15.1",
     "vscode-html-languageservice": "5.6.2",
     "vscode-languageserver-textdocument": "1.0.16",
     "vue": "3.5.45"

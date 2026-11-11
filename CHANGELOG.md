@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Form libraries: a Zubra control as a field.** `@zubra/runtime/forms` turns what a form library hands you for a field into a control's props: React Hook Form (`registerProps(register('seats'))`, and `fieldProps(field)` in a `<Controller>`), TanStack Form (`fieldProps(field)`), VeeValidate (`vueFieldProps(useField('seats'))`, or a `<Field>` slot's `field`) and Felte (`felteControl`, a Svelte action that keeps Felte's hidden input in step, numbers as numbers). Changes are reported through the control's model pair (`{ prop }` for one that isn't `value`), focus leaving the control is a blur, and the library's `reset()` reaches the control. Nothing imports a library. A browser test runs each library against the same stepper: change, blur, validation, submit and reset. Angular forms keep `zubraModel`.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

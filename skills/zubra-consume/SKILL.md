@@ -29,6 +29,20 @@ Every framework uses the element the same way underneath: **properties in, DOM e
 
 A library from `zubra build --lib` has the same per element: `@acme/ui/star-rating` (the element), `@acme/ui/react` and `@acme/ui/vue` (wrappers), typings, and `custom-elements.json` for editors and Storybook.
 
+## Form libraries
+
+A `form-associated` control already submits with a native form. For a form library, `@zubra/runtime/forms` turns the library's field into the control's props, through its `value` + `valuechange` pair (`{ prop: 'open' }` for another pair):
+
+| Library | Use |
+|---|---|
+| React Hook Form | `<Seats {...registerProps(register('seats'))} />`, or `<Controller render={({ field }) => <Seats {...fieldProps(field)} />} />` |
+| TanStack Form | `<form.Field name="seats">{(field) => <Seats {...fieldProps(field)} />}</form.Field>` |
+| VeeValidate | `<Seats v-bind="vueFieldProps(useField('seats'))" />`, or `v-bind="vueFieldProps(field)"` in a `<Field v-slot="{ field }">` |
+| Felte | `<zb-seats use:felteControl={createField('seats')}>` (or `felteControl(element, createField('seats'))`) |
+| Angular forms | `zubraModel` from `@zubra/runtime/angular` (see the table above) |
+
+Each reports changes, focus leaving the control as a blur (for touched state and on-blur validation), and writes the library's `reset()` back into the control.
+
 ## What crosses, and what doesn't
 
 Props, events, two-way binding, slots, form participation, refs to the host and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
