@@ -1,21 +1,19 @@
 // The Worker's side of a SyncObject: forward sync requests to it, read its documents, write as
 // the server. Plain JavaScript (the namespace is a binding the Worker is given), so it runs on
 // Node in tests too.
-import { MOUNT } from './durable-core.js';
+import { MOUNT, documentsView } from './server.js';
 
 /** A snapshot (`{ collection: [{ key, ...fields }] }`) read like `sync.documents()`. */
 export function viewOf(snapshot) {
-  const find = (collection, key) => (snapshot[collection] ?? []).find((doc) => doc.key === key);
-  return {
-    get(collection, key) {
-      const doc = find(collection, key);
-      if (!doc) return undefined;
-      const { key: _, ...fields } = doc;
-      return structuredClone(fields);
+  const split = ({ key, ...fields }) => ({ key, fields });
+  return documentsView({
+    find: (collection, key) => {
+      const doc = (snapshot[collection] ?? []).find((each) => each.key === key);
+      return doc && split(doc).fields;
     },
-    all: (collection) => structuredClone(snapshot[collection] ?? []),
-    collections: () => Object.keys(snapshot),
-  };
+    list: (collection) => (snapshot[collection] ?? []).map(split),
+    names: () => Object.keys(snapshot),
+  });
 }
 
 /**

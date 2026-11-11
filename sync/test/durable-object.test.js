@@ -1,53 +1,10 @@
-// A SyncObject and the Worker's stub, on Node: the object is durable-core.js's (what SyncObject
-// wraps), on a stand-in storage; the namespace hands out one object per name and copies every
-// argument and result, as RPC does. The edge example runs the real thing in workerd.
+// A SyncObject and the Worker's stub, on Node (durable-harness.js): what the stub adds. What
+// documents() and write() promise, through the stub too, is documents-contract.js. The edge
+// example runs the real thing in workerd.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncObject } from '../src/durable-core.js';
 import { syncStub, viewOf } from '../src/durable-stub.js';
-import { durableStorage } from './durable-storage.js';
-
-/** An object like a SyncObject subclass: the core, plus the app's own methods. */
-class Market {
-  constructor(ctx, env, options) {
-    this.env = env;
-    this.sync = syncObject(ctx, this, options);
-  }
-  fetch(request) { return this.sync.fetch(request); }
-  documents() { return this.sync.documents(); }
-  write(...args) { return this.sync.write(...args); }
-  snapshot(collections) { return this.sync.snapshot(collections); }
-  authorize({ request, collection, kind }) {
-    if (kind === 'read') return true;
-    return collection !== 'stock' || request.headers.get('cookie') === `farmer=${this.env.FARMER}`;
-  }
-  async take(key, qty) {
-    const left = (await this.documents()).get('stock', key)?.qty ?? 0;
-    if (left < qty) return { error: 'Sold out' };
-    await this.write('stock', key, { qty: left - qty });
-    return { ok: true };
-  }
-}
-
-/** A Durable Object namespace: one object per name, arguments and results copied as RPC copies them. */
-function namespace(env = { FARMER: 'ada' }, options) {
-  const objects = new Map();
-  const rpc = (target) => new Proxy(target, {
-    get(object, name) {
-      if (name === 'fetch') return (request) => object.fetch(request);
-      const method = object[name];
-      if (typeof method !== 'function') return undefined;
-      return async (...args) => structuredClone(await method.apply(object, structuredClone(args)));
-    },
-  });
-  return {
-    idFromName: (name) => `id:${name}`,
-    get(id) {
-      if (!objects.has(id)) objects.set(id, rpc(new Market({ storage: durableStorage() }, env, options)));
-      return objects.get(id);
-    },
-  };
-}
+import { namespace } from './durable-harness.js';
 
 const json = (body, headers = {}) => ({ method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', ...headers } });
 const change = (key, field, value, clock) => ({ collection: 'stock', key, field, value, clock });

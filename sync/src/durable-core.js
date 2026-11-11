@@ -1,10 +1,10 @@
 // What a SyncObject is, without Workers' modules: a sync server on the object's storage, its
 // `authorize` asked of the object, and a snapshot of the documents for the Worker to render from.
 // durable.js wraps this in a DurableObject; tests run it on Node against a stand-in storage.
-import { createSyncServer } from './server.js';
+import { createSyncServer, MOUNT } from './server.js';
 import { durableObjectLog } from './durable-log.js';
 
-export const MOUNT = '/_zb/sync';
+export { MOUNT };
 
 /**
  * `owner` is the object: its `authorize(…)`, if it has one, decides as `createSyncServer`'s does.
