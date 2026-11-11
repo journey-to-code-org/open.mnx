@@ -11,7 +11,8 @@ test("every log contract case passes on a Durable Object's SQLite", { timeout: 1
   const worker = await startWorker(dir, ['--config', join(dir, 'wrangler.jsonc')]);
   try {
     const results = await (await fetch(worker.url)).json();
-    assert.ok(results.length >= 8, `ran ${results.length} cases`);
+    assert.ok(results.length >= 20, `ran ${results.length} cases`);
+    assert.ok(results.some((r) => r.name.startsWith('latest: ')), 'both modes');
     assert.deepEqual(results.filter((r) => !r.ok), []);
   } finally {
     await worker.stop();

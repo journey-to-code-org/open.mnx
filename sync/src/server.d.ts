@@ -10,9 +10,15 @@ export interface Change {
 export interface Log {
   append(changes: Change[]): Promise<unknown>;
   after(cursor: string, limit?: number): Promise<{ changes: Change[]; cursor: number | string }>;
+  /**
+   * The cursor after the last change. Optional: with it, a device whose cursor is past the end
+   * (the log was replaced) is answered from the start, with `reset: true`.
+   */
+  head?(): Promise<number>;
 }
 
-export function memoryLog(): Log;
+/** A log in memory. `keep: 'latest'` keeps each field's latest value only. */
+export function memoryLog(options?: { keep?: 'all' | 'latest' }): Log;
 
 export interface Documents {
   /** A document's fields (a copy), or undefined when nothing has been written to it. */
@@ -22,6 +28,14 @@ export interface Documents {
   /** The collections that have documents, in the order they were first written to. */
   collections(): string[];
 }
+
+/** Per collection, `true` (every document) or a key prefix, or a list of them. */
+export type Scope = Record<string, true | string | string[]>;
+
+/** A scope from a request's `?scope=` (JSON), or null for everything. Throws on anything else. */
+export function parseScope(text: string | null | undefined): Scope | null;
+/** Whether a document is in a scope (null is everything). */
+export function inScope(scope: Scope | null, collection: string, key: string): boolean;
 
 export function createSyncServer(options?: {
   log?: Log;
@@ -34,6 +48,12 @@ export function createSyncServer(options?: {
    */
   authorize?: (from: { request: Request; collection: string; key: string; write: boolean; kind: 'change' | 'presence' | 'read' }) => boolean | Promise<boolean>;
   /** Other origins allowed to push. */
+  /**
+   * The scope a request may see and write (tenancy: a business's keys under its own prefix), or
+   * null for everything. A page's own `scope` can only narrow it; pushes and joins outside it are
+   * refused.
+   */
+  scope?: (from: { request: Request }) => Scope | null | Promise<Scope | null>;
   origins?: string[];
   /** How often the live stream sends a keep-alive comment (ms, default 15000). */
   heartbeat?: number;

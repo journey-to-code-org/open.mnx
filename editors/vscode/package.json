@@ -2,7 +2,7 @@
   "name": "zubra",
   "displayName": "Zubra",
   "description": "Language support for Zubra Web Components: syntax highlighting, diagnostics, completion, hover, go to definition and formatting",
-  "version": "5.6.0",
+  "version": "5.7.0",
   "publisher": "JourneytoCode",
   "license": "ISC",
   "repository": {
@@ -56,7 +56,7 @@
         "zubra.compiler": {
           "type": "string",
           "default": "",
-          "description": "Path to the Zubra CLI. Empty: use @zubra/compiler (WebAssembly) if installed in the workspace, else `zubra` on PATH."
+          "description": "Path to the Zubra CLI. Empty: use @zubra/compiler (WebAssembly) if installed in the project, else ZUBRA_COMPILER, a cargo build in a zubra checkout, or `zubra` on PATH."
         },
         "zubra.format.printWidth": {
           "type": "number",

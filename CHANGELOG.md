@@ -4,6 +4,22 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 5.7.0 — 2026-11-11
+
+Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.
+
+### Added
+
+- **Sync: a page asks only for what it shows.** `connect({ scope: { seats: 'showing-12/', brands: true } })`: per collection, `true` or a key prefix (or a list of them). Pull, the live stream and presence send nothing outside it, so a page's store holds only its own documents, and each scope keeps its own cursor. `createSyncServer({ scope({ request }) })` imposes one from the server, which a page's can only narrow, and refuses pushes and presence outside it: tenancy by key prefix on one log. The `zubra-sync` binary honours a page's scope. Found by CineStack, where every guest's phone received every seat in every showing.
+- **Sync: a log that keeps each field's latest value.** `sqliteLog(path, { keep: 'latest' })`, and the same option on `memoryLog` and `durableObjectLog`: a newer clock replaces a field's row and takes the next cursor, an older one is dropped, so the log doesn't grow with every change and a new device reads what's there now. Opening an existing full log this way carries each field's latest value across, after the old cursors. The SQL logs now share one implementation. Found by CineStack, where seats are held and released all evening.
+- **Sync: a field a component doesn't declare is a guarantee now**, documented and tested on both servers: a server-written field with no `let` (the kit's hold `since`) is kept on the device and in the log through the component's own edits.
+
+### Fixed
+
+- **Sync: a returning visitor sees what the log has now, not what their device stored last time.** On a connected page, a component waits for the first pull (at most 1.5 seconds, and not at all once it fails, as it does offline) before applying its stored document. Before, a stored value showed until the pull landed: a seat that had been taken since the last visit showed free. Found by CineStack.
+- **Sync: a device whose cursor is past the end of the log starts over.** When the log was replaced or wiped, a device that had read far into the old one heard nothing until the new log passed its cursor. Pull and the live stream now answer it from the start, with `reset: true`, and the device takes the new cursor. Logs gain `head()` (the built-in ones and the `zubra-sync` binary have it; it's optional for your own).
+- **The editor no longer marks every `.zb` file red when it can't find the compiler.** "couldn't run the compiler `zubra` (ENOENT)" was an error at line 1 of each open file, though nothing was wrong with them. Now it's one warning, and the language server looks in more places first: a cargo build in a zubra checkout (`target/debug` or `target/release`, as `@zubra/server` already did), the `@zubra/compiler` nearest the file rather than only the workspace's (an example app with its own `node_modules`), and on Windows the `zubra.cmd` npm installs, which spawning without a shell never ran. A compiler built or installed afterwards is picked up without reloading the window.
+
 ## 5.6.0 — 2026-11-11
 
 Sync and Actions on Cloudflare Workers, and five fixes found by building a real app on Zubra (Tailgate, a farm-to-door marketplace): the Sync server can read and write documents itself; a Durable Object holds it on Workers (`@zubra/sync/durable`), with the log in the object's own SQLite; server functions are built ahead of time for the edge (`zubra-actions build`, `@zubra/actions/edge`); and the standup board runs on a Worker in CI. On the server, an unsafe URL from a value is now left out and reported instead of failing the render, rendered components go inside slots, nested form controls submit before JavaScript, and `hydrated()` is `false`.

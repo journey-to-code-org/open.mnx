@@ -7,13 +7,13 @@
 //
 // The protocol (plan/sync-design.md), plain HTTP so any server can keep the log:
 //   POST <url>/push  { changes: [Change] }            → { ok: true }
-//   GET  <url>/pull?since=<cursor>                     → { changes: [Change], cursor }
+//   GET  <url>/pull?since=<cursor>[&scope=<json>]      → { changes: [Change], cursor }
 //   Change = { collection, key, field, value, clock }  (clock: a hybrid logical clock, a string
 //   that sorts by time, then counter, then client id)
 //
 // Merging is last-writer-wins per field, by clock. A device that was offline pushes what it
 // wrote when it's back; whichever write has the later clock wins, on every device alike.
-import { onWrite, receive, currentStore, onPresence, receivePresence, peerId } from './index.js';
+import { onWrite, receive, currentStore, onPresence, receivePresence, peerId, startingPull } from './index.js';
 import { mesh } from './webrtc.js';
 
 const CLOCKS = '$clocks';
@@ -64,17 +64,23 @@ const keep = (name, value) => { try { localStorage.setItem(name, value); } catch
 
 /**
  * Start sharing. `url`: where the log is (`/_zb/sync`). `interval`: how often to pull, in ms
- * (default 2000). Returns `{ flush, pull, stop }`.
+ * (default 2000). `scope`: only what this page shows, per collection `true` or a key prefix (or a
+ * list of them), e.g. `{ seats: 'showing-12/', brands: true }`; leave it out for everything.
+ * Returns `{ flush, pull, stop }`.
  */
-export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrtc = false } = {}) {
+export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrtc = false, scope = null } = {}) {
   const base = url.replace(/\/$/, '');
+  // The scope goes with every pull and live request. Each scope keeps its own cursor: a page that
+  // moves to another showing reads that showing from the start, not from where the last one was.
+  const scoped = scope ? `&scope=${encodeURIComponent(JSON.stringify(scope))}` : '';
+  const cursorName = scope ? `zubra-sync:cursor:${JSON.stringify(scope)}` : 'zubra-sync:cursor';
   const client = remember('zubra-sync:client', () => {
     const id = Math.random().toString(36).slice(2, 10);
     keep('zubra-sync:client', id);
     return id;
   });
   const clocks = clock(client);
-  let cursor = remember('zubra-sync:cursor', () => '0');
+  let cursor = remember(cursorName, () => '0');
   const outbox = outboxOf(JSON.parse(remember('zubra-sync:outbox', () => '[]')), (pending) =>
     keep('zubra-sync:outbox', JSON.stringify(pending)));
 
@@ -116,7 +122,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   async function pull() {
     let body;
     try {
-      const response = await fetch(`${base}/pull?since=${encodeURIComponent(cursor)}`);
+      const response = await fetch(`${base}/pull?since=${encodeURIComponent(cursor)}${scoped}`);
       if (!response.ok) return;
       body = await response.json();
     } catch {
@@ -151,10 +157,11 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
       }
       if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known });
     }
-    // Never move the cursor back (a live backlog can arrive after a newer push).
+    // Never move the cursor back (a live backlog can arrive after a newer push), unless the server
+    // says this device's cursor was past the end of its log: then it starts over from what it sent.
     const next = String(body.cursor);
-    if (!(/^\d+$/.test(next) && /^\d+$/.test(cursor) && Number(next) < Number(cursor))) cursor = next;
-    keep('zubra-sync:cursor', cursor);
+    if (body.reset || !(/^\d+$/.test(next) && /^\d+$/.test(cursor) && Number(next) < Number(cursor))) cursor = next;
+    keep(cursorName, cursor);
   }
 
   // Live: a server-sent event stream brings changes as they're pushed, and other viewers'
@@ -164,7 +171,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   let retry = null;
   const listen = () => {
     if (!live || typeof EventSource === 'undefined' || stopped) return;
-    source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}`);
+    source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}${scoped}`);
     source.addEventListener('open', () => (open = true));
     source.addEventListener('changes', (event) => apply(JSON.parse(event.data)));
     source.addEventListener('presence', (event) => {
@@ -215,7 +222,10 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   const loop = setInterval(() => flush().then(() => (open ? undefined : pull())), interval);
   const online = () => flush().then(pull);
   addEventListener('online', online);
-  flush().then(pull).then(listen);
+  // Components wait for this first pull before applying what's stored (index.js: fresh first).
+  const first = flush().then(pull);
+  startingPull(first);
+  first.then(listen);
   return {
     flush,
     pull,

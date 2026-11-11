@@ -46,6 +46,12 @@ export const logContract = [
     await Promise.all([log.append([change(1)]), log.append([change(2), change(3)]), log.append([change(4)])]);
     assert.deepEqual((await log.after(0)).changes.map((c) => c.value), [1, 2, 3, 4]);
   }],
+  ['head() is the cursor after the last change', async (log) => {
+    assert.equal(Number(await log.head()), 0);
+    const cursor = await log.append([change(1), change(2)]);
+    assert.equal(Number(await log.head()), Number(cursor));
+    assert.equal(Number(await log.head()), Number((await log.after(0)).cursor));
+  }],
   ['a batch that fails part-way adds nothing', async (log) => {
     await log.append([change(1)]);
     await assert.rejects(log.append([change(2), { ...change(3), clock: null }]));
@@ -57,3 +63,36 @@ export const logContract = [
     assert.deepEqual((await log.after(1)).changes.map((c) => c.value), [4]);
   }, { transactional: true }],
 ].map(([name, run, { transactional = false } = {}]) => ({ name, run, transactional }));
+
+// What a log that keeps each field's latest value (`keep: 'latest'`) promises besides.
+const on = (field, value, clock, key = 'k1') => ({ collection: 'seats', key, field, value, clock });
+const t = (n, device = 'a') => `${String(n).padStart(15, '0')}-00000-${device}`;
+const shown = async (log, since = 0) => (await log.after(since)).changes.map((c) => `${c.key}.${c.field}=${c.value}`);
+
+export const latestContract = [
+  ['a field written again is there once, with its latest value', async (log) => {
+    await log.append([on('state', 'held', t(1)), on('by', 'ada', t(1))]);
+    await log.append([on('state', 'free', t(2))]);
+    await log.append([on('state', 'taken', t(3))]);
+    assert.deepEqual(await shown(log), ['k1.by=ada', 'k1.state=taken']);
+  }],
+  ['a write with an older clock is dropped, and moves nothing', async (log) => {
+    await log.append([on('state', 'taken', t(5))]);
+    const before = Number((await log.after(0)).cursor);
+    const cursor = Number(await log.append([on('state', 'stale', t(4)), on('state', 'same clock', t(5))]));
+    assert.equal(cursor, before, 'nothing was written');
+    assert.deepEqual(await shown(log), ['k1.state=taken']);
+  }],
+  ['a rewrite takes the next cursor: a device past the old one gets it', async (log) => {
+    await log.append([on('state', 'held', t(1)), on('state', 'held', t(1), 'k2')]);
+    const seen = Number((await log.after(0)).cursor);
+    await log.append([on('state', 'free', t(2))]);
+    assert.deepEqual(await shown(log, seen), ['k1.state=free']);
+    assert.ok(Number((await log.after(0)).cursor) > seen);
+  }],
+  ['the order is the order of the latest writes', async (log) => {
+    await log.append([on('a', 1, t(1)), on('b', 1, t(2)), on('c', 1, t(3))]);
+    await log.append([on('a', 2, t(4))]);
+    assert.deepEqual(await shown(log), ['k1.b=1', 'k1.c=1', 'k1.a=2']);
+  }],
+].map(([name, run]) => ({ name, run, transactional: false }));
