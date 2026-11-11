@@ -22,6 +22,10 @@
     "./library": {
       "types": "./library.d.ts",
       "default": "./library.js"
+    },
+    "./mcp": {
+      "types": "./mcp.d.ts",
+      "default": "./mcp.js"
     }
   },
   "files": [
@@ -33,6 +37,8 @@
     "cli.js",
     "library.js",
     "library.d.ts",
+    "mcp.js",
+    "mcp.d.ts",
     "registry",
     "!registry/test"
   ],

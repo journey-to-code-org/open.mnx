@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **`npx zubra mcp`: an MCP server that describes a component library to coding agents.** Built from the Custom Elements Manifest, from a components folder, a `custom-elements.json` or an installed library's package name. Its tools: `list_components`; `describe_component` (props with types and defaults, events with their detail types, slots, which props are two-way); `component_usage` (the import and markup for HTML, React, Vue, Svelte, Solid or Angular, in that framework's syntax for props, two-way binding and events); and `check_markup`, which finds props a component doesn't have and events it doesn't fire in markup an agent wrote, with the nearest real name. It speaks MCP over standard input and output, and needs no network, model or account. `@zubra/compiler/mcp` has the pieces. The CLI's help now lists every command.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.
