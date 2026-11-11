@@ -1161,35 +1161,11 @@ impl Context<'_> {
     /// `source` with each call to `hydrated()` (by the names it's imported as) written as
     /// `false`, parsed; `None` when it calls none.
     fn without_hydrated(&self, source: &str) -> Option<Expression> {
+        let calls = hydrated_calls(source, &self.component.script.hydrated);
+        let changed = !calls.is_empty();
         let mut text = source.to_owned();
-        let mut changed = false;
-        for name in &self.component.script.hydrated {
-            let mut out = String::with_capacity(text.len());
-            let mut rest = text.as_str();
-            while let Some(at) = rest.find(name.as_str()) {
-                let before = rest[..at].chars().next_back();
-                let after = rest[at + name.len()..].trim_start();
-                let boundary = !before
-                    .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '.');
-                let call = after
-                    .strip_prefix('(')
-                    .map(str::trim_start)
-                    .and_then(|inner| inner.strip_prefix(')'));
-                match call {
-                    Some(tail) if boundary => {
-                        out.push_str(&rest[..at]);
-                        out.push_str("false");
-                        rest = tail;
-                        changed = true;
-                    }
-                    _ => {
-                        out.push_str(&rest[..at + name.len()]);
-                        rest = &rest[at + name.len()..];
-                    }
-                }
-            }
-            out.push_str(rest);
-            text = out;
+        for (start, end) in calls.into_iter().rev() {
+            text.replace_range(start..end, "false");
         }
         if !changed {
             return None;
@@ -2289,6 +2265,49 @@ fn merge_attribute(attributes: &mut Vec<ir::Attribute>, name: &str, text: &str, 
             value: Some(vec![Part::Escaped(text.to_owned())]),
         }),
     }
+}
+
+/// Where `source` (a template expression) calls one of `names` with no arguments, as byte ranges
+/// in source order: found in the parsed expression, so a name in a string, a template literal's
+/// text or a comment isn't a call.
+fn hydrated_calls(source: &str, names: &[String]) -> Vec<(usize, usize)> {
+    use oxc_ast::ast::{CallExpression, Expression as Js};
+    use oxc_ast_visit::{walk, Visit};
+
+    struct Calls<'n> {
+        names: &'n [String],
+        found: Vec<(usize, usize)>,
+    }
+    impl<'a> Visit<'a> for Calls<'_> {
+        fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+            if let Js::Identifier(callee) = &call.callee {
+                if call.arguments.is_empty()
+                    && self.names.iter().any(|name| callee.name == name.as_str())
+                {
+                    self.found
+                        .push((call.span.start as usize, call.span.end as usize));
+                    return;
+                }
+            }
+            walk::walk_call_expression(self, call);
+        }
+    }
+    if names.is_empty() || !names.iter().any(|name| source.contains(name.as_str())) {
+        return Vec::new();
+    }
+    let allocator = oxc_allocator::Allocator::default();
+    let Ok(expression) =
+        oxc_parser::Parser::new(&allocator, source, oxc_span::SourceType::mjs()).parse_expression()
+    else {
+        return Vec::new();
+    };
+    let mut calls = Calls {
+        names,
+        found: Vec::new(),
+    };
+    calls.visit_expression(&expression);
+    calls.found.sort_unstable();
+    calls.found
 }
 
 /// The hidden input that stands in for a form-associated child's value before JavaScript: its

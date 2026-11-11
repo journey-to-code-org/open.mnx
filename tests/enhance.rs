@@ -168,6 +168,29 @@ fn hydrated_called_in_the_template_is_false_on_the_server_too() {
     )
     .unwrap();
     assert!(!page.contains("<p>x</p>"), "{page}");
+    // A call inside a string or a template literal's text is text: only the real call is false.
+    let quoted = r#"<script>
+  import { hydrated } from '@zubra/runtime'
+</script>
+<zb-x><p>{hydrated() ? "Ready" : "Waiting for hydrated() to be true"}</p><p>{`hydrated() is ${hydrated()}`}</p></zb-x>"#;
+    let page = zubra::compile_html_with_options(
+        quoted,
+        "x.zb",
+        "{}",
+        "{}",
+        zubra::HtmlOptions {
+            slot_source: zubra::SlotSource::Template,
+            partial: true,
+            pending: Vec::new(),
+        },
+        &zubra::filesystem,
+    )
+    .unwrap();
+    assert!(
+        page.contains("<p>Waiting for hydrated() to be true</p>"),
+        "{page}"
+    );
+    assert!(page.contains("<p>hydrated() is false</p>"), "{page}");
 }
 
 #[test]
