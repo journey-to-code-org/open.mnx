@@ -117,6 +117,60 @@ fn hydrated_is_false_on_the_server_and_a_signal_in_the_template() {
 }
 
 #[test]
+fn hydrated_called_in_the_template_is_false_on_the_server_too() {
+    // Not first bound in the script: a call in the template is the same `false` on the server.
+    let source = r#"<script>
+  import { hydrated as started } from '@zubra/runtime'
+  let text = ""
+</script>
+<zb-x>
+  <zb-if test={!started()}><button>Apply</button></zb-if>
+  <p zb-if={started( )}>live</p>
+  <button class="send" disabled={!started() || text.trim() === ""}>Send</button>
+</zb-x>"#;
+    let page = zubra::compile_html_with_options(
+        source,
+        "x.zb",
+        "{}",
+        "{}",
+        zubra::HtmlOptions {
+            slot_source: zubra::SlotSource::Template,
+            partial: true,
+            pending: Vec::new(),
+        },
+        &zubra::filesystem,
+    )
+    .unwrap();
+    assert!(page.contains("<button>Apply</button>"), "{page}");
+    assert!(!page.contains("<p>live</p>"), "{page}");
+    assert!(
+        page.contains(r#"<button class="send" disabled>Send</button>"#),
+        "{page}"
+    );
+    // A different function with a similar name is still the browser's.
+    let other = r#"<script>
+  import { hydrated } from '@zubra/runtime'
+  const notHydrated = () => true
+  const later = Date.now()
+</script>
+<zb-x><p zb-if={notHydrated() && later > 0}>x</p></zb-x>"#;
+    let page = zubra::compile_html_with_options(
+        other,
+        "x.zb",
+        "{}",
+        "{}",
+        zubra::HtmlOptions {
+            slot_source: zubra::SlotSource::Template,
+            partial: true,
+            pending: Vec::new(),
+        },
+        &zubra::filesystem,
+    )
+    .unwrap();
+    assert!(!page.contains("<p>x</p>"), "{page}");
+}
+
+#[test]
 fn bind_on_a_child_is_the_prop_and_its_change_event() {
     let output = js(r#"<zb-x color="red">
   <other-thing value:bind={color}></other-thing>

@@ -1109,6 +1109,13 @@ impl Context<'_> {
         state: &LowerState,
     ) -> Result<Option<Value>, Diagnostic> {
         if partial() {
+            // `hydrated()` written in the template, not first bound in the script: false on the
+            // server, as `const live = hydrated()` is. Before anything else reads the call.
+            if let Expression::Runtime { source, .. } = expression {
+                if let Some(known) = self.without_hydrated(source) {
+                    return self.evaluate_known(&known, span, state);
+                }
+            }
             let mut runtime = expression.is_runtime();
             let mut runtime_name = false;
             expression.for_each_identifier(&mut |name| {
@@ -1151,8 +1158,55 @@ impl Context<'_> {
             .ok()
     }
 
+    /// `source` with each call to `hydrated()` (by the names it's imported as) written as
+    /// `false`, parsed; `None` when it calls none.
+    fn without_hydrated(&self, source: &str) -> Option<Expression> {
+        let mut text = source.to_owned();
+        let mut changed = false;
+        for name in &self.component.script.hydrated {
+            let mut out = String::with_capacity(text.len());
+            let mut rest = text.as_str();
+            while let Some(at) = rest.find(name.as_str()) {
+                let before = rest[..at].chars().next_back();
+                let after = rest[at + name.len()..].trim_start();
+                let boundary = !before
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$' || c == '.');
+                let call = after
+                    .strip_prefix('(')
+                    .map(str::trim_start)
+                    .and_then(|inner| inner.strip_prefix(')'));
+                match call {
+                    Some(tail) if boundary => {
+                        out.push_str(&rest[..at]);
+                        out.push_str("false");
+                        rest = tail;
+                        changed = true;
+                    }
+                    _ => {
+                        out.push_str(&rest[..at + name.len()]);
+                        rest = &rest[at + name.len()..];
+                    }
+                }
+            }
+            out.push_str(rest);
+            text = out;
+        }
+        if !changed {
+            return None;
+        }
+        // Parsed as the template parser does: the build-time subset, or else JavaScript for the
+        // browser (which the short-circuit rule can still decide on the server).
+        expression::parse(&text).ok().or_else(|| {
+            let names = crate::runtime_expression::parse(&text).ok()?;
+            Some(Expression::Runtime {
+                source: text,
+                names,
+            })
+        })
+    }
+
     /// `name && rest`, `!name && rest`, `name || rest`, `!name || rest`, where `name` is known
-    /// at render time and decides the result without `rest`.
+    /// at render time (or a literal) and decides the result without `rest`.
     fn short_circuit(&self, source: &str, state: &LowerState) -> Option<Value> {
         let text = source.trim_start();
         let (negated, text) = match text.strip_prefix('!') {
@@ -1180,8 +1234,16 @@ impl Context<'_> {
         if !and && !or {
             return None;
         }
-        let Some(Binding::Value(value)) = self.binding(name, state) else {
-            return None;
+        // A literal first operand (`hydrated()` written in the template becomes `false`).
+        let literal = match name {
+            "true" => Some(Value::Bool(true)),
+            "false" => Some(Value::Bool(false)),
+            _ => None,
+        };
+        let value = match (&literal, self.binding(name, state)) {
+            (Some(value), _) => value,
+            (None, Some(Binding::Value(value))) => value,
+            _ => return None,
         };
         let value = if negated {
             Value::Bool(!expression::is_truthy(value))
