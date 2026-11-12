@@ -45,6 +45,11 @@
       "production": "./dist/production/motion.js",
       "default": "./src/motion.js"
     },
+    "./bridge": {
+      "types": "./types/bridge.d.ts",
+      "production": "./dist/production/bridge.js",
+      "default": "./src/bridge.js"
+    },
     "./navigation": {
       "types": "./types/navigation.d.ts",
       "production": "./dist/production/navigation.js",

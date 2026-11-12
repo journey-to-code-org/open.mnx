@@ -12,3 +12,9 @@ export declare function useRouteLinks(
   navigate: (to: string, link: import('./navigation.js').RoutedLink) => unknown,
   options?: import('./navigation.js').RouteLinksOptions,
 ): () => void;
+
+/**
+ * A Zubra signal (or a function of signals) as a Vue ref; assigning `.value` writes a writable
+ * signal. Stops with the current effect scope, or with `stop()`.
+ */
+export declare function useSignal<T>(source: import('./bridge.js').SignalSource<T>, options?: import('./bridge.js').BridgeOptions): import('vue').Ref<T> & { stop(): void };

@@ -17,3 +17,9 @@ export declare function useRouteLinks(
   navigate: (to: string, link: import('./navigation.js').RoutedLink) => unknown,
   options?: import('./navigation.js').RouteLinksOptions,
 ): void;
+
+/**
+ * Read a Zubra signal (or a function of signals) in a React component, re-rendering when it
+ * changes. `deep: true` re-renders on mutations inside an array or object too.
+ */
+export declare function useSignal<T>(source: import('./bridge.js').SignalSource<T>, options?: import('./bridge.js').BridgeOptions): T;
