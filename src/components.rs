@@ -58,18 +58,26 @@ fn load_from(
                 format!("import cycle: {} → {child_path}", stack.join(" → ")),
             ));
         }
-        let mut child = if crate::jsx::is_jsx(&child_path) {
-            let lowered = crate::jsx::lower(&source, &child_path, Some(loader))
-                .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
-            parser::parse(&lowered.text)
+        // Under its own nearest tsconfig.json.
+        let options = if crate::tsconfig::is_typescript(&child_path, &source) {
+            crate::tsconfig::for_component(&child_path, loader)
         } else {
-            parser::parse(&source)
-        }
-        .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
-        stack.push(child_path.clone());
-        let loaded = load_from(&mut child, &child_path, Some(loader), stack);
-        stack.pop();
-        loaded?;
+            crate::tsconfig::Options::default()
+        };
+        let child = crate::tsconfig::with(options, || {
+            let mut child = if crate::jsx::is_jsx(&child_path) {
+                let lowered = crate::jsx::lower(&source, &child_path, Some(loader))
+                    .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
+                parser::parse(&lowered.text)
+            } else {
+                parser::parse(&source)
+            }
+            .map_err(|diagnostic| diagnostic.in_file(&child_path, &source))?;
+            stack.push(child_path.clone());
+            let loaded = load_from(&mut child, &child_path, Some(loader), stack);
+            stack.pop();
+            loaded.map(|()| child)
+        })?;
         if component.child(&child.tag).is_some() {
             return Err(Diagnostic::new(
                 import.span,

@@ -151,10 +151,33 @@ fn respond(request: &Map<String, Value>) -> Value {
         };
     }
 
+    // `virtual`: the component as a TypeScript file for `tsc` to check, as JSON text
+    // `{ code, mappings: [[generated, source, length], …] }` (byte offsets).
+    if text("command") == Some("virtual") {
+        return match crate::virtual_typescript_with(source, &path, &loader) {
+            Ok((code, mappings)) => json!({
+                "ok": true,
+                "output": json!({ "code": code, "mappings": mappings }).to_string(),
+                "error": null,
+                "warnings": [],
+                "diagnostics": [],
+            }),
+            Err(error) => json!({
+                "ok": false,
+                "output": null,
+                "error": error.render_in(source, &path),
+                "warnings": [],
+                "diagnostics": [entry(&path, &error, "error")],
+            }),
+        };
+    }
+
     // `typescript`: the JavaScript the compiler reduces a script's TypeScript to (types blanked,
     // enums lowered), for tests that run it against `tsc`'s output, and for tools that show it.
     if text("command") == Some("typescript") {
-        return match crate::typescript_to_js(source) {
+        // `compilerOptions`: as a tsconfig.json would set them.
+        let compiler_options = request.get("compilerOptions").and_then(Value::as_object);
+        return match crate::typescript_to_js(source, compiler_options) {
             Ok(output) => {
                 json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
             }

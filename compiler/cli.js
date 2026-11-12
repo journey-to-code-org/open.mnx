@@ -8,15 +8,17 @@
 //   zubra add --list
 //   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
 //   zubra check <file>... [--server] [--client]  --server: what a server without JavaScript leaves out; --client: whether each needs its module in the browser
+//   zubra check --types <file | dir>... [--format json]   the project's TypeScript checks scripts, templates, props and events
 //   zubra fmt <file | dir>... [--check] [--indent <n> | --tabs] [--width <n>]   (--stdin: in to out)
 //   zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]   React → zubra JSX, or .zb; a custom element → .zb
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, watch, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileFile, format, request } from './index.js';
 import { buildLibrary } from './library.js';
 import { loadComponents, serve as serveMcp } from './mcp.js';
 import { buildEmbed } from './embed.js';
+import { checkTypes, formatDiagnostic } from './typecheck.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -83,7 +85,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) rest.push(arg);
-    else if (['--lib', '--embed', '--force', '--list', '--partial', '--stdout', '--server', '--client', '--watch', '--check', '--stdin', '--tabs'].includes(arg)) flags[arg.slice(2)] = true;
+    else if (['--lib', '--embed', '--force', '--list', '--partial', '--stdout', '--server', '--client', '--watch', '--check', '--stdin', '--tabs', '--types', '--keep'].includes(arg)) flags[arg.slice(2)] = true;
     else flags[arg.slice(2)] = args[++i];
   }
   return { flags, rest };
@@ -205,6 +207,22 @@ function main(argv) {
     }
   } else if (command === 'fmt') {
     fmt(rest, flags);
+  } else if (command === 'check' && flags.types) {
+    if (!rest.length) throw new Error('usage: zubra check --types <file.zb | folder>...');
+    const { diagnostics, checked } = checkTypes(rest, { keep: flags.keep });
+    if (flags.format === 'json') {
+      // As the Rust CLI's `check --format json`: one array, a `code` (TS2322) added.
+      // (Paths as the Rust CLI gives them: relative to where it runs, for a file under it.)
+      const shown = (file) => (file.startsWith(process.cwd() + sep) ? relative(process.cwd(), file) : file);
+      process.stdout.write(`${JSON.stringify(diagnostics.map(({ file, line, column, code, message, help }) => ({ file: shown(file), line, column, severity: 'error', message, help: help ?? null, code })))}\n`);
+      if (diagnostics.length) process.exitCode = 1;
+      return;
+    }
+    for (const diagnostic of diagnostics) process.stderr.write(`${formatDiagnostic(diagnostic)}\n`);
+    if (diagnostics.length) {
+      process.stderr.write(`${diagnostics.length} type error${diagnostics.length === 1 ? '' : 's'} in ${checked} component${checked === 1 ? '' : 's'}\n`);
+      process.exitCode = 1;
+    } else console.log(`checked the types of ${checked} component${checked === 1 ? '' : 's'}: no errors`);
   } else if (command === 'compile' || command === 'check') {
     if (!rest.length) throw new Error(`usage: zubra ${command} <file>${command === 'check' ? '...' : ''}`);
     let failed = false;

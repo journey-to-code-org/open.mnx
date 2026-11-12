@@ -168,6 +168,15 @@ pub struct Script {
     /// Imported names whose values the compiler knows (a regular enum from a TypeScript
     /// module): still imported at runtime, but build-time values for defaults and server HTML.
     pub imported_values: Vec<Binding>,
+    /// `verbatimModuleSyntax` was on for this script (see `elide_type_only_imports`).
+    pub verbatim: bool,
+    /// `<script lang="ts">` (or a `.zb.tsx` component).
+    pub typescript: bool,
+    /// `interface Props { … }`: each member's name and type, and where it's declared. Checked
+    /// against the host's props, whose types they give.
+    pub props_interface: Option<(Vec<(String, String)>, Span)>,
+    /// `Props` has members it doesn't list (`extends`, an intersection): see `Types::props_open`.
+    pub props_open: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -295,6 +304,8 @@ pub enum Node {
         /// `animate`: the branch going away leaves (`data-leaving`) instead of being removed at
         /// once. Set on every `If` of a chain.
         animate: bool,
+        /// A `<zb-case>`: where its `<zb-switch value={…}>` is (the test compares the two).
+        switch_value: Option<Span>,
         span: Span,
     },
     Each {

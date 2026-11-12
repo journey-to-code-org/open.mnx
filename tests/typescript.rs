@@ -440,8 +440,9 @@ fn an_imported_const_enum_is_inlined_since_typescript_erases_it() {
   import { Size, Tone } from './index.js'
   declare const size: Size
   declare const tone: Tone
+  const total = Size.Large + 1
 </script>
-<zb-x size={Size.Large} tone={Tone.Cool}><p>{size} {tone} {Size.Small}</p></zb-x>"#;
+<zb-x size={Size.Large} tone={Tone.Cool}><p>{size} {tone} {Size.Small} {total}</p></zb-x>"#;
     let loader = loader(files);
     let js =
         zubra::compile_js_with(source, "x.zb", "@zubra/runtime", Some(".js"), &loader).unwrap();
@@ -451,7 +452,8 @@ fn an_imported_const_enum_is_inlined_since_typescript_erases_it() {
     assert!(js.contains("enum: { Small: 1, Large: 4 }"), "{js}");
     assert!(js.contains(r#""tone": { attribute: "tone", default: "cool", required: false, enum: { Warm: "warm", Cool: "cool" } },"#), "{js}");
     let html = zubra::compile_html_with(source, "x.zb", "{}", "{}", &loader).unwrap();
-    assert_eq!(html, "<zb-x><p>4 cool 1</p></zb-x>");
+    // The inlined enum is declared before the script's bindings, which can use it.
+    assert_eq!(html, "<zb-x><p>4 cool 1 5</p></zb-x>");
 }
 
 #[test]
@@ -501,4 +503,474 @@ fn a_tsx_component_can_declare_and_export_enums_too() {
         "{js}"
     );
     assert!(js.contains("const Inner = { A: 0, \"0\": \"A\" };"), "{js}");
+}
+
+// ---- namespaces, parameter properties and the rest of the language ---------------------------
+
+#[test]
+fn a_namespace_is_lowered_in_place_and_the_template_can_read_it() {
+    let source = "<script lang=\"ts\">\n  namespace Units {\n    export const base = 4\n    export function px(n: number): string { return n * base + 'px' }\n  }\n  const width = Units.px(2)\n</script>\n<zb-x><p>{width}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        js.contains("  const Units = {}; (function (Units) {\n    Units.base = 4\n           function px(n        )         { return n * Units.base + 'px' } Units.px = px;\n  })(Units);\n  const width = Units.px(2)"),
+        "{js}"
+    );
+}
+
+#[test]
+fn parameter_properties_become_fields_assigned_in_the_constructor() {
+    let source = "<script lang=\"ts\">\n  class Point extends Object {\n    constructor(public x: number, private readonly y = 2) {\n      super()\n    }\n  }\n  const point = new Point(1)\n</script>\n<zb-x><p>{point.x}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains("class Point extends Object { x; y;"), "{js}");
+    assert!(
+        js.contains("      super(); this.x = x; this.y = y;\n"),
+        "{js}"
+    );
+}
+
+#[test]
+fn a_this_parameter_an_angle_bracket_assertion_and_an_import_alias_are_types_or_values() {
+    let source = "<script lang=\"ts\">\n  namespace Config { export const port = 8080; export type Port = number }\n  import port = Config.port\n  import Port = Config.Port\n  function f(this: Window, a: number) { return a }\n  const n = <Port>f.call(window, port)\n</script>\n<zb-x><p>{n}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains("const  port = Config.port"), "{js}");
+    assert!(!js.contains("Config.Port"), "{js}");
+    assert!(
+        js.contains("function f(              a        ) { return a }"),
+        "{js}"
+    );
+    assert!(js.contains("const n = (f.call(window, port))"), "{js}");
+    // An alias only the template reads is still a value.
+    let source = "<script lang=\"ts\">\n  namespace Config { export const port = 8080 }\n  import port = Config.port\n</script>\n<zb-x><p>{port}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains("const  port = Config.port"), "{js}");
+}
+
+#[test]
+fn what_typescript_itself_refuses_in_an_es_module_is_refused_with_its_error_code() {
+    for (script, message) in [
+        ("import fs = require('fs')", "TS1202"),
+        ("const x = 1\n  export = x", "TS1203"),
+        (
+            "export namespace N { export const a = 1 }",
+            "can't export a namespace",
+        ),
+    ] {
+        let source = format!("<script lang=\"ts\">\n  {script}\n</script>\n<zb-x><p>x</p></zb-x>");
+        let error = compile_js(&source, "@zubra/runtime", "x.zb").unwrap_err();
+        assert!(
+            error.message.contains(message),
+            "{script}: {}",
+            error.message
+        );
+    }
+}
+
+// ---- tsconfig.json ----------------------------------------------------------------------------
+
+/// A project folder: `(relative path, contents)`.
+fn project(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!("zubra-tsconfig-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for (path, contents) in files {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+    root
+}
+
+#[test]
+fn the_nearest_tsconfig_with_what_it_extends_decides_how_class_fields_are_written() {
+    let component = "<script lang=\"ts\">\n  class Counter { count = 1; constructor(public step: number) {} }\n  const counter = new Counter(2)\n</script>\n<zb-x><p>{counter.count}</p></zb-x>";
+    let root = project("fields", &[
+        ("tsconfig.base.json", "{\n  // ES2020: fields are assignments\n  \"compilerOptions\": { \"target\": \"ES2020\", },\n}"),
+        ("tsconfig.json", "{ \"extends\": \"./tsconfig.base\" }"),
+        ("src/x.zb", component),
+        ("modern/tsconfig.json", "{ \"compilerOptions\": { \"target\": \"ES2022\" } }"),
+        ("modern/x.zb", component),
+    ]);
+    let older =
+        zubra::compile_js_file(root.join("src/x.zb").to_str().unwrap(), "@zubra/runtime").unwrap();
+    assert!(
+        older.contains("class Counter {  constructor(       step        ) { this.step = step; this.count = 1;} }"),
+        "{older}"
+    );
+    let modern =
+        zubra::compile_js_file(root.join("modern/x.zb").to_str().unwrap(), "@zubra/runtime")
+            .unwrap();
+    assert!(
+        modern.contains("class Counter { step; count = 1; constructor(       step        ) { this.step = step;} }"),
+        "{modern}"
+    );
+}
+
+#[test]
+fn verbatim_module_syntax_keeps_imports_and_wants_type_on_types() {
+    let root = project("verbatim", &[
+        ("tsconfig.json", "{ \"compilerOptions\": { \"verbatimModuleSyntax\": true } }"),
+        ("types.ts", "export interface Option { id: string }\n"),
+        ("x.zb", "<script lang=\"ts\">\n  import { Option } from './types'\n  const itemsDefault: Option[] = []\n</script>\n<zb-x items={itemsDefault}><p>x</p></zb-x>"),
+    ]);
+    let error =
+        zubra::compile_js_file(root.join("x.zb").to_str().unwrap(), "@zubra/runtime").unwrap_err();
+    assert!(error.message.contains("TS1484"), "{}", error.message);
+    assert_eq!(
+        error.help.as_deref(),
+        Some("write `import type { Option }`, or `import { type Option }`")
+    );
+    assert_eq!(error.span.line, 2);
+}
+
+#[test]
+fn paths_reach_a_const_enum_in_another_folder() {
+    let root = project("paths", &[
+        ("tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \"./src\", \"paths\": { \"@shared/*\": [\"shared/*\"] } } }"),
+        ("src/shared/sizes.ts", "export const enum Size { Small = 1, Large = 2 }\n"),
+        ("src/components/x.zb", "<script lang=\"ts\">\n  import { Size } from '@shared/sizes'\n  const big = Size.Large\n</script>\n<zb-x><p>{big}</p></zb-x>"),
+    ]);
+    let js = zubra::compile_js_file(
+        root.join("src/components/x.zb").to_str().unwrap(),
+        "@zubra/runtime",
+    )
+    .unwrap();
+    assert!(js.contains("const Size = { Small: 1, Large: 2 };"), "{js}");
+    assert!(!js.contains("@shared/sizes'"), "{js}");
+}
+
+#[test]
+fn a_tsconfig_that_appears_or_changes_is_seen_by_a_long_lived_compiler() {
+    // The parse cache (one compiler answering many requests) keys on the source and checks the
+    // imports; the tsconfig.json options are part of what it checks too.
+    let root = project("cache", &[
+        ("types.ts", "export interface Option { id: string }\n"),
+        ("x.zb", "<script lang=\"ts\">\n  import { Option } from './types'\n  const itemsDefault: Option[] = []\n</script>\n<zb-x items={itemsDefault}><p>x</p></zb-x>"),
+    ]);
+    let file = root.join("x.zb");
+    assert!(zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").is_ok());
+    // A tsconfig.json appears beside it: the same source is compiled again, and now refused.
+    std::fs::write(
+        root.join("tsconfig.json"),
+        "{ \"compilerOptions\": { \"verbatimModuleSyntax\": true } }",
+    )
+    .unwrap();
+    let error = zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").unwrap_err();
+    assert!(error.message.contains("TS1484"), "{}", error.message);
+    // And when it changes back.
+    std::fs::write(root.join("tsconfig.json"), "{ \"compilerOptions\": {} }").unwrap();
+    assert!(zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").is_ok());
+}
+
+// ---- decorators -------------------------------------------------------------------------------
+
+#[test]
+fn legacy_decorators_are_written_as_typescript_writes_them_keeping_lines() {
+    let root = project("decorators", &[
+        ("tsconfig.json", "{ \"compilerOptions\": { \"experimentalDecorators\": true } }"),
+        ("x.zb", "<script lang=\"ts\">\n  function bump(target: any, key: string, descriptor: PropertyDescriptor) { const run = descriptor.value; descriptor.value = () => run() + 1 }\n  class Counter {\n    @bump\n    next() { return 1 }\n  }\n  const value = new Counter().next()\n</script>\n<zb-x><p>{value}</p></zb-x>"),
+    ]);
+    let js = zubra::compile_js_file(root.join("x.zb").to_str().unwrap(), "@zubra/runtime").unwrap();
+    assert!(
+        js.contains("const __zubraDecorate = function (decorators, target, key, desc) {"),
+        "{js}"
+    );
+    assert!(
+        js.contains("  class Counter {\n    \n    next() { return 1 }\n  } __zubraDecorate([bump], Counter.prototype, \"next\", null);\n  const value = new Counter().next()"),
+        "{js}"
+    );
+}
+
+#[test]
+fn standard_decorators_are_lowered_as_typescript_lowers_them_keeping_lines() {
+    let source = "<script lang=\"ts\">\n  function bump(run: any, context: ClassMethodDecoratorContext) { return () => run() + 1 }\n  class Counter {\n    @bump\n    next() { return 1 }\n  }\n  const value = new Counter().next()\n</script>\n<zb-x><p>{value}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        js.contains("const __zubraEsDecorate = function (ctor, descriptorIn"),
+        "{js}"
+    );
+    assert!(js.contains("  const Counter = (() => { let _zb_instanceExtra = []; let _zb_d0; return class Counter { static { "), "{js}");
+    assert!(
+        js.contains("__zubraEsDecorate(this, null, _zb_d0, { kind: \"method\", name: \"next\""),
+        "{js}"
+    );
+    assert!(
+        js.contains(
+            "\n    \n    next() { return 1 }\n  }; })();\n  const value = new Counter().next()"
+        ),
+        "{js}"
+    );
+}
+
+fn module(source: &str) -> String {
+    zubra::typescript_to_js(source, None).unwrap()
+}
+
+#[test]
+fn a_decorated_class_keeps_its_export() {
+    let named = module("declare const d: any;\nexport @d class A {}\n");
+    assert!(
+        named.contains("export  const A = (() => { let _zb_classDecorators = [d]"),
+        "{named}"
+    );
+    assert!(named.contains("var A = class   {"), "{named}");
+    assert!(
+        named.ends_with("; return A = _zb_classThis; })();\n"),
+        "{named}"
+    );
+    let default = module("declare const d: any;\nexport default @d class B {}\n");
+    assert!(default.contains("const B = (() => {"), "{default}");
+    assert!(!default.contains("export default"), "{default}");
+    assert!(
+        default.contains("})(); export { B as default };"),
+        "{default}"
+    );
+    let anonymous = module("declare const d: any;\nexport default @d class {}\n");
+    assert!(
+        anonymous.contains("export default  (() => {"),
+        "{anonymous}"
+    );
+    assert!(
+        anonymous.contains("__zubraSetFunctionName(this, \"default\");"),
+        "{anonymous}"
+    );
+    assert!(anonymous.contains("return (class {"), "{anonymous}");
+    assert!(
+        anonymous.ends_with("), _zb_classThis; })();\n"),
+        "{anonymous}"
+    );
+}
+
+#[test]
+fn accessor_fields_are_lowered_without_decorators_too() {
+    let js = module("class A {\n  accessor x = 1;\n  static accessor y: number;\n  abstract accessor z: number;\n}\n");
+    assert!(js.contains("  #x_accessor_storage = 1; get x() { return this.#x_accessor_storage; } set x(value) { this.#x_accessor_storage = value; }\n"), "{js}");
+    assert!(js.contains("  static #y_accessor_storage        ; static get y() { return A.#y_accessor_storage; } static set y(value) { A.#y_accessor_storage = value; }\n"), "{js}");
+    assert!(!js.contains('z'), "{js}");
+    // With legacy decorators as well.
+    let mut options = serde_json::Map::new();
+    options.insert(
+        "experimentalDecorators".to_owned(),
+        serde_json::Value::Bool(true),
+    );
+    let legacy = zubra::typescript_to_js("class B { accessor x = 1 }", Some(&options)).unwrap();
+    assert!(legacy.contains("#x_accessor_storage = 1"), "{legacy}");
+}
+
+#[test]
+fn an_import_of_only_inline_types_goes_entirely() {
+    let source = "<script lang=\"ts\">\n  import { type Option, type Other } from './types'\n  const a: Option | Other | null = null\n</script>\n<zb-x><p>{a}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(!js.contains("./types"), "{js}");
+    let kept = module("import D, { type E } from './d';\nconsole.log(D);\n");
+    assert!(kept.contains("import D, "), "{kept}");
+}
+
+#[test]
+fn legacy_decorators_on_a_class_expression_are_refused_and_export_default_works() {
+    let mut options = serde_json::Map::new();
+    options.insert(
+        "experimentalDecorators".to_owned(),
+        serde_json::Value::Bool(true),
+    );
+    let error = zubra::typescript_to_js(
+        "declare const d: any;\nconst X = class { @d m() {} };",
+        Some(&options),
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("aren't valid on a class expression (TS1206)"),
+        "{}",
+        error.message
+    );
+    let named = zubra::typescript_to_js(
+        "declare const c: any;\n@c export default class A {}\n",
+        Some(&options),
+    )
+    .unwrap();
+    assert!(
+        named.contains("const A = (() => { var A = class"),
+        "{named}"
+    );
+    assert!(named.contains("export { A as default };"), "{named}");
+    assert!(!named.contains("export default"), "{named}");
+    let anonymous = zubra::typescript_to_js(
+        "declare const c: any;\nexport default @c class {}\n",
+        Some(&options),
+    )
+    .unwrap();
+    assert!(
+        anonymous.contains(
+            "export default  ((__zb_c) => { return __zubraDecorate([c], __zb_c); })(class {"
+        ),
+        "{anonymous}"
+    );
+}
+
+#[test]
+fn a_decorator_named_like_a_keyword_is_still_a_decorator() {
+    let js = module(
+        "const abstractFactory = (c: any, ctx: any) => c;\n@abstractFactory abstract class A {}\n",
+    );
+    assert!(js.contains("[abstractFactory]"), "{js}");
+}
+
+#[test]
+fn parameter_decorators_need_the_legacy_ones() {
+    let source = "<script lang=\"ts\">\n  function inject(target: any) {}\n  class A { run(@inject value: number) {} }\n</script>\n<zb-x><p>x</p></zb-x>";
+    let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("a parameter decorator is one of TypeScript's legacy decorators"),
+        "{}",
+        error.message
+    );
+    assert!(error
+        .help
+        .as_deref()
+        .unwrap_or_default()
+        .contains("experimentalDecorators"));
+    assert_eq!(error.span.line, 3);
+}
+
+#[test]
+fn what_standard_decorators_cant_lower_is_an_error() {
+    for (source, message) in [
+        (
+            "class A { accessor [k] = 1 }",
+            "an `accessor` with a computed name",
+        ),
+        (
+            "class A { @d declare x: number }",
+            "decorators aren't valid here",
+        ),
+        (
+            "class A { @d constructor() {} }",
+            "decorators aren't valid here",
+        ),
+    ] {
+        let error =
+            zubra::typescript_to_js(&format!("declare const d: any, k: string;\n{source}"), None)
+                .unwrap_err();
+        assert!(
+            error.message.contains(message),
+            "{source}: {}",
+            error.message
+        );
+    }
+    let mut options = serde_json::Map::new();
+    options.insert(
+        "useDefineForClassFields".to_owned(),
+        serde_json::Value::Bool(false),
+    );
+    let error = zubra::typescript_to_js(
+        "declare const d: any, k: string;\nclass A { @d [k] = 1 }",
+        Some(&options),
+    )
+    .unwrap_err();
+    assert!(
+        error.message.contains("needs `useDefineForClassFields`"),
+        "{}",
+        error.message
+    );
+}
+
+// ---- type checking: the component as a TypeScript file ----------------------------------------
+
+#[test]
+fn the_type_checking_file_maps_every_copied_stretch_back_to_the_component() {
+    let source = "<script lang=\"ts\">\n  import { state } from '@zubra/runtime'\n  const total = state(2)\n  let open = false\n</script>\n<zb-x label=\"x\">\n  <p onclick={() => (open = !open)}>{label} {total + 1}</p>\n  <zb-each items={[1, 2]} as=\"n\" index=\"i\"><b>{n * i}</b></zb-each>\n</zb-x>";
+    let (code, mappings) =
+        zubra::virtual_typescript_with(source, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
+    for (generated, original, length) in &mappings {
+        let (generated, original, length) =
+            (*generated as usize, *original as usize, *length as usize);
+        assert_eq!(
+            &code[generated..generated + length],
+            &source[original..original + length]
+        );
+    }
+    for line in [
+        "declare let label: string;",
+        "const __zubraScript_total = total;",
+        "const total = __zubraValue(__zubraScript_total);",
+        "__zubraCheck<(event: __Event<\"click\">) => unknown>((() => (open = !open)));",
+        "for (const n of __zubraItems(([1, 2]))) {",
+        "const i: number = 0;",
+        "(n * i);",
+    ] {
+        assert!(code.contains(line), "{line}\n{code}");
+    }
+    // `open` is a `let`: the template may assign it, so it isn't shadowed.
+    assert!(!code.contains("const open ="), "{code}");
+    // A JavaScript component's file is there for its users' types, and isn't checked itself.
+    let plain = source.replace("<script lang=\"ts\">", "<script>");
+    let (code, _) =
+        zubra::virtual_typescript_with(&plain, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
+    assert!(code.starts_with("// @ts-nocheck\n"), "{code}");
+}
+
+// ---- interface Props --------------------------------------------------------------------------
+
+#[test]
+fn interface_props_types_the_host_s_props_in_one_place() {
+    let source = "<script lang=\"ts\">\n  type Size = 'small' | 'large'\n  interface Props {\n    size: Size\n    maxCount?: number\n  }\n  const twice = maxCount * 2\n</script>\n<zb-x size=\"small\" max-count={3}><p>{twice} {size}</p></zb-x>";
+    let dts = compile_declarations(source, "x.zb").unwrap();
+    assert!(dts.contains("  size: Size;\n"), "{dts}");
+    assert!(dts.contains("  maxCount: number;\n"), "{dts}");
+    let manifest = compile_manifest(source, "x.js").unwrap();
+    assert!(manifest.contains("\"text\": \"Size\""), "{manifest}");
+    // The type-checking file declares them with those types.
+    let (code, _) =
+        zubra::virtual_typescript_with(source, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
+    assert!(
+        code.contains("declare let size: Size;\ndeclare let maxCount: number;\n"),
+        "{code}"
+    );
+}
+
+#[test]
+fn interface_props_and_the_host_must_name_the_same_props() {
+    let base = "<script lang=\"ts\">\n  interface Props {\n    size: string\n  }\n</script>\n";
+    let error = compile_js(
+        &format!("{base}<zb-x size=\"s\" tone=\"warm\"><p>x</p></zb-x>"),
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(error.message, "prop `tone` isn't in `interface Props`");
+    assert_eq!(error.span.line, 6);
+    let error = compile_js(
+        &format!(
+            "{}<zb-x><p>x</p></zb-x>",
+            base.replace("size: string", "size: string\n    maxCount: number")
+        ),
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert!(
+        error.message.starts_with("`Props` has `size`"),
+        "{}",
+        error.message
+    );
+    assert_eq!(
+        error.help.as_deref(),
+        Some("add `size` to the host tag, or take `size` out of `Props`")
+    );
+    let error = compile_js(
+        &format!(
+            "{}<zb-x size=\"s\"><p>x</p></zb-x>",
+            base.replace("size: string", "size: string\n    maxCount: number")
+        ),
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.help.as_deref(),
+        Some("add `max-count` to the host tag, or take `maxCount` out of `Props`")
+    );
+    assert_eq!(error.span.line, 2);
 }

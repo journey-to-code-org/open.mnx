@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -51,7 +51,15 @@ before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   dir = mkdtempSync(join(tmpdir(), 'zb-lsp-'));
   writeFileSync(join(dir, 'badge.zb'), '<!-- A small badge. -->\n<script>\n  import { emit } from \'@zubra/runtime\'\n  emit(\'pick\', 1)\n</script>\n<zb-badge label="new" count={0}>\n  <b>{label}</b><zb-slot name="icon"></zb-slot>\n</zb-badge>\n');
-  server = spawn(process.execPath, [join(here, '../server.js'), '--stdio']);
+  // For type errors: the repository's @zubra/compiler/typecheck, against the native CLI, and
+  // TypeScript and @zubra/runtime's types where the project would have them.
+  writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, lib: ['ES2022', 'DOM'] } }));
+  mkdirSync(join(dir, 'node_modules/@zubra'), { recursive: true });
+  symlinkSync(join(repo, 'runtime'), join(dir, 'node_modules/@zubra/runtime'), 'dir');
+  symlinkSync(join(repo, 'compiler/node_modules/typescript'), join(dir, 'node_modules/typescript'), 'dir');
+  server = spawn(process.execPath, [join(here, '../server.js'), '--stdio'], {
+    env: { ...process.env, ZUBRA_TYPECHECK: join(repo, 'compiler/typecheck.js'), ZUBRA_COMPILER: compiler },
+  });
   let buffer = Buffer.alloc(0);
   server.stdout.on('data', (chunk) => {
     buffer = Buffer.concat([buffer, chunk]);
@@ -103,6 +111,101 @@ test('diagnostics as you type, at the right place, with the fix in the message',
   notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: PAGE.replace('lable={1}', 'label="one"') }] });
   const fixed = await diagnosticsFor(uri);
   assert.deepEqual(fixed.filter((diagnostic) => diagnostic.severity === 1), [], 'cleared once fixed, without saving');
+});
+
+test('type errors from the project\'s TypeScript, when a TypeScript component opens and is saved', { timeout: 60_000, skip: !existsSync(join(repo, 'compiler/node_modules/typescript')) && 'needs npm ci in compiler/' }, async () => {
+  const uri = pathToFileURL(join(dir, 'typed.zb')).href;
+  const text = "<script lang=\"ts\">\n  interface Item { name: string }\n  const items: Item[] = []\n</script>\n<zb-typed>\n  <zb-each items={items} as=\"item\"><p>{item.nmae}</p></zb-each>\n</zb-typed>\n";
+  writeFileSync(join(dir, 'typed.zb'), text);
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const typed = async () => {
+    for (;;) {
+      const diagnostics = await diagnosticsFor(uri);
+      const found = diagnostics.filter((diagnostic) => diagnostic.source === 'zubra (TypeScript)');
+      if (found.length) return found;
+    }
+  };
+  const [error] = await typed();
+  assert.equal(error.code, 'TS2339');
+  assert.match(error.message, /Property 'nmae' does not exist on type 'Item'/);
+  assert.deepEqual(error.range, { start: { line: 5, character: 44 }, end: { line: 5, character: 48 } }, 'on `nmae`');
+
+  // Fixed and saved: checked again, and the error goes.
+  const fixed = text.replace('nmae', 'name');
+  writeFileSync(join(dir, 'typed.zb'), fixed);
+  notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: fixed }] });
+  notify('textDocument/didSave', { textDocument: { uri } });
+  for (;;) {
+    const diagnostics = await diagnosticsFor(uri);
+    if (!diagnostics.some((diagnostic) => diagnostic.source === 'zubra (TypeScript)')) break;
+  }
+});
+
+test('TypeScript in a component: hover, completion and go to definition, in the script and the template', { timeout: 60_000 }, async () => {
+  const uri = pathToFileURL(join(dir, 'ts-features.zb')).href;
+  const text = [
+    '<script lang="ts">',
+    '  /** A thing — in the list. */',
+    '  interface Item { name: string; count: number }',
+    '  const items: Item[] = []',
+    '  const total = items.length',
+    '</script>',
+    '<zb-ts-features>',
+    '  <zb-each items={items} as="item"><p>{item.name} {total}</p></zb-each>',
+    '</zb-ts-features>',
+    '',
+  ].join('\n');
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const at = (line, find, extra = 0) => ({ line, character: text.split('\n')[line].indexOf(find) + extra });
+
+  // Hover in the template: the loop item's property, typed through `zb-each`.
+  const property = await call('textDocument/hover', { textDocument: { uri }, position: at(7, 'name', 1) });
+  assert.match(property.contents.value, /\(property\) Item\.name: string/);
+  assert.deepEqual(property.range, { start: at(7, 'name'), end: at(7, 'name', 4) });
+  // A script name the template reads, as the template sees it.
+  const total = await call('textDocument/hover', { textDocument: { uri }, position: at(7, 'total', 1) });
+  assert.match(total.contents.value, /const total: number/);
+  // In the script, with the doc comment.
+  const type = await call('textDocument/hover', { textDocument: { uri }, position: at(3, 'Item', 1) });
+  assert.match(type.contents.value, /interface Item/);
+  assert.match(type.contents.value, /A thing — in the list\./);
+
+  // Completion after a `.` the text doesn't compile with yet.
+  const typing = text.replace('{item.name}', '{item.}');
+  notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: typing }] });
+  const line = typing.split('\n')[7];
+  const items = await call('textDocument/completion', { textDocument: { uri }, position: { line: 7, character: line.indexOf('item.') + 5 } });
+  const labels = items.map((item) => item.label);
+  assert.ok(labels.includes('name') && labels.includes('count'), labels.join(', '));
+  assert.ok(!labels.some((label) => label.startsWith('__zubra')), 'no generated names');
+  notify('textDocument/didChange', { textDocument: { uri, version: 3 }, contentChanges: [{ text }] });
+
+  // Go to definition: from the template to the script.
+  const [definition] = await call('textDocument/definition', { textDocument: { uri }, position: at(7, '{items}', 2) });
+  assert.equal(definition.uri, uri);
+  assert.deepEqual(definition.range.start, at(3, 'items'));
+});
+
+test('TypeScript in a component with CRLF line endings: positions as the editor counts them', { timeout: 60_000 }, async () => {
+  const uri = pathToFileURL(join(dir, 'ts-crlf.zb')).href;
+  const lines = [
+    '<script lang="ts">',
+    '  const label = "a"',
+    '  const count = 2',
+    '</script>',
+    '<zb-ts-crlf>',
+    '  <p>{label}{count}</p>',
+    '</zb-ts-crlf>',
+    '',
+  ];
+  const text = lines.join('\r\n');
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const at = (line, find, extra = 0) => ({ line, character: lines[line].indexOf(find) + extra });
+  const count = await call('textDocument/hover', { textDocument: { uri }, position: at(5, 'count', 1) });
+  assert.match(count.contents.value, /const count: 2/);
+  assert.deepEqual(count.range, { start: at(5, 'count'), end: at(5, 'count', 5) });
+  const [definition] = await call('textDocument/definition', { textDocument: { uri }, position: at(5, 'label', 1) });
+  assert.deepEqual(definition.range, { start: at(1, 'label'), end: at(1, 'label', 5) });
 });
 
 test('completion: directives and imported components, their props and events', async () => {

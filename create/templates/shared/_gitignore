@@ -3,3 +3,5 @@ dist
 .astro
 # Typings the zubra plugin writes next to each component (it rewrites them on every build).
 *.d.zb.ts
+# What `npx zubra check --types` writes while it runs (it removes it after).
+.zubra-types

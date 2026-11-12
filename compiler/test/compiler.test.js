@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,17 @@ test('collects a TypeScript component\'s TypeScript modules, and what they re-ex
   // The same component in plain JavaScript reads nothing more.
   writeFileSync(join(directory, 'plain.zb'), "<script>\n  import { Size } from './index.js'\n</script>\n<zb-plain><p>x</p></zb-plain>\n");
   assert.deepEqual(Object.keys(sources(join(directory, 'plain.zb'))).map((path) => path.split('/').pop()), ['plain.zb']);
+});
+
+test('collects the tsconfig.json a TypeScript component compiles under, and modules its paths reach', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'zubra-tsconfig-'));
+  mkdirSync(join(directory, 'src/shared'), { recursive: true });
+  writeFileSync(join(directory, 'tsconfig.base.json'), '{\n  // comment\n  "compilerOptions": { "paths": { "@shared/*": ["./src/shared/*"], }, },\n}\n');
+  writeFileSync(join(directory, 'tsconfig.json'), '{ "extends": "./tsconfig.base.json" }\n');
+  writeFileSync(join(directory, 'src/shared/sizes.ts'), 'export const enum Size { Small }\n');
+  writeFileSync(join(directory, 'src/box.zb'), "<script lang=\"ts\">\n  import { Size } from '@shared/sizes'\n</script>\n<zb-box><p>{Size.Small}</p></zb-box>\n");
+  const files = sources(join(directory, 'src/box.zb'));
+  assert.deepEqual(Object.keys(files).map((path) => path.slice(directory.length + 1)).sort(), ['src/box.zb', 'src/shared/sizes.ts', 'tsconfig.base.json', 'tsconfig.json']);
 });
 
 test('every output matches the native CLI', { skip }, () => {

@@ -76,6 +76,7 @@ Every npm package entry and command below has a tier; `docs/test/stability.test.
 | `@zubra/compiler/library` | Stable | Framework examples (`zubra build --lib`) | `examples/frameworks/ui` |
 | `@zubra/compiler/embed` | Supported | WebAssembly compiler (`embed.test.js`) | Nothing yet; not tried on a live WordPress site or Shopify store |
 | `@zubra/compiler/mcp` | Supported | WebAssembly compiler (`npm test`) | Nothing yet |
+| `@zubra/compiler/typecheck` | Supported | WebAssembly compiler (`typecheck.test.js`) | `zubra check --types`; the language server's type errors |
 | `bin zubra` | Stable | Compiler (Rust) | Everything |
 
 ### `@zubra/server`

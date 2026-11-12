@@ -26,6 +26,19 @@ export function compilerEntries(root) {
 }
 
 /**
+ * The `@zubra/compiler/typecheck` nearest `path` (what `zubra check --types` runs), for type
+ * errors in the editor; `ZUBRA_TYPECHECK` names one outright. Null when there's none.
+ */
+export function typecheckModule(path) {
+  if (process.env.ZUBRA_TYPECHECK) return process.env.ZUBRA_TYPECHECK;
+  for (const entry of compilerEntries(dirname(resolve(path)))) {
+    const module = join(dirname(entry), 'typecheck.js');
+    if (existsSync(module)) return module;
+  }
+  return null;
+}
+
+/**
  * A CLI that `cargo build` made in a zubra checkout at or above `root` (target/debug or
  * target/release, the newer of the two), as @zubra/server finds it. Null when there's none.
  */
@@ -90,6 +103,7 @@ export async function createBackend({ compiler, root, onUnavailable = (message) 
     },
     check: (path, ...rest) => nearest(path).check(path, ...rest),
     manifest: (path, ...rest) => nearest(path).manifest(path, ...rest),
+    virtual: (path, ...rest) => nearest(path).virtual?.(path, ...rest) ?? null,
     format: (path, ...rest) => nearest(path).format(path, ...rest),
     formatRange: (path, ...rest) => nearest(path).formatRange(path, ...rest),
     refactor: (path, ...rest) => nearest(path).refactor(path, ...rest),
@@ -118,6 +132,14 @@ function wasmBackend(wasm) {
         if (found) wasm.sources(found.path, files, found.key);
       }
       return wasm.request({ command: 'check', path: resolve(path), files }).diagnostics;
+    },
+    /** The component as a TypeScript file, with its map: { code, mappings }, or null when it doesn't compile. */
+    virtual(path, text) {
+      const files = wasm.sources(path);
+      files[resolve(path)] = text;
+      for (const specifier of importsOf(text)) wasm.sources(resolve(dirname(path), specifier), files);
+      const response = wasm.request({ command: 'virtual', path: resolve(path), files });
+      return response.ok ? JSON.parse(response.output) : null;
     },
     manifest(path) {
       const response = wasm.compileFile(path, { emit: 'manifest' });
@@ -216,6 +238,29 @@ function cliBackend(locate, onUnavailable) {
       const result = run(['check', path, '--stdin', '--format', 'json'], text);
       if (result.error) return [];
       try { return JSON.parse(result.stdout); } catch { return []; }
+    },
+    virtual(path, text) {
+      const absolute = resolve(path);
+      const files = { [absolute]: text };
+      // The components it imports, and theirs.
+      const add = (from, source) => {
+        for (const specifier of importsOf(source)) {
+          const imported = resolve(dirname(from), specifier);
+          if (imported in files) continue;
+          const found = readText(imported);
+          if (found === null) continue;
+          files[imported] = found;
+          add(imported, found);
+        }
+      };
+      add(absolute, text);
+      const result = run(['request'], JSON.stringify({ command: 'virtual', path: absolute, files }));
+      try {
+        const response = JSON.parse(result.stdout);
+        return response.ok ? JSON.parse(response.output) : null;
+      } catch {
+        return null;
+      }
     },
     manifest(path) {
       const result = run(['compile', path, '--emit', 'manifest']);

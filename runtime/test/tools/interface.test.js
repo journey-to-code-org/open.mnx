@@ -221,6 +221,7 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
     p.value = 2;
     const el: HTMLElement = host();
     const kept: boolean = emit('valuechange', 1);
+    emit<{ at: number }>('pick', { at: 1 });
     const theme = createContext('light');
     provide(theme, state('dark'));
     const current: string = inject(theme).get();
@@ -244,10 +245,11 @@ test("the runtime's own declarations type scripts, hooks and adapters", async ()
     count.set('one');
     const label: string = computed(() => 1).get();
     emit(1);
+    emit<{ at: number }>('pick', { at: 'one' });
     const value: number = inject(createContext('x')).get();
     export { label, value };
   `);
-  assert.equal(bad.split('\n').filter((line) => /error TS\d+/.test(line)).length, 4, bad);
+  assert.equal(bad.split('\n').filter((line) => /error TS\d+/.test(line)).length, 5, bad);
 });
 
 test('a TypeScript component\'s typings carry its own types', async () => {

@@ -4,7 +4,9 @@ Language support for [Zubra](https://journey-to-code-org.github.io/zubra/): `.zb
 
 - **Syntax highlighting** for `.zb`: HTML, `{…}` as JavaScript, `<script>` and `<script lang="ts">` as JavaScript and TypeScript, `<style>` and `<style lang="scss">` as CSS and SCSS, and Zubra's directives and event attributes.
 - **Diagnostics as you type**: the compiler's own errors and warnings, with their suggestions ("did you mean `count`?").
+- **Type errors** in `<script lang="ts">` components, from your project's own TypeScript (what `npx zubra check --types` reports): the script, every template expression, child props and event handlers, worked out when the file opens and each time it's saved. Needs `@zubra/compiler` and `typescript` installed in the project.
 - **Completion** of directives, imported components, their props and events, and of props inside `{…}`.
+- **TypeScript inside components**: in a `<script lang="ts">` component, hover, completion and go to definition from TypeScript in the script and in every `{…}` of the template (a `zb-each` item has its list's element type; completion works after a `.` you're still typing). It's TypeScript 5.9's language service, shipped with the extension, over the same file `zubra check --types` checks.
 - **Hover** documentation for imported components: description, props with types and defaults, events and slots.
 - **Go to definition** for imported components.
 - **Formatting** (Format Document, or format on save with `"editor.formatOnSave": true`): `zubra fmt`'s layout, with your editor's indentation. It re-indents the template and tidies tags without changing what the component compiles to, and leaves expressions, comments, `<script>`, `<style>` and `<pre>` as written. `zubra.format.printWidth` (default 100) is the width a tag is fitted into before its attributes go one per line. Needs Zubra 5.4 or later.

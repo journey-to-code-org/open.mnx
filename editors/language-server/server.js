@@ -13,9 +13,11 @@
 import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind, CodeActionKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { createBackend, importsOf, locateImport, readText } from './backend.js';
+import { spawn } from 'node:child_process';
+import { createBackend, importsOf, locateImport, readText, typecheckModule } from './backend.js';
+import { createTypeScriptServices } from './typescript.js';
 import { completions, documentation, hostOf, interfaceOf, offsetAt, positionAt, tagAt } from './analysis.js';
 
 const EXTRACT_COMMAND = 'zubra.applyExtractComponent'; // not the editor command's name: the client registers the server's commands itself
@@ -47,7 +49,8 @@ connection.onInitialize(async (params) => {
   client.disabledActions = actions?.disabledSupport === true;
   return {
     capabilities: {
-      textDocumentSync: TextDocumentSyncKind.Incremental,
+      // `save`: type errors are worked out when a file is saved.
+      textDocumentSync: { openClose: true, change: TextDocumentSyncKind.Incremental, save: { includeText: false } },
       completionProvider: { triggerCharacters: ['<', ' ', '{'] },
       hoverProvider: true,
       definitionProvider: true,
@@ -62,6 +65,22 @@ connection.onInitialize(async (params) => {
 });
 
 const pathOf = (uri) => fileURLToPath(uri);
+
+// TypeScript's own hover, completion and go to definition in a `<script lang="ts">` component's
+// script and `{…}` expressions (typescript.js).
+const isTypeScript = (text) => /<script[^>]*\slang\s*=\s*["']?ts(?![\w-])/i.test(text);
+const typeScript = createTypeScriptServices({
+  virtual: (path, text) => backend.virtual(path, text),
+  textOf: (path) => documents.get(pathToFileURL(path).href)?.getText() ?? null,
+});
+const tsKinds = {
+  method: CompletionItemKind.Method, function: CompletionItemKind.Function, 'local function': CompletionItemKind.Function,
+  property: CompletionItemKind.Property, getter: CompletionItemKind.Property, setter: CompletionItemKind.Property,
+  var: CompletionItemKind.Variable, let: CompletionItemKind.Variable, const: CompletionItemKind.Constant, 'local var': CompletionItemKind.Variable,
+  parameter: CompletionItemKind.Variable, class: CompletionItemKind.Class, interface: CompletionItemKind.Interface, type: CompletionItemKind.TypeParameter,
+  enum: CompletionItemKind.Enum, 'enum member': CompletionItemKind.EnumMember, module: CompletionItemKind.Module, keyword: CompletionItemKind.Keyword,
+  string: CompletionItemKind.Value,
+};
 
 // Byte offsets (the compiler's) and string indexes (LSP's UTF-16 positions).
 const byteOffset = (text, index) => Buffer.byteLength(text.slice(0, index));
@@ -85,6 +104,54 @@ function componentsOf(uri, text) {
   }
   return found;
 }
+
+// Type errors (`zubra check --types`, the project's own TypeScript), by document: worked out when
+// a TypeScript component opens and each time it's saved, in a process of their own, and shown
+// with the compiler's own diagnostics.
+const typeErrors = new Map(); // uri → LSP diagnostics
+const compileErrors = new Map(); // uri → LSP diagnostics
+const typeRuns = new Map(); // uri → the running check, to stop when a newer one starts
+const worker = join(dirname(fileURLToPath(import.meta.url)), 'typecheck-worker.js');
+const publish = (uri) => connection.sendDiagnostics({ uri, diagnostics: [...(compileErrors.get(uri) ?? []), ...(typeErrors.get(uri) ?? [])] });
+
+function checkTypes(document) {
+  const text = document.getText();
+  if (!/<script[^>]*\slang\s*=\s*["']?ts(?![\w-])/i.test(text)) return;
+  const path = pathOf(document.uri);
+  const module = typecheckModule(path);
+  if (!module) return;
+  typeRuns.get(document.uri)?.kill();
+  const child = spawn(process.execPath, [worker], { stdio: ['pipe', 'pipe', 'ignore'] });
+  typeRuns.set(document.uri, child);
+  let output = '';
+  child.stdout.on('data', (chunk) => (output += chunk));
+  child.on('close', () => {
+    if (typeRuns.get(document.uri) !== child) return;
+    typeRuns.delete(document.uri);
+    let result;
+    try { result = JSON.parse(output); } catch { return; }
+    if (result.error) return;
+    const lines = text.split('\n');
+    typeErrors.set(document.uri, result.diagnostics
+      .filter((diagnostic) => resolve(diagnostic.file) === path)
+      .map((diagnostic) => {
+        const line = Math.max(diagnostic.line - 1, 0);
+        const character = Math.max(diagnostic.column - 1, 0);
+        const word = (lines[line] ?? '').slice(character).match(/^[\w$]+|^"[^"]*"|^./)?.[0] ?? '';
+        return {
+          range: { start: { line, character }, end: { line, character: character + Math.max(word.length, 1) } },
+          severity: DiagnosticSeverity.Error,
+          source: 'zubra (TypeScript)',
+          code: diagnostic.code,
+          message: diagnostic.message,
+        };
+      }));
+    publish(document.uri);
+  });
+  child.stdin.end(JSON.stringify({ module, file: path, text }));
+}
+documents.onDidOpen((event) => checkTypes(event.document));
+documents.onDidSave((event) => checkTypes(event.document));
 
 const timers = new Map();
 function validate(document) {
@@ -110,17 +177,32 @@ function validate(document) {
           message: diagnostic.help ? `${diagnostic.message}\n${diagnostic.help}` : diagnostic.message,
         };
       });
-    connection.sendDiagnostics({ uri: document.uri, diagnostics });
+    compileErrors.set(document.uri, diagnostics);
+    publish(document.uri);
   }, 100));
 }
 documents.onDidChangeContent((change) => validate(change.document));
-documents.onDidClose((event) => connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] }));
+documents.onDidClose((event) => {
+  typeRuns.get(event.document.uri)?.kill();
+  for (const map of [typeErrors, compileErrors, typeRuns]) map.delete(event.document.uri);
+  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+});
 
 const kinds = { directive: CompletionItemKind.Keyword, component: CompletionItemKind.Class, attribute: CompletionItemKind.Property, event: CompletionItemKind.Event, variable: CompletionItemKind.Variable };
-connection.onCompletion(({ textDocument, position }) => {
+connection.onCompletion(async ({ textDocument, position }) => {
   const document = documents.get(textDocument.uri);
   if (!document) return [];
   const text = document.getText();
+  if (isTypeScript(text)) {
+    const offset = offsetAt(text, position);
+    const path = pathOf(textDocument.uri);
+    // Mid-word or after a `.`, the text may not compile yet: a placeholder name completes it.
+    const items = await typeScript.completions(path, offset)
+      ?? await typeScript.completions(path, offset, `${text.slice(0, offset)}__z${text.slice(offset)}`);
+    if (items) {
+      return items.map((item) => ({ label: item.label, kind: tsKinds[item.kind] ?? CompletionItemKind.Text, sortText: item.sortText, insertText: item.insertText }));
+    }
+  }
   return completions(text, offsetAt(text, position), componentsOf(textDocument.uri, text)).map((item) => ({
     label: item.label,
     kind: kinds[item.kind],
@@ -131,10 +213,19 @@ connection.onCompletion(({ textDocument, position }) => {
   }));
 });
 
-connection.onHover(({ textDocument, position }) => {
+connection.onHover(async ({ textDocument, position }) => {
   const document = documents.get(textDocument.uri);
   if (!document) return null;
   const text = document.getText();
+  if (isTypeScript(text)) {
+    const hover = await typeScript.hover(pathOf(textDocument.uri), offsetAt(text, position));
+    if (hover) {
+      return {
+        contents: { kind: MarkupKind.Markdown, value: hover.markdown },
+        range: { start: positionAt(text, hover.start), end: positionAt(text, hover.end) },
+      };
+    }
+  }
   const tag = tagAt(text, offsetAt(text, position));
   const component = tag && componentsOf(textDocument.uri, text).find((candidate) => candidate.tag === tag.name);
   if (!component) return null;
@@ -144,10 +235,19 @@ connection.onHover(({ textDocument, position }) => {
   };
 });
 
-connection.onDefinition(({ textDocument, position }) => {
+connection.onDefinition(async ({ textDocument, position }) => {
   const document = documents.get(textDocument.uri);
   if (!document) return null;
   const text = document.getText();
+  if (isTypeScript(text)) {
+    const found = await typeScript.definition(pathOf(textDocument.uri), offsetAt(text, position));
+    if (found?.length) {
+      return found.map((definition) => ({
+        uri: pathToFileURL(definition.path).href,
+        range: { start: positionAt(definition.text, definition.start), end: positionAt(definition.text, definition.end) },
+      }));
+    }
+  }
   const tag = tagAt(text, offsetAt(text, position));
   const component = tag && componentsOf(textDocument.uri, text).find((candidate) => candidate.tag === tag.name);
   if (!component) return null;

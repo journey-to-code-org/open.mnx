@@ -30,6 +30,10 @@
     "./mcp": {
       "types": "./mcp.d.ts",
       "default": "./mcp.js"
+    },
+    "./typecheck": {
+      "types": "./typecheck.d.ts",
+      "default": "./typecheck.js"
     }
   },
   "files": [
@@ -45,6 +49,8 @@
     "embed.d.ts",
     "mcp.js",
     "mcp.d.ts",
+    "typecheck.js",
+    "typecheck.d.ts",
     "registry",
     "!registry/test"
   ],
@@ -60,6 +66,7 @@
     "zubra": "cli.js"
   },
   "devDependencies": {
-    "liquidjs": "10.30.1"
+    "liquidjs": "10.30.1",
+    "typescript": "7.0.2"
   }
 }
