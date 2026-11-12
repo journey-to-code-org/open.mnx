@@ -14,7 +14,6 @@
 // - `value` + `onValueChange` is React's controlled pattern; any `<prop>` + `<prop>change` pair
 //   works the same way.
 import * as React from 'react';
-import { createPortal } from 'react-dom';
 import { serverContent } from './server.js';
 import { outletsOf } from './outlet.js';
 
@@ -23,6 +22,11 @@ const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffec
 // `renderRow` serves `<zb-outlet name="row">`, `renderDetailPanel` serves `detail-panel`.
 const outletName = (key) => key.slice(6).replace(/[A-Z]/g, (letter, at) => (at ? '-' : '') + letter.toLowerCase());
 const isRenderer = (key, value) => key.length > 6 && key.startsWith('render') && /[A-Z]/.test(key[6]) && typeof value === 'function';
+// react-dom's createPortal, loaded when an element first has an outlet to fill: a page that
+// uses no outlets (or maps only `react` in an import map) never imports react-dom from here.
+let createPortal = null;
+const portals = () => (createPortal ? Promise.resolve() : import('react-dom').then((dom) => { createPortal = dom.createPortal; }));
+
 // A stable key per outlet, for its portal.
 const outletKeys = new WeakMap();
 let nextOutlet = 0;
@@ -104,11 +108,13 @@ export function wrap(Element) {
           outlet.owner = owner;
           claimed.add(outlet);
         }
-        setOutlets((map) => {
+        const add = () => setOutlets((map) => {
           const next = new Map(map);
-          for (const outlet of outlets) next.set(outlet, outlet.item);
+          for (const outlet of outlets) if (claimed.has(outlet)) next.set(outlet, outlet.item);
           return next;
         });
+        if (createPortal) add();
+        else portals().then(add);
       };
       const connected = (event) => {
         if (!Object.hasOwn(served.current, event.outlet.name)) return;
@@ -123,10 +129,10 @@ export function wrap(Element) {
         for (const outlet of claimed) outlet.owner = null;
       };
     }, []);
-    const portals = [];
+    const filled = [];
     for (const [outlet, item] of outlets) {
       const render = renderers[outlet.name];
-      if (render) portals.push(createPortal(render(item), outlet, outletKey(outlet)));
+      if (render && createPortal) filled.push(createPortal(render(item), outlet, outletKey(outlet)));
     }
 
     // Subscribe once per event; always call the latest handler.
@@ -181,9 +187,9 @@ export function wrap(Element) {
     if (React.Children.count(all.children) === 0) {
       const html = typeof window === 'undefined' ? serverContent(Element, { props: json ? JSON.parse(json) : {}, name: rest.name }) : '';
       return React.createElement(React.Fragment, null,
-        React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true }), portals);
+        React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true }), filled);
     }
-    return React.createElement(React.Fragment, null, React.createElement(tag, host, all.children), portals);
+    return React.createElement(React.Fragment, null, React.createElement(tag, host, all.children), filled);
   });
   Component.displayName = pascal(tag);
   Component.element = Element;
