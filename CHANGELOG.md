@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Changed
+
+- **The Signals implementation is faster, with the same API.** Each signal keeps its internal node in a private field instead of a `WeakMap` the garbage collector has to walk; nodes have one shape and make their arrays on first use; an effect makes its set of children on first child. `Watcher.getPending()` now costs O(pending) instead of O(watched): the Watcher records computeds as they're marked dirty, so an update no longer pays for every effect on the page. Its order is the one visible difference: roughly the order computeds were marked, not the order they were watched (`runtime/README.md`). In Node, creating and disposing 2,000 effects went from 14–20 ms to 3–4 ms; in js-framework-benchmark, create rows from 137 to 100 ms, clear from 24 to 17 ms and select from 15.5 to 5.7 ms (`docs/performance.md`). The size budget for `src/index.js` went from 15.25 KB to 15.75 KB gzipped, and for the production build from 14.25 KB to 14.75 KB.
+
 ## 5.9.0 — 2026-11-12
 
 Package components, TypeScript completely, and server HTML that's complete before JavaScript. A `.zb` file imports components from an npm package by name, checked like its own. `<script lang="ts">` compiles what was refused (enums carried over from 5.8.0, now namespaces, parameter properties, legacy and standard decorators), follows the nearest `tsconfig.json`, and is type-checked by the project's TypeScript: `npx zubra check --types`, and errors, hover, completion and go to definition in VS Code. On the server, `id()` and context render, so labels and `aria-*` references work and themes apply before JavaScript, and `page.provide()` gives a whole page a context. Also: effects, scopes and resources work with `using`, a fetcher's reads after an `await` are followed (experimental), keyed lists move only what's out of order, table lists are cheaper, and a long-lived compiler stops re-parsing components.

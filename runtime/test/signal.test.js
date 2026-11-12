@@ -85,3 +85,39 @@ test('signal.js uses the native Signal when the platform provides one', async ()
   assert.equal(module.Signal, Signal);
   assert.equal(module.isNative, false);
 });
+
+test('getPending lists computeds in the order they were marked, not the order they were watched', () => {
+  const a = new Signal.State(0);
+  const b = new Signal.State(0);
+  const first = new Signal.Computed(() => a.get());
+  const second = new Signal.Computed(() => b.get());
+  first.get();
+  second.get();
+  const w = new Signal.subtle.Watcher(() => {});
+  w.watch(first, second);
+  b.set(1);
+  a.set(1);
+  // deepEqual can't tell two Computeds apart (no own properties), so compare by identity.
+  const name = (c) => (c === first ? 'first' : c === second ? 'second' : '?');
+  assert.deepEqual(w.getPending().map(name), ['second', 'first']);
+});
+
+test('getPending stays right when it is not called while computeds go stale and are read again', () => {
+  const states = Array.from({ length: 100 }, () => new Signal.State(0));
+  const computeds = states.map((s) => new Signal.Computed(() => s.get()));
+  const w = new Signal.subtle.Watcher(() => {});
+  w.watch(...computeds);
+  for (let round = 1; round <= 50; round++) {
+    states.forEach((s) => s.set(round));
+    computeds.forEach((c) => c.get());
+    w.watch();
+  }
+  states[7].set(-1);
+  w.unwatch(computeds[7]); // stale while still listed: unwatching must drop it
+  states[5].set(-1);
+  const indexes = () => w.getPending().map((c) => computeds.indexOf(c));
+  assert.deepEqual(indexes(), [5]);
+  assert.deepEqual(indexes(), [5], 'getPending does not consume the list');
+  computeds[5].get();
+  assert.deepEqual(indexes(), []);
+});

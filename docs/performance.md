@@ -38,6 +38,37 @@ Milliseconds; lower is better. What it says:
 
 When the official results exist, they replace this table.
 
+## The Signals core
+
+Compiled components get their reactivity from `runtime/src/signal-impl.js`, Zubra's implementation of the TC39 Signals API (the native `Signal` replaces it where a browser has one). Profiling the benchmark's create and clear found most of the runtime's own time, and most of its garbage collection, in that file and in `effect.js`. Three things cost it, all fixed without changing the API:
+
+- **A `WeakMap` from each signal to its internal node.** A `WeakMap` with tens of thousands of keys is a table the garbage collector walks on every collection. Each signal now holds its node in a private field, which is also the check that a method was called on the right kind of object.
+- **`Watcher.getPending()` looked at every watched signal.** Zubra's effects share one Watcher and call `getPending()` on each flush, the pattern the proposal's README shows, so every update cost something for every effect on the page. The Watcher now records computeds as they're marked dirty: O(pending), not O(watched). The one visible difference is the order, listed in `runtime/README.md`.
+- **Allocation:** five arrays per node made up front, and a `Set` of children per effect, though most have none. Both are now made on first use.
+
+Measured in Node (median ms, each case in a fresh process), against the polyfill and the two fastest signals libraries, which have their own APIs:
+
+| Case | Before | After | signal-polyfill | alien-signals 3 | Preact signals |
+|---|---|---|---|---|---|
+| create and dispose 2,000 effects | 14–20 | 3.2–4.3 | 12–20 | 0.14–0.24 | 0.24–0.39 |
+| 1 write, 1,000 watching effects, 2 re-run | 0.44–0.78 | 0.12–0.13 | 0.39–0.60 | 0.03 | 0.03 |
+| 1 state → 1,000 computeds → effects | 0.6–0.85 | 0.28–0.43 | 0.48–0.54 | 0.05–0.06 | 0.06–0.09 |
+
+The rest of the gap to alien-signals is the API's shape: an effect on the proposal is a `Computed` plus a Watcher entry, about ten objects, where alien-signals' is two. A WebAssembly core was tried too and isn't a way round it: a call into WebAssembly costs about twice a JavaScript call, and a signals core is nothing but small calls.
+
+In the benchmark, with `run.mjs --time --runs 9` (same machine, same run, before and after this change; differences under about 15% are noise on this machine):
+
+| Operation | vanilla JS | Before | After |
+|---|---|---|---|
+| create rows | 85.5 | 137.1 | 99.5 |
+| replace all rows | 66.3 | 148.8 | 126.8 |
+| select row | 9.3 | 15.5 | 5.7 |
+| create many rows | 794.2 | 1,437.2 | 1,332.5 |
+| append rows to large table | 91.6 | 140.7 | 123.3 |
+| clear rows | 9.0 | 23.7 | 16.9 |
+
+What's left in creating and clearing rows is mostly the DOM work each row does: two comment markers and a fragment, `importNode`, `textContent`, and an effect per binding. That's the next piece of work.
+
 ## Server rendering
 
 The comparison with WebUI, FAST, Enhance and WebC (`docs/compared-with-html-first.md`) measures server rendering against those four. The short version: Zubra's server parses each component again on every render, which makes it about 20 times slower than WebUI's on the same page.
