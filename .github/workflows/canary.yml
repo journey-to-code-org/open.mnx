@@ -1,0 +1,108 @@
+name: Canary
+
+# Once a week, the adapters' tests and the framework and meta-framework examples run against the
+# frameworks' newest releases instead of the versions the examples pin: `latest` (what a new project
+# installs today) and `next` (the newest pre-release ahead of it). scripts/canary.mjs chooses the
+# versions and writes them to the step summary. A failure opens an issue labelled `canary`, or comments
+# on the open one, so a framework release that breaks an adapter is found before a user finds it.
+# Nothing here blocks a pull request; ci.yml stays on the pinned versions.
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  runtime:
+    name: Adapters (React, Vue, Angular) on ${{ matrix.channel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [latest, next]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: runtime
+      - run: node scripts/canary.mjs runtime --channel ${{ matrix.channel }}
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: runtime
+      - run: npm run test:browser
+        working-directory: runtime
+      - if: failure()
+        run: bash scripts/canary-issue.sh "Adapters on ${{ matrix.channel }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  frameworks:
+    name: Framework examples on ${{ matrix.channel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [latest, next]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: plugin
+      - run: npm ci
+        working-directory: examples/frameworks
+      - run: node scripts/canary.mjs examples/frameworks --channel ${{ matrix.channel }}
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: examples/frameworks
+      - run: npm test
+        working-directory: examples/frameworks
+      - if: failure()
+        run: bash scripts/canary-issue.sh "Framework examples on ${{ matrix.channel }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  meta:
+    name: ${{ matrix.app }} on ${{ matrix.channel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [next-conference, nuxt-bookshop, sveltekit-workouts, react-router-trips, solidstart-potluck, eleventy-trails]
+        channel: [latest, next]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build --locked
+      - run: npm ci
+        working-directory: examples/meta/${{ matrix.app }}
+      - run: node scripts/canary.mjs examples/meta/${{ matrix.app }} --channel ${{ matrix.channel }}
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: examples/meta/${{ matrix.app }}
+      - run: npm test
+        working-directory: examples/meta/${{ matrix.app }}
+      - if: failure()
+        run: bash scripts/canary-issue.sh "${{ matrix.app }} on ${{ matrix.channel }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
