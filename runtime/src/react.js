@@ -15,6 +15,7 @@
 //   works the same way.
 import * as React from 'react';
 import { serverContent } from './server.js';
+import { routeLinks } from './navigation.js';
 import './context.js';
 import { subscribe, read } from './bridge.js';
 
@@ -123,6 +124,17 @@ export function wrap(Element) {
   Component.displayName = pascal(tag);
   Component.element = Element;
   return Component;
+}
+
+/**
+ * Route links inside Zubra components through the app's router while this component is mounted:
+ * `useRouteLinks(useNavigate())` (React Router), `useRouteLinks(useRouter().push)` (Next.js).
+ * The function can change between renders. Options as for `routeLinks` (`@zubra/runtime/navigation`).
+ */
+export function useRouteLinks(navigate, options) {
+  const latest = React.useRef(navigate);
+  latest.current = navigate;
+  React.useEffect(() => routeLinks((to, info) => latest.current(to, info), options), []);
 }
 
 /**

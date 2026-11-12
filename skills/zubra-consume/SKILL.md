@@ -29,6 +29,19 @@ Every framework uses the element the same way underneath: **properties in, DOM e
 
 A library from `zubra build --lib` has the same per element: `@acme/ui/star-rating` (the element), `@acme/ui/react` and `@acme/ui/vue` (wrappers), typings, and `custom-elements.json` for editors and Storybook.
 
+## Links inside components
+
+A component's links are plain `<a href>`, so they work without JavaScript. To have them navigate with the app's router instead of reloading the page, wire the router up once, near the app's root:
+
+| Router | Wire it up |
+|---|---|
+| React Router | `useRouteLinks(useNavigate())` from `@zubra/runtime/react`, in a component inside the router |
+| Next.js | `useRouteLinks(useRouter().push)` |
+| Vue Router | `useRouteLinks((to) => router.push(to))` from `@zubra/runtime/vue`, in `setup` |
+| SvelteKit, Angular, anything else | `routeLinks((to) => goto(to))` from `@zubra/runtime/navigation` (returns a stop function); Angular `router.navigateByUrl(to)` |
+
+Only links inside Zubra components are routed. New-tab and modified clicks, `target`, `download`, `rel="external"`, other origins and `#…` links on the same page are left to the browser, as is a click the component already handled.
+
 ## Form libraries
 
 A `form-associated` control already submits with a native form. For a form library, `@zubra/runtime/forms` turns the library's field into the control's props, through its `value` + `valuechange` pair (`{ prop: 'open' }` for another pair):

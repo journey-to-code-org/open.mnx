@@ -15,6 +15,7 @@
 //   children, named slots with `slot="name"`.
 import { defineComponent, h, withDirectives, Text, Comment, Fragment, customRef, getCurrentScope, onScopeDispose } from 'vue';
 import { serverContent } from './server.js';
+import { routeLinks } from './navigation.js';
 import './context.js';
 import { subscribe, read, writable } from './bridge.js';
 
@@ -125,6 +126,17 @@ export function wrap(Element) {
       };
     },
   });
+}
+
+/**
+ * Route links inside Zubra components through Vue Router (or any `push`) until the current effect
+ * scope ends: `useRouteLinks((to) => router.push(to))` in a component's `setup`. Returns the
+ * function that stops it.
+ */
+export function useRouteLinks(navigate, options) {
+  const stop = routeLinks(navigate, options);
+  if (getCurrentScope()) onScopeDispose(stop);
+  return stop;
 }
 
 /**

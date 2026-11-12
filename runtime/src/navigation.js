@@ -1,0 +1,52 @@
+// Links inside components, through the app's router: a plain `<a href>` in a Zubra component
+// navigates with the router the app already has (React Router, Next.js, Vue Router, SvelteKit,
+// Angular Router…) instead of reloading the page. Not a router: one listener that hands the
+// app's router the URL, and otherwise leaves the link alone.
+//
+//   routeLinks((to) => router.push(to))          // Vue Router; returns a function that stops it
+//   useRouteLinks(useNavigate())                  // React Router (`@zubra/runtime/react`)
+//   useRouteLinks(useRouter().push)               // Next.js
+//   routeLinks((to) => goto(to))                  // SvelteKit, in onMount
+//   routeLinks((to) => router.navigateByUrl(to))  // Angular
+//
+// Without JavaScript, or for a link it leaves alone, the link is a link. It leaves alone: a click
+// something already handled (`preventDefault()`), a modified or non-primary click (new tab,
+// window, download), a `target` other than `_self`, `download`, `rel="external"`, another
+// origin, and a link to a place on the current page (`#…`). Only links inside a Zubra component
+// are routed by default (the app's own links are its router's business); `within` changes that.
+//
+// If the app's router already intercepts the Navigation API's `navigate` event (Baseline since
+// January 2026), links in components already go through it, and none of this is needed.
+
+/** A Zubra component's host: its class carries the compiled `zubra` metadata. */
+export const isComponent = (node) => Boolean(node?.constructor?.zubra);
+
+/**
+ * Route clicks on links inside Zubra components through `navigate(to, { event, anchor, url })`,
+ * where `to` is the path, query and hash (`/seats?row=b#top`). Returns a function that stops it.
+ * `within(node)` decides which ancestors count (by default, a Zubra component's host); `root` is
+ * where to listen (by default, the document).
+ */
+export function routeLinks(navigate, { within = isComponent, root = globalThis.document } = {}) {
+  if (typeof navigate !== 'function') throw new TypeError('zubra: routeLinks() needs a function that navigates, such as (to) => router.push(to)');
+  if (!root) return () => {};
+  const click = (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const path = event.composedPath();
+    const at = path.findIndex((node) => node.localName === 'a' && node.hasAttribute?.('href'));
+    if (at < 0) return;
+    const anchor = path[at];
+    if (!path.slice(at + 1).some((node) => node.nodeType === 1 && within(node))) return;
+    const target = anchor.getAttribute('target');
+    if ((target && target !== '_self') || anchor.hasAttribute('download')) return;
+    if ((anchor.getAttribute('rel') ?? '').split(/\s+/).includes('external')) return;
+    const url = new URL(anchor.href, anchor.baseURI);
+    const here = new URL(globalThis.location.href);
+    if (url.origin !== here.origin) return;
+    if (url.hash && url.pathname === here.pathname && url.search === here.search) return;
+    event.preventDefault();
+    navigate(url.pathname + url.search + url.hash, { event, anchor, url });
+  };
+  root.addEventListener('click', click);
+  return () => root.removeEventListener('click', click);
+}
