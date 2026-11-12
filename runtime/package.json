@@ -70,6 +70,11 @@
       "production": "./dist/production/outlet.js",
       "default": "./src/outlet.js"
     },
+    "./testing": {
+      "types": "./types/testing.d.ts",
+      "production": "./dist/production/testing.js",
+      "default": "./src/testing.js"
+    },
     "./react": {
       "types": "./types/react.d.ts",
       "production": "./dist/production/react.js",
@@ -104,8 +109,8 @@
     "@angular/forms": ">=16",
     "@zag-js/vanilla": ">=1.47",
     "react": ">=18",
-    "react-dom": ">=18",
-    "vue": "^3.3"
+    "vue": "^3.3",
+    "react-dom": ">=18"
   },
   "peerDependenciesMeta": {
     "@angular/core": {
@@ -120,10 +125,10 @@
     "react": {
       "optional": true
     },
-    "react-dom": {
+    "vue": {
       "optional": true
     },
-    "vue": {
+    "react-dom": {
       "optional": true
     }
   },

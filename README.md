@@ -613,6 +613,8 @@ cd dist && npm publish
 
 `--watch` rebuilds after each change (a compile error keeps the last good build), for an app that imports the library while you work on it, such as Next.js, whose bundler takes no plugins.
 
+**Test a library through every framework.** `@zubra/runtime/testing` mounts a component as plain HTML, through the React adapter or through the Vue adapter, so one test runs the way each kind of consumer uses it: `for (const framework of await frameworks()) { const view = await mount(StarRating, { framework, props: { value: 1 } }); … view.events('valuechange') … await view.set({ value: 3 }); view.unmount(); }`. Events arrive through the framework's own handlers, props are set its way, slots are its children, and a `<prop>change` event updates the prop as a two-way binding would. It runs in any browser test runner; [`examples/testing-vitest`](examples/testing-vitest) is Vitest's browser mode.
+
 The package needs no bundler or Zubra tooling on the consumer's side:
 
 - an ES module per element (`@acme/ui/quantity-stepper`), and `index.js` exporting every element by class name;
