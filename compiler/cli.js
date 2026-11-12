@@ -2,6 +2,8 @@
 // `zubra` from npm (@zubra/compiler): the WebAssembly compiler on the command line, with no Rust.
 //
 //   zubra build --lib <dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]
+//   zubra mcp [custom-elements.json | components dir | package]...   an MCP server describing the components, for coding agents
+//   zubra build --embed <dir> [--out embed] [--name <slug>] [--base <url>]   one script tag; WordPress, Shopify, HTML snippets
 //   zubra add <component>... [--dir src/components] [--force]     copy registry components in
 //   zubra add --list
 //   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
@@ -13,6 +15,8 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileFile, format, request } from './index.js';
 import { buildLibrary } from './library.js';
+import { loadComponents, serve as serveMcp } from './mcp.js';
+import { buildEmbed } from './embed.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -79,7 +83,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) rest.push(arg);
-    else if (['--lib', '--force', '--list', '--partial', '--stdout', '--server', '--watch', '--check', '--stdin', '--tabs'].includes(arg)) flags[arg.slice(2)] = true;
+    else if (['--lib', '--embed', '--force', '--list', '--partial', '--stdout', '--server', '--watch', '--check', '--stdin', '--tabs'].includes(arg)) flags[arg.slice(2)] = true;
     else flags[arg.slice(2)] = args[++i];
   }
   return { flags, rest };
@@ -135,7 +139,19 @@ function fmt(paths, flags) {
 function main(argv) {
   const [command, ...args] = argv;
   const { flags, rest } = options(args);
+  if (command === 'mcp') {
+    // Standard output is the protocol: anything else goes to standard error.
+    const components = loadComponents(rest);
+    process.stderr.write(`zubra mcp: ${components.length} component${components.length === 1 ? '' : 's'} (${components.map((c) => c.tag).join(', ')}), on standard input and output\n`);
+    return serveMcp(components);
+  }
   if (command === 'build') {
+  if (command === 'build' && flags.embed) {
+    if (rest.length !== 1) throw new Error('usage: zubra build --embed <components dir> [--out embed] [--name <slug>] [--base <url>]');
+    const out = flags.out ?? 'embed';
+    const { components } = buildEmbed(rest[0], { out, name: flags.name, base: flags.base });
+    console.log(`zubra: embed build of ${components.length} component${components.length === 1 ? '' : 's'} in ${relative(process.cwd(), resolve(out)) || '.'} (see its README.md): ${components.map(({ tag }) => `<${tag}>`).join(' ')}`);
+  } else if (command === 'build') {
     if (!flags.lib || rest.length !== 1) throw new Error('usage: zubra build --lib <components dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]');
     const out = flags.out ?? 'dist';
     const build = () => {
@@ -210,7 +226,8 @@ function main(argv) {
     if (command === 'check' && !failed) console.log(`checked ${rest.length} file${rest.length === 1 ? '' : 's'}: no errors`);
     if (failed) process.exitCode = 1;
   } else {
-    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(2, 9).map((line) => line.replace(/^\/\/ ?/, '')).join('\n'));
+    const header = readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(2);
+    console.log(header.slice(0, header.findIndex((line) => !line.startsWith('//'))).map((line) => line.replace(/^\/\/ ?/, '')).join('\n'));
     if (command && command !== 'help' && command !== '--help') process.exitCode = 1;
   }
 }
