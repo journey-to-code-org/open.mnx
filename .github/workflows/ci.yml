@@ -530,6 +530,9 @@ jobs:
           path: compiler/zubra.wasm
           retention-days: 30
           overwrite: true
+      # (Its test-only dependencies: LiquidJS for the embed build's Shopify blocks.)
+      - run: npm ci
+        working-directory: compiler
       - run: npm test
         working-directory: compiler
       - run: npm ci
@@ -540,6 +543,17 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # Embed builds loaded in a browser (Playwright comes with runtime/).
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: runtime
+      - run: node --test test/embed.test.js
+        working-directory: compiler
+      # A library's tests in Vitest browser mode, through plain HTML, React and Vue
+      # (@zubra/runtime/testing).
+      - run: npm ci
+        working-directory: examples/testing-vitest
+      - run: npm test
+        working-directory: examples/testing-vitest
       # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
       # job that runs the rest of the server's tests doesn't build; here they must run.
       - run: npm ci

@@ -14,11 +14,10 @@
       "types": "./index.d.ts",
       "default": "./index.js"
     },
-    "./wasm": {
-      "types": "./core.d.ts",
-      "default": "./core.js"
+    "./embed": {
+      "types": "./embed.d.ts",
+      "default": "./embed.js"
     },
-    "./zubra.wasm": "./zubra.wasm",
     "./library": {
       "types": "./library.d.ts",
       "default": "./library.js"
@@ -26,7 +25,12 @@
     "./mcp": {
       "types": "./mcp.d.ts",
       "default": "./mcp.js"
-    }
+    },
+    "./wasm": {
+      "types": "./core.d.ts",
+      "default": "./core.js"
+    },
+    "./zubra.wasm": "./zubra.wasm"
   },
   "files": [
     "index.js",
@@ -52,5 +56,8 @@
   },
   "bin": {
     "zubra": "cli.js"
+  },
+  "devDependencies": {
+    "liquidjs": "10.30.1"
   }
 }
