@@ -36,15 +36,22 @@ function clock(client) {
  * server has it, exactly those changes leave (`done`): by identity, not by count, so a change
  * added while an earlier push was out is never dropped by it. Two pushes can overlap (the debounce
  * and the poll loop); this is why that's safe.
+ *
+ * It keeps one change per field: a newer one replaces what's waiting for the same field (this
+ * device's later write wins anyway), so hours of typing offline wait as one change per field,
+ * not one per keystroke, and still fit in localStorage.
  */
 export function outboxOf(changes = [], persist = () => {}) {
-  let pending = changes;
+  const same = (a, b) => a.collection === b.collection && a.key === b.key && a.field === b.field;
+  let pending = [];
+  for (const change of changes) pending = [...pending.filter((other) => !same(other, change)), change];
   return {
     get size() {
       return pending.length;
     },
     pending: () => pending.slice(),
     add(change) {
+      pending = pending.filter((other) => !same(other, change));
       pending.push(change);
       persist(pending);
     },
