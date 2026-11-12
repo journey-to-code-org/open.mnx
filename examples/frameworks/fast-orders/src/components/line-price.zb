@@ -1,0 +1,16 @@
+<!--
+  An amount of money in the currency the page provides (the context protocol).
+-->
+<script>
+  import { inject } from '@zubra/runtime'
+  import { currency } from '../currency.js'
+
+  const code = inject(currency)
+  const format = (n) => new Intl.NumberFormat('en', { style: 'currency', currency: code ?? 'USD' }).format(n)
+</script>
+<style>
+  :host { font-variant-numeric: tabular-nums; }
+</style>
+<line-price amount={0}>
+  <data value={amount}>{format(amount)}</data>
+</line-price>
