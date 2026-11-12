@@ -1076,3 +1076,29 @@ fn a_runtime_hook_used_without_its_import_is_an_error_with_the_fix() {
         zubra::compile_js(source, "@zubra/runtime", "x.zb").unwrap_or_else(|error| panic!("{source}: {}", error.message));
     }
 }
+
+#[test]
+fn blank_text_between_table_rows_and_cells_is_dropped_and_nowhere_else() {
+    // A browser never lays out whitespace between rows or cells, so a list's indentation in a
+    // <tbody> would only be text nodes to create and remove with every row. Text inside a cell,
+    // and whitespace anywhere else, is kept.
+    let source = "<zb-t rows={[1, 2]}>\n  <table>\n    <thead>\n      <tr>\n        <th> Id </th>\n      </tr>\n    </thead>\n    <tbody>\n      <zb-each items={rows} as=\"r\" key={r}>\n        <tr>\n          <td> {r} </td>\n        </tr>\n      </zb-each>\n      <tr zb-if={rows.length > 1}>\n        <td>more</td>\n      </tr>\n    </tbody>\n  </table>\n  <p> keep <b>me</b> </p>\n</zb-t>\n";
+    let html = compile(source, "{}").unwrap();
+    assert!(
+        html.contains("<table><thead><tr><th> Id </th></tr></thead><tbody>"),
+        "{html}"
+    );
+    assert!(html.contains("<tr><td> 1 </td></tr>"), "{html}");
+    assert!(
+        html.contains("<tr><td>more</td></tr><?zb ]?></tbody></table>"),
+        "{html}"
+    );
+    assert!(html.contains("<p> keep <b>me</b> </p>"), "{html}");
+    // The element's template has the same shape, so it hydrates the server's rows in place.
+    let js = compile_js(source, "@zubra/runtime", "t.zb").unwrap();
+    assert!(
+        js.contains("<tbody><!--[--><!--]--><!--[--><!--]--></tbody>"),
+        "{js}"
+    );
+    assert!(js.contains(r#"template: "<tr><td></td></tr>""#), "{js}");
+}
