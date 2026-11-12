@@ -15,6 +15,7 @@
 //   works the same way.
 import * as React from 'react';
 import { serverContent } from './server.js';
+import { subscribe, read } from './bridge.js';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
 
@@ -121,4 +122,30 @@ export function wrap(Element) {
   Component.displayName = pascal(tag);
   Component.element = Element;
   return Component;
+}
+
+/**
+ * Read a Zubra signal (or a function of signals) in a React component, re-rendering when it
+ * changes: a store shared with elements, a `computed`, a `@zubra/sync` field.
+ *
+ *   const items = useSignal(cart, { deep: true })   // write with cart.set(...) or cart.get().push(...)
+ *
+ * Built on `useSyncExternalStore`, so it's safe under concurrent rendering and on the server
+ * (where it reads the value once). With `deep: true` a mutation inside an array or object
+ * re-renders too; the value is the same object, so memoize on the returned value with care.
+ * Pass a stable source (module-level, or from `useMemo`): a new function each render
+ * re-subscribes each render.
+ */
+export function useSignal(source, { deep = false } = {}) {
+  const store = React.useMemo(() => {
+    let version = 0;
+    return {
+      subscribe: (notify) => subscribe(source, () => { version++; notify(); }, { deep }),
+      // Without `deep`, the value itself is the snapshot (React compares it with Object.is);
+      // with it, a counter that each notification moves, so a mutation counts as a change.
+      snapshot: deep ? () => version : () => read(source),
+    };
+  }, [source, deep]);
+  React.useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
+  return read(source);
 }

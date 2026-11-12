@@ -43,9 +43,24 @@ A `form-associated` control already submits with a native form. For a form libra
 
 Each reports changes, focus leaving the control as a blur (for touched state and on-blur validation), and writes the library's `reset()` back into the control.
 
+## State shared with the app
+
+A signal (a module-level `state()` or `computed()`, a `@zubra/sync` field) can be read by elements and by the app's own code at once, without copying it into the framework's state and back:
+
+| Framework | Read it | Write it |
+|---|---|---|
+| React | `const items = useSignal(cart, { deep: true })` from `@zubra/runtime/react` | `cart.set(…)`, or mutate `cart.get()` |
+| Vue | `const items = useSignal(cart, { deep: true })` from `@zubra/runtime/vue`: a ref | `items.value = …` (or mutate it) |
+| Svelte | `const items = toStore(cart, { deep: true })` from `@zubra/runtime/bridge`, then `$items` | `$items = …`, `bind:value={$items}` |
+| Solid | `const items = from(toStore(cart))` (solid-js `from`) | `cart.set(…)` |
+| Angular | `items = toSignal(toStore(cart), { requireSync: true })` | `cart.set(…)` |
+| Anything else | `subscribe(cart, (value) => …)` from `@zubra/runtime/bridge`, or RxJS `from(toStore(cart))` | `cart.set(…)` |
+
+`deep: true` also follows mutations inside an array or object (`push`, a property write); without it only `set` counts.
+
 ## What crosses, and what doesn't
 
-Props, events, two-way binding, slots, form participation, refs to the host and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
+Props, events, two-way binding, slots, form participation, refs to the host, shared signals (above) and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
 
 ## Server rendering in a framework
 
