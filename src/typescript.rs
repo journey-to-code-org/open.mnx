@@ -16,10 +16,11 @@ use std::collections::{HashMap, HashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    BindingPattern, CallExpression, Class, ClassElement, Declaration, Expression, FormalParameter,
-    Function, FunctionType, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
-    MethodDefinitionKind, MethodDefinitionType, PropertyDefinitionType, Statement, TSAsExpression,
-    TSEnumDeclaration, TSExternalModuleDeclaration, TSGlobalDeclaration, TSImportEqualsDeclaration,
+    BindingPattern, CallExpression, Class, ClassElement, Declaration, ExportDefaultDeclarationKind,
+    Expression, FormalParameter, Function, FunctionType, ImportDeclaration,
+    ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, MethodDefinitionType,
+    PropertyDefinitionType, Statement, TSAsExpression, TSEnumDeclaration,
+    TSExternalModuleDeclaration, TSGlobalDeclaration, TSImportEqualsDeclaration,
     TSInterfaceDeclaration, TSModuleReference, TSNamespaceDeclaration, TSNamespaceDeclarationBody,
     TSNonNullExpression, TSSatisfiesExpression, TSTypeAliasDeclaration, TSTypeAnnotation,
     TSTypeAssertion, TSTypeParameterDeclaration, TSTypeParameterInstantiation, VariableDeclaration,
@@ -91,6 +92,9 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         copies: Vec::new(),
         experimental_decorators: options.experimental_decorators,
         decorator_helpers: HashSet::new(),
+        field_wraps: HashMap::new(),
+        class_names: HashMap::new(),
+        default_exports: HashMap::new(),
     };
     stripper.types.verbatim = options.verbatim_module_syntax;
     if source.contains("namespace") || source.contains("module") || source.contains("import") {
@@ -108,6 +112,7 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
     if stripper.decorator_helpers.contains("param") {
         helpers.push_str(PARAM);
     }
+    standard_decorators::helpers(&stripper.decorator_helpers, &mut helpers);
     if !helpers.is_empty() {
         stripper.replacements.push((Range::new(0, 0), helpers));
     }
@@ -265,6 +270,9 @@ const DECORATE: &str = "const __zubraDecorate = function (decorators, target, ke
 const PARAM: &str = "const __zubraParam = function (paramIndex, decorator) { return function (target, key) { decorator(target, key, paramIndex); } }; ";
 
 /// Where a constructor's `super(…);` statement ends.
+#[path = "standard_decorators.rs"]
+mod standard_decorators;
+
 fn super_call_end(body: &oxc_ast::ast::FunctionBody<'_>) -> Option<u32> {
     body.statements
         .iter()
@@ -372,6 +380,9 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
         copies: Vec::new(),
         experimental_decorators: false,
         decorator_helpers: HashSet::new(),
+        field_wraps: HashMap::new(),
+        class_names: HashMap::new(),
+        default_exports: HashMap::new(),
     };
     stripper.visit_program(&parsed.program);
     stripper
@@ -403,8 +414,16 @@ struct Stripper<'s> {
     copies: Vec<(u32, String, Range, String)>,
     /// `experimentalDecorators`: `@` means TypeScript's legacy decorators.
     experimental_decorators: bool,
-    /// The legacy decorator helpers the lowering used (`decorate`, `param`).
+    /// The decorator helpers the lowering used (`decorate` and `param` for legacy decorators,
+    /// `esDecorate`, `runInitializers`, `setFunctionName` and `propKey` for standard ones).
     decorator_helpers: HashSet<&'static str>,
+    /// A decorated field assigned in the constructor (without `useDefineForClassFields`), by its
+    /// start: the number its initializers are kept under.
+    field_wraps: HashMap<u32, usize>,
+    /// The name an anonymous class gets from where it is (`const X = class {}`), by its start.
+    class_names: HashMap<u32, String>,
+    /// `export default class A`, by the class's start: the `export default` to take out.
+    default_exports: HashMap<u32, Range>,
 }
 
 impl Stripper<'_> {
@@ -678,7 +697,7 @@ impl Stripper<'_> {
         if self.define_fields {
             return;
         }
-        let mut instance: Vec<(String, Range)> = Vec::new();
+        let mut instance: Vec<(String, Range, String, String)> = Vec::new();
         for element in &class.body.body {
             let ClassElement::PropertyDefinition(property) = element else {
                 continue;
@@ -702,17 +721,33 @@ impl Stripper<'_> {
             let span = Range::new(property.span.start, property.span.end);
             let newlines = "\n".repeat(self.text(span).matches('\n').count());
             self.replacements.push((span, newlines));
-            if let Some(value) = &property.value {
-                if property.r#static {
-                    self.copies.push((
-                        span.start,
-                        format!("static {{ this{target} = "),
-                        value.span(),
-                        "; }".to_owned(),
-                    ));
-                } else {
-                    instance.push((target, value.span()));
-                }
+            // A decorated field: its value goes through the decorators' initializers, and their
+            // extra initializers run right after it's assigned.
+            let wrap = self.field_wraps.get(&property.span.start).copied();
+            let value = property.value.as_ref().map(GetSpan::span);
+            if value.is_none() && wrap.is_none() {
+                continue;
+            }
+            let (open, close) = match wrap {
+                Some(n) => (
+                    format!(
+                        "__zubraRunInitializers(this, _zb_i{n}, {}",
+                        if value.is_none() { "void 0" } else { "" }
+                    ),
+                    format!("); __zubraRunInitializers(this, _zb_e{n})"),
+                ),
+                None => (String::new(), String::new()),
+            };
+            let value = value.unwrap_or(Range::new(0, 0));
+            if property.r#static {
+                self.copies.push((
+                    span.start,
+                    format!("static {{ this{target} = {open}"),
+                    value,
+                    format!("{close}; }}"),
+                ));
+            } else {
+                instance.push((target, value, open, close));
             }
         }
         if instance.is_empty() {
@@ -754,13 +789,13 @@ impl Stripper<'_> {
                 .replacements
                 .iter()
                 .any(|(range, text)| range.start == at && range.end == at && text.starts_with(';'));
-        for (index, (target, value)) in instance.into_iter().enumerate() {
+        for (index, (target, value, open, close)) in instance.into_iter().enumerate() {
             let prefix = if index == 0 && separated {
-                format!("; this{target} = ")
+                format!("; this{target} = {open}")
             } else {
-                format!(" this{target} = ")
+                format!(" this{target} = {open}")
             };
-            self.copies.push((at, prefix, value, ";".to_owned()));
+            self.copies.push((at, prefix, value, format!("{close};")));
         }
         if let Some(close) = close {
             self.copies
@@ -771,8 +806,12 @@ impl Stripper<'_> {
     /// Decorators on a class and its members. With `experimentalDecorators` they're TypeScript's
     /// legacy ones, written as `tsc` writes them: each `@` goes, and `__decorate` calls follow
     /// the class (instance members, then static ones, then the class itself, its constructor's
-    /// parameter decorators with it). Standard decorators aren't run by any browser yet.
+    /// parameter decorators with it). Without it they're standard decorators, lowered as `tsc`
+    /// lowers them for ES2022 (see `standard_decorators.rs`).
     fn decorators(&mut self, class: &Class<'_>) {
+        if !self.experimental_decorators {
+            return self.standard_decorators(class);
+        }
         let decorated_member = class.body.body.iter().any(|element| match element {
             ClassElement::MethodDefinition(method) => {
                 !method.decorators.is_empty()
@@ -787,6 +826,7 @@ impl Stripper<'_> {
             ClassElement::AccessorProperty(accessor) => !accessor.decorators.is_empty(),
             _ => false,
         });
+        self.auto_accessors(class);
         if class.decorators.is_empty() && !decorated_member {
             return;
         }
@@ -795,13 +835,6 @@ impl Stripper<'_> {
             .first()
             .map(|decorator| decorator.span.start)
             .unwrap_or(class.span.start);
-        if !self.experimental_decorators {
-            return self.fail(
-                first,
-                "standard decorators aren't run by any browser yet, and the compiler doesn't lower them",
-                Some("for TypeScript's legacy decorators (what Lit, Angular and most libraries use), set `\"experimentalDecorators\": true` in tsconfig.json"),
-            );
-        }
         let Some(id) = &class.id else {
             return self.fail(
                 first,
@@ -1154,6 +1187,30 @@ impl<'a> Visit<'a> for Stripper<'_> {
                     Some("drop `export` (the namespace works inside the component), or move it to a module and import it"),
                 );
             }
+            // `export default class …`: a decorated class is wrapped, so a named one is declared
+            // and exported by name, and an anonymous one is named `default`.
+            Statement::ExportDefaultDeclaration(export) => {
+                if let ExportDefaultDeclarationKind::ClassDeclaration(class) = &export.declaration {
+                    if class.id.is_some() {
+                        let text = self.text(export.span);
+                        // (From `export`, which a decorator may come before.)
+                        let index = text.find("default");
+                        let from = index.and_then(|index| text[..index].rfind("export"));
+                        if let (Some(from), Some(index)) = (from, index) {
+                            let at = |offset: usize| {
+                                export.span.start + u32::try_from(offset).expect("fits")
+                            };
+                            self.default_exports.insert(
+                                class.span.start,
+                                Range::new(at(from), at(index + "default".len())),
+                            );
+                        }
+                    } else {
+                        self.class_names
+                            .insert(class.span.start, "default".to_owned());
+                    }
+                }
+            }
             // `export type T = …` and `export interface I { … }` are type-only, so they're
             // erasable: the declaration goes to the typings (exported, as every declaration is)
             // and the whole statement, `export` included, is blanked. (A component script
@@ -1278,6 +1335,15 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        // `const X = class { … }`: the class is named `X` (kept when decorators wrap it).
+        if let (Some(Expression::ClassExpression(class)), Some(name)) =
+            (&it.init, it.id.get_binding_identifier())
+        {
+            if class.id.is_none() {
+                self.class_names
+                    .insert(class.span.start, name.name.to_string());
+            }
+        }
         if let Some(annotation) = &it.type_annotation {
             if let Some(name) = it.id.get_binding_identifier() {
                 let text = self.text(annotation.type_annotation.span()).to_owned();
@@ -1324,8 +1390,9 @@ impl<'a> Visit<'a> for Stripper<'_> {
             return self.blank(it.span);
         }
         self.parameter_properties(it);
-        self.assigned_fields(it);
+        // (Decorators first: a decorated field assigned in the constructor is wrapped there.)
         self.decorators(it);
+        self.assigned_fields(it);
         if it.r#abstract {
             // `abstract class` → `class`: blank the keyword.
             let text = self.text(it.span).to_owned();

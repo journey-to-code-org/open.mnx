@@ -48,7 +48,16 @@ Every other option leaves the output as it is: Zubra writes modern JavaScript fo
 
 With **`experimentalDecorators`** on, decorators are TypeScript's legacy ones (what Lit, Angular and most decorator libraries were written for), written as `tsc` writes them: each `@decorator` goes from where it was, and `__decorate` calls follow the class on its last line, instance members first, then static ones, then the class with its constructor's parameter decorators. A class decorator wraps the class, `const A = ((A) => { …; return __decorate([…], A); })(class A { … });`, on the class's own lines. TypeScript's two helpers are added to the script's first line when they're used. A plugin test runs a class with every kind of decorator through both the compiler and `tsc`. `emitDecoratorMetadata` isn't written.
 
-**Standard decorators** (the TC39 proposal, TypeScript's default) are an error for now: no browser runs them yet, so the compiler would have to lower them, and it doesn't yet. The error says how to use legacy decorators instead.
+**Standard decorators** (TC39's, TypeScript's default since 5.0) are lowered the way `tsc` lowers them for ES2022, since no browser runs them yet, with TypeScript's own helpers (`__esDecorate`, `__runInitializers`, `__setFunctionName`, `__propKey`) on the script's first line. The class is wrapped in a function that holds the decorators' bookkeeping, `const A = (() => { let _zb_d0, …; return class A { static { /* applies them */ } … }; })();`, and everything stays on the class's own lines, with each member's code where it was:
+
+- a field's value runs through its decorators' initializers in place, and their extra initializers run right after it's defined (a private `#_zb_e0` field, or a static block, that follows it);
+- a decorated `#private` method's function is created where it was, in the computed name of a throwaway static field that's deleted once the class is defined, and a getter of the same name returns what the decorators made of it;
+- a class decorator replaces what the name holds, inside the class as well;
+- decorators are evaluated in the order they're written, with any computed names among them, as `tsc` evaluates them.
+
+`accessor x = 1` is lowered with or without decorators: a private `#x_accessor_storage` field, with a getter and a setter. Three plugin tests run classes with every kind of member decorator (methods, getters, setters, fields, accessors, `#private` ones, static ones, literal and computed names), class decorators that return a subclass, anonymous classes, the decorators' `access` and `addInitializer`, metadata, and fields assigned in the constructor, through both the compiler and `tsc --target es2022`, and compare what they do.
+
+Refused, each with an error that says what to write: a parameter decorator without `experimentalDecorators` (standard decorators don't have them, TS1206), a decorator on a `declare` field, an abstract member or a constructor (TS1206), an `accessor` with a computed name, and, with `useDefineForClassFields` off, a decorated field with a computed name.
 
 ## Enums
 

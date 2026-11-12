@@ -676,13 +676,89 @@ fn legacy_decorators_are_written_as_typescript_writes_them_keeping_lines() {
 }
 
 #[test]
-fn standard_decorators_are_an_error_that_says_how_to_use_legacy_ones() {
-    let source = "<script lang=\"ts\">\n  function log(value: any, context: any) { return value }\n  class A { @log run() {} }\n</script>\n<zb-x><p>x</p></zb-x>";
+fn standard_decorators_are_lowered_as_typescript_lowers_them_keeping_lines() {
+    let source = "<script lang=\"ts\">\n  function bump(run: any, context: ClassMethodDecoratorContext) { return () => run() + 1 }\n  class Counter {\n    @bump\n    next() { return 1 }\n  }\n  const value = new Counter().next()\n</script>\n<zb-x><p>{value}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        js.contains("const __zubraEsDecorate = function (ctor, descriptorIn"),
+        "{js}"
+    );
+    assert!(js.contains("  const Counter = (() => { let _zb_instanceExtra = []; let _zb_d0; return class Counter { static { "), "{js}");
+    assert!(
+        js.contains("__zubraEsDecorate(this, null, _zb_d0, { kind: \"method\", name: \"next\""),
+        "{js}"
+    );
+    assert!(
+        js.contains(
+            "\n    \n    next() { return 1 }\n  }; })();\n  const value = new Counter().next()"
+        ),
+        "{js}"
+    );
+}
+
+fn module(source: &str) -> String {
+    zubra::typescript_to_js(source, None).unwrap()
+}
+
+#[test]
+fn a_decorated_class_keeps_its_export() {
+    let named = module("declare const d: any;\nexport @d class A {}\n");
+    assert!(
+        named.contains("export  const A = (() => { let _zb_classDecorators = [d]"),
+        "{named}"
+    );
+    assert!(named.contains("var A = class   {"), "{named}");
+    assert!(
+        named.ends_with("; return A = _zb_classThis; })();\n"),
+        "{named}"
+    );
+    let default = module("declare const d: any;\nexport default @d class B {}\n");
+    assert!(default.contains("const B = (() => {"), "{default}");
+    assert!(!default.contains("export default"), "{default}");
+    assert!(
+        default.contains("})(); export { B as default };"),
+        "{default}"
+    );
+    let anonymous = module("declare const d: any;\nexport default @d class {}\n");
+    assert!(
+        anonymous.contains("export default  (() => {"),
+        "{anonymous}"
+    );
+    assert!(
+        anonymous.contains("__zubraSetFunctionName(this, \"default\");"),
+        "{anonymous}"
+    );
+    assert!(anonymous.contains("return (class {"), "{anonymous}");
+    assert!(
+        anonymous.ends_with("), _zb_classThis; })();\n"),
+        "{anonymous}"
+    );
+}
+
+#[test]
+fn accessor_fields_are_lowered_without_decorators_too() {
+    let js = module("class A {\n  accessor x = 1;\n  static accessor y: number;\n  abstract accessor z: number;\n}\n");
+    assert!(js.contains("  #x_accessor_storage = 1; get x() { return this.#x_accessor_storage; } set x(value) { this.#x_accessor_storage = value; }\n"), "{js}");
+    assert!(js.contains("  static #y_accessor_storage        ; static get y() { return A.#y_accessor_storage; } static set y(value) { A.#y_accessor_storage = value; }\n"), "{js}");
+    assert!(!js.contains('z'), "{js}");
+    // With legacy decorators as well.
+    let mut options = serde_json::Map::new();
+    options.insert(
+        "experimentalDecorators".to_owned(),
+        serde_json::Value::Bool(true),
+    );
+    let legacy = zubra::typescript_to_js("class B { accessor x = 1 }", Some(&options)).unwrap();
+    assert!(legacy.contains("#x_accessor_storage = 1"), "{legacy}");
+}
+
+#[test]
+fn parameter_decorators_need_the_legacy_ones() {
+    let source = "<script lang=\"ts\">\n  function inject(target: any) {}\n  class A { run(@inject value: number) {} }\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
     assert!(
         error
             .message
-            .contains("standard decorators aren't run by any browser yet"),
+            .contains("a parameter decorator is one of TypeScript's legacy decorators"),
         "{}",
         error.message
     );
@@ -692,6 +768,48 @@ fn standard_decorators_are_an_error_that_says_how_to_use_legacy_ones() {
         .unwrap_or_default()
         .contains("experimentalDecorators"));
     assert_eq!(error.span.line, 3);
+}
+
+#[test]
+fn what_standard_decorators_cant_lower_is_an_error() {
+    for (source, message) in [
+        (
+            "class A { accessor [k] = 1 }",
+            "an `accessor` with a computed name",
+        ),
+        (
+            "class A { @d declare x: number }",
+            "decorators aren't valid here",
+        ),
+        (
+            "class A { @d constructor() {} }",
+            "decorators aren't valid here",
+        ),
+    ] {
+        let error =
+            zubra::typescript_to_js(&format!("declare const d: any, k: string;\n{source}"), None)
+                .unwrap_err();
+        assert!(
+            error.message.contains(message),
+            "{source}: {}",
+            error.message
+        );
+    }
+    let mut options = serde_json::Map::new();
+    options.insert(
+        "useDefineForClassFields".to_owned(),
+        serde_json::Value::Bool(false),
+    );
+    let error = zubra::typescript_to_js(
+        "declare const d: any, k: string;\nclass A { @d [k] = 1 }",
+        Some(&options),
+    )
+    .unwrap_err();
+    assert!(
+        error.message.contains("needs `useDefineForClassFields`"),
+        "{}",
+        error.message
+    );
 }
 
 // ---- type checking: the component as a TypeScript file ----------------------------------------

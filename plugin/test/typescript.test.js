@@ -146,6 +146,88 @@ const fixtures = {
     const service = new Service(7);
     globalThis.result = [log, service.run(2), Service.make(), new Plain().go(), (service as any).sealed, service.id];`,
   },
+  'standard decorators: class, methods, fields, accessors, and their initializers': {
+    options: { target: 'es2022' },
+    source: `
+    const log: string[] = [];
+    function d(name: string) {
+      log.push("evaluate " + name);
+      return (value: any, context: any) => {
+        log.push(name + ":" + context.kind + ":" + String(context.name) + ":" + context.static + ":" + context.private + ":" + typeof value);
+        context.addInitializer?.(function (this: any) { log.push("init " + name + ":" + (typeof this === "function" ? "class" : "instance")); });
+        if (context.kind === "field") return function (this: any, v: any) { log.push("field " + name + " = " + v); return v * 10; };
+        if (context.kind === "method") return function (this: any, ...args: any[]) { return "wrapped " + value.apply(this, args); };
+        if (context.kind === "accessor") return { get(this: any) { return value.get.call(this) + 100; }, init(v: any) { return v + 1; } };
+        if (context.kind === "class") { log.push("class name " + value.name); return class extends value { extra = "subclassed" }; }
+      };
+    }
+    @d("cls")
+    class Base {}
+    @d("klass")
+    class A extends Base {
+      @d("f") f = 1;
+      g = (log.push("g"), 2);
+      @d("s") static s = 3;
+      static t = (log.push("t"), 4);
+      @d("m") m() { return "m"; }
+      @d("sm") static sm() { return "sm"; }
+      @d("get") get size() { return 9; }
+      @d("set") set size(value: number) { log.push("set " + value); }
+      @d("acc") accessor acc = 4;
+      accessor plain = 5;
+      @d("sacc") static accessor sacc = 6;
+      @d("pm") #pm() { return "pm"; }
+      @d("pg") get #pg() { return "pg"; }
+      @d("pf") #pf = 8;
+      @d("pacc") accessor #pacc = 11;
+      @d("lit") "my method"() { return "lit"; }
+      @d("comp") [String("computed")] = 12;
+      @d("bare") bare: number;
+      read() { return [this.#pm(), this.#pg, this.#pf, this.#pacc, #pm in this]; }
+      self() { return A; }
+    }
+    const a = new A();
+    a.size = 3;
+    a.plain = 50;
+    globalThis.result = [log, a.f, a.g, A.s, A.t, a.m(), A.sm(), a.size, a.acc, a.plain, A.sacc, a.read(), (a as any)["my method"](), (a as any).computed, a.bare, (a as any).extra, a.self() === A, A.name, Object.getOwnPropertySymbols(A).length, Object.keys(a)];`,
+  },
+  'standard decorators: anonymous classes, expressions and access': {
+    options: { target: 'es2022' },
+    source: `
+    const seen: any[] = [];
+    const named = (value: any, context: any) => { seen.push([context.kind, context.name]); };
+    let access: any;
+    const grab = (value: any, context: any) => { access = context.access; };
+    const X = @named class {};
+    const Y = class { @named static make() { return 1; } };
+    const Z = @named class Inner { static me() { return Inner; } };
+    class Box { @grab #secret = 1; static open(box: Box) { return access.get(box); } static put(box: Box, value: number) { access.set(box, value); } @named #hidden() { return 2; } }
+    const box = new Box();
+    Box.put(box, 41);
+    // Metadata, where a runtime has \`Symbol.metadata\` (and a subclass's starts from its parent's).
+    (Symbol as any).metadata ??= Symbol("Symbol.metadata");
+    const tag = (label: string) => (value: any, context: any) => { context.metadata[String(context.name)] = label; };
+    class Parent { @tag("parent") a = 1; }
+    class Child extends Parent { @tag("child") b = 2; }
+    const meta = (Child as any)[(Symbol as any).metadata];
+    globalThis.result = [seen, X.name, Y.name, Y.make(), Z.name, Z.me() === Z, Box.open(box), access.has(box), access.has({}), Object.getOwnPropertySymbols(Box).length, meta.a, meta.b, Object.keys(meta)];`,
+  },
+  'standard decorators on fields assigned in the constructor (useDefineForClassFields false)': {
+    options: { target: 'es2022', useDefineForClassFields: false },
+    source: `
+    const log: string[] = [];
+    const twice = (value: any, context: any) => { context.addInitializer(function (this: any) { log.push("after " + String(context.name) + " " + this[context.name]); }); return (v: any) => v * 2; };
+    class Base { constructor() { log.push("base"); } }
+    class A extends Base {
+      @twice f = 1;
+      g = 2;
+      @twice static s = 3;
+      @twice none: number;
+      constructor() { super(); log.push("body " + this.f); }
+    }
+    const a = new A();
+    globalThis.result = [log, a.f, a.g, A.s, a.none, Object.keys(a)];`,
+  },
   'lines after an enum keep their numbers': `
     enum Lines {
       A,
