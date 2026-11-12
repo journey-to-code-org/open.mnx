@@ -31,7 +31,7 @@ let owner = null;          // the Effect or Scope currently running
 let nextId = 0;
 let scheduled = null;      // promise for the pending microtask flush
 let flushing = false;
-const effectOf = new WeakMap();
+const EFFECT = Symbol('effect');
 
 /**
  * `Symbol.dispose`, or, where the engine doesn't have it yet, the symbol TypeScript's downlevel
@@ -92,15 +92,18 @@ function report(error) {
 class Owner {
   constructor(parent) {
     this.parent = parent;
-    this.children = new Set();
+    this.children = null;     // created on first child: most effects have none
     this.disposed = false;
     this.paused = false;
-    parent?.children.add(this);
+    if (parent) (parent.children ??= new Set()).add(this);
   }
 
   disposeChildren() {
+    const children = this.children;
+    if (children === null || children.size === 0) return;
+    this.children = null;
     batch(() => {
-      for (const child of [...this.children]) child.dispose();
+      for (const child of children) { child.parent = null; child.dispose(); }
     });
   }
 
@@ -108,7 +111,7 @@ class Owner {
     if (this.disposed) return;
     this.disposed = true;
     this.disposeChildren();
-    this.parent?.children.delete(this);
+    this.parent?.children?.delete(this);
   }
 
   [DISPOSE]() {
@@ -118,7 +121,7 @@ class Owner {
   pause() {
     if (this.paused || this.disposed) return;
     this.paused = true;
-    batch(() => {
+    if (this.children) batch(() => {
       for (const child of [...this.children]) child.pause();
     });
   }
@@ -128,7 +131,7 @@ class Owner {
     this.paused = false;
     // Children may be replaced while their parent resumes, so iterate a snapshot and skip
     // anything that was disposed along the way.
-    for (const child of [...this.children]) if (!child.disposed) child.resume();
+    if (this.children) for (const child of [...this.children]) if (!child.disposed) child.resume();
   }
 }
 
@@ -152,7 +155,7 @@ class Effect extends Owner {
         owner = previous;
       }
     });
-    effectOf.set(this.computed, this);
+    this.computed[EFFECT] = this;
     watcher.watch(this.computed);
   }
 
@@ -187,7 +190,7 @@ class Effect extends Owner {
     this.paused = false;
     watchAgain(this.computed);
     try { this.run(); } catch (error) { report(error); }
-    for (const child of [...this.children]) if (!child.disposed) child.resume();
+    if (this.children) for (const child of [...this.children]) if (!child.disposed) child.resume();
   }
 }
 
@@ -255,7 +258,7 @@ export function flush() {
         report(new Error('zubra: effects keep re-triggering each other; stopped after 100 rounds'));
         return;
       }
-      const effects = pending.map((computed) => effectOf.get(computed)).sort((a, b) => a.id - b.id);
+      const effects = pending.map((computed) => computed[EFFECT]).sort((a, b) => a.id - b.id);
       for (const e of effects) {
         if (e.disposed || e.paused) continue;
         try { e.run(); } catch (error) { report(error); }
