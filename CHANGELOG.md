@@ -19,6 +19,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
+- **Server rendering: the ES2019–ES2024 array and object methods.** `.findLast`, `.findLastIndex`, `.toSpliced`, `.with`, `.flat` and `.flatMap`, and `Object.fromEntries`, `Object.groupBy` and `Object.hasOwn`, now render on the server instead of leaving an empty region for the browser. An object's keys now come out in JavaScript's order (index-like keys first, ascending), for object literals too, so `Object.keys({ b: 1, 2: 2 })` reads `2,b` on the server as in V8. What the browser would throw on (`.with` out of range, `Object.hasOwn(null, …)`) or that JSON can't hold (`.flat(Infinity)`, an entry with no value) is still left for the browser. Each is in the differential test against V8.
 - **TypeScript: an import used only as a type no longer reaches the browser.** TypeScript, esbuild and Babel drop an import whose names a module uses only in types, even without `import type`; Zubra kept it, so `import { Option } from './types'` (an interface) made the browser refuse the component's module, and every module importing it, because `./types` has no runtime export named `Option`. Such names are now dropped from the module, and the import with them when nothing else is left, unless the host or the template reads them (`{Size.Large}`). The typings still import them as types. An import the script never mentions is kept, for the template or for its side effects. Both front ends, `.zb` and `.zb.tsx`.
 
 ## 5.7.0 — 2026-11-11
