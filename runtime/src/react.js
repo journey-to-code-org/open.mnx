@@ -16,6 +16,8 @@
 import * as React from 'react';
 import { serverContent } from './server.js';
 import { outletsOf } from './outlet.js';
+import { routeLinks } from './navigation.js';
+import './context.js';
 import { subscribe, read } from './bridge.js';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
@@ -195,6 +197,38 @@ export function wrap(Element) {
   Component.displayName = pascal(tag);
   Component.element = Element;
   return Component;
+}
+
+/**
+ * Route links inside Zubra components through the app's router while this component is mounted:
+ * `useRouteLinks(useNavigate())` (React Router), `useRouteLinks(useRouter().push)` (Next.js).
+ * The function can change between renders. Options as for `routeLinks` (`@zubra/runtime/navigation`).
+ */
+export function useRouteLinks(navigate, options) {
+  const latest = React.useRef(navigate);
+  latest.current = navigate;
+  React.useEffect(() => routeLinks((to, info) => latest.current(to, info), options), []);
+}
+
+/**
+ * Provide a Context Protocol value to every element inside: an app's theme, locale or current user,
+ * read by components with `inject(context)` (or Lit's `@consume`).
+ *
+ *   <ZubraContext context={theme} value={dark ? 'dark' : 'light'}>…</ZubraContext>
+ *
+ * `value` can also be a signal. It renders a `<zb-context>` element, which is `display: contents`.
+ */
+export function ZubraContext({ context, value, children }) {
+  const ref = React.useRef(null);
+  useIsomorphicLayoutEffect(() => {
+    ref.current.context = context;
+    ref.current.value = value;
+  });
+  // React 19 sets these as properties when it creates the element, before the children are in
+  // the document, so they're answered on their first request; React 18 sets them in the effect,
+  // and the element's announcement makes the children ask again.
+  const early = legacy || typeof window === 'undefined' ? {} : { context, value };
+  return React.createElement('zb-context', { ...early, ref, style: { display: 'contents' } }, children);
 }
 
 /**
