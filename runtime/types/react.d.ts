@@ -12,6 +12,9 @@ export declare function wrap<E extends HTMLElement>(
   React.HTMLAttributes<E> & Record<string, unknown> & { children?: React.ReactNode } & React.RefAttributes<E>
 > & { readonly element: ZubraElementClass<E> };
 
+/** Provide a Context Protocol value (or a signal) to every element inside; renders `<zb-context>`. */
+export declare function ZubraContext(props: { context: unknown; value: unknown; children?: React.ReactNode }): React.ReactElement;
+
 /**
  * Read a Zubra signal (or a function of signals) in a React component, re-rendering when it
  * changes. `deep: true` re-renders on mutations inside an array or object too.

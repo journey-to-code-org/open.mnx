@@ -18,6 +18,7 @@ ships one, this package deletes code instead of components being rewritten.
 | `types/` | TypeScript declarations for every entry point | Done |
 | `src/element.js` forms | Form-associated custom elements (`ElementInternals`) | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled`; native control API on the element |
 | `src/element.js` context | [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md) (`context-request` / `context-provider` events) | `createContext`, `provide`, `inject`; interoperates with any protocol implementation |
+| `src/context.js` | The same protocol, provided from the app: `<zb-context>` with `context` and `value` properties; `ZubraContext` in the React and Vue adapters | Done |
 
 ## The production build
 
