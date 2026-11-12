@@ -540,6 +540,25 @@ function blueprint(source, parent = null) {
   return content;
 }
 
+// For a blueprint with no custom elements: a copy owned by this document, made once, which rows
+// clone. Its clones need no adopting when they're inserted, and nothing in it has to upgrade.
+const imported = new WeakMap();
+const upgrades = (content) =>
+  [...content.querySelectorAll('*')].some((element) => element.localName.includes('-') || element.hasAttribute('is'));
+
+/** A fresh copy of `block`'s template for `parent`, ready for its parts to be found and bound. */
+function freshCopy(block, parent) {
+  const content = blueprint(block, parent);
+  let copy = imported.get(content);
+  if (copy === undefined) {
+    // importNode: custom elements inside upgrade now, so their properties exist before parts
+    // bind (a plain clone stays in the template's inert document).
+    copy = upgrades(content) ? null : document.importNode(content, true);
+    imported.set(content, copy);
+  }
+  return copy === null ? document.importNode(content, true) : copy.cloneNode(true);
+}
+
 function clearBetween(open, close) {
   while (open.nextSibling && open.nextSibling !== close) open.nextSibling.remove();
 }
@@ -600,10 +619,8 @@ function mountBlock(block, args, open, close, hydrating, context) {
   clearBetween(open, close);
   // Find and bind the parts in the fragment, then insert it: child components inside see
   // their props from the start, and can't move slotted nodes before they're found.
-  // importNode, not cloneNode: defined custom elements upgrade now, so their properties exist
-  // before parts bind (a clone stays in the template's inert document).
   const parent = parentOf(close);
-  const fragment = document.importNode(blueprint(block, parent), true);
+  const fragment = freshCopy(block, parent);
   fragmentParents.set(fragment, parent);
   const fresh = locate(childRange(fragment), parts);
   parts.forEach((part, index) => bind(part, fresh[index], false, context));
@@ -731,7 +748,12 @@ function bind(part, node, hydrating, context) {
   if (part.text) {
     effect(() => {
       const text = part.text();
-      if (node.textContent !== text) node.textContent = text;
+      // A lone Text child is compared and written in place (`.data`): reading `textContent`
+      // walks the subtree, and setting it replaces the Text node.
+      const child = node.firstChild;
+      if (child !== null && child === node.lastChild && child.nodeType === TEXT) {
+        if (child.data !== text) child.data = text;
+      } else if (node.textContent !== text) node.textContent = text;
     });
   } else if (part.anchor) {
     effect(() => {
@@ -1289,19 +1311,27 @@ function bindEach(part, open, hydrating, context) {
   const rowsOwner = scope();
   let rows = [];
 
+  // A row is the nodes from `open` to `close`. Rows the server rendered keep the markers it put
+  // around them. A row made here is its block's own nodes, from first to last, with no markers:
+  // what a block's nodes are at the top never changes after it's bound (a region inside one keeps
+  // its own markers), so the first and last stay the row's ends. Only an empty block needs one.
   const createRow = (value, index, key, rowOpen, rowClose, hydrateRow) => {
-    if (!rowOpen) {
-      // A new row is assembled in a fragment, then placed.
-      rowOpen = document.createComment('[');
-      rowClose = document.createComment(']');
-      const fragment = new DocumentFragment();
-      fragmentParents.set(fragment, parentOf(open));
-      fragment.append(rowOpen, rowClose);
-    }
     const item = new Signal.State(value);
     const position = new Signal.State(index);
-    const owner = rowsOwner.run(() => scope(() => mountBlock(part.block, [item, position], rowOpen, rowClose, hydrateRow, context)));
-    return { key, item, position, open: rowOpen, close: rowClose, owner };
+    if (rowOpen) {
+      const owner = rowsOwner.run(() => scope(() => mountBlock(part.block, [item, position], rowOpen, rowClose, hydrateRow, context)));
+      return { key, item, position, open: rowOpen, close: rowClose, owner };
+    }
+    const parent = parentOf(open);
+    const fragment = freshCopy(part.block, parent);
+    fragmentParents.set(fragment, parent);
+    const owner = rowsOwner.run(() => scope(() => {
+      const parts = part.block.parts(item, position);
+      const nodes = locate(childRange(fragment), parts);
+      parts.forEach((each, at) => bind(each, nodes[at], false, context));
+    }));
+    if (!fragment.firstChild) fragment.append(document.createComment(''));
+    return { key, item, position, open: fragment.firstChild, close: fragment.lastChild, owner };
   };
   const nodesOf = (row) => {
     const nodes = [];

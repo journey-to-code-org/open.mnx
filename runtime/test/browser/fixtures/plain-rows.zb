@@ -1,0 +1,19 @@
+<zb-plain-rows
+  rows={[{ id: 1, text: "milk" }, { id: 2, text: "eggs" }, { id: 3, text: "bread" }]}
+  shown={true}
+>
+  <ul>
+    <zb-each items={rows} as="row" key={row.id}>
+      <li data-id={row.id}>{row.text}</li>
+    </zb-each>
+  </ul>
+  <ol>
+    <zb-each items={rows} as="row" key={row.id}>
+      <zb-if test={shown}><b data-id={row.id}>{row.text}</b></zb-if>
+      <i data-id={row.id}>{row.id}</i>
+    </zb-each>
+  </ol>
+  <p>
+    <zb-each items={rows} as="row" key={row.id}></zb-each>
+  </p>
+</zb-plain-rows>
