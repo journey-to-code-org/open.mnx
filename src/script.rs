@@ -306,6 +306,11 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         {
                             from_names.push(named.local.name.to_string());
                         }
+                        if import.source.value.as_str() == Some(RUNTIME)
+                            && named.imported.name().as_str() == "resource"
+                        {
+                            script.resource.push(named.local.name.to_string());
+                        }
                     }
                 }
                 let range = import.span.start as usize..import.span.end as usize;

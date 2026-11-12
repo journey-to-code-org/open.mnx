@@ -1,0 +1,14 @@
+<!-- A list that waits for a token before it reads which page and organisation to load. -->
+<script>
+  import { resource } from '@zubra/runtime'
+  let page = 1
+  const list = resource(async ({ signal }) => {
+    const token = await window.auth(signal)
+    window.calls.push(`${org}/${page}`)
+    return `${org}:${page}:${token}`
+  })
+</script>
+<zb-await-tracked org="acme">
+  <p class="value">{list.value}</p>
+  <button onclick={() => page++}>next</button>
+</zb-await-tracked>

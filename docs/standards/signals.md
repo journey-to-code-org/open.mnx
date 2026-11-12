@@ -54,13 +54,31 @@ A script value holding an array or a plain object holds a proxy of it. Each prop
 
 It is the shape people reach for when they ask the proposal for collections or "deep" state. It works over the standard API, with the usual proxy limits (identity, and the types it must skip). We would suggest that any shared guidance on this pattern say so, and we can say that it needed no new primitive.
 
-### Reads before the first `await`
+### Reads after an `await`
 
-`resource(fetcher)` tracks what the fetcher reads synchronously. Reads after its first `await` are untracked, as in every framework. This works, but it's the most common surprise. An `AsyncContext` integration (tracking across `await`) would remove it, which supports the champions' interest in that direction.
+`resource(fetcher)` runs the fetcher inside an effect, so what it reads before its first `await` is tracked. The code after that runs later, outside any Computed, and the API records a read only while a Computed is running. So those reads were untracked, as in every framework, and it was the most common surprise. We measured two ways around it (ECMAScript roadmap E4; tests in `runtime/test/resource-await.test.js` and `runtime/test/async-context.test.js`).
+
+**What ships (experimental): a per-run `track()`, written by the compiler.** `tracked(fetcher)` (`@zubra/runtime/track`, about 570 B gzipped, loaded only by components that use it) gives each run `track(read)`. After an `await`, `track` evaluates `read` in a new `Signal.Computed`. An effect watches those Computeds, and when one's value changes it runs the fetcher again. In a `.zb` script the compiler knows every prop and state read, so it writes `$run.track(() => page.get())` around the ones that can run after the first `await`: reads in the `await`'s operand, before it waits, stay plain, while reads in a loop that awaits and reads in nested functions are tracked. It works on the standard API alone. What it can't reach is a read the compiler doesn't see, such as a store's getter in another module.
+
+Building it settled four rules. A framework doing this needs each of them, whatever carries the context:
+
+1. **A replaced run still reads, but doesn't subscribe.** Its late reads describe a value that will be dropped.
+2. **A settled run doesn't subscribe either.** A timer or listener the fetcher left behind can't change the value the run already produced. With AsyncContext this matters more, since the context follows the timer.
+3. **A new read is appended without re-running.** Only a value that differs from the one the run saw counts.
+4. **The watching has an owner.** A detached element holds none of the reads, and catches up when it returns.
+
+**AsyncContext alone doesn't remove the problem.** With `AsyncContext.Variable` (Node's `AsyncLocalStorage` standing in), the run follows the fetcher across `await`, so a helper in another module can find it and call `track()` without being handed it. But a plain `signal.get()` after the `await` is still not followed: the Signals API doesn't consult the async context.
+
+**AsyncContext plus one hook in Signals does.** The hook: a `get()` made while no Computed is running reports the read to a consumer held in an `AsyncContext.Variable`. With it, an unmodified async fetcher is followed after its `await`, reads in imported helpers included, with no compiler. The spike patches the hook onto the polyfill's prototypes and found two things it needs:
+
+- **The consumer must run with the context cleared.** Its own bookkeeping reads also happen outside any Computed, and they were reported back to it, forever. The first version hung.
+- **It has to respect `untrack()`.** Through the public API, "no Computed is running" and "`untrack()` said not to track" look the same, so a library patch follows reads the code asked not to follow (the spike's last test records this). Inside the implementation the two differ, so the hook belongs in the Signals implementation, not in a library.
+
+What we'd ask of the champions: consider an async consumer, so that a Computed or effect started by a framework keeps receiving reads across `await` through AsyncContext, with `untrack()` excluding them. Until then, a compiler can do the same for the reads it can see. That is the measured cost of not having it: a closure per read after an `await`, and reads in other modules missed.
 
 ## What we didn't need
 
-We never used `Signal.subtle.currentComputed` or the introspection APIs in shipped code; only tests use them. `untrack` is used in a handful of places, in four kinds: running user callbacks (`watch()` callbacks and effect cleanups), mounting blocks or effects inside an effect without the parent depending on what they read, reading a value's latest state when it is being reassigned (a prop that resets to a new default and can still be written locally), and assigning element references.
+We used `Signal.subtle.currentComputed` in one place: `track()` asks whether a Computed is running, to leave a read before the first `await` to the effect. The introspection APIs are used only in tests and the DevTools pane. `untrack` is used in a handful of places, in four kinds: running user callbacks (`watch()` callbacks and effect cleanups), mounting blocks or effects inside an effect without the parent depending on what they read, reading a value's latest state when it is being reassigned (a prop that resets to a new default and can still be written locally), and assigning element references.
 
 ## Reproducing
 

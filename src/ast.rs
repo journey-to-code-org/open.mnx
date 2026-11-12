@@ -105,6 +105,9 @@ pub struct Script {
     pub body: String,
     /// The local names of `from` imported from `@zubra/runtime` (`let x = from(prop)`).
     pub from: Vec<String>,
+    /// The local names of `resource` imported from `@zubra/runtime`: an async fetcher passed
+    /// to one gets `track()` calls for its reads after an `await`.
+    pub resource: Vec<String>,
     /// The local name of `emit` imported from `@zubra/runtime`, if the script imports it.
     pub emit: Option<String>,
     /// Every `emit("name", detail)` call, in source order.
