@@ -157,11 +157,26 @@ function @list(start, end, read, key, create, leave, glide) {
     }
     return nodes;
   };
-  // The node after `node`, passing rows on their way out.
-  const after = (node) => {
-    let next = node.nextSibling;
-    while (next?.nodeType === 1 && next.hasAttribute("data-leaving")) next = next.nextSibling;
-    return next;
+  // The indexes of a longest increasing run of `sequence` (negative entries never count): the rows
+  // already in order, which needn't move.
+  const inOrder = (sequence) => {
+    const tails = [];
+    const previous = [];
+    sequence.forEach((value, index) => {
+      if (value < 0) return;
+      let low = 0;
+      let high = tails.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (sequence[tails[middle]] < value) low = middle + 1;
+        else high = middle;
+      }
+      previous[index] = low > 0 ? tails[low - 1] : -1;
+      tails[low] = index;
+    });
+    const kept = new Set();
+    for (let index = tails.length ? tails[tails.length - 1] : -1; index >= 0; index = previous[index]) kept.add(index);
+    return kept;
   };
   const update = () => {
     const parent = start.parentNode;
@@ -180,26 +195,35 @@ function @list(start, end, read, key, create, leave, glide) {
       if (leave) leave(nodesOf(row), true);
       else for (const node of nodesOf(row)) node.remove();
     }
+    const was = new Map([...rows.values()].map((row, index) => [row, index]));
     const next = new Map();
-    let last = start;
-    items.forEach((item, index) => {
+    const order = items.map((item, index) => {
       const id = ids[index];
       let row = rows.get(id);
       if (!row) {
         const { nodes, update } = create(item, index);
         // A row is everything from its first node to its last, with what a list inside it adds later.
-        row = { first: nodes.firstChild, last: nodes.lastChild, update };
+        row = { first: nodes.firstChild, last: nodes.lastChild, update, nodes };
         update(item, index); // filled in before it's on the page
-        @insert(parent, nodes, after(last));
       }
       next.set(id, row);
       row.update(item, index);
-      if (row.first !== after(last)) {
-        const before = after(last);
+      return row;
+    });
+    // The longest run of rows still in their old order stays put; every other row goes before the
+    // row after it, from the end. A swap moves two rows, not the rows between them.
+    const stay = inOrder(order.map((row) => was.get(row) ?? -1));
+    let before = end;
+    for (let index = order.length - 1; index >= 0; index--) {
+      const row = order[index];
+      if (row.nodes) {
+        @insert(parent, row.nodes, before); // a new row, from its fragment
+        delete row.nodes;
+      } else if (!stay.has(index)) {
         for (const node of nodesOf(row)) @move(parent, node, before);
       }
-      last = row.last;
-    });
+      before = row.first;
+    }
     rows = next;
   };
   if (!glide) return update;

@@ -1365,6 +1365,7 @@ function bindEach(part, open, hydrating, context) {
       }
       // `animate`: the rows that stay glide from where they were (@zubra/runtime/motion).
       const reorder = () => {
+        const was = new Map(rows.map((row, index) => [row, index]));
         const next = list.map((value, index) => {
           const row = byKey.get(keys[index]);
           if (!row) return createRow(value, index, keys[index]);
@@ -1374,17 +1375,14 @@ function bindEach(part, open, hydrating, context) {
           return row;
         });
         batch(() => { for (const row of byKey.values()) removeRow(row); });
-        // Text between rows, and rows on their way out, aren't rows to place against.
-        const skip = (node) => node && (node.nodeType === TEXT || part.animate?.isLeaving(node));
-        let at = open.nextSibling;
-        while (skip(at)) at = at.nextSibling;
-        for (const row of next) {
-          if (row.open === at) {
-            at = row.close.nextSibling;
-            while (skip(at)) at = at.nextSibling;
-            continue;
-          }
-          placeRow(row, at ?? close);
+        // The longest run of rows still in their old order stays put; every other row (and every
+        // new one) goes before the row after it, from the end. A swap moves two rows, not the
+        // rows between them.
+        const stay = inOrder(next.map((row) => was.get(row) ?? -1));
+        let before = close;
+        for (let index = next.length - 1; index >= 0; index--) {
+          if (!stay.has(index)) placeRow(next[index], before);
+          before = next[index].open;
         }
         rows = next;
       };
@@ -1392,6 +1390,31 @@ function bindEach(part, open, hydrating, context) {
       else reorder();
     });
   });
+}
+
+/**
+ * The indexes of a longest strictly increasing run in `sequence` (negative entries never count):
+ * for a keyed list, which rows are already in order and needn't move. O(n log n).
+ */
+function inOrder(sequence) {
+  const tails = []; // tails[length - 1]: the index ending the best run of that length so far
+  const previous = new Array(sequence.length);
+  for (let index = 0; index < sequence.length; index++) {
+    const value = sequence[index];
+    if (value < 0) continue;
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (sequence[tails[middle]] < value) low = middle + 1;
+      else high = middle;
+    }
+    previous[index] = low > 0 ? tails[low - 1] : -1;
+    tails[low] = index;
+  }
+  const kept = new Set();
+  for (let index = tails.length ? tails[tails.length - 1] : -1; index >= 0; index = previous[index]) kept.add(index);
+  return kept;
 }
 
 const hasContent = (root) =>

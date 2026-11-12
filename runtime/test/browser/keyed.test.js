@@ -65,6 +65,65 @@ test('inserting and removing in the middle touches only those rows', async () =>
   await page.close();
 });
 
+test('a reorder moves only the rows that are out of order: a swap moves two', async () => {
+  const { page, messages } = await open('<zb-todos></zb-todos>', { modules: ['todos'] });
+  const many = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, text: `item ${i + 1}` }));
+  await setTodos(page, many);
+  // Count the rows put back into the list: a move is a removal and an insertion of its <li>.
+  const moved = async (todos) => {
+    await page.evaluate(() => {
+      window.inserted = 0;
+      window.observer = new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) if (node.nodeName === 'LI') window.inserted++;
+      });
+      window.observer.observe(document.querySelector('zb-todos ul'), { childList: true });
+    });
+    await setTodos(page, todos);
+    return page.evaluate(() => { window.observer.disconnect(); return window.inserted; });
+  };
+  const swapped = [...many];
+  [swapped[1], swapped[98]] = [swapped[98], swapped[1]];
+  assert.equal(await moved(swapped), 2, 'rows 2 and 99 swap; the 96 between them stay');
+  assert.deepEqual((await rows(page)).slice(0, 3), ['1@0:item 1', '99@1:item 99', '3@2:item 3']);
+  // The last row to the front moves one row, not ninety-nine.
+  assert.equal(await moved([swapped[99], ...swapped.slice(0, 99)]), 1);
+  // Reversed, all but one row has to move.
+  const reversed = [swapped[99], ...swapped.slice(0, 99)].reverse();
+  assert.equal(await moved(reversed), 99);
+  assert.deepEqual(await rows(page), reversed.map((todo, i) => `${todo.id}@${i}:${todo.text}`));
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('random reorders with rows added and removed end in the list order, and rows that stay keep their elements', async () => {
+  const { page, messages } = await open('<zb-todos></zb-todos>', { modules: ['todos'] });
+  // A seeded shuffle, so a failure is the same failure on the next run.
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  let next = 1;
+  let list = Array.from({ length: 30 }, () => ({ id: next++, text: `t${next}` }));
+  await setTodos(page, list);
+  for (let round = 0; round < 40; round++) {
+    await page.evaluate(() => { window.liById = Object.fromEntries([...document.querySelectorAll('zb-todos li')].map((li) => [li.dataset.id, li])); });
+    const kept = list.filter(() => random() > 0.15);
+    for (let i = kept.length - 1; i > 0; i--) {
+      if (random() < 0.3) {
+        const j = Math.floor(random() * (i + 1));
+        [kept[i], kept[j]] = [kept[j], kept[i]];
+      }
+    }
+    const added = Array.from({ length: Math.floor(random() * 5) }, () => ({ id: next++, text: `t${next}` }));
+    for (const todo of added) kept.splice(Math.floor(random() * (kept.length + 1)), 0, todo);
+    list = kept;
+    await setTodos(page, list);
+    assert.deepEqual(await rows(page), list.map((todo, i) => `${todo.id}@${i}:${todo.text}`), `round ${round}`);
+    const same = await page.evaluate(() => [...document.querySelectorAll('zb-todos li')].filter((li) => window.liById[li.dataset.id]).every((li) => li === window.liById[li.dataset.id]));
+    assert.equal(same, true, `round ${round}: a row that stayed kept its element`);
+  }
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test('an item changing under the same key updates its row in place', async () => {
   const { page } = await open('<zb-todos></zb-todos>', { modules: ['todos'] });
   await page.evaluate(() => { window.first = document.querySelector('zb-todos li'); });
