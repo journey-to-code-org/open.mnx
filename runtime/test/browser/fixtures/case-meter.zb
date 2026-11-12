@@ -1,0 +1,4 @@
+<!-- A meter with a camelCase prop and a one-word prop. -->
+<case-meter max-value={5} label="Stars">
+  <p>{label}: {maxValue}</p>
+</case-meter>

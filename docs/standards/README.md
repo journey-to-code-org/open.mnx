@@ -9,4 +9,6 @@ Evidence from building Zubra on the platform's emerging pieces, written for the 
 | [declarative-custom-elements.md](declarative-custom-elements.md) | Declarative custom elements: the `.zb` format as a worked explainer |
 | [one-source-n-consumers.md](one-source-n-consumers.md) | The case for one source against agent-made ports, with numbers |
 
+What the server evaluates, compared with V8, is listed in [What JavaScript runs where](../javascript-support.md).
+
 Numbers were last re-checked against Zubra 5.0.3. If one is wrong, please open an issue.

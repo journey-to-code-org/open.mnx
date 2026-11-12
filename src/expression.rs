@@ -279,6 +279,11 @@ impl Expression {
                     (Value::Object(_) | Value::String(_) | Value::Array(_), Value::String(key)) => {
                         read_property(&object, key)
                     }
+                    // An object's keys are strings, so a number indexes by its string, as in
+                    // JavaScript (`Size[0]`, a numeric enum's reverse mapping).
+                    (Value::Object(_), Value::Number(number)) => {
+                        read_property(&object, &number.to_string())
+                    }
                     _ => Err(format!(
                         "cannot index {} with {}",
                         type_name(&object),
