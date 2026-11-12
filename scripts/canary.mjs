@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 /** The frameworks Zubra's adapters and SSR bridge are tested against, by package name or scope. */
 export const FRAMEWORKS = [
   'react', 'react-dom', 'vue', 'vue-router', 'svelte', '@sveltejs/kit', 'solid-js', '@solidjs/start', 'lit', '@lit/context',
-  'preact', 'next', 'nuxt', 'react-router', '@react-router/*', '@angular/*', 'astro', '@11ty/eleventy',
+  'preact', 'next', 'nuxt', 'react-router', '@react-router/*', '@angular/*', 'astro', '@11ty/eleventy', '@microsoft/fast-element',
 ];
 
 /** Their bundler plugins and build tools, moved on the same channel. */
