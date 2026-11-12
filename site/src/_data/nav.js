@@ -31,6 +31,7 @@ export default [
     { file: 'docs/what-crosses-the-boundary.md', label: 'What crosses the boundary' },
     { file: 'docs/server-rendering.md', label: 'Server rendering, honestly' },
     { file: 'docs/compared-with-lit-and-stencil.md', label: 'Compared with Lit and Stencil' },
+    { file: 'docs/compared-with-html-first.md', label: 'Compared with WebUI, FAST, Enhance and WebC' },
     { file: 'docs/typescript.md', label: 'TypeScript in .zb files' },
     { file: 'docs/guide/other-peoples-pages.md', label: 'On other people’s pages' },
     { file: 'docs/guide/accessible-widgets.md', label: 'Accessible widgets' },

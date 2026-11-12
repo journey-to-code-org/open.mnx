@@ -30,6 +30,7 @@ Each framework's app in `examples/frameworks/` (or `examples/meta/` for the serv
 | Svelte 5 | `svelte-flashcards/` (a trainer) | `frameworks` | a shadow-DOM element with named slots from Svelte markup; `{#key}` re-creation; an element listening on the document and cleaning up |
 | Solid | `solid-markets/` (a live dashboard) | `frameworks` | `prop:`/`on:` updated every tick; nested elements; pointer events |
 | Lit 3 | `lit-chat/` (a team chat) | `frameworks` | light-DOM elements inside a LitElement's shadow root with their styles adopted there; context from `@lit/context` read by `inject()` |
+| FAST Element 3 | `fast-orders/` (an order sheet) | `frameworks` | light-DOM elements inside a FASTElement's shadow root with their styles adopted there; `:prop` and `@event` bindings in `repeat()`; context from FAST's `Context` read by `inject()` (FAST's provider answers once, so it doesn't update consumers) |
 | Preact 10 | `preact-habits/` (a habit tracker) | `frameworks` | objects as props; a custom property from Preact's `style`; keyboard navigation; a form control in a Preact form |
 | Angular 22 | `angular-booking/` (a booking wizard) | `frameworks` | reactive forms whose controls are elements (`zubraModel` with `formControlName`), validation, ahead-of-time compilation in Vite |
 | Astro | `recipes/` | `plugin` | static components, a JSX island, a form-associated control, loaded reviews |
