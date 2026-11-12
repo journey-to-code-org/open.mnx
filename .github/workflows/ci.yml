@@ -530,6 +530,9 @@ jobs:
           path: compiler/zubra.wasm
           retention-days: 30
           overwrite: true
+      # (Its test-only dependencies: LiquidJS for the embed build's Shopify blocks.)
+      - run: npm ci
+        working-directory: compiler
       - run: npm test
         working-directory: compiler
       - run: npm ci
