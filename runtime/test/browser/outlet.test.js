@@ -72,38 +72,50 @@ before(async () => {
   await bundle('outlet-react18', REACT_APP, { react: 'react18', 'react-dom': 'react-dom18' });
 });
 
-const rows = (page) => page.evaluate(async () => {
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  return {
-    rows: [...document.querySelectorAll('zb-outlet-list li')].map((li) => `${li.dataset.id}=${li.querySelector('zb-outlet').textContent}`),
-    summary: document.querySelector('zb-outlet-list footer').textContent,
-  };
-});
+const snapshot = (page) => page.evaluate(() => ({
+  rows: [...document.querySelectorAll('zb-outlet-list li')].map((li) => `${li.dataset.id}=${li.querySelector('zb-outlet').textContent}`),
+  summary: document.querySelector('zb-outlet-list footer').textContent,
+}));
+
+// Assert the rows once React has rendered them. React commits portals on its own schedule, which
+// in WebKit can take longer than a fixed wait (the test used to read half-rendered rows there), so
+// this polls until the rows match (or two seconds pass) and then asserts what's there. With no
+// `summary` in `expected`, only the rows are compared.
+const expectRows = async (page, expected, message) => {
+  const pick = (now) => (expected.summary === undefined ? { rows: now.rows } : now);
+  const deadline = Date.now() + 2000;
+  let now;
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    now = pick(await snapshot(page));
+  } while (JSON.stringify(now) !== JSON.stringify(expected) && Date.now() < deadline);
+  assert.deepEqual(now, expected, message);
+};
 
 for (const name of ['outlet-react19', 'outlet-react18']) {
   test(`${name}: render props fill the element's outlets as part of the React tree`, async () => {
     const { page, messages } = await open('<div id="root"></div>', { modules: [name] });
     await page.waitForSelector('zb-outlet-list li .row');
-    assert.deepEqual(await rows(page), { rows: ['1=a:dark:0', '2=b:dark:0'], summary: '2 rows' },
+    await expectRows(page, { rows: ['1=a:dark:0', '2=b:dark:0'], summary: '2 rows' },
       "each row rendered in its outlet, with the app's context");
 
     await page.click('li[data-id="2"] .row');
     await page.click('li[data-id="2"] .row');
-    assert.deepEqual((await rows(page)).rows, ['1=a:dark:0', '2=b:dark:2'], 'React state and handlers work in an outlet');
+    await expectRows(page, { rows: ['1=a:dark:0', '2=b:dark:2'] }, 'React state and handlers work in an outlet');
     assert.deepEqual(await page.evaluate(() => window.clicked), [2, 2]);
 
     await page.evaluate(() => window.update((set) => set.setTheme('light')));
-    assert.deepEqual((await rows(page)).rows, ['1=a:light:0', '2=b:light:2'], 'a context change reaches the rows');
+    await expectRows(page, { rows: ['1=a:light:0', '2=b:light:2'] }, 'a context change reaches the rows');
 
     await page.evaluate(() => window.update((set) => set.setItems([{ id: 2, name: 'b' }, { id: 1, name: 'a' }])));
-    assert.deepEqual((await rows(page)).rows, ['2=b:light:2', '1=a:light:0'], "a keyed move keeps each row's state");
+    await expectRows(page, { rows: ['2=b:light:2', '1=a:light:0'] }, "a keyed move keeps each row's state");
 
     await page.evaluate(() => window.update((set) => set.setItems([{ id: 2, name: 'B' }, { id: 3, name: 'c' }])));
-    assert.deepEqual(await rows(page), { rows: ['2=B:light:2', '3=c:light:0'], summary: '2 rows' },
+    await expectRows(page, { rows: ['2=B:light:2', '3=c:light:0'], summary: '2 rows' },
       'a new item for a kept row re-renders it; a removed row goes, a new one comes');
 
     await page.evaluate(() => window.update((set) => set.setItems([])));
-    assert.deepEqual(await rows(page), { rows: [], summary: '0 rows' });
+    await expectRows(page, { rows: [], summary: '0 rows' });
     assert.deepEqual(await page.evaluate(() => [...window.mounted]), [], 'the rows of removed outlets are unmounted');
     await page.evaluate(() => window.unmount());
     assert.deepEqual(messages.filter((m) => !m.includes('React DevTools')), []);

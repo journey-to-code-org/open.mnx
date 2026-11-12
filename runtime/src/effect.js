@@ -8,6 +8,11 @@
 //   scope(fn)         an ownership root: effects created inside belong to it
 //   flush() / tick()  apply pending re-runs now / await them
 //
+// Disposal: effect()'s dispose function and every scope are also disposables
+// (`[Symbol.dispose]`), so `using` and `DisposableStack` can own them where the browser has
+// Explicit Resource Management. Nothing here depends on it. Pausing is not disposal: a paused
+// scope resumes; only dispose() (or Symbol.dispose) ends one.
+//
 // Ownership: an effect created while another effect (or a scope) is running belongs to it. When
 // the owner re-runs or is disposed, everything it owns is disposed first, so nothing outlives
 // the code that created it.
@@ -27,6 +32,12 @@ let nextId = 0;
 let scheduled = null;      // promise for the pending microtask flush
 let flushing = false;
 const effectOf = new WeakMap();
+
+/**
+ * `Symbol.dispose`, or, where the engine doesn't have it yet, the symbol TypeScript's downlevel
+ * `using` and the polyfills look up (`Symbol.for('Symbol.dispose')`).
+ */
+export const DISPOSE = Symbol.dispose ?? Symbol.for('Symbol.dispose');
 
 // @dev
 /**
@@ -98,6 +109,10 @@ class Owner {
     this.disposed = true;
     this.disposeChildren();
     this.parent?.children.delete(this);
+  }
+
+  [DISPOSE]() {
+    this.dispose();
   }
 
   pause() {
@@ -193,7 +208,9 @@ class Scope extends Owner {
 export function effect(fn) {
   const e = new Effect(fn, owner);
   e.run(); // if this throws, the effect stays registered and re-runs when its dependencies change
-  return () => e.dispose();
+  const dispose = () => e.dispose();
+  dispose[DISPOSE] = dispose;
+  return dispose;
 }
 
 /**

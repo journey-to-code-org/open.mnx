@@ -2,8 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Signal } from '../src/signal.js';
-import { effect, scope, tick } from '../src/effect.js';
+import { effect, scope, tick, DISPOSE } from '../src/effect.js';
 import { resource } from '../src/resource.js';
+
+const { hasSinks } = Signal.subtle;
 
 const later = () => new Promise((resolve) => setTimeout(resolve, 5));
 
@@ -74,4 +76,38 @@ test('errors, refresh, and fetchers that throw or return plain values', async ()
   await tick(); await later();
   assert.deepEqual([data.status, data.value, data.error, calls], ['ready', 42, undefined, 2]);
   assert.throws(() => resource(42), /takes a function/);
+});
+
+test('dispose() and Symbol.dispose stop a resource: the run in flight is aborted and nothing re-runs it', async () => {
+  for (const stop of [(user) => user.dispose(), (user) => user[DISPOSE]()]) {
+    const id = new Signal.State(1);
+    const requests = [];
+    const user = resource(({ signal }) => {
+      const request = { id: id.get(), signal, ...deferred() };
+      requests.push(request);
+      return request.promise;
+    });
+    stop(user);
+    assert.equal(requests[0].signal.aborted, true, 'the run in flight is aborted');
+    id.set(2);
+    user.refresh();
+    await later();
+    assert.equal(requests.length, 1, 'a disposed resource never runs again');
+    assert.equal(hasSinks(id), false);
+  }
+});
+
+test("a resource is disposed with the scope that created it, as before", async () => {
+  const id = new Signal.State(1);
+  const requests = [];
+  const owner = scope(() => resource(({ signal }) => {
+    const request = { id: id.get(), signal, ...deferred() };
+    requests.push(request);
+    return request.promise;
+  }));
+  owner[DISPOSE]();
+  assert.equal(requests[0].signal.aborted, true);
+  id.set(2);
+  await later();
+  assert.equal(requests.length, 1);
 });

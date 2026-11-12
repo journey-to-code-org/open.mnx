@@ -2,7 +2,8 @@
 import type { Signal } from './signal.js';
 
 export { Signal, isNative } from './signal.js';
-export { effect, scope, flush, tick, type Cleanup, type Scope } from './effect.js';
+export { effect, scope, flush, tick, type Cleanup, type Disposal, type Scope } from './effect.js';
+import type { Disposal } from './effect.js';
 
 /** A value, or a signal holding one: what templates and most hooks accept. */
 export type MaybeSignal<T> = T | Signal.State<T> | Signal.Computed<T>;
@@ -23,7 +24,7 @@ export declare function computed<T>(fn: () => T, options?: Signal.Options<T>): S
 export declare function watch<T>(source: (() => T) | MaybeSignal<T>, callback: (next: T, previous: T) => void): void;
 
 /** Async data as signals; see `resource()`. Awaitable: resolves to the current run's value. */
-export interface Resource<T> extends PromiseLike<T> {
+export interface Resource<T> extends PromiseLike<T>, Disposal {
   /** The latest run's value (or `initial`); kept while the next run is pending. */
   readonly value: T | undefined;
   readonly error: unknown;
@@ -31,6 +32,8 @@ export interface Resource<T> extends PromiseLike<T> {
   readonly loading: boolean;
   /** Run the fetcher again. */
   refresh(): void;
+  /** Stop: abort the run in flight and never run again. `using` does this through `Symbol.dispose`. */
+  dispose(): void;
 }
 /**
  * Run `fetcher` now and whenever a signal it read before its first `await` changes; a new run

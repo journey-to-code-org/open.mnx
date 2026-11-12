@@ -48,6 +48,10 @@ jobs:
         working-directory: runtime
       - run: npm test
         working-directory: runtime
+      # Explicit Resource Management (`using`, DisposableStack) is in Node 24, not 22: the disposal
+      # tests that need it are skipped above and run here.
+      - run: npx -y node@24 --test --test-reporter=spec test/effect.test.js test/resource.test.js
+        working-directory: runtime
       - run: npm run test:browser
         working-directory: runtime
       # The same suite on the production build (no hot reloading).

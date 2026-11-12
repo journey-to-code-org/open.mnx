@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Signal } from '../src/signal.js';
-import { effect, scope, flush, tick } from '../src/effect.js';
+import { effect, scope, root, flush, tick, DISPOSE } from '../src/effect.js';
 
 const { hasSinks } = Signal.subtle;
 
@@ -296,4 +296,69 @@ test('disposing a scope of many effects releases every subscription at once', as
     assert.equal(hasSinks(shared), true, 'not yet');
   });
   assert.equal(hasSinks(shared), false);
+});
+
+// ---- Explicit Resource Management: `using` and DisposableStack (roadmap-ecmascript E3) -------
+
+test('DISPOSE is Symbol.dispose, or the symbol polyfills and downlevel `using` use without it', () => {
+  assert.equal(DISPOSE, Symbol.dispose ?? Symbol.for('Symbol.dispose'));
+});
+
+test("an effect's dispose function is disposable: Symbol.dispose stops it and runs its cleanup", async () => {
+  const s = new Signal.State(0);
+  const log = [];
+  const stop = effect(() => { log.push(`run ${s.get()}`); return () => log.push('cleanup'); });
+  assert.equal(stop[DISPOSE], stop);
+  stop[DISPOSE]();
+  assert.equal(hasSinks(s), false);
+  s.set(1);
+  await tick();
+  assert.deepEqual(log, ['run 0', 'cleanup']);
+});
+
+test('scopes and roots are disposable: Symbol.dispose disposes everything inside', async () => {
+  const s = new Signal.State(0);
+  let runs = 0;
+  for (const make of [scope, root]) {
+    const owner = make(() => { effect(() => { runs++; s.get(); }); });
+    owner[DISPOSE]();
+    assert.equal(owner.disposed, true);
+  }
+  assert.equal(hasSinks(s), false);
+  s.set(1);
+  await tick();
+  assert.equal(runs, 2);
+});
+
+test('pausing is not disposal: a paused scope resumes, and only Symbol.dispose ends it', async () => {
+  const s = new Signal.State(0);
+  const log = [];
+  const owner = scope(() => effect(() => { log.push(s.get()); }));
+  owner.pause();
+  s.set(1);
+  owner.resume();
+  assert.equal(owner.disposed, false);
+  s.set(2);
+  await tick();
+  assert.deepEqual(log, [0, 1, 2], 'resumed and live');
+  owner[DISPOSE]();
+  s.set(3);
+  await tick();
+  assert.deepEqual(log, [0, 1, 2]);
+});
+
+test('a DisposableStack owns effects and scopes, disposing them last-in first-out', { skip: typeof DisposableStack !== 'function' && 'no DisposableStack in this Node' }, () => {
+  const order = [];
+  const stack = new DisposableStack();
+  stack.use(effect(() => () => order.push('effect')));
+  stack.use(scope(() => effect(() => () => order.push('scope'))));
+  stack.dispose();
+  assert.deepEqual(order, ['scope', 'effect']);
+});
+
+test('`using` disposes an effect, a scope and a resource when the block ends, last first', { skip: typeof DisposableStack !== 'function' && 'no `using` in this Node' }, async () => {
+  const { leaveBlock } = await import('./using/block.js');
+  const { log, aborted } = await leaveBlock();
+  assert.deepEqual(log, ['run 0', 'scope cleanup', 'effect cleanup'], 'the effect never re-ran');
+  assert.equal(aborted, true, "the resource's request was aborted");
 });

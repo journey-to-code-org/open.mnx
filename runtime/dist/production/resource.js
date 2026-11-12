@@ -9,8 +9,10 @@
 // `AbortSignal` it was given, and so does the element's removal; a result that arrives after a
 // newer run started is dropped, so the value is always the latest request's. While a new run is
 // pending the previous value stays (`loading` is true), so the UI doesn't flash empty.
+// `dispose()` (or `using`, through `Symbol.dispose`) stops it early: the run in flight is
+// aborted and nothing re-runs it. Otherwise it lives as long as the scope that created it.
 import { Signal } from './signal.js';
-import { effect } from './effect.js';
+import { DISPOSE, effect } from './effect.js';
 
 const { untrack } = Signal.subtle;
 
@@ -30,7 +32,7 @@ export function resource(fetcher, { initial } = {}) {
   const version = new Signal.State(0);
   let current = null; // the latest run's promise
 
-  effect(() => {
+  const stop = effect(() => {
     version.get();
     const controller = new AbortController();
     let result;
@@ -72,5 +74,7 @@ export function resource(fetcher, { initial } = {}) {
     get loading() { return status.get() === 'pending'; },
     refresh() { version.set(untrack(() => version.get()) + 1); },
     then(resolve, reject) { return current.then(resolve, reject); },
+    dispose: stop,
+    [DISPOSE]: stop,
   };
 }
