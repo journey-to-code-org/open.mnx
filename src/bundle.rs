@@ -107,13 +107,7 @@ impl Component {
 
     fn loader(&self) -> impl Fn(&str, &str) -> Result<(String, String), String> + '_ {
         move |specifier, from| {
-            if !(specifier.starts_with("./")
-                || specifier.starts_with("../")
-                || specifier.starts_with('/'))
-            {
-                return Err("component imports must be relative paths (./ or ../)".to_owned());
-            }
-            let resolved = resolve(specifier, from);
+            let resolved = if crate::request::is_relative(specifier) { resolve(specifier, from) } else { crate::request::normalize(specifier) };
             self.files
                 .get(&resolved)
                 .map(|source| (resolved.clone(), source.clone()))

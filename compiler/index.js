@@ -10,7 +10,7 @@
 // imports, and makes that request.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { CompileError, CompilerCrash, over, restarting, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './core.js';
 
 // For Workers, Deno and browsers, which have no disk to read zubra.wasm from: `@zubra/compiler/wasm`.
@@ -50,18 +50,33 @@ function native(compiler, body) {
 }
 
 /** The components (`.zb`, `.zb.jsx`, `.zb.tsx`) `path` imports, recursively, with their sources (the path itself included). */
-export function sources(path, files = {}) {
+export function sources(path, files = {}, key = resolve(path)) {
   const absolute = resolve(path);
-  if (absolute in files) return files;
+  if (key in files) return files;
   let source;
   try { source = readFileSync(absolute, 'utf8'); } catch { return files; }
-  files[absolute] = source;
+  files[key] = source;
   // A JSX component's imports are the whole file's; an .zb file's are its <script>'s.
   const script = /\.[jt]sx$/.test(absolute) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
   for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)['"]/g)) {
-    if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files);
+    // A relative import is keyed like its importer: by path, or under the package specifier.
+    if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files, key.startsWith('/') ? resolve(dirname(absolute), specifier) : posix.join(posix.dirname(key), specifier));
+    else {
+      // SPIKE: a package's component, found in node_modules from the importer up, keyed by its specifier.
+      const found = packageFile(dirname(absolute), specifier);
+      if (found) sources(found, files, posix.normalize(specifier));
+    }
   }
   return files;
+}
+
+/** Where `specifier` (`@kit/ui/cart-panel.zb`) is in the node_modules above `dir`, or null. */
+export function packageFile(dir, specifier) {
+  for (let at = dir; ; at = dirname(at)) {
+    const candidate = join(at, 'node_modules', specifier);
+    if (existsSync(candidate)) return candidate;
+    if (dirname(at) === at) return null;
+  }
 }
 
 /**

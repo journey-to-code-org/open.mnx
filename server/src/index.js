@@ -43,7 +43,7 @@ const posix = (path) => path.split(sep).join('/');
  *
  * Everything that doesn't need a disk is in `core.js`, shared with `edge.js` (Workers).
  */
-export function createZubra({ components = 'components', prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn } = {}) {
+export function createZubra({ components = 'components', packages = [], prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
   const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
@@ -83,6 +83,24 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
     }
   })(root);
 
+  // SPIKE: a package's folder of components (`@acme/kit/components`), found in node_modules
+  // above the components folder, joins the same map under its specifier, and the import map
+  // sends that specifier to the same route: `@acme/kit/components/cart-panel.js` →
+  // `<base>/components/@acme/kit/components/cart-panel.js`.
+  const packageImports = {};
+  for (const specifier of packages) {
+    const dir = compiler.packageFile(root, specifier);
+    if (!dir) throw new Error(`@zubra/server: the package folder ${specifier} isn't in any node_modules above ${root}`);
+    (function walk(at) {
+      for (const entry of readdirSync(at).sort()) {
+        const path = join(at, entry);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (SOURCE.test(entry)) files.set(`${specifier}/${posix(relative(dir, path))}`.replace(SOURCE, ''), path);
+      }
+    })(dir);
+    packageImports[`${specifier}/`] = `${base}/components/${specifier}/`;
+  }
+
   // What <prefix>/ serves besides the components' modules: @zubra/sync and the runtime, from disk.
   const assets = (rest) => {
     if (rest.startsWith('sync/') && syncDir) {
@@ -106,7 +124,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
     cache,
     devtools,
     base,
-    imports,
+    imports: { ...packageImports, ...imports },
     syncImports: syncDir ? { '@zubra/sync': `${base}/sync/index.js`, '@zubra/sync/connect': `${base}/sync/connect.js` } : {},
     needs,
     where: root,

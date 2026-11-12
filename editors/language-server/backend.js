@@ -112,7 +112,11 @@ function wasmBackend(wasm) {
       const files = wasm.sources(path);
       files[resolve(path)] = text;
       // Imports of the unsaved text, too.
-      for (const specifier of importsOf(text)) wasm.sources(resolve(dirname(path), specifier), files);
+      for (const specifier of importsOf(text)) {
+        // SPIKE: a package's component, keyed by its specifier.
+        if (!specifier.startsWith('.')) { const found = wasm.packageFile?.(dirname(path), specifier); if (found) wasm.sources(found, files, specifier); }
+        else wasm.sources(resolve(dirname(path), specifier), files);
+      }
       return wasm.request({ command: 'check', path: resolve(path), files }).diagnostics;
     },
     manifest(path) {
@@ -133,7 +137,11 @@ function wasmBackend(wasm) {
       const absolute = resolve(path);
       const files = wasm.sources(absolute);
       files[absolute] = text;
-      for (const specifier of importsOf(text)) wasm.sources(resolve(dirname(absolute), specifier), files);
+      for (const specifier of importsOf(text)) {
+        // SPIKE: a package's component, keyed by its specifier.
+        if (!specifier.startsWith('.')) { const found = wasm.packageFile?.(dirname(absolute), specifier); if (found) wasm.sources(found, files, specifier); }
+        else wasm.sources(resolve(dirname(absolute), specifier), files);
+      }
       return refactored(wasm.request({ command: 'refactor', action: 'extract', path: absolute, files, ...extraction }));
     },
   };

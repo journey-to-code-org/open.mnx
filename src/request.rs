@@ -84,16 +84,8 @@ fn respond(request: &Map<String, Value>) -> Value {
         return failure(&format!("`files` has no source for `{path}`"));
     };
     let loader = |specifier: &str, from: &str| -> Result<(String, String), String> {
-        if !(specifier.starts_with("./")
-            || specifier.starts_with("../")
-            || specifier.starts_with('/'))
-        {
-            return Err(
-                "component imports must be relative paths (./ or ../) when compiling files"
-                    .to_owned(),
-            );
-        }
-        let resolved = resolve(specifier, from);
+        // SPIKE: a bare specifier (`@kit/ui/cart-panel.zb`) is its own key among the files.
+        let resolved = if is_relative(specifier) { resolve(specifier, from) } else { normalize(specifier) };
         files
             .get(&resolved)
             .map(|source| (resolved.clone(), source.clone()))
@@ -460,6 +452,11 @@ fn entry(path: &str, diagnostic: &Diagnostic, severity: &str) -> Value {
         "message": diagnostic.message,
         "help": diagnostic.help,
     })
+}
+
+/// `./x.zb`, `../x.zb` or `/x.zb`: a path, not a package.
+pub(crate) fn is_relative(specifier: &str) -> bool {
+    specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
 }
 
 fn file_name(path: &str) -> &str {

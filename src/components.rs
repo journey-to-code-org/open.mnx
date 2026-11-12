@@ -86,16 +86,18 @@ fn load_from(
 
 /// The filesystem loader the CLI uses: specifiers are paths relative to the importing file.
 pub fn filesystem(specifier: &str, from: &str) -> Result<(String, String), String> {
-    if !(specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/'))
-    {
-        return Err(
-            "component imports must be relative paths (./ or ../) when compiling files".to_owned(),
-        );
-    }
     let base = std::path::Path::new(from)
         .parent()
         .unwrap_or(std::path::Path::new("."));
-    let path = base.join(specifier);
+    // SPIKE: a bare specifier is looked up in node_modules, from the importing file up.
+    let path = if crate::request::is_relative(specifier) {
+        base.join(specifier)
+    } else {
+        base.ancestors()
+            .map(|dir| dir.join("node_modules").join(specifier))
+            .find(|candidate| candidate.is_file())
+            .ok_or_else(|| format!("{specifier}: not found in any node_modules above {}", base.display()))?
+    };
     let path =
         std::fs::canonicalize(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     let source =
