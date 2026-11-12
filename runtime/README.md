@@ -13,6 +13,7 @@ ships one, this package deletes code instead of components being rewritten.
 | `src/element.js` hooks | Plain functions (see the project's hooks decision) | `state`, `from`, `computed`, `watch`, `onMount`, `onUnmount`, `id`, `props`, `host`, `emit`, `hydrated` |
 | `src/element.js` slots | Light-DOM slotting with the host's child methods routed to the slots, so frameworks can keep managing the children; native `<slot>` in shadow DOM | Done |
 | `src/react.js`, `src/vue.js` | Adapters: an element as a React (18, 19) or Vue 3 component | Done |
+| `src/forms.js` | A control as a form library's field: React Hook Form (`registerProps`, `fieldProps`), TanStack Form (`fieldProps`), VeeValidate (`vueFieldProps`), Felte (`felteControl`) | Done |
 | `src/bridge.js` | Signals read from framework code: `subscribe`, and `toStore` (the Svelte store contract and an RxJS-style Subscribable); React and Vue `useSignal` | Done |
 | `types/` | TypeScript declarations for every entry point | Done |
 | `src/element.js` forms | Form-associated custom elements (`ElementInternals`) | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled`; native control API on the element |

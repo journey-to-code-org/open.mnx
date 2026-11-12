@@ -29,6 +29,20 @@ Every framework uses the element the same way underneath: **properties in, DOM e
 
 A library from `zubra build --lib` has the same per element: `@acme/ui/star-rating` (the element), `@acme/ui/react` and `@acme/ui/vue` (wrappers), typings, and `custom-elements.json` for editors and Storybook.
 
+## Form libraries
+
+A `form-associated` control already submits with a native form. For a form library, `@zubra/runtime/forms` turns the library's field into the control's props, through its `value` + `valuechange` pair (`{ prop: 'open' }` for another pair):
+
+| Library | Use |
+|---|---|
+| React Hook Form | `<Seats {...registerProps(register('seats'))} />`, or `<Controller render={({ field }) => <Seats {...fieldProps(field)} />} />` |
+| TanStack Form | `<form.Field name="seats">{(field) => <Seats {...fieldProps(field)} />}</form.Field>` |
+| VeeValidate | `<Seats v-bind="vueFieldProps(useField('seats'))" />`, or `v-bind="vueFieldProps(field)"` in a `<Field v-slot="{ field }">` |
+| Felte | `<zb-seats use:felteControl={createField('seats')}>` (or `felteControl(element, createField('seats'))`) |
+| Angular forms | `zubraModel` from `@zubra/runtime/angular` (see the table above) |
+
+Each reports changes, focus leaving the control as a blur (for touched state and on-blur validation), and writes the library's `reset()` back into the control.
+
 ## Context from the app
 
 Components that `inject(theme)` read it from the nearest `<zb-context>` around them, so the app can provide a theme, locale or current user once instead of passing it to every element. `value` can be a plain value or a signal.
