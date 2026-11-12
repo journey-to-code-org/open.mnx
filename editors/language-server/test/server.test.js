@@ -141,6 +141,51 @@ test('type errors from the project\'s TypeScript, when a TypeScript component op
   }
 });
 
+test('TypeScript in a component: hover, completion and go to definition, in the script and the template', { timeout: 60_000 }, async () => {
+  const uri = pathToFileURL(join(dir, 'ts-features.zb')).href;
+  const text = [
+    '<script lang="ts">',
+    '  /** A thing — in the list. */',
+    '  interface Item { name: string; count: number }',
+    '  const items: Item[] = []',
+    '  const total = items.length',
+    '</script>',
+    '<zb-ts-features>',
+    '  <zb-each items={items} as="item"><p>{item.name} {total}</p></zb-each>',
+    '</zb-ts-features>',
+    '',
+  ].join('\n');
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const at = (line, find, extra = 0) => ({ line, character: text.split('\n')[line].indexOf(find) + extra });
+
+  // Hover in the template: the loop item's property, typed through `zb-each`.
+  const property = await call('textDocument/hover', { textDocument: { uri }, position: at(7, 'name', 1) });
+  assert.match(property.contents.value, /\(property\) Item\.name: string/);
+  assert.deepEqual(property.range, { start: at(7, 'name'), end: at(7, 'name', 4) });
+  // A script name the template reads, as the template sees it.
+  const total = await call('textDocument/hover', { textDocument: { uri }, position: at(7, 'total', 1) });
+  assert.match(total.contents.value, /const total: number/);
+  // In the script, with the doc comment.
+  const type = await call('textDocument/hover', { textDocument: { uri }, position: at(3, 'Item', 1) });
+  assert.match(type.contents.value, /interface Item/);
+  assert.match(type.contents.value, /A thing — in the list\./);
+
+  // Completion after a `.` the text doesn't compile with yet.
+  const typing = text.replace('{item.name}', '{item.}');
+  notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: typing }] });
+  const line = typing.split('\n')[7];
+  const items = await call('textDocument/completion', { textDocument: { uri }, position: { line: 7, character: line.indexOf('item.') + 5 } });
+  const labels = items.map((item) => item.label);
+  assert.ok(labels.includes('name') && labels.includes('count'), labels.join(', '));
+  assert.ok(!labels.some((label) => label.startsWith('__zubra')), 'no generated names');
+  notify('textDocument/didChange', { textDocument: { uri, version: 3 }, contentChanges: [{ text }] });
+
+  // Go to definition: from the template to the script.
+  const [definition] = await call('textDocument/definition', { textDocument: { uri }, position: at(7, '{items}', 2) });
+  assert.equal(definition.uri, uri);
+  assert.deepEqual(definition.range.start, at(3, 'items'));
+});
+
 test('completion: directives and imported components, their props and events', async () => {
   const uri = pathToFileURL(join(dir, 'complete.zb')).href;
   const text = "<script>\n  import './badge.zb'\n</script>\n<zb-page heading=\"\">\n  <zb-\n  <zb-badge \n  <p>{}</p>\n</zb-page>\n";

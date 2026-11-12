@@ -178,7 +178,7 @@ How it works, the way Vue's and Svelte's tooling work:
 - The project's own `tsc` runs once (TypeScript is the project's, as with `vue-tsc`), and each error is moved back through the map.
 - No type checker is in the compile path. Checking is this separate step, for CI and the editor.
 
-**In VS Code**, the extension shows the same errors in a TypeScript component when it opens and each time it's saved, beside the compiler's own diagnostics (it uses the project's `@zubra/compiler` and `typescript`, in a process of its own). Hover and completion from TypeScript inside `.zb` files aren't there yet.
+**In VS Code**, the extension shows the same errors in a TypeScript component when it opens and each time it's saved, beside the compiler's own diagnostics (it uses the project's `@zubra/compiler` and `typescript`, in a process of its own). In a TypeScript component it also gives **hover, completion and go to definition from TypeScript**, in the script and in every `{…}` of the template, from TypeScript 5.9's language service, which it ships with (the native TypeScript 7 has no language service API yet), over the same file. Type errors come from the project's own TypeScript, when you save.
 
 Only `<script lang="ts">` components are checked. A JavaScript component's file is there so the components that use it get its props' and events' types. A required prop with no `declare const` is `unknown` to the checker, so give it a type. `.zb.tsx` components aren't checked this way yet.
 

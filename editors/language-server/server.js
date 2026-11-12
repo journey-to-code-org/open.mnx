@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createBackend, importsOf, locateImport, readText, typecheckModule } from './backend.js';
+import { createTypeScriptServices } from './typescript.js';
 import { completions, documentation, hostOf, interfaceOf, offsetAt, positionAt, tagAt } from './analysis.js';
 
 const EXTRACT_COMMAND = 'zubra.applyExtractComponent'; // not the editor command's name: the client registers the server's commands itself
@@ -64,6 +65,22 @@ connection.onInitialize(async (params) => {
 });
 
 const pathOf = (uri) => fileURLToPath(uri);
+
+// TypeScript's own hover, completion and go to definition in a `<script lang="ts">` component's
+// script and `{…}` expressions (typescript.js).
+const isTypeScript = (text) => /<script[^>]*\blang=["']ts["']/i.test(text);
+const typeScript = createTypeScriptServices({
+  virtual: (path, text) => backend.virtual(path, text),
+  textOf: (path) => documents.get(pathToFileURL(path).href)?.getText() ?? null,
+});
+const tsKinds = {
+  method: CompletionItemKind.Method, function: CompletionItemKind.Function, 'local function': CompletionItemKind.Function,
+  property: CompletionItemKind.Property, getter: CompletionItemKind.Property, setter: CompletionItemKind.Property,
+  var: CompletionItemKind.Variable, let: CompletionItemKind.Variable, const: CompletionItemKind.Constant, 'local var': CompletionItemKind.Variable,
+  parameter: CompletionItemKind.Variable, class: CompletionItemKind.Class, interface: CompletionItemKind.Interface, type: CompletionItemKind.TypeParameter,
+  enum: CompletionItemKind.Enum, 'enum member': CompletionItemKind.EnumMember, module: CompletionItemKind.Module, keyword: CompletionItemKind.Keyword,
+  string: CompletionItemKind.Value,
+};
 
 // Byte offsets (the compiler's) and string indexes (LSP's UTF-16 positions).
 const byteOffset = (text, index) => Buffer.byteLength(text.slice(0, index));
@@ -172,10 +189,20 @@ documents.onDidClose((event) => {
 });
 
 const kinds = { directive: CompletionItemKind.Keyword, component: CompletionItemKind.Class, attribute: CompletionItemKind.Property, event: CompletionItemKind.Event, variable: CompletionItemKind.Variable };
-connection.onCompletion(({ textDocument, position }) => {
+connection.onCompletion(async ({ textDocument, position }) => {
   const document = documents.get(textDocument.uri);
   if (!document) return [];
   const text = document.getText();
+  if (isTypeScript(text)) {
+    const offset = offsetAt(text, position);
+    const path = pathOf(textDocument.uri);
+    // Mid-word or after a `.`, the text may not compile yet: a placeholder name completes it.
+    const items = await typeScript.completions(path, offset)
+      ?? await typeScript.completions(path, offset, `${text.slice(0, offset)}__z${text.slice(offset)}`);
+    if (items) {
+      return items.map((item) => ({ label: item.label, kind: tsKinds[item.kind] ?? CompletionItemKind.Text, sortText: item.sortText, insertText: item.insertText }));
+    }
+  }
   return completions(text, offsetAt(text, position), componentsOf(textDocument.uri, text)).map((item) => ({
     label: item.label,
     kind: kinds[item.kind],
@@ -186,10 +213,19 @@ connection.onCompletion(({ textDocument, position }) => {
   }));
 });
 
-connection.onHover(({ textDocument, position }) => {
+connection.onHover(async ({ textDocument, position }) => {
   const document = documents.get(textDocument.uri);
   if (!document) return null;
   const text = document.getText();
+  if (isTypeScript(text)) {
+    const hover = await typeScript.hover(pathOf(textDocument.uri), offsetAt(text, position));
+    if (hover) {
+      return {
+        contents: { kind: MarkupKind.Markdown, value: hover.markdown },
+        range: { start: positionAt(text, hover.start), end: positionAt(text, hover.end) },
+      };
+    }
+  }
   const tag = tagAt(text, offsetAt(text, position));
   const component = tag && componentsOf(textDocument.uri, text).find((candidate) => candidate.tag === tag.name);
   if (!component) return null;
@@ -199,10 +235,19 @@ connection.onHover(({ textDocument, position }) => {
   };
 });
 
-connection.onDefinition(({ textDocument, position }) => {
+connection.onDefinition(async ({ textDocument, position }) => {
   const document = documents.get(textDocument.uri);
   if (!document) return null;
   const text = document.getText();
+  if (isTypeScript(text)) {
+    const found = await typeScript.definition(pathOf(textDocument.uri), offsetAt(text, position));
+    if (found?.length) {
+      return found.map((definition) => ({
+        uri: pathToFileURL(definition.path).href,
+        range: { start: positionAt(definition.text, definition.start), end: positionAt(definition.text, definition.end) },
+      }));
+    }
+  }
   const tag = tagAt(text, offsetAt(text, position));
   const component = tag && componentsOf(textDocument.uri, text).find((candidate) => candidate.tag === tag.name);
   if (!component) return null;
