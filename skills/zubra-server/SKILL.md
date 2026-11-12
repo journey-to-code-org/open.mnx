@@ -13,7 +13,7 @@ Zubra renders components without a DOM on the server: the compiler emits the HTM
 
 | Server | Path |
 |---|---|
-| Express, Fastify, Hono, Eleventy, any Node template engine | `@zubra/server`: `createZubra({ components })`, then per request `page.render(tag, props, slots)` (slots are HTML, which may be other `page.render()` output) and `page.finish(html)`, which adds the components' CSS and modules. `zubra.handle(req, res)` or `zubra.fetch(request)` serves `/_zubra/…`. Adapters: `@zubra/server/express`, `/fastify`, `/hono`. |
+| Express, Fastify, Hono, Eleventy, any Node template engine | `@zubra/server`: `createZubra({ components })`, then per request `page.render(tag, props, slots)` (slots are HTML, which may be other `page.render()` output) and `page.finish(html)`, which adds the components' CSS and modules. `zubra.handle(req, res)` or `zubra.fetch(request)` serves `/_zubra/…`. Adapters: `@zubra/server/express`, `/fastify`, `/hono`. `createZubra({ clientModules: 'needed' })` ships no module for components whose server HTML is complete (`zubra check --client` lists which, and why), when the page's own scripts never change their props. |
 | Node without a framework, Bun, scripts | `render(path, { props, slots })` from `@zubra/compiler` returns `{ html, css }`. |
 | Flask, Rails, Go, PHP, anything that isn't Node | One long-lived `zubra serve` process; a JSON line per render (the request format is in the `zubra-cli` skill). Serve the compiled modules and `@zubra/runtime` statically. `examples/backends/flask-garden/` is the pattern. |
 | Astro | `@zubra/unplugin/astro`; components render on the server and `client:load` hydrates. |

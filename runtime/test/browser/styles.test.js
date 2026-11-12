@@ -14,6 +14,9 @@ useBrowser({
   'styled-panel': join(here, 'fixtures/styled-panel.zb'),
   'slotted-grid': join(here, 'fixtures/slotted-grid.zb'),
   'slotted-grid-page': join(here, 'fixtures/slotted-grid-page.zb'),
+  'part-child': join(here, 'fixtures/part-child.zb'),
+  'part-shadow-child': join(here, 'fixtures/part-shadow-child.zb'),
+  'part-parent': join(here, 'fixtures/part-parent.zb'),
 });
 
 const color = (page, selector) => page.$eval(selector, (el) => getComputedStyle(el).color);
@@ -241,6 +244,27 @@ test('::slotted() rules apply to server-rendered markup before and after hydrati
   await settle(page);
   assert.deepEqual(await layout(page, '.wide'), { align: 'start', column: 'span 2', outline: 'solid' });
   assert.deepEqual(await layout(page, '.item'), { align: 'start', column: 'auto', outline: 'solid' });
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+// ::part() on a light-DOM child: the parent's rule reaches the child's own elements with that
+// part, as it would through a shadow root, and not content slotted into the child.
+test('::part() reaches into a light-DOM child, and a shadow child keeps the real ::part()', async () => {
+  const css = compiler(join(here, 'fixtures/part-parent.zb'), '--emit', 'css');
+  const html = compiler(join(here, 'fixtures/part-parent.zb'));
+  writeFileSync(join(site, 'part-parent.css'), css);
+  const { page: plain } = await open(`<link rel="stylesheet" href="/part-parent.css">${html}`, {});
+  await plain.waitForFunction(() => document.querySelector('link').sheet?.cssRules.length > 0);
+  assert.equal(await color(plain, 'zb-part-child h3'), BLUE, 'before JavaScript');
+  await plain.close();
+
+  const { page, messages } = await open(html, { modules: ['part-parent'] });
+  await settle(page);
+  assert.equal(await color(page, 'zb-part-child h3'), BLUE, 'the part');
+  assert.equal(await color(page, 'zb-part-child span'), GREEN, 'both parts, and the more specific rule wins');
+  assert.equal(await color(page, '.given'), BLACK, "content slotted into the child isn't the child's part");
+  assert.equal(await page.$eval('zb-part-shadow-child', (el) => getComputedStyle(el.shadowRoot.querySelector('b')).color), GREEN, 'a shadow child: the real ::part()');
   assert.deepEqual(messages, []);
   await page.close();
 });

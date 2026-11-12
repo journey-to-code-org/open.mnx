@@ -1,0 +1,54 @@
+# What JavaScript runs where
+
+A `.zb` component's JavaScript passes through three places, and each has its own answer to "does this work?":
+
+| | What it does with your JavaScript | So a feature works if… |
+|---|---|---|
+| **The compiler** | Parses the `<script>` and every `{expr}` with oxc (TypeScript too, with `lang="ts"`), checks them, and writes them into the element's module unchanged. It doesn't transpile or polyfill. | oxc parses it: any finished ECMAScript feature does. |
+| **The browser** | Runs the element's module as written. | Your users' browsers run it. Zubra's own runtime targets Baseline 2026 ([Browser support](browser-support.md)); what your code needs is up to you and your bundler. |
+| **The server** | Evaluates a deterministic subset of expressions in Rust, so the HTML is complete before JavaScript. Everything outside it is left for the element to fill in when it starts. | It's in the tables below. |
+
+The rest of this page is about the server, because that's the only place where Zubra decides. It's the same evaluator in the Rust CLI, the WebAssembly build and every server package, so Flask, Node and Axum render the same HTML.
+
+## On the server
+
+The rule: only what gives the same answer on every platform, compared against V8 by `compiler/test/server-evaluation.test.js`. Every built-in in these tables has a case in that test, and a test checks this page against it, so the page can't drift from what's tested.
+
+### Syntax
+
+Literals, arrays and objects (with spread), member and index access (with `?.`), arithmetic and `**`, comparisons (`==` and `!=` compile to strict), `!`, `&&`, `||`, `??`, `? :` with JavaScript's truthiness, `typeof`, template literals, and arrow functions: the script's own (`const money = (cents) => …`), callbacks, and block bodies made of `const` declarations and a `return`.
+
+### Built-ins
+
+| Kind | Evaluated on the server |
+|---|---|
+| Array methods | `.at`, `.concat`, `.every`, `.filter`, `.find`, `.findIndex`, `.findLast`, `.findLastIndex`, `.flat`, `.flatMap`, `.includes`, `.indexOf`, `.join`, `.lastIndexOf`, `.map`, `.reduce`, `.slice`, `.some`, `.toReversed`, `.toSorted`, `.toSpliced`, `.with` |
+| String methods | `.at`, `.charAt`, `.endsWith`, `.includes`, `.indexOf`, `.padEnd`, `.padStart`, `.repeat`, `.replace`, `.replaceAll`, `.slice`, `.split`, `.startsWith`, `.substring`, `.toLowerCase`, `.toUpperCase`, `.trim`, `.trimEnd`, `.trimStart` |
+| Number methods | `.toFixed` |
+| Math | `Math.abs`, `Math.ceil`, `Math.floor`, `Math.max`, `Math.min`, `Math.round`, `Math.sign`, `Math.sqrt`, `Math.trunc` |
+| Object | `Object.entries`, `Object.fromEntries`, `Object.groupBy`, `Object.hasOwn`, `Object.keys`, `Object.values` |
+| Others | `Array.isArray`, `Number.isInteger`, `Boolean()`, `Number()`, `String()`, `parseInt()` |
+
+Objects keep JavaScript's key order: index-like keys first, ascending, then the rest as written, so `Object.keys({ b: 1, 2: 2 })` is `2,b` on the server as in the browser.
+
+### Left for the browser, on purpose
+
+| What | Why |
+|---|---|
+| `Date.now()`, `new Date()`, `Intl`, `.toLocaleString()`, `Math.random()` | Not the same answer on the server and in the browser (clock, time zone, locale, chance). Pass the value as a prop if the server should render it. |
+| `window`, `document`, `navigator` | They exist only in the browser. |
+| `.sort()`, `.splice()`, `.reverse()` and other mutating methods | A template expression shouldn't change state. `.toSorted()`, `.toSpliced()` and `.toReversed()` do the same without mutating, and render on the server. |
+| `function` expressions, destructured parameters, a callback's third argument | Outside the subset. Write `(row) => row.kg`, not `function (row) { return row.kg }`. |
+| `Map`, `Set`, iterators and iterator helpers, `BigInt`, `Map.groupBy` | The server's values are JSON, and these aren't. |
+| Infinity, NaN, `undefined` inside an object, `.flat(Infinity)` | Not JSON either. |
+| What the browser would throw on: `.with()` out of range, `Object.hasOwn(null, …)` | The browser reports the error, where you'll see it. |
+
+`zubra check --server` lists every place a component leaves for the browser. It's an error when the place is `checked`, `selected`, `value` or `disabled`, because without JavaScript the form would show and submit the wrong thing. [Server rendering, honestly](server-rendering.md) explains what renders where.
+
+## Not yet
+
+These are on the radar, not promised:
+- **`Map`, `Set` and iterator helpers on the server**, which need a value the server can serialize into the page.
+- **Temporal** stays browser-only for the same reason `Date` does. Rendering dates on the server would need an explicit clock and time zone, passed in by the app.
+- **`using` and `Symbol.dispose`** for Zubra's effect scopes, once every Baseline browser ships Explicit Resource Management (Safari hasn't yet).
+- **Reactive reads after `await`** in `resource()`, through AsyncContext or the compiler ([Signals report](standards/signals.md)).

@@ -373,6 +373,20 @@ function @fromJson(raw, fallback) {
   }
 }
 
+//@@ fromEnum:
+/**
+ * An attribute for an enum prop: the member whose value it is (`"4"`, `"large"`), or the member
+ * it names (`"Large"`). Anything else keeps `fallback`, with a warning listing the members.
+ */
+function @fromEnum(raw, members, fallback, attribute) {
+  const values = Object.values(members);
+  const found = values.find((value) => String(value) === raw);
+  if (found !== undefined) return found;
+  if (Object.hasOwn(members, raw)) return members[raw];
+  console.warn(`zubra: attribute "${attribute}" is "${raw}", not one of ${Object.keys(members).join(", ")}`);
+  return fallback;
+}
+
 //@@ reads:
 // While a computed() or an effect runs: what it reads. Each entry reads the same value again, so
 // it can tell later whether anything it depends on has changed.

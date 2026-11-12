@@ -1,0 +1,4 @@
+<!-- A shadow-DOM child exposing a part. -->
+<zb-part-shadow-child shadow>
+  <b part="title">shadow</b>
+</zb-part-shadow-child>
