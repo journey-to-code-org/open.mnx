@@ -14,23 +14,23 @@
       "types": "./index.d.ts",
       "default": "./index.js"
     },
-    "./embed": {
-      "types": "./embed.d.ts",
-      "default": "./embed.js"
-    },
-    "./library": {
-      "types": "./library.d.ts",
-      "default": "./library.js"
-    },
-    "./mcp": {
-      "types": "./mcp.d.ts",
-      "default": "./mcp.js"
-    },
     "./wasm": {
       "types": "./core.d.ts",
       "default": "./core.js"
     },
-    "./zubra.wasm": "./zubra.wasm"
+    "./zubra.wasm": "./zubra.wasm",
+    "./library": {
+      "types": "./library.d.ts",
+      "default": "./library.js"
+    },
+    "./embed": {
+      "types": "./embed.d.ts",
+      "default": "./embed.js"
+    },
+    "./mcp": {
+      "types": "./mcp.d.ts",
+      "default": "./mcp.js"
+    }
   },
   "files": [
     "index.js",
@@ -41,6 +41,8 @@
     "cli.js",
     "library.js",
     "library.d.ts",
+    "embed.js",
+    "embed.d.ts",
     "mcp.js",
     "mcp.d.ts",
     "registry",
