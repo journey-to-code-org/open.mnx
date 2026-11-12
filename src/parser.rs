@@ -834,8 +834,11 @@ impl<'a> TemplateParser<'a> {
                     }));
             }
             self.depth += 1;
-            let children = self.parse_nodes(Some(&name))?;
+            let mut children = self.parse_nodes(Some(&name))?;
             self.depth -= 1;
+            if !self.html && TABLE_SECTIONS.contains(&name.to_ascii_lowercase().as_str()) {
+                drop_blank_text(&mut children);
+            }
             children
         };
         Ok(Element {
@@ -1714,6 +1717,42 @@ enum Condition {
     If(Expression, Span, Span),
     ElseIf(Expression, Span, Span),
     Else(Span),
+}
+
+/// Elements whose blank text children a browser doesn't render: between table rows and cells,
+/// whitespace is never laid out.
+const TABLE_SECTIONS: &[&str] = &["table", "thead", "tbody", "tfoot", "tr", "colgroup"];
+
+/// Drop the blank text among `nodes`, and in the bodies of the directives among them (a
+/// `zb-each`'s rows are its parent's children too). Inside a `<tbody>`, the indentation around a
+/// list's `<tr>` would otherwise be two more text nodes per row to create, keep and remove.
+fn drop_blank_text(nodes: &mut Vec<Node>) {
+    nodes.retain(|node| !matches!(node, Node::Text(parts) if is_blank(parts)));
+    for node in nodes {
+        match node {
+            Node::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                drop_blank_text(consequent);
+                drop_blank_text(alternate);
+            }
+            Node::Each { children, .. } => drop_blank_text(children),
+            Node::Await {
+                pending,
+                then,
+                catch,
+                ..
+            } => {
+                drop_blank_text(pending);
+                for branch in [then, catch].into_iter().flatten() {
+                    drop_blank_text(&mut branch.children);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn is_blank(parts: &[Part]) -> bool {
