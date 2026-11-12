@@ -171,7 +171,7 @@ test('a plain page imports the elements with an import map, no build step', asyn
   const pages = join(work, 'plain');
   mkdirSync(pages, { recursive: true });
   writeFileSync(join(pages, 'index.html'), `<!doctype html>
-<script type="importmap">{ "imports": { "@zubra/runtime": "/runtime/index.js", "@zubra/runtime/spread": "/runtime/spread.js", "@zubra/runtime/primitives": "/runtime/primitives.js", "@demo/ui": "/ui/index.js" } }</script>
+<script type="importmap">{ "imports": { "@zubra/runtime": "/runtime/index.js", "@zubra/runtime/spread": "/runtime/spread.js", "@zubra/runtime/primitives": "/runtime/primitives.js", "@zubra/runtime/track": "/runtime/track.js", "@demo/ui": "/ui/index.js" } }</script>
 <star-rating label="Stars" value="3"></star-rating>
 <script type="module">import '@demo/ui'; await customElements.whenDefined('star-rating'); window.ready = true;</script>`);
   const url = await serve([['/runtime/', runtime], ['/ui/', lib], ['/', pages]]);

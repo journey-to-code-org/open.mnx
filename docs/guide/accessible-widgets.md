@@ -55,7 +55,7 @@ onMount(() => {
 
 `rovingFocus` finds the items again on each key press, so a list that changes needs nothing more. It skips disabled and hidden items, and in a right-to-left page it swaps Left and Right. `onMove` runs after each move, for widgets where selection follows focus, such as tabs. `typeahead` can call `onMatch` instead of moving focus, for widgets that use `aria-activedescendant`.
 
-Without a bundler, a page's import map needs an `@zubra/runtime/primitives` entry, as it does for `@zubra/runtime/spread`. `@zubra/server` adds both.
+Without a bundler, a page's import map needs an `@zubra/runtime/primitives` entry, as it does for `@zubra/runtime/spread` (and `@zubra/runtime/track`, for a component with an async `resource()` fetcher). `@zubra/server` adds all three.
 
 Anchor positioning isn't in every browser yet. Without it, `tool-tip` and `dropdown-menu` place themselves with a few lines of script. They check with `CSS.supports("position-area: …")`.
 

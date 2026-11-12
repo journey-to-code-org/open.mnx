@@ -174,14 +174,15 @@ test('bundled the way Wrangler bundles, a streamed page\'s inline scripts are th
 });
 
 // The import map names every runtime entry a compiled module can import on its own (the compiler
-// writes `@zubra/runtime/spread`, `/primitives` and `/motion` only into components that use them).
+// writes `@zubra/runtime/spread`, `/primitives`, `/motion` and `/track` only into components that
+// use them).
 // One missing, and the first component to need it fails in the browser with a bare-specifier error.
 test('the import map has every runtime entry a compiled module imports, on both entries', { skip }, () => {
   const { node, edge } = both();
   const runtime = JSON.parse(readFileSync(join(here, '../../runtime/package.json'), 'utf8'));
   for (const [name, zubra] of [['node', node], ['edge', edge]]) {
     const map = JSON.parse(zubra.head().match(/<script type="importmap">(.*?)<\/script>/s)[1]).imports;
-    for (const entry of ['', '/spread', '/primitives', '/motion']) {
+    for (const entry of ['', '/spread', '/primitives', '/motion', '/track']) {
       const specifier = `@zubra/runtime${entry}`;
       assert.equal(map[specifier], `/_zubra/runtime/${entry ? entry.slice(1) : 'index'}.js`, `${name}: ${specifier}`);
       assert.ok(runtime.exports[entry ? `.${entry}` : '.'], `${specifier} is an entry of @zubra/runtime`);
