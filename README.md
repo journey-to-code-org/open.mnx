@@ -293,9 +293,11 @@ Hooks are plain functions called while the script runs (once per element; nothin
 
 Custom hooks are plain functions that call these. A detached element pauses: long-lived signals stop holding it, and on return only the parts whose inputs changed re-run.
 
+Everything a component's script creates is disposed with the element, so you rarely dispose anything yourself. When you do (an effect for one stretch of work, a resource you no longer need), `effect()`'s returned function, a `scope()` and a `resource()` are disposables too: `using stop = effect(…)` or a `DisposableStack` ends them, where the browser has Explicit Resource Management (not Safari yet). `resource()` also has `dispose()`, which aborts the request in flight. Pausing a detached element is never disposal.
+
 ## Async data
 
-`resource(fetcher)` holds async data as signals: `value`, `error`, `status` (`"pending"`, `"ready"`, `"error"`) and `loading`, plus `refresh()`. It is awaitable too.
+`resource(fetcher)` holds async data as signals: `value`, `error`, `status` (`"pending"`, `"ready"`, `"error"`) and `loading`, plus `refresh()` and `dispose()`. It is awaitable too.
 
 ```html
 <script>

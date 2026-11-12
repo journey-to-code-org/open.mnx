@@ -8,6 +8,8 @@ A `.zb` component's JavaScript passes through three places, and each has its own
 | **The browser** | Runs the element's module as written. | Your users' browsers run it. Zubra's own runtime targets Baseline 2026 ([Browser support](browser-support.md)); what your code needs is up to you and your bundler. |
 | **The server** | Evaluates a deterministic subset of expressions in Rust, so the HTML is complete before JavaScript. Everything outside it is left for the element to fill in when it starts. | It's in the tables below. |
 
+Zubra's own APIs follow the same rule as the runtime: a newer feature is used where the browser has it, and nothing depends on it. For example, `effect()`, `scope()` and `resource()` are disposables, so `using stop = effect(…)` works in browsers with Explicit Resource Management (Chrome 134+, Firefox 141+; not Safari yet), and elsewhere they're disposed as always.
+
 The rest of this page is about the server, because that's the only place where Zubra decides. It's the same evaluator in the Rust CLI, the WebAssembly build and every server package, so Flask, Node and Axum render the same HTML.
 
 ## On the server
@@ -50,5 +52,4 @@ Objects keep JavaScript's key order: index-like keys first, ascending, then the 
 These are on the radar, not promised:
 - **`Map`, `Set` and iterator helpers on the server**, which need a value the server can serialize into the page.
 - **Temporal** stays browser-only for the same reason `Date` does. Rendering dates on the server would need an explicit clock and time zone, passed in by the app.
-- **`using` and `Symbol.dispose`** for Zubra's effect scopes, once every Baseline browser ships Explicit Resource Management (Safari hasn't yet).
 - **Reactive reads after `await`** in `resource()`, through AsyncContext or the compiler ([Signals report](standards/signals.md)).
