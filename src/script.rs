@@ -141,6 +141,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         type_only_imports: types.type_only.clone(),
         enums: types.enums.clone(),
         verbatim: types.verbatim,
+        typescript,
         typed_imports: types
             .imported
             .iter()

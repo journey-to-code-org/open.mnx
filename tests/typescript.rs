@@ -693,3 +693,38 @@ fn standard_decorators_are_an_error_that_says_how_to_use_legacy_ones() {
         .contains("experimentalDecorators"));
     assert_eq!(error.span.line, 3);
 }
+
+// ---- type checking: the component as a TypeScript file ----------------------------------------
+
+#[test]
+fn the_type_checking_file_maps_every_copied_stretch_back_to_the_component() {
+    let source = "<script lang=\"ts\">\n  import { state } from '@zubra/runtime'\n  const total = state(2)\n  let open = false\n</script>\n<zb-x label=\"x\">\n  <p onclick={() => (open = !open)}>{label} {total + 1}</p>\n  <zb-each items={[1, 2]} as=\"n\" index=\"i\"><b>{n * i}</b></zb-each>\n</zb-x>";
+    let (code, mappings) =
+        zubra::virtual_typescript_with(source, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
+    for (generated, original, length) in &mappings {
+        let (generated, original, length) =
+            (*generated as usize, *original as usize, *length as usize);
+        assert_eq!(
+            &code[generated..generated + length],
+            &source[original..original + length]
+        );
+    }
+    for line in [
+        "declare let label: string;",
+        "const __zubraScript_total = total;",
+        "const total = __zubraValue(__zubraScript_total);",
+        "__zubraCheck<(event: __Event<\"click\">) => unknown>((() => (open = !open)));",
+        "for (const n of __zubraItems(([1, 2]))) {",
+        "const i: number = 0;",
+        "(n * i);",
+    ] {
+        assert!(code.contains(line), "{line}\n{code}");
+    }
+    // `open` is a `let`: the template may assign it, so it isn't shadowed.
+    assert!(!code.contains("const open ="), "{code}");
+    // A JavaScript component's file is there for its users' types, and isn't checked itself.
+    let plain = source.replace("<script lang=\"ts\">", "<script>");
+    let (code, _) =
+        zubra::virtual_typescript_with(&plain, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
+    assert!(code.starts_with("// @ts-nocheck\n"), "{code}");
+}

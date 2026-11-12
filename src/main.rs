@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json] [--server] [--client]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json] [--server] [--client]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server|tsx] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -180,9 +180,12 @@ fn run() -> Result<(), String> {
             "html-data" => zubra::compile_html_data(&source),
             "interface" => zubra::compile_interface_with(&source, &source_path, &zubra::filesystem),
             "server" => zubra::compile_server(&source),
+            // The TypeScript file `zubra check --types` has tsc check (its map is in `zubra request`).
+            "tsx" => zubra::virtual_typescript_with(&source, &source_path, &zubra::filesystem)
+                .map(|(code, _)| code),
             _ => {
                 return Err(format!(
-                    "unknown --emit `{emit}`; expected html, js, element, css, dts, manifest, html-data, interface or server"
+                    "unknown --emit `{emit}`; expected html, js, element, css, dts, manifest, html-data, interface, server or tsx"
                 ))
             }
         }
@@ -425,6 +428,10 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             "--server" => server = true,
             // Whether each component needs its module in the browser, and why.
             "--client" => client = true,
+            // Type checking runs the project's own TypeScript, from Node.
+            "--types" => {
+                return Err("`--types` runs the project's TypeScript, from npm: `npx zubra check --types <file | folder>...` (@zubra/compiler)".into())
+            }
             _ if argument.starts_with("--") => {
                 return Err(format!("unexpected argument `{argument}`"))
             }

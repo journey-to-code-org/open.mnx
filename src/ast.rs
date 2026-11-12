@@ -170,6 +170,8 @@ pub struct Script {
     pub imported_values: Vec<Binding>,
     /// `verbatimModuleSyntax` was on for this script (see `elide_type_only_imports`).
     pub verbatim: bool,
+    /// `<script lang="ts">` (or a `.zb.tsx` component).
+    pub typescript: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

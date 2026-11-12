@@ -58,7 +58,7 @@ export declare function host<E extends HTMLElement = HTMLElement>(): E;
  * declares every event it sees. Returns false if a listener called `preventDefault()` on a
  * cancelable (`before…`) event.
  */
-export declare function emit(name: string, detail?: unknown): boolean;
+export declare function emit<Detail = unknown>(name: string, detail?: Detail): boolean;
 
 /**
  * The signal itself, where a script passes a signal `const` along: `watch(signal(count), …)`.

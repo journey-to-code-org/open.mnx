@@ -132,6 +132,40 @@ and `--emit manifest` records the same text (`"type": { "text": "Option[]" }`) f
 
 The React and Vue wrappers `@zubra/unplugin` and `zubra build --lib` write are typed from the same interface, so `<MySelect options={…} onPick={(e) => e.detail.index} />` is checked in the consuming app by its own `tsc`.
 
+## Checking types: `zubra check --types`
+
+```sh
+npx zubra check --types src
+```
+
+The project's own TypeScript checks its components: each script as written, **every template expression in its scope**, every child component's props against the child's types, and every event handler with its event typed. Errors land on the `.zb` lines they came from:
+
+```text
+src/inbox.zb:12:20 - error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/inbox.zb:13:59 - error TS2551: Property 'subjet' does not exist on type 'Message'. Did you mean 'subject'?
+src/inbox.zb:14:37 - error TS2551: Property 'clientXX' does not exist on type 'PointerEvent'. Did you mean 'clientX'?
+```
+
+How it works, the way Vue's and Svelte's tooling work:
+
+- The compiler writes each component as a TypeScript file (`zubra compile x.zb --emit tsx` shows it), with a map back to the component:
+  - the props, as the script sees them (`declare let size: Size;`);
+  - the script, as written;
+  - the component's typings, so a `.ts` file that imports it sees its real types;
+  - the template:
+    - each `zb-each` is a `for…of`, so its item has the list's element type;
+    - each `zb-if` is an `if`, so narrowing carries into the branch;
+    - a `zb-then` value is the awaited type;
+    - an `onclick` handler's `event` is a `MouseEvent`;
+    - a child's `onpick` handler's event is the child's `CustomEvent<…>`;
+    - a child's `count={…}` is checked against the child's `count`.
+  - A signal the template reads is its value there, as the template unwraps it.
+- Those files go in `.zubra-types/` at the project root (removed afterwards; `--keep` keeps them). A tsconfig there extends the project's and joins the two folders with `rootDirs`, so `./badge.zb` and `./types` resolve from either.
+- The project's own `tsc` runs once (TypeScript is the project's, as with `vue-tsc`), and each error is moved back through the map.
+- No type checker is in the compile path. Checking is this separate step, for CI and the editor.
+
+Only `<script lang="ts">` components are checked. A JavaScript component's file is there so the components that use it get its props' and events' types. A required prop with no `declare const` is `unknown` to the checker, so give it a type. `.zb.tsx` components aren't checked this way yet.
+
 ## What this means for complex props
 
 - **The type text is copied, not checked.** If `Option` has a typo, the component compiles and the consuming app's `tsc` reports it, because the `.d.ts` imports a type that doesn't exist. That is the right place for the error, since that's where the types are used, but it is later than you might expect.
@@ -140,6 +174,6 @@ The React and Vue wrappers `@zubra/unplugin` and `zubra build --lib` write are t
 
 ## Where this sits against Lit and Stencil
 
-Lit components are TypeScript files compiled by your own `tsc`, so every TypeScript feature works and the types of properties are whatever you declare, and with lit-analyzer its templates' bindings are checked against those types too, which Zubra's aren't; the cost is that the element's interface for *other* tools (manifest, React wrapper typings) needs a separate analyzer. Stencil runs the TypeScript compiler itself and generates framework packages with full types, at the cost of its compiler being a TypeScript program with the whole language service in it.
+Lit components are TypeScript files compiled by your own `tsc`. With lit-analyzer, a template's bindings are checked against its properties' types, and the element's interface for other tools (manifest, React wrapper typings) needs a separate analyzer. Stencil runs the TypeScript compiler itself and generates framework packages with full types, at the cost of its compiler being a TypeScript program with the whole language service in it.
 
-Zubra's position is the middle one: the compiler carries the type *text* through to the interface with no type checker in the path, and leaves checking to the `tsc` that already runs in the consuming app. The full comparison is in [Compared with Lit and Stencil](compared-with-lit-and-stencil.md).
+Zubra checks templates as lit-analyzer does, with `zubra check --types`, and generates the manifest and every framework's typings from the same interface. It does both with no TypeScript compiler in the build: the build blanks types and lowers what runs, and checking is the project's own `tsc`, run when you ask. The full comparison is in [Compared with Lit and Stencil](compared-with-lit-and-stencil.md).

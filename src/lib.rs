@@ -52,6 +52,7 @@ mod styles;
 mod tsconfig;
 mod typescript;
 mod validate;
+mod virtual_ts;
 
 pub use bundle::Component;
 pub use components::component_extension;
@@ -740,6 +741,27 @@ fn collect_stylesheets(
 }
 
 // ---- tools ----------------------------------------------------------------------------------
+
+/// A stretch of a type-checking file that came from the component: `(generated, source,
+/// length)` byte offsets.
+pub type VirtualMapping = (u32, u32, u32);
+
+/// The component at `path` as a TypeScript file for `tsc` to check (`zubra check --types`), with
+/// its map back to the component: `(generated, source, length)` byte offsets.
+#[doc(hidden)]
+pub fn virtual_typescript_with(
+    source: &str,
+    path: &str,
+    loader: Loader<'_>,
+) -> Result<(String, Vec<VirtualMapping>), Diagnostic> {
+    let source = source.replace("\r\n", "\n").replace('\r', "\n");
+    let component = load(&source, path, Some(loader))?;
+    let name = std::path::Path::new(path).file_name().map_or_else(
+        || path.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    virtual_ts::generate(&component, &source, &name)
+}
 
 /// The JavaScript a `<script lang="ts">` body is reduced to: types blanked in place, enums
 /// lowered (see docs/typescript.md). `source` is the script's text alone.
