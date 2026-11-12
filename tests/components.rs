@@ -73,3 +73,29 @@ fn declare_const_must_name_a_prop() {
     let text = format!("{} {}", error.message, error.help.unwrap_or_default());
     assert!(text.contains("sise") && text.contains("size"), "{text}");
 }
+
+#[test]
+fn signal_passes_state_and_derived_names_as_signals() {
+    let source = r#"<script>
+  import { watch, signal, from } from '@zubra/runtime'
+  let count = 0
+  let left = from(seconds)
+  const double = count * 2
+  watch(signal(count), () => {})
+  watch(signal(left), () => {})
+  watch(signal(double), () => {})
+  const read = [count, left, double]
+</script>
+<zb-w seconds={5}><p>{count}</p></zb-w>"#;
+    let out = js(source);
+    for name in ["count", "left", "double"] {
+        assert!(
+            out.contains(&format!("watch(signal({name}), ")),
+            "{name}: {out}"
+        );
+    }
+    assert!(
+        out.contains("count.get(), left.get(), double.get()"),
+        "still read elsewhere: {out}"
+    );
+}

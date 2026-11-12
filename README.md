@@ -285,7 +285,7 @@ Hooks are plain functions called while the script runs (once per element; nothin
 | `props()` | The element's props as an object, for custom hooks (in the script, use the names) |
 | `host()` | The element |
 | `emit(name, detail)` | Fire an event (see Events) |
-| `id()` | An id unique to this element and call, for `id`/`for`/`aria-*` |
+| `id()` | An id unique to this element and call, for `id`/`for`/`aria-*`. Rendered by the server too (see What the server can render), so labels and `aria-*` references work before JavaScript |
 | `hasSlot(name = 'default')` | A signal: whether content was given for a slot (see Slots) |
 | `createContext`, `provide`, `inject` | Context (see below) |
 | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled` | Form controls (see below) |
@@ -477,7 +477,7 @@ The host also gets the custom state `hydrated`, for CSS: `:host(:state(hydrated)
 
 ## Context
 
-`createContext(default)`, `provide(context, value)` and `inject(context)` follow the Web Components Community Group [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md). `inject` returns a signal that follows the nearest provider above the element. A consumer defined before its provider still connects; one that's moved asks again; one that's removed unsubscribes. Because the protocol is plain DOM events, Zubra components share context with other implementations such as Lit's `@lit/context`.
+`createContext(default)`, `provide(context, value)` and `inject(context)` follow the Web Components Community Group [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md). `inject` returns a signal that follows the nearest provider above the element. The server renders it too (see What the server can render). A consumer defined before its provider still connects; one that's moved asks again; one that's removed unsubscribes. Because the protocol is plain DOM events, Zubra components share context with other implementations such as Lit's `@lit/context`.
 
 ## Server rendering and hydration
 
@@ -527,7 +527,9 @@ The HTML output evaluates the component's JavaScript where the answer is the sam
 - in templates and in the script's `const`s and `let`s: literals, props, member access, arithmetic, comparisons, logic, ternaries and template literals;
 - arrow functions defined in the script (`const money = (cents) => …`), and arrow callbacks;
 - string, array and number methods: `.includes`, `.map`, `.filter`, `.reduce`, `.join`, `.slice`, `.padStart`, `.toFixed`, `.toSorted`, `.flatMap`, `.findLast`, …, and `Object.fromEntries` and `Object.groupBy`;
-- `Math` (except `random`), `Number()`, `String()`, `Boolean()` and `Object.keys()`, `Object.values()` and `Object.entries()`.
+- `Math` (except `random`), `Number()`, `String()`, `Boolean()` and `Object.keys()`, `Object.values()` and `Object.entries()`;
+- **`const inputId = id()`**: each host gets a base (its own `id` if it has one, else `<tag>-s<n>` in document order, written on the host as `data-zb-id`) and each call its number, so `<label for={inputId}>` and `<input id={inputId}>` are linked in the HTML. The element uses the same base, so hydrating keeps the ids, and elements made in the browser count their own (`<tag>-<n>`, which can't collide). This needs every `id()` call in the script to be such a `const`, so the order is known; otherwise the ids are left for the browser. `@zubra/server` gives each `page.render()` after the first a prefix (`r2-`, …) and each host it fills in framework HTML its own (`h1-`, …), so separate renders on a page don't share ids; the `idPrefix` request option does the same elsewhere;
+- **context**: a component's `provide(context, value)` reaches `const x = inject(context)` in the components it renders, when the server can evaluate the value (`provide(theme, signal(mode))` provides `mode`'s value). The nearest provider wins, and a provider's own `inject` sees the one above it, as in the browser. With no provider, the server uses the context's default when it can read `export const theme = createContext(…)` in the module (the CLI and builds can; `@zubra/server`, given only the components' sources, leaves that to the browser). A consumer's host carries the values it was given (`data-zb-inject`), so the element starts from them and doesn't show the default until the provider answers. Contexts are matched by the module they're imported from and the export's name. Content a parent puts in a provider's slot renders with the parent's context on the server.
 
 That's the same in the Rust CLI, the WebAssembly build and every server. `compiler/test/server-evaluation.test.js` checks it against V8. What isn't deterministic (`Date`, `Intl`, `Math.random()`, `toLocaleString()`), what reaches the browser (`window`, `document`), and anything else outside the subset is left for the browser. `zubra check --server` lists those places, rendering with the defaults. It's an error for `checked`, `selected`, `value` and `disabled`, because without JavaScript the form would be wrong.
 

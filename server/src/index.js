@@ -153,6 +153,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
   function injectShadowRootsStream(options) {
     const decoder = new StringDecoder('utf8');
     let carry = '';
+    options = { ...options, hosts: { count: 0 } }; // one count of hosts for the whole stream
     const pass = (text, flush) => {
       const all = carry + text;
       // Hold back from an unclosed `<` (a tag cut in two), and from an opened host tag whose

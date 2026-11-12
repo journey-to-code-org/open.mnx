@@ -34,6 +34,18 @@ pub struct ComponentAst {
     pub nodes: Vec<Node>,
     /// Components imported from `.zb` files, by tag, once loaded.
     pub children: Vec<ChildComponent>,
+    /// The contexts the script provides or injects, once loaded: local name, a key the same in
+    /// every file (the resolved module and the export's name), and the context's default when
+    /// the server could read it.
+    pub contexts: Vec<ContextRef>,
+}
+
+/// A context the script uses (see `ComponentAst::contexts`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContextRef {
+    pub local: String,
+    pub key: String,
+    pub default: Option<serde_json::Value>,
 }
 
 /// A component's `<style>` block.
@@ -124,6 +136,17 @@ pub struct Script {
     /// The local names `hydrated` is imported as from `@zubra/runtime`: a call is `false` on
     /// the server, in the script (`const live = hydrated()`) and in the template alike.
     pub hydrated: Vec<String>,
+    /// Whether the script's ids are known on the server: every call to `id()` is a whole
+    /// `const x = id()` binding (see `Binding::id_call`), so the calls happen in a known order.
+    pub server_ids: bool,
+    /// `provide(theme, value)` statements at the top of the script: the context's local name
+    /// and the value's source, for the server to give the components rendered inside this one.
+    pub provides: Vec<(String, String)>,
+    /// Whether every call to `inject()` is a whole `const x = inject(context)` binding, so the
+    /// element calls it in the order the server numbers them (`data-zb-inject`).
+    pub server_injects: bool,
+    /// Named imports from other modules: local name, specifier, exported name. (For contexts.)
+    pub named_imports: Vec<(String, String, String)>,
     /// `'use …'` directives Zubra doesn't know (`'use client'`, `'use colection tasks'`): warnings
     /// with a hint. They did nothing before 5.3, so in 5.x they compile, as they did; 6.0 makes
     /// them errors.
@@ -222,6 +245,12 @@ pub struct Binding {
     pub source: Option<String>,
     pub mutable: bool,
     pub span: Span,
+    /// `const inputId = id()`: the binding is the k-th call to `id()` (from 1), which the
+    /// server renders as `<the host's id base>-<k>`, as the element will.
+    pub id_call: Option<usize>,
+    /// `const mode = inject(theme)`: the local name of the context it reads, so the server can
+    /// render the value a component above provides (see `ComponentAst::contexts`).
+    pub inject: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

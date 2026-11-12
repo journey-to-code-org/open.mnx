@@ -43,9 +43,10 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
   const byTag = () => once('tags', () => new Map([...files.keys()].map((name) => [describe(name).tag, name])));
   const nameOf = (nameOrTag) => (files.has(nameOrTag) ? nameOrTag : byTag().get(nameOrTag));
 
-  const render = (name, props = {}, slots = {}, pending = []) => {
+  // `idPrefix`: renders that end up in one page number their hosts' ids apart (`id()`).
+  const render = (name, props = {}, slots = {}, pending = [], idPrefix = '') => {
     const path = pathOf(name);
-    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
+    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}), ...(idPrefix ? { idPrefix } : {}) });
     if (!response.ok) throw new Error(response.error);
     // A value that isn't a safe URL (a user's `javascript:` link) is left out, as the element
     // leaves it out in the browser; the page still renders, and this says what was dropped.
@@ -102,6 +103,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
   /** One page: render components into it, then `finish()` it (or use `head()` and `scripts()`). */
   function page() {
     const used = [];
+    let renders = 0;
     const use = (name) => {
       if (!used.includes(name)) used.push(name);
     };
@@ -115,13 +117,15 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
       render(name, props = {}, slots) {
         const key = nameOf(name) ?? name;
         use(key);
+        renders += 1;
+        const idPrefix = renders === 1 ? '' : `r${renders}-`;
         const promises = Object.entries(props).filter(([, value]) => value && typeof value.then === 'function');
-        if (!promises.length) return render(key, props, slots);
+        if (!promises.length) return render(key, props, slots, [], idPrefix);
         const given = Object.fromEntries(Object.entries(props).filter(([, value]) => !(value && typeof value.then === 'function')));
         const names = promises.map(([name]) => name);
         const id = String(streamed++);
-        const shell = withStreamId(render(key, given, slots, names), id);
-        const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0 };
+        const shell = withStreamId(render(key, given, slots, names, idPrefix), id);
+        const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0, idPrefix };
         // Each pending region is a named range (`<?start name>`…`<?end>`) that a streamed
         // `<template for>` replaces (out-of-order streaming).
         entry.names = pendingRegions(shell).map(() => `zb-${id}-${entry.count++}`);
@@ -182,7 +186,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
         }
         entry.given[name] = value;
         entry.promises.delete(name);
-        const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()]), entry.id);
+        const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()], entry.idPrefix), entry.id);
         const swaps = new Map(regionSwaps(entry.shell, resolved).map((swap) => [swap.index, swap.html]));
         entry.shell = resolved;
         // The regions still pending keep their names; one that resolved is replaced, along with
@@ -222,7 +226,9 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return { shadowTags, pattern };
   }
 
-  function injectShadowRoots(html, { forms = true, lightDom = false } = {}) {
+  // `hosts` counts the hosts given content so far, for their id prefixes; a stream shares one
+  // across its chunks.
+  function injectShadowRoots(html, { forms = true, lightDom = false, hosts = { count: 0 } } = {}) {
     const { shadowTags, pattern } = shadowHosts(lightDom);
     if (!pattern) return html;
     let out = '';
@@ -235,7 +241,8 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
       const props = propsFrom(match[2] ?? '', info);
       let rendered;
       try {
-        rendered = render(name, props);
+        // Each host is its own render: its own prefix keeps their ids apart.
+        rendered = render(name, props, {}, [], `h${++hosts.count}-`);
       } catch {
         continue; // leave it to the browser rather than break the page
       }

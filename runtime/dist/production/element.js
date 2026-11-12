@@ -187,12 +187,13 @@ export function emit(name) {
 
 /**
  * An id unique to this element and call, for `id`/`for`/`aria-*` attributes. Stable for the
- * element's life; based on the host's own `id` when it has one, so it can be made to match
- * server-rendered markup.
+ * element's life. Based on the host's own `id` when it has one, else on the base the server
+ * rendered it with (`data-zb-id`), so the ids in server-rendered markup stay as they are.
  */
 export function id() {
   const component = hooks('id');
-  const base = component.host.id || `${component.host.localName}-${component.instance}`;
+  const host = component.host;
+  const base = host.id || host.getAttribute('data-zb-id') || `${host.localName}-${component.instance}`;
   return `${base}-${++component.ids}`;
 }
 
@@ -326,7 +327,18 @@ export function provide(context, value) {
  * key as `context`.
  */
 export function inject(context, fallback = context?.defaultValue) {
-  const host = hooks('inject').host;
+  const component = hooks('inject');
+  const host = component.host;
+  // The value the server rendered with (`data-zb-inject`, by call number) is where it starts,
+  // so hydrating doesn't show the default until the provider answers.
+  const number = (component.injects = (component.injects ?? 0) + 1);
+  const rendered = host.getAttribute('data-zb-inject');
+  if (rendered) {
+    try {
+      const values = JSON.parse(rendered);
+      if (Object.hasOwn(values, number)) fallback = values[number];
+    } catch { /* not ours: keep the default */ }
+  }
   const value = new Signal.State(fallback);
   let unsubscribe = null;
   let answered = false;

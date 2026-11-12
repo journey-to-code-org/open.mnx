@@ -67,7 +67,7 @@ test("a value that isn't a safe URL is left out, the page still renders, and the
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
-  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'order-form', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
+  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'id-field', 'order-form', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
   assert.equal(zubra.describe('count-stepper').form, true);
   const url = await listen((req, res) => {
     if (zubra.handle(req, res)) return;
@@ -91,6 +91,29 @@ test('a page: render, finish (CSS, import map, modules), and the browser modules
   const page = await open(url);
   await page.waitForFunction(() => document.querySelector('hello-there p').textContent.startsWith('Hello Ada!'));
   assert.deepEqual(page.errors, [], 'it hydrated the server markup');
+  await page.done();
+});
+
+test('ids from id(): each render on a page gets its own, linked before JavaScript and kept after', async () => {
+  const zubra = createZubra({ components });
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const body = page.render('id-field', { label: 'First' }) + page.render('id-field', { label: 'Last' });
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const read = (page) => page.$$eval('id-field', (fields) => fields.map((field) => [field.querySelector('input').id, field.querySelector('label').control === field.querySelector('input')]));
+  const plain = await open(url, { javascript: false });
+  const before = await read(plain);
+  assert.deepEqual(before, [['id-field-s1-1', true], ['r2-id-field-s1-1', true]], 'two renders, two sets of ids');
+  await plain.done();
+  const page = await open(url);
+  await page.waitForFunction(() => customElements.get('id-field'));
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('id-field')].map((el) => el.updateComplete)));
+  await page.evaluate(() => { for (const field of document.querySelectorAll('id-field')) field.more = true; });
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('id-field')].map((el) => el.updateComplete)));
+  assert.deepEqual(await page.$$eval('id-field output', (outputs) => outputs.map((output) => output.htmlFor.value)), ['id-field-s1-1', 'r2-id-field-s1-1'], 'the elements use them');
+  assert.deepEqual(page.errors, []);
   await page.done();
 });
 

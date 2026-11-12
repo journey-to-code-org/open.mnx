@@ -128,6 +128,12 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     // `hydrated` imported from @zubra/runtime (its local names), and bindings initialized with a
     // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
     let mut hydrated_names: Vec<String> = Vec::new();
+    // `id` imported from @zubra/runtime (its local names).
+    let mut id_names: Vec<String> = Vec::new();
+    // `inject` and `provide` imported from @zubra/runtime (their local names).
+    let mut inject_names: Vec<String> = Vec::new();
+    let mut provide_names: Vec<String> = Vec::new();
+    let mut signal_names: Vec<String> = Vec::new();
     // `ephemeral` imported from @zubra/sync (its local names).
     let mut ephemeral_names: Vec<String> = Vec::new();
     let mut presence_names: Vec<String> = Vec::new();
@@ -198,6 +204,8 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                                 source: Some(text.to_owned()),
                                 mutable,
                                 span: at(identifier.span.start),
+                                id_call: None,
+                                inject: None,
                             });
                         }
                         (Some(identifier), None) => script.bindings.push(Binding {
@@ -206,6 +214,8 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             source: None,
                             mutable,
                             span: at(identifier.span.start),
+                            id_call: None,
+                            inject: None,
                         }),
                         // Destructuring: the names exist, but only at runtime for now.
                         (None, _) => script
@@ -249,6 +259,25 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             && named.imported.name().as_str() == "hydrated"
                         {
                             hydrated_names.push(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(RUNTIME)
+                            && named.imported.name().as_str() == "id"
+                        {
+                            id_names.push(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(RUNTIME) {
+                            match named.imported.name().as_str() {
+                                "inject" => inject_names.push(named.local.name.to_string()),
+                                "provide" => provide_names.push(named.local.name.to_string()),
+                                "signal" => signal_names.push(named.local.name.to_string()),
+                                _ => {}
+                            }
+                        } else if let Some(from) = import.source.value.as_str() {
+                            script.named_imports.push((
+                                named.local.name.to_string(),
+                                from.to_owned(),
+                                named.imported.name().to_string(),
+                            ));
                         }
                         if import.source.value.as_str() == Some(RUNTIME)
                             && named.imported.name().as_str() == "from"
@@ -426,6 +455,62 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     }
     script.body = body;
     script.hydrated = hydrated_names.clone();
+    // `const mode = inject(theme)`: the context it reads, for the server.
+    for (index, text) in &calls {
+        let call = text.split_whitespace().collect::<String>();
+        for name in &inject_names {
+            if let Some(argument) = call
+                .strip_prefix(&format!("{name}("))
+                .and_then(|rest| rest.strip_suffix(')'))
+            {
+                if is_identifier(argument) && !script.bindings[*index].mutable {
+                    script.bindings[*index].inject = Some(argument.to_owned());
+                }
+            }
+        }
+    }
+    let injects = script
+        .bindings
+        .iter()
+        .filter(|binding| binding.inject.is_some())
+        .count();
+    let inject_calls: usize = inject_names
+        .iter()
+        .map(|name| count_calls(&script.body, name))
+        .sum();
+    script.server_injects = injects > 0 && injects == inject_calls;
+    if !script.server_injects {
+        for binding in &mut script.bindings {
+            binding.inject = None;
+        }
+    }
+    // `provide(theme, value)` at the top of the script.
+    if !provide_names.is_empty() {
+        script.provides = top_level_provides(&script.body, &provide_names, &signal_names);
+    }
+    // `const inputId = id()`: the server can give it the value the element will, if every call
+    // to `id()` is such a binding, so the calls happen in the order the server counts them.
+    if !id_names.is_empty() {
+        let mut numbered = Vec::new();
+        for (index, text) in &calls {
+            let call = text.split_whitespace().collect::<String>();
+            if !script.bindings[*index].mutable
+                && id_names.iter().any(|name| call == format!("{name}()"))
+            {
+                numbered.push(*index);
+            }
+        }
+        let all_calls: usize = id_names
+            .iter()
+            .map(|name| count_calls(&script.body, name))
+            .sum();
+        if all_calls == numbered.len() {
+            for (k, index) in numbered.iter().enumerate() {
+                script.bindings[*index].id_call = Some(k + 1);
+            }
+            script.server_ids = !numbered.is_empty();
+        }
+    }
     // `hydrated()` is false until the element starts, so on the server it's `false`.
     for (index, text) in calls.clone() {
         let call = text.split_whitespace().collect::<String>();
@@ -912,4 +997,78 @@ impl<'a> Visit<'a> for References {
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
         self.names.insert(identifier.name.to_string());
     }
+}
+
+/// How many times `name(` is called in `source` (a word, then `(`; strings and comments are
+/// counted too, which only makes the server leave ids to the browser).
+fn count_calls(source: &str, name: &str) -> usize {
+    let bytes = source.as_bytes();
+    let mut count = 0;
+    let mut from = 0;
+    while let Some(at) = source[from..].find(name) {
+        let start = from + at;
+        let end = start + name.len();
+        from = end;
+        let before = start.checked_sub(1).map(|i| bytes[i] as char);
+        if before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.') {
+            continue;
+        }
+        if source[end..].trim_start().starts_with('(') {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn is_identifier(text: &str) -> bool {
+    text.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// `provide(context, value)` statements at the script's top level: the context's name (when it's
+/// a plain name) and the value's source.
+/// `provide(theme, signal(mode))` passes the signal so the context follows it; on the server it's
+/// the value, so the value's source is `mode`.
+fn top_level_provides(body: &str, names: &[String], signals: &[String]) -> Vec<(String, String)> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, body, SourceType::mjs()).parse();
+    let mut found = Vec::new();
+    for statement in &parsed.program.body {
+        let Statement::ExpressionStatement(statement) = statement else {
+            continue;
+        };
+        let oxc_ast::ast::Expression::CallExpression(call) = &statement.expression else {
+            continue;
+        };
+        let oxc_ast::ast::Expression::Identifier(callee) = &call.callee else {
+            continue;
+        };
+        if !names.iter().any(|name| name == callee.name.as_str()) {
+            continue;
+        }
+        if let [context, value] = call.arguments.as_slice() {
+            if let (Some(oxc_ast::ast::Expression::Identifier(context)), Some(value)) =
+                (context.as_expression(), value.as_expression())
+            {
+                let unwrapped = match value {
+                    oxc_ast::ast::Expression::CallExpression(inner)
+                        if inner.arguments.len() == 1
+                            && matches!(&inner.callee, oxc_ast::ast::Expression::Identifier(callee)
+                                if signals.iter().any(|name| name == callee.name.as_str())) =>
+                    {
+                        inner.arguments[0].as_expression().unwrap_or(value)
+                    }
+                    value => value,
+                };
+                let span = unwrapped.span();
+                found.push((
+                    context.name.to_string(),
+                    body[span.start as usize..span.end as usize].to_owned(),
+                ));
+            }
+        }
+    }
+    found
 }

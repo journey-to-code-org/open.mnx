@@ -321,7 +321,16 @@ fn respond(request: &Map<String, Value>) -> Value {
                 .get("partial")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            crate::compile_html_with_options(
+            // `idPrefix`: put before the id bases this render gives hosts (`id()`), so
+            // components rendered separately into one page don't share ids.
+            let id_prefix = text("idPrefix").unwrap_or("");
+            if !id_prefix
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            {
+                return failure("`idPrefix` takes letters, digits, `-` and `_`");
+            }
+            crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
                 source,
                 &path,
                 &props,
@@ -342,7 +351,7 @@ fn respond(request: &Map<String, Value>) -> Value {
                         .unwrap_or_default(),
                 },
                 &loader,
-            )
+            ))
         }
         ("compile", "css")
             if request
