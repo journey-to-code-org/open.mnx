@@ -21,13 +21,14 @@ const BUDGETS = {
   // `src/motion.js`, loaded only by components that animate — to 15 KB, and the list work for
   // the js-framework-benchmark — a keyed zb-each moving only the rows out of order, about 125 B —
   // to 15.25 KB. Clearing a list that is all its parent holds by emptying the parent, about
-  // 120 B more, fits within it. The faster Signals core — getPending() in O(pending), nodes in
-  // private fields, lazy arrays and children, about 420 B — took it to 15.75 KB.)
+  // 120 B more, fits within it. The faster Signals core — getPending() in O(pending) with each
+  // watcher's count and pending slot kept on the node, nodes in private fields, lazy arrays and
+  // children, about 580 B — took it to 15.75 KB.)
   'src/index.js': { gzip: 15.75 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
   // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`, 14 KB until the list work,
   // 14.25 KB until the faster Signals core).
-  'dist/production/index.js': { gzip: 14.75 * 1024 },
+  'dist/production/index.js': { gzip: 15 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
   // `animate`'s leave() and glide(), loaded only by components that animate.

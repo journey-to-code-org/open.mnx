@@ -121,3 +121,44 @@ test('getPending stays right when it is not called while computeds go stale and 
   computeds[5].get();
   assert.deepEqual(indexes(), []);
 });
+
+test('an unwatched computed is not kept alive by its watcher, even if it was pending', async () => {
+  const { setFlagsFromString } = await import('node:v8');
+  const { runInNewContext } = await import('node:vm');
+  setFlagsFromString('--expose-gc');
+  const gc = runInNewContext('gc');
+  const w = new Signal.subtle.Watcher(() => {});
+  const keep = new Signal.Computed(() => 1);
+  let ref;
+  (() => {
+    const fresh = new Signal.Computed(() => 2); // dirty until read: pending as soon as it's watched
+    ref = new WeakRef(fresh);
+    w.watch(fresh, keep);
+    fresh.get();
+    keep.get();
+    w.unwatch(fresh);
+  })();
+  for (let i = 0; i < 5 && ref.deref(); i++) {
+    await new Promise((resolve) => setTimeout(resolve));
+    gc();
+  }
+  assert.equal(ref.deref(), undefined);
+});
+
+test('watchers sharing a computed each list it as many times as they watch it', () => {
+  const s = new Signal.State(0);
+  const c = new Signal.Computed(() => s.get());
+  c.get();
+  const watchers = [new Signal.subtle.Watcher(() => {}), new Signal.subtle.Watcher(() => {}), new Signal.subtle.Watcher(() => {})];
+  watchers[0].watch(c);
+  watchers[1].watch(c, c);
+  watchers[2].watch(c);
+  watchers[2].unwatch(c);
+  for (let round = 0; round < 3; round++) {
+    s.set(round + 1);
+    assert.deepEqual(watchers.map((w) => w.getPending().length), [1, 2, 0]);
+    c.get();
+    assert.deepEqual(watchers.map((w) => w.getPending().length), [0, 0, 0]);
+    watchers.forEach((w) => w.watch());
+  }
+});

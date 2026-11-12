@@ -65,8 +65,13 @@ class Node {
     this.sourceVersions = null;
     this.sourceSlots = null;
     this.nextSource = 0;
-    this.pending = null;       // Watcher only: computeds marked dirty since the list was compacted
-    this.seen = 0;             // de-duplication stamp for getPending()
+    this.pending = null;       // Watcher only: watched computeds marked dirty, in order marked
+    // Signals only: how a watcher watches this node. The first watcher's relation is kept in
+    // fields (the common case: one watcher); any further ones in a Map.
+    this.w1 = null;            // the first watcher
+    this.w1count = 0;          // how many times it watches this node
+    this.w1index = -1;         // where this node is in its pending list, or -1
+    this.wMore = null;         // Map of other watcher → { count, index }
   }
 }
 
@@ -296,6 +301,7 @@ class Watcher {
       for (let i = 0; i < resolved.length; i++) {
         const source = resolved[i];
         track(source);
+        addWatch(node, source);
         if (source.kind === COMPUTED && source.dirty) addPending(node, source);
       }
     } finally {
@@ -325,58 +331,76 @@ class Watcher {
       node.nextSource--;
       if (i < last) sources[i].sinkSlots[node.sourceSlots[i]] = i;
     }
-    compactPending(node);
+    for (let i = 0; i < resolved.length; i++) removeWatch(node, resolved[i]);
   }
 
-  // O(pending), not O(watched): the list is filled as computeds are marked, and compacted here
-  // to the ones still dirty and still watched. Order is the order they were marked.
+  // O(pending), not O(watched): the list is filled as watched computeds are marked dirty, once
+  // each. Entries read since (no longer dirty) are dropped here; unwatching drops one at once.
+  // Order is roughly the order they were marked.
   getPending() {
     const node = this.#node;
     const pending = node.pending;
     if (pending === null || pending.length === 0) return [];
-    const stamp = ++pendingStamp;
-    const kept = [];
     const out = [];
+    let kept = 0;
     for (let i = 0; i < pending.length; i++) {
       const source = pending[i];
-      if (!source.dirty || source.seen === stamp) continue;
-      const times = watchedBy(source, node);
-      if (times === 0) continue;
-      source.seen = stamp;
-      kept.push(source);
-      for (let t = 0; t < times; t++) out.push(source.wrapper);  // watched twice, listed twice
+      if (!source.dirty) { setPendingIndex(source, node, -1); continue; }
+      setPendingIndex(source, node, kept);
+      pending[kept++] = source;
+      const times = watchCount(source, node);
+      for (let t = 0; t < times; t++) out.push(source.wrapper); // watched twice, listed twice
     }
-    node.pending = kept;
+    pending.length = kept;
     return out;
   }
 }
 
-let pendingStamp = 0;
+// ---- which watcher watches what, and what's pending for it --------------------------------------
 
-// Entries go stale when a computed is read (no longer dirty) or unwatched. Stale entries are
-// dropped whenever the list outgrows the watched set (on a push, and after an unwatch), so the
-// list stays bounded and never keeps an unwatched computed (or what it closes over) alive.
-function addPending(watcher, source) {
-  const pending = (watcher.pending ??= []);
-  pending.push(source);
-  if (pending.length > 64) compactPending(watcher);
+function watchCount(source, watcher) {
+  return source.w1 === watcher ? source.w1count : (source.wMore?.get(watcher)?.count ?? 0);
 }
-function compactPending(watcher) {
-  const pending = watcher.pending;
-  if (pending === null || pending.length <= 2 * watcher.sources.length) return;
-  let kept = 0;
-  for (let i = 0; i < pending.length; i++) {
-    const entry = pending[i];
-    if (entry.dirty && watchedBy(entry, watcher)) pending[kept++] = entry;
+function pendingIndex(source, watcher) {
+  return source.w1 === watcher ? source.w1index : (source.wMore?.get(watcher)?.index ?? -1);
+}
+function setPendingIndex(source, watcher, index) {
+  if (source.w1 === watcher) source.w1index = index;
+  else source.wMore.get(watcher).index = index;
+}
+
+function addWatch(watcher, source) {
+  if (source.w1 === watcher) { source.w1count++; return; }
+  const more = source.wMore?.get(watcher);
+  if (more) { more.count++; return; }
+  if (source.w1 === null) { source.w1 = watcher; source.w1count = 1; source.w1index = -1; return; }
+  (source.wMore ??= new Map()).set(watcher, { count: 1, index: -1 });
+}
+
+function removeWatch(watcher, source) {
+  const index = pendingIndex(source, watcher);
+  if (index !== -1) {
+    // Swap-remove, so the computed isn't kept alive by a list nobody has read yet.
+    const pending = watcher.pending;
+    const last = pending.length - 1;
+    if (index < last) {
+      const moved = pending[last];
+      pending[index] = moved;
+      setPendingIndex(moved, watcher, index);
+    }
+    pending.pop();
   }
-  pending.length = kept;
+  if (source.w1 === watcher) { source.w1 = null; source.w1count = 0; source.w1index = -1; }
+  else source.wMore?.delete(watcher);
 }
-function watchedBy(source, watcher) {
-  const sinks = source.sinks;
-  if (sinks === null) return 0;
-  let times = 0;
-  for (let i = 0; i < sinks.length; i++) if (sinks[i] === watcher) times++;
-  return times;
+
+// A computed `watcher` watches was marked dirty (a watcher is only ever a sink of what it
+// watches): listed once, however often it's marked.
+function addPending(watcher, source) {
+  if (pendingIndex(source, watcher) !== -1) return;
+  const pending = (watcher.pending ??= []);
+  setPendingIndex(source, watcher, pending.length);
+  pending.push(source);
 }
 
 function untrack(callback) {
