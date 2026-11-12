@@ -7,9 +7,11 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 ### Added
 
 - **Sync: `documents().all(collection, prefix)`** gives only the documents whose key starts with `prefix` (`all('seats', 'show-12/')`), as `scope` does for pages. With it, `documents()` and `write()` are a synchronous store in a few lines, for code that keeps its rules apart from where documents live: reads with no `await`, and a write in the documents before its promise settles. Documented, and tested on each log and inside a Durable Object, including after an eviction.
+- **Actions: files, and a limit on what a post may be.** A file input reaches a server function as a `File` on both paths (documented and tested in a browser, with and without JavaScript). `createActions({ maxBytes })` caps a post, files and fields together, at 10 MB by default: a bigger one gets `{ error: 'Too large' }` (413), isn't kept (the rest is discarded as it arrives, so a browser still sending gets the answer), and the function doesn't run. **Before, a post of any size was read into memory**; set `maxBytes: Infinity` for that. For listing photos, logos and damage reports.
 
 ### Fixed
 
+- **Actions: processes starting together each find every action.** Each start rewrote the compiled server halves in the shared cache folder, so a second process starting at that moment (another worker, a parallel test file) could import a half-written file, find no actions, and answer every post with 404. They're written beside it and renamed into place now. This was the Fastify adapter test that failed now and then in CI.
 - **`class:` and `style:` on a child component set its host element**, as on any element, in both outputs. They were refused as unknown props (`<quantity-stepper class:out={…}>`: "has no prop `class:out`"). Found by Tailgate.
 
 ## 5.7.0 — 2026-11-11
