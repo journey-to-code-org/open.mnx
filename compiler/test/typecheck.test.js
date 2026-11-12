@@ -22,6 +22,8 @@ function project(files) {
   }));
   mkdirSync(join(root, 'node_modules/@zubra'), { recursive: true });
   symlinkSync(join(repo, 'runtime'), join(root, 'node_modules/@zubra/runtime'), 'dir');
+  // The project's own TypeScript, which `check --types` runs: this package's dev dependency.
+  symlinkSync(join(repo, 'compiler/node_modules/typescript'), join(root, 'node_modules/typescript'), 'dir');
   for (const [path, source] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), source);
