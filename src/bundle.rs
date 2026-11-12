@@ -107,11 +107,12 @@ impl Component {
 
     fn loader(&self) -> impl Fn(&str, &str) -> Result<(String, String), String> + '_ {
         move |specifier, from| {
-            if !(specifier.starts_with("./")
-                || specifier.starts_with("../")
-                || specifier.starts_with('/'))
-            {
-                return Err("component imports must be relative paths (./ or ../)".to_owned());
+            // A package's component is given under its specifier (`@acme/kit/badge.zb`).
+            if !crate::request::is_relative(specifier) {
+                let key = normalize(specifier);
+                return self.files.get(&key).map(|source| (key.clone(), source.clone())).ok_or_else(|| {
+                    format!("`{specifier}` wasn't found: its package isn't installed, or doesn't export that file")
+                });
             }
             let resolved = resolve(specifier, from);
             self.files

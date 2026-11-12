@@ -290,3 +290,81 @@ fn check_server_reports_what_the_servers_html_leaves_out() {
     );
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn components_import_components_from_packages_in_node_modules() {
+    let dir = temp_dir("packages");
+    let kit = dir.join("node_modules/@acme/kit/components");
+    fs::create_dir_all(&kit).unwrap();
+    fs::write(kit.join("dot.zb"), "<kit-dot><i></i></kit-dot>\n").unwrap();
+    fs::write(
+        kit.join("cart-panel.zb"),
+        "<script>\n  import './dot.zb'\n</script>\n<cart-panel count={2}><b>{count}</b><kit-dot></kit-dot></cart-panel>\n",
+    )
+    .unwrap();
+    let app = dir.join("src/pages");
+    fs::create_dir_all(&app).unwrap();
+    let page = app.join("shop-page.zb");
+    let write_page = |specifier: &str, attributes: &str| {
+        fs::write(
+            &page,
+            format!("<script>\n  import '{specifier}'\n</script>\n<shop-page><cart-panel{attributes}></cart-panel></shop-page>\n"),
+        )
+        .unwrap();
+    };
+    let path = page.to_str().unwrap();
+
+    // No "exports": every file is reachable. Found from a folder two levels below node_modules.
+    write_page("@acme/kit/components/cart-panel.zb", " count={5}");
+    let (ok, _, stderr) = zubra(&["check", path]);
+    assert!(ok, "{stderr}");
+    let (_, html, _) = zubra(&["compile", path, "--emit", "html"]);
+    assert!(
+        html.contains("<b>5</b>") && html.contains("<kit-dot><i></i></kit-dot>"),
+        "{html}"
+    );
+    let (_, module, _) = zubra(&["compile", path, "--emit", "js"]);
+    assert!(
+        module.contains("import \"@acme/kit/components/cart-panel.js\""),
+        "{module}"
+    );
+    // Its props are checked as any child's are, at the app's line.
+    write_page("@acme/kit/components/cart-panel.zb", " cuont={5}");
+    let (ok, _, stderr) = zubra(&["check", path]);
+    assert!(
+        !ok && stderr.contains("has no prop `cuont`") && stderr.contains("shop-page.zb"),
+        "{stderr}"
+    );
+
+    // "exports" decides what can be imported, as Node does.
+    let manifest = dir.join("node_modules/@acme/kit/package.json");
+    fs::write(
+        &manifest,
+        r#"{ "name": "@acme/kit", "exports": { "./ui/*": { "require": "./nope/*", "import": "./components/*", "default": "./nope/*" } } }"#,
+    )
+    .unwrap();
+    write_page("@acme/kit/ui/cart-panel.zb", "");
+    let (ok, _, stderr) = zubra(&["check", path]);
+    assert!(ok, "{stderr}");
+    write_page("@acme/kit/components/cart-panel.zb", "");
+    let (ok, _, stderr) = zubra(&["check", path]);
+    assert!(
+        !ok && stderr.contains("@acme/kit doesn't export ./components/cart-panel.zb"),
+        "{stderr}"
+    );
+
+    // Not installed, and no such file: each says so.
+    write_page("@acme/nope/x.zb", "");
+    let (ok, _, stderr) = zubra(&["check", path]);
+    assert!(
+        !ok && stderr.contains("@acme/nope isn't installed"),
+        "{stderr}"
+    );
+    write_page("@acme/kit/ui/cart-pane.zb", "");
+    let (ok, _, stderr) = zubra(&["check", path]);
+    assert!(
+        !ok && stderr.contains("@acme/kit has no components/cart-pane.zb"),
+        "{stderr}"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}

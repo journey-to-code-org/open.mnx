@@ -40,7 +40,17 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
 
   /** Each component's interface: `{ tag, shadow, form, props: [{ name, attribute, type, default, model }] }`. */
   const describe = (name) => once(`interface:${name}`, () => JSON.parse(call(pathOf(name), { emit: 'interface' })));
-  const byTag = () => once('tags', () => new Map([...files.keys()].map((name) => [describe(name).tag, name])));
+  const byTag = () =>
+    once('tags', () => {
+      const tags = new Map();
+      for (const name of files.keys()) {
+        const { tag } = describe(name);
+        // Two components with one tag (an app's and a package's, say) can't share a page.
+        if (tags.has(tag)) throw new Error(`@zubra/server: <${tag}> is defined by both ${tags.get(tag)} and ${name}`);
+        tags.set(tag, name);
+      }
+      return tags;
+    });
   const nameOf = (nameOrTag) => (files.has(nameOrTag) ? nameOrTag : byTag().get(nameOrTag));
 
   // `idPrefix`: renders that end up in one page number their hosts' ids apart (`id()`).

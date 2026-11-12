@@ -19,7 +19,8 @@
   "files": [
     "server.js",
     "analysis.js",
-    "backend.js"
+    "backend.js",
+    "packages.js"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.js\""

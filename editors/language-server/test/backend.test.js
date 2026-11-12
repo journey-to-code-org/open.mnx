@@ -195,3 +195,30 @@ test('on Windows, `zubra` is looked up on PATH with its extensions (npm installs
   assert.equal(resolveCommand('C:\\tools\\zubra.exe', options), 'C:\\tools\\zubra.exe', 'one with an extension is run as given');
   assert.equal(resolveCommand('zubra', { ...options, platform: 'linux' }), 'zubra');
 });
+
+test("checking unsaved text gathers a package's component under its specifier", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'zubra-backend-'));
+  try {
+    mkdirSync(join(root, 'node_modules/@zubra/compiler'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/@zubra/compiler/package.json'), '{"name":"@zubra/compiler","type":"module","main":"index.js"}');
+    // A compiler that records what it's asked: sources() keys each file as it's told.
+    writeFileSync(
+      join(root, 'node_modules/@zubra/compiler/index.js'),
+      `export const available = () => true;
+       export const sources = (path, files = {}, key = path) => (files[key] = 'from ' + path, files);
+       export const request = (body) => (globalThis.checked = body, { diagnostics: [] });
+       export const compileFile = () => ({ ok: false });\n`,
+    );
+    mkdirSync(join(root, 'node_modules/@acme/kit/ui'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/@acme/kit/ui/cart-panel.zb'), '<cart-panel></cart-panel>\n');
+    const backend = await createBackend({ root });
+    const page = join(root, 'src/pages/shop-page.zb');
+    backend.check(page, "<script>\n  import '@acme/kit/ui/cart-panel.zb'\n  import '@other/nope/x.zb'\n  import './local.zb'\n</script>\n<shop-page></shop-page>\n");
+    const { files } = globalThis.checked;
+    assert.equal(files['@acme/kit/ui/cart-panel.zb'], 'from ' + join(root, 'node_modules/@acme/kit/ui/cart-panel.zb'), 'found from a folder below node_modules, keyed by specifier');
+    assert.equal(files[join(root, 'src/pages/local.zb')], 'from ' + join(root, 'src/pages/local.zb'));
+    assert.equal(Object.keys(files).some((key) => key.includes('@other')), false, 'a package that is not installed adds nothing; the compiler says why');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

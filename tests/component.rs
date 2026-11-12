@@ -137,11 +137,25 @@ fn what_only_the_browser_computes_is_left_for_it() {
 }
 
 #[test]
-fn imports_must_be_relative() {
-    let source = CARD.replace("./badge.zb", "badge.zb");
-    let component = Component::new("/app/card.zb", &source, &[("/app/badge.zb", BADGE)]);
-    let error = component.check().unwrap_err().to_string();
-    assert!(error.contains("relative"), "{error}");
+fn a_bare_import_is_a_packages_component_given_under_its_specifier() {
+    // `@acme/kit/badge.zb` is keyed by its specifier, and its own relative imports under it.
+    let source = CARD.replace("./badge.zb", "@acme/kit/badge.zb");
+    let badge = "<script>\n  import './dot.zb'\n</script>\n<x-badge label=\"none\"><span>{label}</span><kit-dot></kit-dot></x-badge>\n";
+    let dot = "<kit-dot><i></i></kit-dot>";
+    let component = Component::new(
+        "/app/card.zb",
+        &source,
+        &[("@acme/kit/badge.zb", badge), ("@acme/kit/dot.zb", dot)],
+    );
+    component.check().unwrap();
+    assert!(component
+        .module()
+        .unwrap()
+        .contains("\"@acme/kit/badge.js\""));
+    // Missing: the reason, at the import.
+    let alone = Component::new("/app/card.zb", &source, &[]);
+    let error = alone.check().unwrap_err().to_string();
+    assert!(error.contains("`@acme/kit/badge.zb` wasn't found: its package isn't installed, or doesn't export that file"), "{error}");
 }
 
 #[test]

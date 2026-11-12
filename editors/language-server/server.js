@@ -15,7 +15,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { createBackend, importsOf, readText } from './backend.js';
+import { createBackend, importsOf, locateImport, readText } from './backend.js';
 import { completions, documentation, hostOf, interfaceOf, offsetAt, positionAt, tagAt } from './analysis.js';
 
 const EXTRACT_COMMAND = 'zubra.applyExtractComponent'; // not the editor command's name: the client registers the server's commands itself
@@ -72,7 +72,8 @@ function componentsOf(uri, text) {
   const base = dirname(pathOf(uri));
   const found = [];
   for (const specifier of importsOf(text)) {
-    const path = resolve(base, specifier);
+    const path = locateImport(base, specifier)?.path;
+    if (!path) continue;
     let mtime;
     try { mtime = statSync(path).mtimeMs; } catch { continue; }
     let cached = manifests.get(path);

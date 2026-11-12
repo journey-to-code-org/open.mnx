@@ -84,14 +84,13 @@ fn respond(request: &Map<String, Value>) -> Value {
         return failure(&format!("`files` has no source for `{path}`"));
     };
     let loader = |specifier: &str, from: &str| -> Result<(String, String), String> {
-        if !(specifier.starts_with("./")
-            || specifier.starts_with("../")
-            || specifier.starts_with('/'))
-        {
-            return Err(
-                "component imports must be relative paths (./ or ../) when compiling files"
-                    .to_owned(),
-            );
+        // A package's component (`@acme/kit/components/cart-panel.zb`) is keyed by its specifier,
+        // and its own relative imports under it: whoever reads the files found it in node_modules.
+        if !is_relative(specifier) {
+            let key = normalize(specifier);
+            return files.get(&key).map(|source| (key.clone(), source.clone())).ok_or_else(|| {
+                format!("`{specifier}` wasn't found: its package isn't installed, or doesn't export that file")
+            });
         }
         let resolved = resolve(specifier, from);
         files
@@ -502,6 +501,11 @@ fn entry(path: &str, diagnostic: &Diagnostic, severity: &str) -> Value {
         "message": diagnostic.message,
         "help": diagnostic.help,
     })
+}
+
+/// `./x.zb`, `../x.zb` or `/x.zb`: a path, not a package.
+pub(crate) fn is_relative(specifier: &str) -> bool {
+    specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
 }
 
 fn file_name(path: &str) -> &str {

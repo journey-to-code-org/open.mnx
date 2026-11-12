@@ -10,7 +10,7 @@
 // imports, and makes that request.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, posix, resolve } from 'node:path';
 import { CompileError, CompilerCrash, over, restarting, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './core.js';
 
 // For Workers, Deno and browsers, which have no disk to read zubra.wasm from: `@zubra/compiler/wasm`.
@@ -50,16 +50,22 @@ function native(compiler, body) {
 }
 
 /** The components (`.zb`, `.zb.jsx`, `.zb.tsx`) `path` imports, recursively, with their sources (the path itself included). */
-export function sources(path, files = {}) {
+export function sources(path, files = {}, key = resolve(path)) {
   const absolute = resolve(path);
-  if (absolute in files) return files;
+  if (key in files) return files;
   let source;
   try { source = readFileSync(absolute, 'utf8'); } catch { return files; }
-  files[absolute] = source;
+  files[key] = source;
   // A JSX component's imports are the whole file's; an .zb file's are its <script>'s.
   const script = /\.[jt]sx$/.test(absolute) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
   for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)['"]/g)) {
-    if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files);
+    // A relative import is keyed like its importer: by path, or under the package specifier.
+    if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files, key.startsWith('/') ? resolve(dirname(absolute), specifier) : posix.join(posix.dirname(key), specifier));
+    else {
+      // A package's component, keyed by its specifier; its own relative imports are keyed under it.
+      const found = packageFile(dirname(absolute), specifier);
+      if (found.path) sources(found.path, files, posix.normalize(specifier));
+    }
   }
   // A TypeScript component's relative TypeScript imports, and what they re-export: the
   // compiler reads the enums in them (a `const enum` is inlined).
@@ -90,6 +96,51 @@ function typescriptModule(from, specifier, files, depth) {
     }
     return;
   }
+}
+
+/**
+ * Where a package's component (`@acme/kit/components/cart-panel.zb`) is, looked for as Node looks
+ * for a package: in the node_modules of `dir` and each folder above it. A package with `exports`
+ * must export the path (`"./components/*": "./components/*"`); one without exposes every file.
+ * Returns `{ path }`, or `{ error }` saying why not.
+ */
+export function packageFile(dir, specifier) {
+  const parts = specifier.split('/');
+  const scoped = specifier.startsWith('@') ? 2 : 1;
+  if (parts.length <= scoped) return { error: `\`${specifier}\` names a package, not a component in it` };
+  const name = parts.slice(0, scoped).join('/');
+  const subpath = `./${parts.slice(scoped).join('/')}`;
+  for (let at = resolve(dir); ; at = dirname(at)) {
+    const root = join(at, 'node_modules', name);
+    if (existsSync(join(root, 'package.json')) || existsSync(root)) {
+      let manifest = {};
+      try { manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); } catch {}
+      const target = manifest.exports === undefined ? subpath : exported(manifest.exports, subpath);
+      if (!target) return { error: `${name} doesn't export ${subpath} (its package.json "exports")` };
+      const path = join(root, target);
+      return existsSync(path) ? { path } : { error: `${name} has no ${target.replace(/^\.\//, '')}` };
+    }
+    if (dirname(at) === at) return { error: `${name} isn't installed: it isn't in any node_modules above ${dir}` };
+  }
+}
+
+/** The file `exports` maps `subpath` to: an exact key, or one with a `*`; a string, or the first condition an import meets. */
+function exported(exports, subpath) {
+  const map = exports && typeof exports === 'object' && !Array.isArray(exports) && Object.keys(exports).some((key) => key.startsWith('.')) ? exports : { '.': exports };
+  // A condition object is read in its own order, taking the first condition an import meets.
+  const pick = (value) =>
+    typeof value === 'string' ? value
+    : Array.isArray(value) ? value.map(pick).find(Boolean) ?? null
+    : value && typeof value === 'object' ? pick(Object.entries(value).find(([condition]) => ['import', 'node', 'default'].includes(condition))?.[1])
+    : null;
+  if (subpath in map) return pick(map[subpath]);
+  for (const [key, value] of Object.entries(map)) {
+    const star = key.indexOf('*');
+    if (star < 0 || subpath.length < key.length - 1 || !subpath.startsWith(key.slice(0, star)) || !subpath.endsWith(key.slice(star + 1))) continue;
+    const matched = subpath.slice(star, subpath.length - (key.length - star - 1));
+    return pick(value)?.replaceAll('*', matched) ?? null;
+  }
+  return null;
 }
 
 /**
