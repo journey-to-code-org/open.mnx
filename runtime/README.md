@@ -46,7 +46,7 @@ including values, recompute counts, the order watchers are notified, the order `
 
 ### Deliberate differences from the reference polyfill
 
-Each one only affects programs that break a rule the proposal states, so correct programs
+The first three only affect programs that break a rule the proposal states, so correct programs
 behave the same on both. All are tested in `test/signal.test.js`.
 
 1. **Reads and writes inside `watched`/`unwatched` hooks throw.** The proposal says hooks run
@@ -56,6 +56,12 @@ behave the same on both. All are tested in `test/signal.test.js`.
    starts recomputing first, so the computed caches the "read during notification" error and
    keeps throwing it after the notification is over.
 3. **`new Signal.Computed(x)` requires a function** (TypeError), instead of failing on first read.
+
+One difference is visible to correct programs: **`Watcher.getPending()` isn't in watch order.**
+The watcher keeps the computeds it watches as they're marked dirty, instead of scanning everything
+it watches, so `getPending()` costs O(pending), not O(watched), and lists them roughly in the order
+they were marked. The proposal doesn't state an order (the reference's is the watch order); the
+computeds, and how many times each is listed, are the same. Also tested in `test/signal.test.js`.
 
 ## Effects
 

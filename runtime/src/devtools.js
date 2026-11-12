@@ -77,7 +77,7 @@ const up = (node) => node.parentNode ?? node.host ?? null;
 
 /** Every effect `owner` owns, depth first (a component's own: child components have their own roots). */
 function effectsOf(owner, out = []) {
-  for (const child of owner.children) {
+  for (const child of owner.children ?? []) {
     if (child.disposed) continue;
     if (child.computed) out.push(child);
     effectsOf(child, out);
