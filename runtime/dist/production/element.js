@@ -60,6 +60,15 @@ const clone = (value) => (value && typeof value === 'object' ? structuredClone(v
 /** Attribute text → prop value, typed by the prop's default (JSON for arrays and objects). */
 function parseAttribute(spec, raw) {
   const fallback = spec.default;
+  // An enum prop (`<script lang="ts">`): the member whose value the text is, or the member it names.
+  if (spec.enum) {
+    if (raw === null) return clone(fallback);
+    const found = Object.values(spec.enum).find((value) => String(value) === raw);
+    if (found !== undefined) return found;
+    if (Object.hasOwn(spec.enum, raw)) return spec.enum[raw];
+    console.warn(`zubra: attribute "${spec.attribute}" is "${raw}", not one of ${Object.keys(spec.enum).join(', ')}`);
+    return clone(fallback);
+  }
   if (typeof fallback === 'boolean') return fallback ? raw !== 'false' : raw !== null;
   if (raw === null) return clone(fallback);
   if (typeof fallback === 'number') return Number(raw);

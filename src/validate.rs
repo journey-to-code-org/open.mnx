@@ -363,6 +363,179 @@ fn lower_component(
 
 /// What the JavaScript backend needs: the prop interface and the script's names, after the
 /// same script evaluation and resolver checks the HTML backend runs.
+/// A prop's TypeScript type, when the script says it: `declare const value: T`; `value={initial}`
+/// where `const initial: T = …`; or `size={Size.Small}`, a member of the script's enum `Size`.
+pub(crate) fn declared_type(component: &crate::ast::ComponentAst, prop: &str) -> Option<String> {
+    if let Some((_, text, _)) = component
+        .script
+        .prop_types
+        .iter()
+        .find(|(name, _, _)| name == prop)
+    {
+        return Some(text.clone());
+    }
+    let declaration = component
+        .props
+        .iter()
+        .find(|declaration| declaration.name == prop)?;
+    match &declaration.default {
+        PropDefault::Expression(expression::Expression::Identifier(name), _) => {
+            component.script.declared_types.get(name).cloned()
+        }
+        PropDefault::Expression(expression::Expression::Member { object, .. }, _) => {
+            match object.as_ref() {
+                expression::Expression::Identifier(name)
+                    if component
+                        .script
+                        .enums
+                        .iter()
+                        .any(|info| &info.name == name && !info.declared) =>
+                {
+                    Some(name.clone())
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The enum a prop's type is, when it's exactly one of the script's (`size: Size`).
+pub(crate) fn prop_enum<'c>(
+    component: &'c crate::ast::ComponentAst,
+    prop: &str,
+) -> Option<&'c crate::enums::EnumInfo> {
+    let declared = declared_type(component, prop)?;
+    let name = declared.trim();
+    // Merged declarations: the last one has every member's value in `members` of its own, so
+    // put them together.
+    component
+        .script
+        .enums
+        .iter()
+        .rev()
+        .find(|info| info.name == name && !info.declared)
+}
+
+/// Every member of the script's enum `name`, across merged declarations.
+pub(crate) fn enum_members(
+    component: &crate::ast::ComponentAst,
+    name: &str,
+) -> Vec<(String, Option<crate::enums::EnumValue>)> {
+    component
+        .script
+        .enums
+        .iter()
+        .filter(|info| info.name == name && !info.declared)
+        .flat_map(|info| info.members.iter().cloned())
+        .collect()
+}
+
+/// Attribute text for an enum prop: a member whose value prints as `raw` (`"4"`, `"large"`), or
+/// failing that, the member named `raw` (`"Large"`). `None` when it's neither.
+pub(crate) fn enum_value(
+    members: &[(String, Option<crate::enums::EnumValue>)],
+    raw: &str,
+) -> Option<Value> {
+    let to_value = |value: &crate::enums::EnumValue| match value {
+        crate::enums::EnumValue::Number(number) => {
+            serde_json::Number::from_f64(*number).map_or(Value::Null, Value::Number)
+        }
+        crate::enums::EnumValue::String(text) => Value::String(text.clone()),
+    };
+    let printed = |value: &crate::enums::EnumValue| match value {
+        crate::enums::EnumValue::Number(number) => crate::enums::js_number(*number),
+        crate::enums::EnumValue::String(text) => text.clone(),
+    };
+    members
+        .iter()
+        .filter_map(|(_, value)| value.as_ref())
+        .find(|value| printed(value) == raw)
+        .or_else(|| {
+            members
+                .iter()
+                .find(|(name, _)| name == raw)
+                .and_then(|(_, value)| value.as_ref())
+        })
+        .map(to_value)
+}
+
+/// The enum members a prop's attribute accepts, as a JavaScript object literal
+/// (`{ Small: 0, Large: 4 }`): what the runtime and `--emit element` parse attributes with.
+pub(crate) fn enum_literal(component: &crate::ast::ComponentAst, prop: &str) -> Option<String> {
+    let info = prop_enum(component, prop)?;
+    let entries: Vec<String> = enum_members(component, &info.name)
+        .iter()
+        .filter_map(|(name, value)| {
+            Some(format!(
+                "{}: {}",
+                crate::enums::member_key(name),
+                value.as_ref()?.literal()
+            ))
+        })
+        .collect();
+    Some(format!("{{ {} }}", entries.join(", ")))
+}
+
+/// A prop typed with an enum the module doesn't export: consumers can't name its values. With
+/// a string member that's an error (TypeScript accepts no string where the enum is expected);
+/// with only numbers, a warning (numbers still type-check). `(diagnostic, is_error)`.
+pub(crate) fn enum_props(component: &crate::ast::ComponentAst) -> Vec<(Diagnostic, bool)> {
+    let mut found = Vec::new();
+    for prop in &component.props {
+        let Some(declared) = declared_type(component, &prop.name) else {
+            continue;
+        };
+        let words: Vec<&str> = declared
+            .split(|character: char| {
+                !(character.is_alphanumeric() || character == '_' || character == '$')
+            })
+            .collect();
+        let mut seen = Vec::new();
+        // (An imported enum is exported by the module it comes from.)
+        for info in component
+            .script
+            .enums
+            .iter()
+            .filter(|info| !info.declared && info.origin.is_none())
+        {
+            if info.exported
+                || !words.contains(&info.name.as_str())
+                || seen.contains(&info.name)
+                || component
+                    .script
+                    .enums
+                    .iter()
+                    .any(|other| other.name == info.name && other.exported)
+            {
+                continue;
+            }
+            seen.push(info.name.clone());
+            let members = enum_members(component, &info.name);
+            let strings = members
+                .iter()
+                .any(|(_, value)| !matches!(value, Some(crate::enums::EnumValue::Number(_))));
+            let diagnostic = Diagnostic::new(
+                prop.span,
+                if strings {
+                    format!(
+                        "prop `{}` is typed with the enum `{}`, which the component doesn't export, so no consumer can pass a value TypeScript accepts",
+                        prop.name, info.name
+                    )
+                } else {
+                    format!(
+                        "prop `{}` is typed with the enum `{}`, which the component doesn't export: consumers can pass numbers, but not `{}.<member>`",
+                        prop.name, info.name, info.name
+                    )
+                },
+            )
+            .with_help(format!("write `export enum {}`", info.name));
+            found.push((diagnostic, strings));
+        }
+    }
+    found
+}
+
 pub struct Interface {
     pub props: Vec<PropInterface>,
     /// The events the component fires (see [`crate::events`]).
@@ -463,6 +636,9 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
             ));
         }
     }
+    if let Some((error, _)) = enum_props(component).into_iter().find(|(_, error)| *error) {
+        return Err(error);
+    }
     let (events, description) = crate::events::events(component)?;
     Ok(Interface {
         events,
@@ -470,27 +646,7 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         props: props
             .into_iter()
             .map(|prop| {
-                // `declare const value: T`, or `value={initial}` where `const initial: T = …`:
-                // the prop has that type.
-                let declared_directly = component
-                    .script
-                    .prop_types
-                    .iter()
-                    .find(|(name, _, _)| *name == prop.name)
-                    .map(|(_, text, _)| text.clone());
-                let declared = declared_directly.or_else(|| {
-                    component
-                        .props
-                        .iter()
-                        .find(|declaration| declaration.name == prop.name)
-                        .and_then(|declaration| match &declaration.default {
-                            PropDefault::Expression(
-                                expression::Expression::Identifier(name),
-                                _,
-                            ) => component.script.declared_types.get(name).cloned(),
-                            _ => None,
-                        })
-                });
+                let declared = declared_type(component, &prop.name);
                 let runtime_default = runtime_defaults
                     .contains(&prop.name)
                     .then(|| {
@@ -552,6 +708,12 @@ fn evaluate_script_with(
             ));
         }
         locals.push((name.clone(), Local::Runtime));
+    }
+    // Imports whose values are known (enums from TypeScript modules): values at build time.
+    for binding in &script.imported_values {
+        if let Some(Ok(value)) = binding.init.as_ref().map(|init| init.evaluate(&|_| None)) {
+            locals.push((binding.name.clone(), Local::Value(value)));
+        }
     }
     for binding in &script.bindings {
         if !seen.insert(binding.name.clone()) {
@@ -684,7 +846,17 @@ fn evaluate_props(
             });
             continue;
         }
-        let value = match (overrides.get(&declaration.name), &default) {
+        // An enum prop given as text (an attribute, or `--props`): a member's value, or its
+        // name (`size="Large"`), is the member's value, as the browser reads it.
+        let enum_given = match overrides.get(&declaration.name) {
+            Some(Value::String(raw)) => prop_enum(component, &declaration.name)
+                .and_then(|info| enum_value(&enum_members(component, &info.name), raw)),
+            _ => None,
+        };
+        let value = match (
+            enum_given.as_ref().or(overrides.get(&declaration.name)),
+            &default,
+        ) {
             (Some(value), Some(Ok(default))) => {
                 if !same_type(default, value) {
                     return Err(Diagnostic::new(

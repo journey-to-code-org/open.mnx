@@ -152,6 +152,23 @@ fn respond(request: &Map<String, Value>) -> Value {
         };
     }
 
+    // `typescript`: the JavaScript the compiler reduces a script's TypeScript to (types blanked,
+    // enums lowered), for tests that run it against `tsc`'s output, and for tools that show it.
+    if text("command") == Some("typescript") {
+        return match crate::typescript_to_js(source) {
+            Ok(output) => {
+                json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
+            }
+            Err(error) => json!({
+                "ok": false,
+                "output": null,
+                "error": error.render_in(source, &path),
+                "warnings": [],
+                "diagnostics": [entry(&path, &error, "error")],
+            }),
+        };
+    }
+
     // `refactor`: edits for the editor to apply. `action: "extract"` turns the markup in the byte
     // range `start..end` into a new component called `tag`; `output` is JSON text:
     // `{ tag, fileName, fileSource, edits: [{ start, end, text }], props, events }`.

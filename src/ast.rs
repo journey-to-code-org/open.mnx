@@ -131,6 +131,33 @@ pub struct Script {
     /// Imported names a TypeScript script uses only as types (see
     /// [`crate::script::elide_type_only_imports`]).
     pub type_only_imports: Vec<String>,
+    /// The script's enums, with their values (for the typings, the manifest and attributes).
+    pub enums: Vec<crate::enums::EnumInfo>,
+    /// Declarations the module itself exports, outside the setup function: an `export enum`,
+    /// lowered (`export const Size = { … };`). Their names are module-level names.
+    pub module_declarations: Vec<ModuleDeclaration>,
+    /// A TypeScript script's named and default imports (type-only ones too), for the enums
+    /// among them (see [`crate::enums::resolve_imports`]).
+    pub typed_imports: Vec<TypedImport>,
+    /// Imported names whose values the compiler knows (a regular enum from a TypeScript
+    /// module): still imported at runtime, but build-time values for defaults and server HTML.
+    pub imported_values: Vec<Binding>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedImport {
+    pub local: String,
+    /// The name the module exports it as (`default` for a default import).
+    pub imported: String,
+    pub specifier: String,
+    pub span: Span,
+}
+
+/// A declaration at the top of the component's module (see [`Script::module_declarations`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModuleDeclaration {
+    pub name: String,
+    pub text: String,
 }
 
 /// An exported function marked `'use server'`. Its body never reaches the browser: the browser
