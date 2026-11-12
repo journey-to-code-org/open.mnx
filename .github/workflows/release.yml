@@ -1,7 +1,14 @@
 # Releases a version when it reaches main: when the version in runtime/package.json (set by
-# scripts/bump-version.sh in the release PR) has no tag yet, this publishes the eight npm packages
-# with provenance (scripts/publish.mjs), then tags the commit and makes the GitHub release, with the
-# version's CHANGELOG.md section as its notes and the VS Code extension's .vsix attached. A second
+# scripts/bump-version.sh in the release PR) has no GitHub release yet, this tags the commit, publishes
+# the eight npm packages with provenance (scripts/publish.mjs), publishes the VS Code extension, and
+# makes the GitHub release, with the version's CHANGELOG.md section as its notes and the .vsix attached.
+#
+# The order is so a failure leaves nothing half-public: the tag comes first, because it's the step a
+# token can be refused (5.8.0 published to npm, then got a 403 creating its release, and every later
+# run stopped at "already tagged"). Each step after it is skipped when already done, and a version
+# counts as released only once its GitHub release exists, so re-running the job finishes whatever is
+# missing. release-check.yml makes and removes a throwaway tag on each release PR, so a refused token
+# shows up before the merge. A second
 # job then builds the `zubra` CLI for Linux (glibc and musl, x64 and arm64), macOS (x64, arm64) and
 # Windows (x64) and attaches the archives with a SHA256SUMS file, so servers written in anything
 # can run `zubra serve` without Node or Rust.
@@ -12,7 +19,10 @@
 # triggered the run: when a release fails partway and a later push finishes it, the packages, the
 # .vsix and the tag still all come from the release itself.
 #
-# No tokens: npm and the VS Code Marketplace both trust this workflow (OIDC), set up once.
+# Tokens: npm and the VS Code Marketplace both trust this workflow (OIDC), set up once, so neither
+# needs one. GitHub's own tag and release use the RELEASE_TOKEN secret when there is one (a
+# fine-grained token for this repository with Contents and Workflows read and write), and the
+# workflow's own token otherwise.
 # - npm, per package on npmjs.com: Settings → Trusted publishing → GitHub Actions, organization
 #   `journey-to-code-org`, repository `zubra`, workflow `release.yml`, no environment; allowed
 #   actions: `npm publish` (not dist-tag). An NPM_TOKEN secret is used instead if there is one.
@@ -50,11 +60,15 @@ jobs:
           fetch-depth: 0 # to find the commit that set the version
       - name: Is this a new version?
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           version=$(node -p "require('./runtime/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
-            echo "v$version is already tagged: nothing to release."
+          # Released means the GitHub release exists: a tag alone is a release that stopped partway.
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "v$version is released: nothing to do."
             echo "new=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -75,6 +89,26 @@ jobs:
       - name: Release notes
         if: steps.version.outputs.new == 'true'
         run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" > "$RUNNER_TEMP/notes.md"
+      # Still before publishing anything: the tag, the step a token can be refused. A tag already on
+      # the release commit (a re-run) is fine; one on another commit stops the release.
+      - name: Tag the release commit
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ steps.version.outputs.sha }}
+        run: |
+          tagged=$(gh api "repos/$GH_REPO/git/ref/tags/v$VERSION" --jq .object.sha 2> /dev/null || true)
+          if [ -z "$tagged" ]; then
+            gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$SHA" > /dev/null
+            echo "Tagged $SHA as v$VERSION."
+          elif [ "$tagged" = "$SHA" ]; then
+            echo "v$VERSION is already on the release commit."
+          else
+            echo "::error::v$VERSION points at $tagged, not the release commit $SHA. Delete the tag, or release another version."
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@master
         if: steps.version.outputs.new == 'true'
         with:
@@ -121,23 +155,31 @@ jobs:
           npm_config_prefer_online: "true"
         run: for attempt in 1 2 3; do npm run package && exit 0; sleep 30; done; exit 1
         working-directory: editors/vscode
-      - name: Tag and release
-        if: steps.version.outputs.new == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          SHA: ${{ steps.version.outputs.sha }}
-        run: |
-          gh release create "v$VERSION" "editors/vscode/zubra-$VERSION.vsix" \
-            --target "$SHA" --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
       # The Marketplace's trusted publishing (OIDC, like npm's): a policy on the JourneytoCode
-      # publisher names this repository and release.yml, so there's no token to store.
+      # publisher names this repository and release.yml, so there's no token to store. Before the
+      # GitHub release, so a release that exists is a release that's complete; skipped when the
+      # Marketplace already has the version (a re-run).
       - name: Publish the extension to the Marketplace
         if: steps.version.outputs.new == 'true'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         working-directory: editors/vscode
-        run: npx --yes @vscode/vsce publish --oidc --packagePath "zubra-$VERSION.vsix"
+        run: |
+          if npx --yes @vscode/vsce show JourneytoCode.zubra --json 2> /dev/null \
+              | node -e "const e = JSON.parse(require('fs').readFileSync(0, 'utf8')); process.exit(e.versions?.some((v) => v.version === process.env.VERSION) ? 0 : 1)"; then
+            echo "The Marketplace already has $VERSION."
+          else
+            npx --yes @vscode/vsce publish --oidc --packagePath "zubra-$VERSION.vsix"
+          fi
+      - name: Make the GitHub release
+        if: steps.version.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" "editors/vscode/zubra-$VERSION.vsix" --verify-tag \
+            --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest
 
   # Prebuilt CLI binaries for the release just made, or for a release that is missing them (this
   # job runs on every push to main, and does nothing once the release has a SHA256SUMS file).
