@@ -18,11 +18,13 @@ const BUDGETS = {
   // recording side — what each effect binds, each flush, each listener, about 490 B; its reading
   // side loads only when the extension connects — to 14.5 KB. The production build has none of it.
   // And `animate`'s hooks in zb-if and zb-each — about 160 B; leave() and glide() themselves are
-  // `src/motion.js`, loaded only by components that animate — to 15 KB.)
-  'src/index.js': { gzip: 15 * 1024 },
+  // `src/motion.js`, loaded only by components that animate — to 15 KB, and the list work for
+  // the js-framework-benchmark — a keyed zb-each moving only the rows out of order, about 125 B —
+  // to 15.25 KB.)
+  'src/index.js': { gzip: 15.25 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
-  // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`).
-  'dist/production/index.js': { gzip: 14 * 1024 },
+  // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`, 14 KB until the list work).
+  'dist/production/index.js': { gzip: 14.25 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
   // `animate`'s leave() and glide(), loaded only by components that animate.
