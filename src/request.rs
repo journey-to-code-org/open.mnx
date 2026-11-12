@@ -542,6 +542,67 @@ mod tests {
     }
 
     #[test]
+    fn a_long_lived_process_reuses_a_parsed_component_but_never_a_stale_one() {
+        // The same parent, rendered again with other props, then with its child edited, then
+        // with a grandchild edited and with a child that has gone: each answer is the current one.
+        let parent = r#"<script>import ZbChild from './child.zb'</script><zb-parent name="x"><zb-child label={name}></zb-child></zb-parent>"#;
+        let child = |text: &str| {
+            format!(
+                r#"<script>import ZbLeaf from './leaf.zb'</script><zb-child label=""><b>{text} {{label}}</b><zb-leaf></zb-leaf></zb-child>"#
+            )
+        };
+        let render = |name: &str, child: &str, leaf: &str| {
+            let mut files = json!({ "/app/parent.zb": parent, "/app/child.zb": child });
+            if !leaf.is_empty() {
+                files["/app/leaf.zb"] = json!(format!("<zb-leaf><i>{leaf}</i></zb-leaf>"));
+            }
+            call(
+                json!({ "path": "/app/parent.zb", "files": files, "emit": "html", "props": { "name": name } }),
+            )
+        };
+        let html = |response: Value| response["output"].as_str().unwrap_or_default().to_owned();
+        assert!(html(render("Ann", &child("Hi"), "one")).contains("<b>Hi Ann</b>"));
+        assert!(
+            html(render("Bo", &child("Hi"), "one")).contains("<b>Hi Bo</b>"),
+            "props are the render's own"
+        );
+        assert!(
+            html(render("Bo", &child("Bye"), "one")).contains("<b>Bye Bo</b>"),
+            "an edited child is parsed again"
+        );
+        assert!(
+            html(render("Bo", &child("Bye"), "two")).contains("<i>two</i>"),
+            "so is an edited grandchild"
+        );
+        let gone = render("Bo", &child("Bye"), "");
+        assert_eq!(
+            gone["ok"], false,
+            "a child that's gone is an error, not the last parse: {gone}"
+        );
+        assert!(html(render("Cy", &child("Bye"), "two")).contains("<b>Bye Cy</b>"));
+    }
+
+    #[test]
+    fn warnings_follow_the_source_they_are_for() {
+        let files = |source: &str| json!({ "/app/w.zb": source });
+        let warned = |source: &str| {
+            call(json!({ "path": "/app/w.zb", "files": files(source), "emit": "html" }))["warnings"]
+                .as_array()
+                .map_or(0, Vec::len)
+        };
+        let plain = r#"<zb-w label=""><p>{label}</p></zb-w>"#;
+        let shadowing = r#"<zb-w title=""><p>{title}</p></zb-w>"#;
+        assert_eq!(warned(plain), 0);
+        assert_eq!(
+            warned(shadowing),
+            1,
+            "`title` is every element's built-in property"
+        );
+        assert_eq!(warned(shadowing), 1, "the same again, from the cache");
+        assert_eq!(warned(plain), 0);
+    }
+
+    #[test]
     fn a_render_says_what_it_left_out_because_it_was_not_a_safe_url() {
         let source = r#"<zb-pic url="" pic="" set="" rest={{}}><a href={url}>Go</a><img src={pic} srcset={set} alt=""><a {...rest}>More</a></zb-pic>"#;
         let files = json!({ "/app/pic.zb": source });
