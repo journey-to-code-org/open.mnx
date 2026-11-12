@@ -14,3 +14,9 @@ export declare function wrap<E extends HTMLElement>(
 
 /** Provide a Context Protocol value (or a signal) to every element inside; renders `<zb-context>`. */
 export declare function ZubraContext(props: { context: unknown; value: unknown; children?: React.ReactNode }): React.ReactElement;
+
+/**
+ * Read a Zubra signal (or a function of signals) in a React component, re-rendering when it
+ * changes. `deep: true` re-renders on mutations inside an array or object too.
+ */
+export declare function useSignal<T>(source: import('./bridge.js').SignalSource<T>, options?: import('./bridge.js').BridgeOptions): T;

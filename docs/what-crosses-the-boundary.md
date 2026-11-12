@@ -8,7 +8,7 @@ This page is the rule of thumb and the list.
 
 **If the component would be a leaf in the consumer's tree, it fits. If it would be a layout or a container of the consumer's own components, write it in the consumer's framework.**
 
-A leaf takes data in and sends events out: a date picker, a chart, a rating, a tag input, a video player, a card. It can hold children (slots), but it doesn't need to know what they are. A container composes the app's own components, reads the app's context and takes part in the app's lifecycle: a page layout, a route, a data table whose cells are the app's components, a form that validates against the app's store. Through an adapter, a container fights the framework at every turn, and nobody enjoys using it. Every component in `registry/` is a leaf; that's not an accident.
+A leaf takes data in and sends events out: a date picker, a chart, a rating, a tag input, a video player, a card. It can hold children (slots), but it doesn't need to know what they are. A container composes the app's own components, reads the app's context and takes part in the app's lifecycle (sharing the app's *state* is fine: a signal crosses, see below): a page layout, a route, a data table whose cells are the app's components, a form that validates against the app's store. Through an adapter, a container fights the framework at every turn, and nobody enjoys using it. Every component in `registry/` is a leaf; that's not an accident.
 
 ## What crosses
 
@@ -21,6 +21,7 @@ A leaf takes data in and sends events out: a date picker, a chart, a rating, a t
 | **Form participation** | `form-associated`: the element is a form control with a name, a value, validation and reset | Works with every server form API tried: Next.js Server Actions, SvelteKit actions, React Router `<Form>`, SolidStart actions, htmx |
 | **Context, between custom elements** | The Context Protocol (`context-request` event) | Shared with Lit (`@lit/context`) and any other implementer, in any framework's page |
 | **Context from the app** | `<zb-context>` answers the Context Protocol with a value (or signal) the app gives it, for every element inside | React and Vue `<ZubraContext context={theme} value={mode}>`; elsewhere `<zb-context>` with its `context` and `value` properties |
+| **State shared with the app** | A signal (`state()`, `computed()`, a `@zubra/sync` field) that elements and the app's code both read; writes from either side reach both | React and Vue `useSignal()`; a store for Svelte (`$store`), Solid (`from`), Angular (`toSignal`) and RxJS from `toStore()` in `@zubra/runtime/bridge` |
 | **Refs to the host** | The element is a real DOM node | `ref`, `bind:this`, `@ViewChild`, template refs |
 | **Server rendering** | The compiler emits the HTML; the element hydrates it in place | Plain servers, Astro, and the SSR bridge for Nuxt, SvelteKit, React Router, SolidStart and Next.js (see [Server rendering, honestly](server-rendering.md)) |
 | **Styling from outside** | Light DOM: page CSS applies, and the component's own styles are scoped with `@scope`. Shadow DOM: custom properties, `::part`, and `adoptStyles()` for app-wide CSS | Tailwind, design tokens, a global stylesheet |
@@ -30,7 +31,7 @@ A leaf takes data in and sends events out: a date picker, a chart, a rating, a t
 | Doesn't cross | Why | What to do instead |
 |---|---|---|
 | **Render props** (a function prop that returns the consumer's markup) | The element can't render React or Vue nodes; it only knows the DOM | Slots: let the consumer put real elements inside. If the markup depends on data the component owns, render it in the component and expose the data by event |
-| **Framework context objects** (React `useContext`, Vue `provide/inject`, Svelte `setContext`) | Those are the framework's own trees, invisible from inside the element | Provide the value with `<ZubraContext>` / `<zb-context>` (above), or pass it as a prop |
+| **Framework context objects** (React `useContext`, Vue `provide/inject`, Svelte `setContext`) | Those are the framework's own trees, invisible from inside the element | Provide the value with `<ZubraContext>` / `<zb-context>` (above), keep it in a shared signal both sides read, or pass it as a prop |
 | **Framework lifecycle** (Suspense, transitions, error boundaries, `useTransition`, Vue's `<KeepAlive>`) | The element has the DOM's lifecycle: connected, disconnected, attributes changed. It can't suspend the consumer's tree or be kept alive by it | Make loading a prop or an event; `resource()` and `<zb-await>` handle it inside the component |
 | **Framework hooks inside the component** | `useState` needs React's renderer; the component runs once and binds | The Zubra hooks (`state`, `computed`, `effect`, `onMount`, `inject`) and plain functions built on them |
 | **The consumer's components as the component's children by name** (`<Table rowComponent={Row}>`) | The element can't instantiate a framework component | Slots, or a component written in the framework |
