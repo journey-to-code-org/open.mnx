@@ -40,6 +40,7 @@ export default [
   { group: 'Reference', pages: [
     { file: 'README.md', slug: 'reference', label: 'Reference (the README)' },
     { file: 'docs/browser-support.md', label: 'Browser support' },
+    { file: 'docs/javascript-support.md', label: 'What JavaScript runs where' },
     { file: 'docs/security.md', label: 'Security model' },
     { file: 'docs/framework-matrix.md', label: 'The framework matrix' },
     { file: 'docs/convert-measured.md', label: '`zubra convert`, measured' },
