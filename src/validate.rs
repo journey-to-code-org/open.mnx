@@ -1674,6 +1674,7 @@ impl Context<'_> {
             } else if matches!(attribute.value, AttributeValue::Expression(..))
                 && !crate::parser::is_event_attribute(&lower)
                 && !is_global_attribute(&lower)
+                && !is_host_directive(&lower)
             {
                 return Err(unknown_child_prop(&child.ast.tag, &interface, attribute));
             } else if let Some(lowered) = self.lower_attribute(attribute, state, true)? {
@@ -2785,6 +2786,13 @@ pub(crate) fn is_unknown_child_attribute(
         && matches!(attribute.value, AttributeValue::Expression(..))
         && !crate::parser::is_event_attribute(&lower)
         && !is_global_attribute(&lower)
+        && !is_host_directive(&lower)
+}
+
+/// `class:name` and `style:property` set the child's host element, as on any element: they're
+/// not props.
+pub(crate) fn is_host_directive(lower: &str) -> bool {
+    lower.starts_with("class:") || lower.starts_with("style:")
 }
 
 /// What the `{...spread}`s on a component's tag are known to give at build time.

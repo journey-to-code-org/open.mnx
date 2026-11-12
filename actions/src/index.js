@@ -14,7 +14,8 @@
 // - Anything else (the browser's own post) gets 303 See Other back to the page it came from, with
 //   the return value in a one-use cookie, so the page can render it (`result()`).
 // - A cross-site post is refused (Origin / Sec-Fetch-Site), so forms on other sites can't call it.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createActionsCore, routesFrom, MOUNT, SCRIPT_PATH, COOKIE } from './core.js';
@@ -33,6 +34,8 @@ const CLIENT = readFileSync(new URL('./client.js', import.meta.url), 'utf8');
  * (bare imports resolve from there, so keep it inside the project). `origins`: other origins
  * allowed to post (behind a proxy that rewrites Origin, say). `onError(error, request)`: called
  * when a function throws; the client gets a generic error, never the message or stack.
+ * `maxBytes`: the largest post read, files and fields together (10 MB by default; `Infinity`
+ * for none). A bigger one gets `{ error: 'Too large' }` (413) and the function doesn't run.
  */
 export async function createActions({
   components = 'components',
@@ -40,6 +43,7 @@ export async function createActions({
   origins = [],
   onError = (error) => console.error(error),
   context = () => ({}),
+  maxBytes,
 } = {}) {
   const root = resolve(components);
   if (!existsSync(root)) throw new Error(`@zubra/actions: no components folder at ${root}`);
@@ -50,10 +54,14 @@ export async function createActions({
   for (const { path, output } of await serverHalves(root)) {
     const module = join(cacheDir, `${flatName(relative(root, path))}.server.mjs`);
     // The server half lives in the cache folder, so its relative imports point back at the source.
-    writeFileSync(module, rewriteImports(output, (specifier) => pathToFileURL(resolve(dirname(path), specifier)).href));
+    // Written beside it and renamed into place, so another process starting at the same moment
+    // (a second worker, a parallel test) never imports a half-written file and finds no actions.
+    const writing = `${module}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(writing, rewriteImports(output, (specifier) => pathToFileURL(resolve(dirname(path), specifier)).href));
+    renameSync(writing, module);
     maps.push((await import(`${pathToFileURL(module).href}?t=${Date.now()}`)).actions);
   }
-  const core = createActionsCore({ routes: routesFrom(...maps), client: CLIENT, origins, onError, context });
+  const core = createActionsCore({ routes: routesFrom(...maps), client: CLIENT, origins, onError, context, maxBytes });
 
   /** Node's http: answers ours and returns true, or returns false without reading the body. */
   async function handle(req, res) {
@@ -76,8 +84,37 @@ export function toRequest(req) {
     if (Array.isArray(value)) value.forEach((each) => headers.append(name, each));
     else if (value !== undefined) headers.set(name, value);
   }
-  const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : req;
+  const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : bodyOf(req);
   return new Request(`${protocol}://${host}${req.url}`, { method: req.method, headers, body, duplex: 'half' });
+}
+
+/**
+ * A Node request's body as a web stream. Cancelling it (a post over maxBytes) discards the rest
+ * rather than destroying the request, so the connection survives to carry the answer: a browser
+ * still sending gets it instead of a reset. Node discards what's left once the response ends.
+ */
+function bodyOf(req) {
+  let data;
+  return new ReadableStream({
+    start(controller) {
+      data = (chunk) => controller.enqueue(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+      req.on('data', data);
+      req.once('end', () => {
+        try {
+          controller.close();
+        } catch {}
+      });
+      req.once('error', (error) => {
+        try {
+          controller.error(error);
+        } catch {}
+      });
+    },
+    cancel() {
+      req.off('data', data);
+      req.resume();
+    },
+  });
 }
 
 /** Write a fetch Response to a Node response. */

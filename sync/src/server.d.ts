@@ -23,8 +23,11 @@ export function memoryLog(options?: { keep?: 'all' | 'latest' }): Log;
 export interface Documents {
   /** A document's fields (a copy), or undefined when nothing has been written to it. */
   get(collection: string, key: string): Record<string, unknown> | undefined;
-  /** Every document in a collection, each with its key. */
-  all(collection: string): Array<{ key: string } & Record<string, unknown>>;
+  /**
+   * Every document in a collection whose key starts with `prefix` (all of them by default), each
+   * with its key, in the order they were first written to.
+   */
+  all(collection: string, prefix?: string): Array<{ key: string } & Record<string, unknown>>;
   /** The collections that have documents, in the order they were first written to. */
   collections(): string[];
 }
