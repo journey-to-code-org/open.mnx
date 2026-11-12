@@ -69,7 +69,7 @@ export function sources(path, files = {}, key = resolve(path)) {
   }
   // A TypeScript component's relative TypeScript imports, and what they re-export: the
   // compiler reads the enums in them (a `const enum` is inlined).
-  const typescript = /\.tsx$/.test(absolute) || /<script[^>]*\blang=["']ts["']/i.test(source);
+  const typescript = /\.tsx$/.test(absolute) || /<script[^>]*\slang\s*=\s*["']?ts(?![\w-])/i.test(source);
   if (typescript) {
     // Its tsconfig.json (and what that extends), whose options change the output.
     const config = tsconfig(dirname(absolute), files);

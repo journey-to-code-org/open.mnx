@@ -146,6 +146,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             .props_interface
             .as_ref()
             .map(|(members, start)| (members.clone(), at(*start))),
+        props_open: types.props_open,
         typed_imports: types
             .imported
             .iter()

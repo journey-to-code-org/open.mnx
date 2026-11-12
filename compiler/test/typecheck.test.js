@@ -105,5 +105,114 @@ test('the CLI: errors on .zb lines, or as JSON for tooling, and exit 1', { skip 
   const json = cli('src', '--format', 'json');
   assert.equal(json.status, 1);
   const [entry] = JSON.parse(json.stdout);
-  assert.deepEqual({ ...entry, file: entry.file.slice(root.length + 1), column: undefined }, { file: 'src/badge.zb', line: 6, column: undefined, severity: 'error', message: "Property 'nope' does not exist on type 'number'.", help: null, code: 'TS2339' });
+  // The file as the Rust CLI's `check` gives it: relative to where it ran.
+  assert.deepEqual({ ...entry, column: undefined }, { file: 'src/badge.zb', line: 6, column: undefined, severity: 'error', message: "Property 'nope' does not exist on type 'number'.", help: null, code: 'TS2339' });
+});
+
+/** `file:line:column code` for each diagnostic, relative to `root`. */
+const where = (root, diagnostics) => diagnostics.map(({ file, line, column, code }) => `${file.slice(root.length + 1)}:${line}:${column} ${code}`);
+
+test('positions after characters outside ASCII are where the editor counts them', { skip }, () => {
+  const root = project({
+    'src/utf.zb': '<script lang="ts">\n  const label = "😀😀😀 é"\n  const n = 2\n</script>\n<zb-utf><p>héllo 😀 {n.toFixedd(2)} {label}</p></zb-utf>\n',
+  });
+  const { diagnostics } = checkTypes([join(root, 'src')], { root });
+  // `toFixedd` is at column 24: `<zb-utf><p>héllo 😀 {n.` is 23 UTF-16 units (25 bytes).
+  assert.deepEqual(where(root, diagnostics), ['src/utf.zb:5:24 TS2551']);
+});
+
+test('run from anywhere: errors are placed in the component, whatever the working directory', { skip }, () => {
+  const root = project({ 'app/src/a.zb': badge.replace('{count}', '{count.nope}') });
+  const app = join(root, 'app');
+  writeFileSync(join(app, 'tsconfig.json'), JSON.stringify({ extends: '../tsconfig.json' }));
+  const previous = process.cwd();
+  process.chdir(root);
+  try {
+    const { diagnostics } = checkTypes([join(app, 'src/a.zb')]);
+    assert.deepEqual(where(root, diagnostics), ['app/src/a.zb:6:71 TS2339']);
+  } finally {
+    process.chdir(previous);
+  }
+});
+
+test('the template as the runtime reads it: bindings, signals, const enums, window events, switches', { skip }, () => {
+  const root = project({
+    'src/kid.zb': '<script lang="ts">\n  declare const open: boolean\n</script>\n<zb-kid open:model={false}><p>{open}</p></zb-kid>\n',
+    'src/sizes.ts': 'export const enum Size { Small = 1, Large = 2 }\n',
+    'src/parent.zb': `<script lang="ts">
+  import './kid.zb'
+  import { Size } from './sizes'
+  const enum Local { A = 1 }
+  let on = true
+  let label = "x"
+  const store = { get() { return 1 }, size: 2 }
+  const mode: "a" | "b" = "a"
+</script>
+<zb-parent>
+  <zb-kid open:bind={on}></zb-kid>
+  <zb-kid open:bind={label}></zb-kid>
+  <p>{store.size} {Size.Large} {Local.A}</p>
+  <zb-window onhashchange={(e) => e.newURL} onstorage={(e) => e.key}></zb-window>
+  <zb-switch value={mode.nope}><zb-case is="a">a</zb-case><zb-case is="q">q</zb-case></zb-switch>
+</zb-parent>
+`,
+  });
+  const { diagnostics } = checkTypes([join(root, 'src/parent.zb')], { root });
+  // Only real errors: the string bound to a boolean (each way), and the switch's value.
+  assert.deepEqual(where(root, diagnostics), [
+    'src/parent.zb:12:22 TS2345',
+    'src/parent.zb:12:22 TS2322',
+    'src/parent.zb:15:26 TS2339',
+  ]);
+});
+
+test('props: a text default, Props with extends and methods, a keyword name, a .zb.tsx child, a typo in a type', { skip }, () => {
+  const root = project({
+    // (Its JSX isn't what's checked here.)
+    'src/kid.zb.tsx': '// @ts-nocheck\nexport default function ZbJsx({ size = 1 }: { size?: number }) { return <p>{size}</p> }\n',
+    'src/props.zb': `<script lang="ts">
+  import './kid.zb.tsx'
+  interface Base { label: string }
+  interface Props extends Base { size: number; tone?: 'warm' | 'cool'; pick(): void }
+  const n = 1
+</script>
+<zb-props size="big" tone="hot" label="x" pick={() => {}}>
+  <p>{n.nope}</p>
+  <zb-jsx size={"2"}></zb-jsx>
+</zb-props>
+`,
+    'src/keyword.zb': '<script lang="ts">\n  const n = 1\n</script>\n<zb-keyword default={1} new="x"><p>{n.nope}</p></zb-keyword>\n',
+    'src/typo.zb': '<script lang="ts">\n  declare const size: Sizee\n</script>\n<zb-typo size={1}><p>{size}</p></zb-typo>\n',
+  });
+  // A project with `.zb.tsx` components sets `jsx`.
+  writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({
+    compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, jsx: 'preserve', lib: ['ES2022', 'DOM', 'DOM.Iterable'] },
+  }));
+  const { diagnostics } = checkTypes([join(root, 'src')], { root });
+  assert.deepEqual(where(root, diagnostics), [
+    'src/keyword.zb:4:39 TS2339',
+    'src/props.zb:7:16 TS2345',
+    'src/props.zb:7:27 TS2345',
+    'src/props.zb:8:9 TS2339',
+    'src/props.zb:9:17 TS2345',
+    'src/typo.zb:2:23 TS2304',
+  ]);
+});
+
+test('files stay inside the generated folder, and an editor\'s stopped check is cleaned up', { skip }, () => {
+  const root = project({
+    'shared/b.zb': badge,
+    'app/src/a.zb': "<script lang=\"ts\">\n  import '../../shared/b.zb'\n</script>\n<zb-a><zb-badge count={1}></zb-badge></zb-a>\n",
+  });
+  const app = join(root, 'app');
+  writeFileSync(join(app, 'tsconfig.json'), JSON.stringify({ extends: '../tsconfig.json' }));
+  // A folder left by an editor's check whose process is gone.
+  mkdirSync(join(app, '.zubra-types/editor-999999'), { recursive: true });
+  const { diagnostics, out } = checkTypes([join(app, 'src/a.zb')], { root: app, keep: true });
+  assert.deepEqual(diagnostics, []);
+  assert.ok(out.startsWith(join(app, '.zubra-types')));
+  assert.equal(existsSync(join(app, 'shared')), false);
+  assert.equal(existsSync(join(root, 'shared/b.zb.ts')), false);
+  assert.equal(existsSync(join(app, '.zubra-types/shared')), false, 'beside the folder, not in it');
+  assert.equal(existsSync(join(app, '.zubra-types/editor-999999')), false);
 });

@@ -114,8 +114,37 @@ impl Writer<'_> {
                     .iter()
                     .find(|(tag, _, _)| tag.eq_ignore_ascii_case(&element.name))
                     .map(|(_, index, props)| (*index, props.clone()));
+                let mut previous: Option<Span> = None;
                 for attribute in &element.attributes {
                     let base = attribute.name.split('.').next().unwrap_or(&attribute.name);
+                    // `open:bind={on}` is the prop and a handler the parser writes, `onopenchange`
+                    // assigning `event.detail` back, both at the binding: the handler is checked
+                    // as that assignment, not as the user's expression.
+                    let written = previous.replace(attribute.span) == Some(attribute.span)
+                        && matches!(
+                            attribute.value,
+                            AttributeValue::Expression(
+                                crate::expression::Expression::Runtime { .. },
+                                _
+                            )
+                        );
+                    if written {
+                        if let (Some((index, _)), AttributeValue::Expression(_, span)) =
+                            (child.as_ref(), &attribute.value)
+                        {
+                            if let Some((offset, length)) = self.braced(*span) {
+                                let event = base[2..].to_ascii_lowercase();
+                                self.push(&format!(
+                                    "__zubraCheck<(event: __M{index}[{}]) => unknown>((event) => (",
+                                    json(&event)
+                                ));
+                                // (A name: the parser takes nothing else.)
+                                self.copy(offset, length);
+                                self.push(" = event.detail));\n");
+                            }
+                        }
+                        continue;
+                    }
                     match &attribute.value {
                         AttributeValue::Expression(_, span) => {
                             let event = crate::parser::is_event_attribute(&attribute.name)
@@ -129,14 +158,22 @@ impl Writer<'_> {
                                     ),
                                     ");",
                                 ),
-                                (Some(event), None) => self.expression(
-                                    *span,
-                                    &format!(
-                                        "__zubraCheck<(event: __Event<{}>) => unknown>(",
-                                        json(&event)
-                                    ),
-                                    ");",
-                                ),
+                                (Some(event), None) => {
+                                    // `<zb-window>` and `<zb-document>` listen on those.
+                                    let map = match element.name.to_ascii_lowercase().as_str() {
+                                        "zb-window" => "__WindowEvent",
+                                        "zb-document" => "__DocumentEvent",
+                                        _ => "__Event",
+                                    };
+                                    self.expression(
+                                        *span,
+                                        &format!(
+                                            "__zubraCheck<(event: {map}<{}>) => unknown>(",
+                                            json(&event)
+                                        ),
+                                        ");",
+                                    );
+                                }
                                 (None, Some((index, props)))
                                     if props.contains(&camel(
                                         attribute
@@ -167,12 +204,46 @@ impl Writer<'_> {
                 self.nodes(component, &element.children);
             }
             Node::If {
+                test,
                 test_span,
                 consequent,
                 alternate,
+                switch_value,
                 ..
             } => {
-                if let Some((offset, length)) = self.braced(*test_span) {
+                // A `<zb-case>`: its switch's value against its `is` (a string, an expression,
+                // or an array of either).
+                if let Some(value) = switch_value.and_then(|span| self.braced(span)) {
+                    let is = self.braced(*test_span);
+                    let literal = match test {
+                        crate::expression::Expression::Binary { right, .. } => match &**right {
+                            crate::expression::Expression::String(text) => Some(json(text)),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    let array = is.is_some_and(|(offset, length)| {
+                        self.source[offset..offset + length]
+                            .trim_start()
+                            .starts_with('[')
+                    });
+                    self.push("if ((");
+                    self.copy(value.0, value.1);
+                    match (is, literal) {
+                        (Some((offset, length)), _) if array => {
+                            self.push(") && (");
+                            self.copy(offset, length);
+                            self.push(")) {\n");
+                        }
+                        (Some((offset, length)), _) => {
+                            self.push(") === (");
+                            self.copy(offset, length);
+                            self.push(")) {\n");
+                        }
+                        (None, Some(literal)) => self.push(&format!(") === {literal}) {{\n")),
+                        (None, None) => self.push(")) {\n"),
+                    }
+                } else if let Some((offset, length)) = self.braced(*test_span) {
                     self.push("if ((");
                     self.copy(offset, length);
                     self.push(")) {\n");
@@ -317,9 +388,16 @@ pub fn generate(
         .enumerate()
     {
         let class = emit_interface::class_name(&child.ast.tag);
+        // A `.zb.tsx` child is read from its typings (`<file>.types.ts` beside the generated
+        // files), not as the JSX it's written in.
+        let specifier = if crate::jsx::is_jsx(&import.specifier) {
+            format!("{}.types", import.specifier)
+        } else {
+            import.specifier.clone()
+        };
         writer.push(&format!(
             "import type {{ {class}Props as __P{index}, {class}EventMap as __M{index} }} from {};\n",
-            json(&import.specifier)
+            json(&specifier)
         ));
         let props = child
             .ast
@@ -344,6 +422,11 @@ pub fn generate(
             .iter()
             .any(|(name, _, span)| name == &prop.name && Some(*span) != interface_span)
         {
+            continue;
+        }
+        // (A prop named like a keyword, `default`, can't be a variable: the script can't read
+        // it by name either.)
+        if !is_binding_name(&prop.name) {
             continue;
         }
         // `let`: a two-way prop is assigned by the component's handlers.
@@ -382,7 +465,11 @@ pub fn generate(
 
     // The template, in its scopes.
     writer.push("\ntype __Event<K extends string> = K extends keyof HTMLElementEventMap ? HTMLElementEventMap[K] : CustomEvent;\n");
-    writer.push("type __Value<T> = T extends { get(): infer V } ? V : T;\n");
+    writer.push("type __WindowEvent<K extends string> = K extends keyof WindowEventMap ? WindowEventMap[K] : Event;\n");
+    writer.push("type __DocumentEvent<K extends string> = K extends keyof DocumentEventMap ? DocumentEventMap[K] : Event;\n");
+    // A signal (`Signal.State` or `Signal.Computed`, whose only members are `get` and `set`) reads
+    // as its value, as the runtime's `$r` reads it; any other object with a `get` stays itself.
+    writer.push("type __Value<T> = T extends { get(): infer V } ? ([Exclude<keyof T, \"get\" | \"set\">] extends [never] ? V : T) : T;\n");
     writer.push("type __Settled<T> = T extends readonly unknown[] ? { -readonly [K in keyof T]: Awaited<__Value<T[K]>> } : Awaited<__Value<T>>;\n");
     writer.push("declare function __zubraItems<T>(items: T): Iterable<__Value<T> extends Iterable<infer I> ? I : never>;\n");
     writer.push("declare function __zubraValue<T>(value: T): __Value<T>;\n");
@@ -398,6 +485,14 @@ pub fn generate(
         .map(|binding| binding.name.clone())
         .chain(component.script.runtime_names.iter().cloned())
         .filter(|name| !name.starts_with("__"))
+        // A `const enum` is no value to alias (TS2475): the template reads it as written.
+        .filter(|name| {
+            !component
+                .script
+                .enums
+                .iter()
+                .any(|info| info.constant && &info.name == name)
+        })
         .collect();
     for name in &names {
         writer.push(&format!("const __zubraScript_{name} = {name};\n"));
@@ -408,14 +503,34 @@ pub fn generate(
             "const {name} = __zubraValue(__zubraScript_{name});\n"
         ));
     }
-    // The host's defaults, against the props' types.
+    // The host's defaults, against the props' types: an expression as written, a text default
+    // (`size="big"`) as the string it is.
     for declaration in &component.props {
-        if let PropDefault::Expression(_, span) = &declaration.default {
-            writer.expression(
+        if !is_binding_name(&declaration.name) {
+            continue;
+        }
+        match &declaration.default {
+            PropDefault::Expression(_, span) => writer.expression(
                 *span,
                 &format!("__zubraCheck<typeof {}>(", declaration.name),
                 ");",
-            );
+            ),
+            PropDefault::Text(text) if is_text_typed(component, &declaration.name) => {
+                writer.push(&format!("__zubraCheck<typeof {}>(", declaration.name));
+                // The quoted value as written, when it reads as the same JavaScript string (so
+                // an error lands on it); otherwise the string itself.
+                match quoted_value(source, declaration.span) {
+                    Some((offset, length))
+                        if source[offset + 1..offset + length - 1] == **text
+                            && !text.contains(['\\', '\n', '\r']) =>
+                    {
+                        writer.copy(offset, length);
+                    }
+                    _ => writer.push(&json(text)),
+                }
+                writer.push(");\n");
+            }
+            _ => {}
         }
     }
     writer.nodes(component, &component.nodes);
@@ -444,6 +559,95 @@ pub fn offset_of(source: &str, span: Span) -> Option<usize> {
         offset += text.len();
     }
     None
+}
+
+/// An attribute's quoted value (`"big"`, quotes included), from the attribute at `span`.
+fn quoted_value(source: &str, span: Span) -> Option<(usize, usize)> {
+    let start = offset_of(source, span)?;
+    let rest = &source[start..];
+    let equals = rest.find('=')?;
+    if rest[..equals].contains(['>', '{', '"', '\'']) {
+        return None;
+    }
+    let after = &rest[equals + 1..];
+    let lead = after.len() - after.trim_start().len();
+    let quote = after
+        .trim_start()
+        .chars()
+        .next()
+        .filter(|c| *c == '"' || *c == '\'')?;
+    let open = start + equals + 1 + lead;
+    let close = source[open + 1..].find(quote)?;
+    Some((open, close + 2))
+}
+
+/// Whether `name` can be declared as a variable.
+fn is_binding_name(name: &str) -> bool {
+    const RESERVED: &[&str] = &[
+        "await",
+        "break",
+        "case",
+        "catch",
+        "class",
+        "const",
+        "continue",
+        "debugger",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "enum",
+        "export",
+        "extends",
+        "false",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "implements",
+        "import",
+        "in",
+        "instanceof",
+        "interface",
+        "let",
+        "new",
+        "null",
+        "package",
+        "private",
+        "protected",
+        "public",
+        "return",
+        "static",
+        "super",
+        "switch",
+        "this",
+        "throw",
+        "true",
+        "try",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with",
+        "yield",
+    ];
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$')
+        && chars
+            .all(|character| character.is_alphanumeric() || character == '_' || character == '$')
+        && !RESERVED.contains(&name)
+}
+
+/// Whether a prop's type is declared in the script (so a text default is checked against it,
+/// rather than against the `string` it was inferred as).
+fn is_text_typed(component: &ComponentAst, name: &str) -> bool {
+    component
+        .script
+        .prop_types
+        .iter()
+        .any(|(prop, _, _)| prop == name)
 }
 
 fn camel(name: &str) -> String {

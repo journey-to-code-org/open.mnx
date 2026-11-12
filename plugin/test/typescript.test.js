@@ -228,6 +228,262 @@ const fixtures = {
     const a = new A();
     globalThis.result = [log, a.f, a.g, A.s, a.none, Object.keys(a)];`,
   },
+  "review: moved code keeps its rewrites and its meaning on one line (1)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    class A {
+      x = [1, // one
+           2];
+      static s = \`a
+    b\`;
+      y = "z";
+    }
+    globalThis.result = [new A().x, A.s, new A().y];`,
+  },
+  "review: moved code keeps its rewrites and its meaning on one line (2)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    class A {
+      static s = \`a
+    b\`;
+      t = "c\\
+    d";
+    }
+    globalThis.result = [A.s, new A().t];`,
+  },
+  "review: moved code keeps its rewrites and its meaning on one line (3)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    class Outer {
+      a = 1;
+      m() {
+        class Inner { b = 2; constructor(public c: number) {} }
+        return new Inner(3);
+      }
+      static Nested = class { x = 4; constructor(private y = 5) {} get v() { return this.y; } };
+    }
+    const i = new Outer().m();
+    globalThis.result = [Object.keys(i), Object.keys(new Outer.Nested()), new Outer.Nested().v];`,
+  },
+  "review: moved code keeps its rewrites and its meaning on one line (4)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    namespace N {
+      export let base = 1;
+      export class K {
+        v = base + 1;
+        w = <number>(<unknown>base);
+        make = () => new (class { constructor(public z = 9) {} })();
+      }
+    }
+    globalThis.result = [new N.K().v, new N.K().w, new N.K().make().z];`,
+  },
+  "review: #private fields and accessor storage are assigned in order (1)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    const log: string[] = [];
+    const d = (v: any, ctx: any) => (x: any) => { log.push(String(ctx.name)); return x; };
+    class A {
+      @d x = 1;
+      #p = log.push("#p");
+      @d y = 2;
+    }
+    new A();
+    globalThis.result = [log];`,
+  },
+  "review: #private fields and accessor storage are assigned in order (2)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    class A {
+      x = 1;
+      #p = this.x + 1;
+      get p() { return this.#p; }
+    }
+    globalThis.result = [new A().p];`,
+  },
+  "review: #private fields and accessor storage are assigned in order (3)": {
+    options: {"useDefineForClassFields": false},
+    source: `
+    class A {
+      x = 1;
+      accessor a = this.x + 1;
+    }
+    globalThis.result = [new A().a];`,
+  },
+  "review: decorators with namespace references and multi-line arguments (1)": {
+    options: {"target": "es2022"},
+    source: `
+    namespace N {
+      export const tag = "t";
+      const d = (n: string) => (v: any, ctx: any) => { (globalThis as any).seen = n; };
+      export class K { @d(tag) m() {} }
+    }
+    globalThis.result = [(globalThis as any).seen];`,
+  },
+  "review: decorators with namespace references and multi-line arguments (2)": {
+    options: {"target": "es2022"},
+    source: `
+    const d = (o: any) => (t: any, k?: any) => { (globalThis as any).seen = o; };
+    @d({
+      tag: "x",
+      text: \`a
+    b\`,
+    })
+    class K {}
+    globalThis.result = [(globalThis as any).seen];`,
+  },
+  "review: a decorated field before an undecorated computed name": {
+    options: {"target": "es2022"},
+    source: `
+    const d = (v: any, c?: any) => v;
+    class K { @d s = 2; [Symbol.iterator]() { return [1][Symbol.iterator](); } @d t = 3; ["u" + 1] = 4; }
+    const k = new K();
+    globalThis.result = [k.s, k.t, [...k], (k as any).u1];`,
+  },
+  "review: <T>x where the brackets mattered (1)": `
+    function f(): number {
+      return <number>
+        (5 as any);
+    }
+    const g = () => <any>{ a: 1 };
+    globalThis.result = [f(), g()];`,
+  "review: <T>x where the brackets mattered (2)": `
+    let r: any;
+    <any>function () { r = "called"; }();
+    globalThis.result = [r];`,
+  "review: parameter properties with constructor overloads": `
+    class A {
+      constructor(x: number);
+      constructor(x: string);
+      constructor(public x: any) {}
+    }
+    globalThis.result = [Object.keys(new A(1)), new A(2).x];`,
+  "review: merged and dotted namespaces, and enums in them (1)": `
+    namespace A {
+      export namespace B { export const x = 1; }
+      export namespace B { export const y = x + 1; }
+    }
+    globalThis.result = [A.B.x, A.B.y];`,
+  "review: merged and dotted namespaces, and enums in them (2)": `
+    namespace A {
+      export class C { static k = 1; }
+      export namespace C { export const extra = 2; }
+    }
+    globalThis.result = [A.C.k, (A.C as any).extra];`,
+  "review: merged and dotted namespaces, and enums in them (3)": `
+    namespace A {
+      export enum E { X = 1 }
+      export enum E { Y = 2 }
+      enum F { P = E.X + 1, Q }
+      export const f = F.Q;
+    }
+    globalThis.result = [A.E.X, A.E.Y, A.f];`,
+  "review: merged and dotted namespaces, and enums in them (4)": `
+    namespace A.B { export const x = 1; }
+    namespace A.B { export const y = x + 1; }
+    namespace A { export const z = B.y; }
+    globalThis.result = [A.B.x, A.B.y, A.z];`,
+  "review: merged and dotted namespaces, and enums in them (5)": `
+    namespace A {
+      export enum E { X = 1 }
+      export enum E { Y = 2 }
+    }
+    globalThis.result = [A.E.X, A.E.Y];`,
+  "review: namespace references to shadowed names, destructuring, its own name (1)": `
+    const x = 1;
+    namespace N { export const x = 2; }
+    namespace N { globalThis.result = [x]; }`,
+  "review: namespace references to shadowed names, destructuring, its own name (2)": `
+    namespace N {
+      export let x = 1;
+      const obj = { x: 5 };
+      ({ x } = obj);
+      globalThis.result = [N.x];
+    }`,
+  "review: namespace references to shadowed names, destructuring, its own name (3)": `
+    namespace N {
+      const N = 5;
+      export const y = N + 1;
+    }
+    globalThis.result = [N.y];`,
+  "review: a line break after export const in a namespace": `
+    namespace N {
+      export const
+        a = 1;
+    }
+    const at = new Error().stack!.split("\\n")[1].match(/:(\\d+):\\d+\\)?$/)![1];
+    globalThis.result = [Number(at), N.a];`,
+  "review: enum numbers, templates, constants and scopes (1)": `
+    enum E { A = -0, B = 0.1 + 0.2, C = 1e21, D = 2 ** 53 + 2, F = 1/3, G = 0xFF, H = 5e-7, I = 1_000 }
+    globalThis.result = [Object.entries(E).map(([k, v]) => [k, Object.is(v, -0) ? "-0" : v])];`,
+  "review: enum numbers, templates, constants and scopes (2)": `
+    const Other = { A: 5 };
+    enum E { Other = 1, B = Other + 1 }
+    enum F { X = "x", Y = \`\${X}y\`, Z = X.length }
+    globalThis.result = [Object.entries(E), Object.entries(F)];`,
+  "review: enum numbers, templates, constants and scopes (3)": `
+    enum E { A = "a" }
+    enum G { B = E.A, C = E["A"] + "c", D = \`t\${E.A}\` }
+    const enum CE { K = 3 }
+    enum H { M = CE.K, N }
+    globalThis.result = [Object.entries(G), Object.entries(H)];`,
+  "review: enum numbers, templates, constants and scopes (4)": `
+    enum E { A = 1, B = ((A: number) => A * 2)(5), C = [10].map(A => A)[0], D = { A: 7 }.A }
+    globalThis.result = [Object.entries(E)];`,
+  "review: enum numbers, templates, constants and scopes (5)": `
+    const n = 3;
+    enum E { A = 1, B = (n as number) + A, C = n! }
+    globalThis.result = [Object.entries(E)];`,
+  "review: enum numbers, templates, constants and scopes (6)": `
+    namespace N {
+      export const base = 2;
+      export enum E { A = base * "ab".length, B = A + 1 }
+    }
+    globalThis.result = [Object.entries(N.E)];`,
+  "review: enum numbers, templates, constants and scopes (7)": `
+    namespace NS { export const base = 10; export enum Inner { X = 3 } }
+    enum E { A = NS.base, B, C = NS.Inner.X * 2 }
+    globalThis.result = [Object.entries(E)];`,
+  "review: an enum member from a const": `
+    const base = 4;
+    enum Size { Small, Large = base * 2, Big }
+    globalThis.result = [Object.entries(Size)];`,
+  "review: a legacy class decorator's class sees what it returns": {
+    options: {"experimentalDecorators": true},
+    source: `
+    function wrap(cls: any) { return class extends cls { static tag = "wrapped"; }; }
+    @wrap class A {
+      static self() { return A; }
+      m() { return A; }
+    }
+    globalThis.result = [(A as any).tag, A.self() === A, new A().m() === A, (A.self() as any).tag];`,
+  },
+  'review: a static initializer sees the class a legacy decorator is applied to': {
+    options: { experimentalDecorators: true },
+    source: `
+    function wrap(cls: any) { return class extends cls { static tag = "wrapped"; }; }
+    @wrap class A {
+      static named = A.name;
+      static self() { return A; }
+    }
+    globalThis.result = [A.named, (A as any).tag, A.self() === A];`,
+  },
+  'review: decorators before a computed name, with fields assigned in the constructor': {
+    options: { target: 'es2022', useDefineForClassFields: false },
+    source: `
+    const d = (v: any, c?: any) => v;
+    class K { @d s = 2; [Symbol.iterator]() { return [1][Symbol.iterator](); } @d t = 3; ["u" + 1] = 4; }
+    const k = new K();
+    globalThis.result = [k.s, k.t, [...k], (k as any).u1];`,
+  },
+  'review: an enum member after one from an enum in a namespace': `
+    namespace NS { export enum Inner { X = 3 } }
+    enum E { C = NS.Inner.X * 2, D }
+    globalThis.result = [Object.entries(E)];`,
+  'review: a namespace\'s own binding wins over another declaration\'s export': `
+    namespace N { export const x = 2; }
+    namespace N { const x = 5; export const y = x; function f(x: number) { return x; } export const z = f(7); }
+    globalThis.result = [N.x, N.y, N.z];`,
   'lines after an enum keep their numbers': `
     enum Lines {
       A,

@@ -186,6 +186,28 @@ test('TypeScript in a component: hover, completion and go to definition, in the 
   assert.deepEqual(definition.range.start, at(3, 'items'));
 });
 
+test('TypeScript in a component with CRLF line endings: positions as the editor counts them', { timeout: 60_000 }, async () => {
+  const uri = pathToFileURL(join(dir, 'ts-crlf.zb')).href;
+  const lines = [
+    '<script lang="ts">',
+    '  const label = "a"',
+    '  const count = 2',
+    '</script>',
+    '<zb-ts-crlf>',
+    '  <p>{label}{count}</p>',
+    '</zb-ts-crlf>',
+    '',
+  ];
+  const text = lines.join('\r\n');
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const at = (line, find, extra = 0) => ({ line, character: lines[line].indexOf(find) + extra });
+  const count = await call('textDocument/hover', { textDocument: { uri }, position: at(5, 'count', 1) });
+  assert.match(count.contents.value, /const count: 2/);
+  assert.deepEqual(count.range, { start: at(5, 'count'), end: at(5, 'count', 5) });
+  const [definition] = await call('textDocument/definition', { textDocument: { uri }, position: at(5, 'label', 1) });
+  assert.deepEqual(definition.range, { start: at(1, 'label'), end: at(1, 'label', 5) });
+});
+
 test('completion: directives and imported components, their props and events', async () => {
   const uri = pathToFileURL(join(dir, 'complete.zb')).href;
   const text = "<script>\n  import './badge.zb'\n</script>\n<zb-page heading=\"\">\n  <zb-\n  <zb-badge \n  <p>{}</p>\n</zb-page>\n";

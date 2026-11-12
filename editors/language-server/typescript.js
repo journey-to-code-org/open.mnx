@@ -34,6 +34,24 @@ export function toSource(mappings, offset) {
 }
 
 /**
+ * The compiler reads a component with its line endings as `\n`, so its map is in that text; an
+ * editor's offsets are in the text as it is, where `\r\n` is two units. These convert.
+ */
+export function toNormalized(text, offset) {
+  let removed = 0;
+  for (let at = text.indexOf('\r\n'); at !== -1 && at < offset; at = text.indexOf('\r\n', at + 2)) {
+    if (at + 1 < offset) removed++;
+  }
+  return offset - removed;
+}
+
+export function toRaw(text, offset) {
+  let added = 0;
+  for (let at = text.indexOf('\r\n'); at !== -1 && at - added < offset; at = text.indexOf('\r\n', at + 2)) added++;
+  return offset + added;
+}
+
+/**
  * Language services, one per tsconfig.json. `virtual(path, text)` is the backend's: the component
  * as a TypeScript file. `textOf(path)` is an open editor's text, or null for what's on disk.
  */
@@ -114,7 +132,7 @@ export function createTypeScriptServices({ virtual, textOf }) {
     if (!file) return null;
     const path = `${component}.ts`;
     roots.add(path);
-    const position = toGenerated(file.mappings, offset);
+    const position = toGenerated(file.mappings, toNormalized(file.text, offset));
     if (position === null) return null;
     return { service, file, path, position };
   }
@@ -126,7 +144,7 @@ export function createTypeScriptServices({ virtual, textOf }) {
       const from = file && toSource(file.mappings, start);
       const to = file && toSource(file.mappings, start + length);
       if (from === null || to === null || !file) return null;
-      return { path: fileName.slice(0, -3), start: from, end: to, text: file.text };
+      return { path: fileName.slice(0, -3), start: toRaw(file.text, from), end: toRaw(file.text, to), text: file.text };
     }
     const text = readOrNull(fileName);
     return text === null ? null : { path: fileName, start, end: start + length, text };
@@ -147,8 +165,8 @@ export function createTypeScriptServices({ virtual, textOf }) {
       const end = toSource(found.file.mappings, info.textSpan.start + info.textSpan.length);
       return {
         markdown: ['```ts\n' + signature + '\n```', docs, tags].filter(Boolean).join('\n\n'),
-        start: start ?? offset,
-        end: end ?? offset,
+        start: start === null ? offset : toRaw(found.file.text, start),
+        end: end === null ? offset : toRaw(found.file.text, end),
       };
     },
 

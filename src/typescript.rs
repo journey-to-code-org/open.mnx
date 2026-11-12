@@ -16,10 +16,10 @@ use std::collections::{HashMap, HashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    BindingPattern, CallExpression, Class, ClassElement, Declaration, ExportDefaultDeclarationKind,
-    Expression, FormalParameter, Function, FunctionType, ImportDeclaration,
-    ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, MethodDefinitionType,
-    PropertyDefinitionType, Statement, TSAsExpression, TSEnumDeclaration,
+    AccessorPropertyType, BindingPattern, CallExpression, Class, ClassElement, Declaration,
+    ExportDefaultDeclarationKind, Expression, FormalParameter, Function, FunctionType,
+    ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind,
+    MethodDefinitionType, PropertyDefinitionType, Statement, TSAsExpression, TSEnumDeclaration,
     TSExternalModuleDeclaration, TSGlobalDeclaration, TSImportEqualsDeclaration,
     TSInterfaceDeclaration, TSModuleReference, TSNamespaceDeclaration, TSNamespaceDeclarationBody,
     TSNonNullExpression, TSSatisfiesExpression, TSTypeAliasDeclaration, TSTypeAnnotation,
@@ -64,6 +64,9 @@ pub struct Types {
     /// `interface Props { … }` (or `type Props = { … }`): each member's name and type, and where
     /// the declaration starts. The props, typed in one place.
     pub props_interface: Option<(Vec<(String, String)>, u32)>,
+    /// `interface Props extends …` (or `type Props = A & B`): it has members the script doesn't
+    /// list, so a host prop it doesn't name is typed `Props["name"]`, for TypeScript to resolve.
+    pub props_open: bool,
 }
 
 /// Strip the types from `source` (a `<script lang="ts">` body starting at `start`).
@@ -95,8 +98,13 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         field_wraps: HashMap::new(),
         class_names: HashMap::new(),
         default_exports: HashMap::new(),
+        namespace_enums: Vec::new(),
+        qualified_enums: Vec::new(),
+        namespace_path: Vec::new(),
+        constants: HashMap::new(),
     };
     stripper.types.verbatim = options.verbatim_module_syntax;
+    collect_constants(&parsed.program.body, &[], &mut stripper.constants);
     if source.contains("namespace") || source.contains("module") || source.contains("import") {
         for (span, text) in crate::namespaces::reference_rewrites(&parsed.program) {
             stripper.replacements.push((span, text));
@@ -140,22 +148,71 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         String::from_utf8(bytes).expect("blanking ASCII-bounded ranges keeps UTF-8 valid");
     // Generated code (enums) goes in last. It keeps the lines but not the byte offsets, so the
     // offsets recorded in `types` move with it.
-    // Moved text, now that its types are blanked: on one line, so the lines it leaves and the
-    // lines it joins keep their count.
-    for (at, prefix, range, suffix) in std::mem::take(&mut stripper.copies) {
-        let moved: String = blanked[range.start as usize..range.end as usize]
-            .chars()
-            .map(|character| {
-                if character == '\n' || character == '\r' {
-                    ' '
-                } else {
-                    character
+    // Moved text, now that its types are blanked: with the rewrites inside it, on one line, so
+    // the lines it leaves and the lines it joins keep their count (see `moved.rs`).
+    let copies = std::mem::take(&mut stripper.copies);
+    let mut moved = Vec::with_capacity(copies.len());
+    {
+        let edits = moved::Edits {
+            blanked: &blanked,
+            blanks: &stripper.blanks,
+            replacements: &stripper.replacements,
+            copies: &copies,
+        };
+        for (index, (offset_at, ..)) in copies.iter().enumerate() {
+            match edits.copy_text(index) {
+                Ok(text) => moved.push((Range::new(*offset_at, *offset_at), text)),
+                Err((offset, message)) => {
+                    return Err(Diagnostic::new(at(offset), message)
+                        .with_help("write it on one line; see docs/typescript.md"));
                 }
-            })
-            .collect();
-        stripper
-            .replacements
-            .push((Range::new(at, at), format!("{prefix}{moved}{suffix}")));
+            }
+        }
+    }
+    stripper.replacements.extend(moved);
+    // Computed enum members' code, now that it's known (see `enums::placeholder`).
+    let filled: Vec<Option<String>> = {
+        let edits = moved::Edits {
+            blanked: &blanked,
+            blanks: &stripper.blanks,
+            replacements: &stripper.replacements,
+            copies: &[],
+        };
+        let mut filled = Vec::new();
+        for (_, text) in &stripper.replacements {
+            if !text.contains('\u{E000}') {
+                filled.push(None);
+                continue;
+            }
+            let mut out = String::new();
+            let mut rest = text.as_str();
+            while let Some(open) = rest.find('\u{E000}') {
+                out.push_str(&rest[..open]);
+                let after = &rest[open + '\u{E000}'.len_utf8()..];
+                let close = after.find('\u{E001}').expect("a placeholder closes");
+                let (start, end) = after[..close].split_once('-').expect("start-end");
+                let range = Range::new(
+                    start.parse().expect("an offset"),
+                    end.parse().expect("an offset"),
+                );
+                match edits.code(range) {
+                    Ok(code) => out.push_str(&code),
+                    Err((offset, message)) => {
+                        return Err(Diagnostic::new(at(offset), message)
+                            .with_help("write it on one line; see docs/typescript.md"));
+                    }
+                }
+                rest = &after[close + '\u{E001}'.len_utf8()..];
+            }
+            out.push_str(rest);
+            filled.push(Some(out));
+        }
+        filled
+    };
+    for ((_, text), filled) in stripper.replacements.iter_mut().zip(filled) {
+        if let Some(filled) = filled {
+            *text = filled;
+        }
     }
     // A rewrite inside removed text (a reference in a type, in a `declare` block) or inside a
     // construct that's generated whole (an enum) has nothing left to change.
@@ -270,8 +327,117 @@ const DECORATE: &str = "const __zubraDecorate = function (decorators, target, ke
 const PARAM: &str = "const __zubraParam = function (paramIndex, decorator) { return function (target, key) { decorator(target, key, paramIndex); } }; ";
 
 /// Where a constructor's `super(…);` statement ends.
+#[path = "moved.rs"]
+mod moved;
 #[path = "standard_decorators.rs"]
 mod standard_decorators;
+
+/// The `const`s in `statements` (in namespace `path`) whose values are constants, by path.
+fn collect_constants(
+    statements: &[Statement<'_>],
+    path: &[String],
+    out: &mut HashMap<String, crate::enums::EnumValue>,
+) {
+    for statement in statements {
+        let declaration = match statement {
+            Statement::VariableDeclaration(declaration) => Some(&**declaration),
+            Statement::ExportDeclaration(export) => match &export.declaration {
+                Declaration::VariableDeclaration(declaration) => Some(&**declaration),
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(declaration) = declaration {
+            if declaration.kind != oxc_ast::ast::VariableDeclarationKind::Const
+                || declaration.declare
+            {
+                continue;
+            }
+            for declarator in &declaration.declarations {
+                let (BindingPattern::BindingIdentifier(id), Some(init)) =
+                    (&declarator.id, &declarator.init)
+                else {
+                    continue;
+                };
+                let constants = visible_constants(out, path);
+                let scope = crate::enums::Scope {
+                    enum_name: "",
+                    current: &HashMap::new(),
+                    others: &HashMap::new(),
+                    constants: &constants,
+                };
+                if let Some(value) = crate::enums::evaluate(init, &scope) {
+                    let mut key = path.join(".");
+                    if !key.is_empty() {
+                        key.push('.');
+                    }
+                    key.push_str(&id.name);
+                    out.insert(key, value);
+                }
+            }
+            continue;
+        }
+        let namespace = match statement {
+            Statement::TSNamespaceDeclaration(namespace) => &**namespace,
+            Statement::ExportDeclaration(export) => match &export.declaration {
+                Declaration::TSNamespaceDeclaration(namespace) => &**namespace,
+                _ => continue,
+            },
+            _ => continue,
+        };
+        let mut inner = path.to_vec();
+        let mut current = namespace;
+        loop {
+            inner.push(current.id.name.to_string());
+            match &current.body {
+                TSNamespaceDeclarationBody::TSNamespaceDeclaration(next) => current = next,
+                TSNamespaceDeclarationBody::TSModuleBlock(block) => {
+                    collect_constants(&block.body, &inner, out);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// The constants read by name inside namespace `path`: each by its full path, and by its bare
+/// name where it's in scope (the innermost namespace's winning).
+fn visible_constants(
+    constants: &HashMap<String, crate::enums::EnumValue>,
+    path: &[String],
+) -> HashMap<String, crate::enums::EnumValue> {
+    let mut visible = constants.clone();
+    for depth in 0..=path.len() {
+        let prefix = path[..depth].join(".");
+        for (key, value) in constants {
+            let bare = if prefix.is_empty() {
+                Some(key.as_str())
+            } else {
+                key.strip_prefix(&prefix)
+                    .and_then(|rest| rest.strip_prefix('.'))
+            };
+            if let Some(bare) = bare.filter(|bare| !bare.contains('.')) {
+                visible.insert(bare.to_owned(), value.clone());
+            }
+        }
+    }
+    visible
+}
+
+/// A decorated field's value, assigned in the constructor: through its decorators'
+/// initializers, with their extra initializers right after (`open` value `close`).
+fn wrapped_value(wrap: Option<usize>, no_value: bool) -> (String, String) {
+    match wrap {
+        Some(n) => (
+            format!(
+                "__zubraRunInitializers(this, _zb_i{n}, {}",
+                if no_value { "void 0" } else { "" }
+            ),
+            format!("); __zubraRunInitializers(this, _zb_e{n})"),
+        ),
+        None => (String::new(), String::new()),
+    }
+}
 
 fn super_call_end(body: &oxc_ast::ast::FunctionBody<'_>) -> Option<u32> {
     body.statements
@@ -288,7 +454,7 @@ fn super_call_end(body: &oxc_ast::ast::FunctionBody<'_>) -> Option<u32> {
 }
 
 /// The names a statement declares in its block (for namespaces merging into them).
-fn declared_names(statement: &Statement<'_>) -> Vec<String> {
+pub(crate) fn declared_names(statement: &Statement<'_>) -> Vec<String> {
     let declaration = match statement {
         Statement::ExportDeclaration(export) => &export.declaration,
         other => match other.as_declaration() {
@@ -383,6 +549,10 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
         field_wraps: HashMap::new(),
         class_names: HashMap::new(),
         default_exports: HashMap::new(),
+        namespace_enums: Vec::new(),
+        qualified_enums: Vec::new(),
+        namespace_path: Vec::new(),
+        constants: HashMap::new(),
     };
     stripper.visit_program(&parsed.program);
     stripper
@@ -424,6 +594,15 @@ struct Stripper<'s> {
     class_names: HashMap<u32, String>,
     /// `export default class A`, by the class's start: the `export default` to take out.
     default_exports: HashMap<u32, Range>,
+    /// The enums each enclosing namespace's block has declared so far.
+    namespace_enums: Vec<Vec<crate::enums::EnumInfo>>,
+    /// Enums declared in namespaces, named by their path (`NS.Inner`).
+    qualified_enums: Vec<crate::enums::EnumInfo>,
+    /// The enclosing namespaces' names, outermost first.
+    namespace_path: Vec<String>,
+    /// `const`s with constant values (an enum member can be computed from one), by their path
+    /// (`base`, `NS.base`).
+    constants: HashMap<String, crate::enums::EnumValue>,
 }
 
 impl Stripper<'_> {
@@ -435,17 +614,38 @@ impl Stripper<'_> {
             self.types.enums.push(info);
             return self.blank(span);
         }
-        let previous = if self.depth > 0 {
-            Vec::new()
-        } else {
-            self.types.enums.clone()
+        // The enums declared before it in the same block (a namespace's are its own).
+        let previous = match self.namespace_enums.last() {
+            Some(frame) if self.depth > 0 => frame.clone(),
+            _ => self.types.enums.clone(),
         };
-        match crate::enums::lower(self.source, it, span.start, exported, &previous) {
+        let mut previous = previous;
+        previous.extend(self.qualified_enums.iter().cloned());
+        let constants = visible_constants(&self.constants, &self.namespace_path);
+        match crate::enums::lower(self.source, it, span.start, exported, &previous, &constants) {
             Ok(lowered) => {
+                // A computed member's code is the script's own (types stripped, with every
+                // rewrite inside it), with its bare member names qualified.
+                self.replacements.extend(lowered.edits.iter().cloned());
+                for member in &it.body.members {
+                    if let Some(initializer) = &member.initializer {
+                        if lowered.computed.contains(&initializer.span()) {
+                            self.visit_expression(initializer);
+                        }
+                    }
+                }
+                if self.depth > 0 {
+                    let mut qualified = lowered.info.clone();
+                    qualified.name =
+                        format!("{}.{}", self.namespace_path.join("."), qualified.name);
+                    self.qualified_enums.push(qualified);
+                }
                 // A namespace's enum is the namespace's, not the component's.
                 if self.depth == 0 {
                     self.types.declarations.push(lowered.info.declaration());
                     self.types.enums.push(lowered.info);
+                } else if let Some(frame) = self.namespace_enums.last_mut() {
+                    frame.push(lowered.info);
                 }
                 self.replacements.push((span, lowered.text));
             }
@@ -475,24 +675,38 @@ impl Stripper<'_> {
             }
         };
         let first = it.id.name.as_str();
-        let merged =
-            parent.is_none() && self.seen.last().is_some_and(|names| names.contains(first));
+        // A second declaration of a name in the same block (a namespace, or a class or function
+        // it merges into) reuses the first's object.
+        let merged = self.seen.last().is_some_and(|names| names.contains(first));
+        // Each function's parameter: the namespace's name, unless its block declares that name
+        // itself (then `N_1`, as `tsc` renames it).
+        let params: Vec<String> = chain
+            .iter()
+            .enumerate()
+            .map(|(index, namespace)| {
+                if index + 1 == chain.len() {
+                    crate::namespaces::parameter(namespace)
+                } else {
+                    namespace.id.name.to_string()
+                }
+            })
+            .collect();
         let mut header = String::new();
         for (index, namespace) in chain.iter().enumerate() {
             let name = namespace.id.name.as_str();
             let outer = if index == 0 {
                 parent
             } else {
-                Some(chain[index - 1].id.name.as_str())
+                Some(params[index - 1].as_str())
             };
             match outer {
+                _ if index == 0 && merged => header.push(';'),
                 Some(outer) => header.push_str(&format!(
                     "const {name} = {outer}.{name} ?? ({outer}.{name} = {{}}); "
                 )),
-                None if merged => header.push(';'),
                 None => header.push_str(&format!("const {name} = {{}}; ")),
             }
-            header.push_str(&format!("(function ({name}) {{"));
+            header.push_str(&format!("(function ({}) {{", params[index]));
         }
         let header_range = Range::new(statement.start, block.span.start + 1);
         header.push_str(&"\n".repeat(self.text(header_range).matches('\n').count()));
@@ -506,9 +720,13 @@ impl Stripper<'_> {
         self.replacements
             .push((Range::new(block.span.end - 1, block.span.end), footer));
 
-        let param = chain[chain.len() - 1].id.name.to_string();
+        let param = params[params.len() - 1].clone();
         self.depth += 1;
         self.seen.push(HashSet::new());
+        self.namespace_enums.push(Vec::new());
+        let path_length = self.namespace_path.len();
+        self.namespace_path
+            .extend(chain.iter().map(|namespace| namespace.id.name.to_string()));
         for member in &block.body {
             self.namespace_member(member, &param);
             let names = declared_names(member);
@@ -516,6 +734,8 @@ impl Stripper<'_> {
                 frame.extend(names);
             }
         }
+        self.namespace_path.truncate(path_length);
+        self.namespace_enums.pop();
         self.seen.pop();
         self.depth -= 1;
     }
@@ -539,10 +759,9 @@ impl Stripper<'_> {
                 let Some(first) = variables.declarations.first() else {
                     return;
                 };
-                self.replacements.push((
-                    Range::new(export.span.start, first.id.span().start),
-                    String::new(),
-                ));
+                let keyword = Range::new(export.span.start, first.id.span().start);
+                let newlines = "\n".repeat(self.text(keyword).matches('\n').count());
+                self.replacements.push((keyword, newlines));
                 for declarator in &variables.declarations {
                     match &declarator.id {
                         BindingPattern::BindingIdentifier(identifier) => self.replacements.push((
@@ -639,9 +858,11 @@ impl Stripper<'_> {
     /// `useDefineForClassFields`, its default for modern targets) and assigns it first thing in
     /// the constructor, or right after `super(…)` in a subclass.
     fn parameter_properties(&mut self, class: &Class<'_>) {
+        // (The constructor with a body: the others are overloads.)
         let Some(constructor) = class.body.body.iter().find_map(|element| match element {
             ClassElement::MethodDefinition(method)
-                if method.kind == MethodDefinitionKind::Constructor =>
+                if method.kind == MethodDefinitionKind::Constructor
+                    && method.value.body.is_some() =>
             {
                 Some(method)
             }
@@ -699,15 +920,48 @@ impl Stripper<'_> {
         }
         let mut instance: Vec<(String, Range, String, String)> = Vec::new();
         for element in &class.body.body {
+            // An `accessor`'s storage is an instance field like any other: declared where it is,
+            // and assigned in the constructor (its getter and setter are `accessor`'s).
+            if let ClassElement::AccessorProperty(accessor) = element {
+                if accessor.r#static
+                    || accessor.r#type == AccessorPropertyType::TSAbstractAccessorProperty
+                {
+                    continue;
+                }
+                let key = standard_decorators::Key::of(&accessor.key, accessor.computed);
+                let Some(storage) = standard_decorators::storage(&key, accessor.span.start) else {
+                    continue;
+                };
+                let wrap = self.field_wraps.get(&accessor.span.start).copied();
+                let value = accessor.value.as_ref().map(GetSpan::span);
+                if let Some(value) = value {
+                    // `= value` goes (into the constructor).
+                    let removed = Range::new(accessor.key.span().end, value.end);
+                    let newlines = "\n".repeat(self.text(removed).matches('\n').count());
+                    self.replacements.push((removed, newlines));
+                } else if wrap.is_none() {
+                    continue;
+                }
+                let (open, close) = wrapped_value(wrap, value.is_none());
+                instance.push((
+                    format!(".{storage}"),
+                    value.unwrap_or(Range::new(0, 0)),
+                    open,
+                    close,
+                ));
+                continue;
+            }
             let ClassElement::PropertyDefinition(property) = element else {
                 continue;
             };
+            let private = matches!(
+                property.key,
+                oxc_ast::ast::PropertyKey::PrivateIdentifier(_)
+            );
+            // (A static `#private` field stays a field, as in `tsc`.)
             if property.declare
                 || property.r#type == PropertyDefinitionType::TSAbstractPropertyDefinition
-                || matches!(
-                    property.key,
-                    oxc_ast::ast::PropertyKey::PrivateIdentifier(_)
-                )
+                || (private && property.r#static)
             {
                 continue;
             }
@@ -716,11 +970,19 @@ impl Stripper<'_> {
                 oxc_ast::ast::PropertyKey::StaticIdentifier(_) if !property.computed => {
                     format!(".{key}")
                 }
+                oxc_ast::ast::PropertyKey::PrivateIdentifier(_) => format!(".{key}"),
                 _ => format!("[{key}]"),
             };
             let span = Range::new(property.span.start, property.span.end);
             let newlines = "\n".repeat(self.text(span).matches('\n').count());
-            self.replacements.push((span, newlines));
+            // A `#private` field has to be declared: `#p;`, then assigned in the constructor.
+            let declared = if private {
+                format!("{key};")
+            } else {
+                String::new()
+            };
+            self.replacements
+                .push((span, format!("{declared}{newlines}")));
             // A decorated field: its value goes through the decorators' initializers, and their
             // extra initializers run right after it's assigned.
             let wrap = self.field_wraps.get(&property.span.start).copied();
@@ -728,16 +990,7 @@ impl Stripper<'_> {
             if value.is_none() && wrap.is_none() {
                 continue;
             }
-            let (open, close) = match wrap {
-                Some(n) => (
-                    format!(
-                        "__zubraRunInitializers(this, _zb_i{n}, {}",
-                        if value.is_none() { "void 0" } else { "" }
-                    ),
-                    format!("); __zubraRunInitializers(this, _zb_e{n})"),
-                ),
-                None => (String::new(), String::new()),
-            };
+            let (open, close) = wrapped_value(wrap, value.is_none());
             let value = value.unwrap_or(Range::new(0, 0));
             if property.r#static {
                 self.copies.push((
@@ -835,14 +1088,22 @@ impl Stripper<'_> {
             .first()
             .map(|decorator| decorator.span.start)
             .unwrap_or(class.span.start);
-        let Some(id) = &class.id else {
+        if class.r#type == oxc_ast::ast::ClassType::ClassExpression {
+            // (`tsc` writes nothing for them.)
             return self.fail(
                 first,
-                "a decorated class needs a name here",
-                Some("declare it: `@decorator class Name { … }`"),
+                "legacy decorators aren't valid on a class expression (TS1206)",
+                Some("declare the class: `@decorator class Name { … }`"),
             );
+        }
+        // A class declaration's calls name it; `export default class {}` is passed to a
+        // function that decorates it as `__zb_c`.
+        let declared =
+            class.r#type == oxc_ast::ast::ClassType::ClassDeclaration && class.id.is_some();
+        let name = match (&class.id, declared) {
+            (Some(id), true) => id.name.to_string(),
+            _ => "__zb_c".to_owned(),
         };
-        let name = id.name.to_string();
         // Each decorator goes from where it was; its expression is copied into the call.
         let mut calls: Vec<(bool, Vec<Piece>)> = Vec::new(); // (static, call)
         let mut class_level: Vec<Piece> = class
@@ -947,33 +1208,101 @@ impl Stripper<'_> {
             after.push(Piece::Text(" ".to_owned()));
             after.extend(call);
         }
+        let class_keyword = class
+            .decorators
+            .last()
+            .map_or(class.span.start, |decorator| decorator.span.end);
+        let class_keyword = class_keyword
+            + u32::try_from(
+                self.source[class_keyword as usize..class.body.span.start as usize]
+                    .find("class")
+                    .unwrap_or(0),
+            )
+            .unwrap_or(0);
+        if !declared {
+            // `export default ((__zb_c) => { …; return __zb_c; })(class { … })`, named
+            // `default` as it would have been.
+            let mut before = vec![Piece::Text("((__zb_c) => {".to_owned())];
+            before.extend(after);
+            if class_level.is_empty() {
+                before.push(Piece::Text(" return __zb_c; })(".to_owned()));
+            } else {
+                self.decorator_helpers.insert("decorate");
+                before.push(Piece::Text(" return __zubraDecorate([".to_owned()));
+                before.extend(join(class_level));
+                before.push(Piece::Text("], __zb_c); })(".to_owned()));
+            }
+            self.insert_pieces(class_keyword, before);
+            if class.id.is_none() {
+                if let Some(contextual) = self.class_names.get(&class.span.start).cloned() {
+                    self.insert_pieces(
+                        class.body.span.start + 1,
+                        vec![Piece::Text(format!(
+                            " static {{ Object.defineProperty(this, \"name\", {{ value: {}, configurable: true }}); }}",
+                            serde_json::to_string(&contextual).unwrap_or_default()
+                        ))],
+                    );
+                }
+            }
+            self.insert_pieces(class.span.end, vec![Piece::Text(")".to_owned())]);
+            return;
+        }
         if class_level.is_empty() {
             self.insert_pieces(class.span.end, after);
             return;
         }
-        // A class decorator may return another class: `const A = ((A) => { …; return
-        // __decorate([…], A); })(class A { … });`, on the class's own lines.
+        // A class decorator may return another class, which the class's own references see too
+        // (`tsc` renames them `A_1`): `const A = (() => { var A = class { static { A = this; } …
+        // }; …; return A = __decorate([…], A); })();`, on the class's own lines.
         self.decorator_helpers.insert("decorate");
-        let mut before = vec![Piece::Text(format!("const {name} = (({name}) => {{"))];
-        before.extend(after);
-        before.push(Piece::Text(" return __zubraDecorate([".to_owned()));
-        before.extend(join(class_level));
-        before.push(Piece::Text(format!("], {name}); }})(")));
-        let class_keyword = class
-            .decorators
-            .last()
-            .map_or(class.span.start, |decorator| {
-                let rest = &self.source[decorator.span.end as usize..class.span.end as usize];
-                decorator.span.end + u32::try_from(rest.find("class").unwrap_or(0)).unwrap_or(0)
-            });
-        self.insert_pieces(class_keyword, before);
-        self.insert_pieces(class.span.end, vec![Piece::Text(");".to_owned())]);
+        if let Some(id) = &class.id {
+            self.blank(id.span);
+        }
+        let default_export = self.default_exports.get(&class.span.start).copied();
+        if let Some(range) = default_export {
+            self.blank(range);
+        }
+        self.insert_pieces(
+            class_keyword,
+            vec![Piece::Text(format!(
+                "const {name} = (() => {{ var {name} = "
+            ))],
+        );
+        self.insert_pieces(
+            class.body.span.start + 1,
+            vec![Piece::Text(format!(" static {{ {name} = this; }}"))],
+        );
+        let mut close = vec![Piece::Text(";".to_owned())];
+        close.extend(after);
+        close.push(Piece::Text(format!(" return {name} = __zubraDecorate([")));
+        close.extend(join(class_level));
+        close.push(Piece::Text(format!("], {name}); }})();")));
+        if default_export.is_some() {
+            close.push(Piece::Text(format!(" export {{ {name} as default }};")));
+        }
+        self.insert_pieces(class.span.end, close);
     }
 
     /// The members of `interface Props` (or `type Props = { … }`): name and type text.
-    fn props_interface(&mut self, members: &[oxc_ast::ast::TSSignature<'_>], start: u32) {
+    fn props_interface<'m, 'a: 'm>(
+        &mut self,
+        members: impl IntoIterator<Item = &'m oxc_ast::ast::TSSignature<'a>>,
+        start: u32,
+    ) {
         let mut props = Vec::new();
         for member in members {
+            // `pick(item: Item): void`: a function prop, typed as `Props` has it.
+            if let oxc_ast::ast::TSSignature::TSMethodSignature(method) = member {
+                if let oxc_ast::ast::PropertyKey::StaticIdentifier(identifier) = &method.key {
+                    let name = identifier.name.to_string();
+                    let text = format!(
+                        "Props[{}]",
+                        serde_json::to_string(&name).unwrap_or_default()
+                    );
+                    props.push((name, text));
+                }
+                continue;
+            }
             if let oxc_ast::ast::TSSignature::TSPropertySignature(property) = member {
                 let name = match &property.key {
                     oxc_ast::ast::PropertyKey::StaticIdentifier(identifier) => {
@@ -1088,8 +1417,26 @@ impl<'a> Visit<'a> for Stripper<'_> {
             return self.blank(it.span);
         }
         if it.id.name == "Props" {
-            if let oxc_ast::ast::TSType::TSTypeLiteral(literal) = &it.type_annotation {
-                self.props_interface(&literal.members, it.span.start);
+            match &it.type_annotation {
+                oxc_ast::ast::TSType::TSTypeLiteral(literal) => {
+                    self.props_interface(&literal.members, it.span.start);
+                }
+                // `type Props = Base & { … }`: its literal parts are listed; the rest are
+                // TypeScript's to resolve.
+                oxc_ast::ast::TSType::TSIntersectionType(intersection) => {
+                    let members: Vec<&oxc_ast::ast::TSSignature<'_>> = intersection
+                        .types
+                        .iter()
+                        .filter_map(|part| match part {
+                            oxc_ast::ast::TSType::TSTypeLiteral(literal) => Some(&literal.members),
+                            _ => None,
+                        })
+                        .flatten()
+                        .collect();
+                    self.props_interface(members, it.span.start);
+                    self.types.props_open = true;
+                }
+                _ => {}
             }
         }
         let text = format!(
@@ -1108,6 +1455,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
         }
         if it.id.name == "Props" {
             self.props_interface(&it.body.body, it.span.start);
+            self.types.props_open = !it.extends.is_empty();
         }
         let text = format!(
             "export {}",
@@ -1153,8 +1501,15 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_ts_type_assertion(&mut self, it: &TSTypeAssertion<'a>) {
-        // `<T>value` (a `.ts` script, where it isn't JSX): the `<T>` goes.
-        self.blank(Range::new(it.span.start, it.expression.span().start));
+        // `<T>value` (a `.ts` script, where it isn't JSX): `(value)`. The parentheses keep what
+        // it means where the `<T>` mattered: after `return` and a line break, before `{` in an
+        // arrow's body, or starting a statement with `function` or `{`.
+        let head = Range::new(it.span.start, it.expression.span().start);
+        let newlines = "\n".repeat(self.text(head).matches('\n').count());
+        self.replacements.push((head, format!("({newlines}")));
+        let end = it.expression.span().end;
+        self.replacements
+            .push((Range::new(end, end), ")".to_owned()));
         self.visit_expression(&it.expression);
     }
 
@@ -1303,6 +1658,16 @@ impl<'a> Visit<'a> for Stripper<'_> {
         if it.import_kind.is_type() {
             return self.blank(it.span);
         }
+        // `import { type A, type B } from "…"`: nothing's left to import, so the whole import
+        // goes, as `tsc` drops it (`verbatimModuleSyntax` keeps `import {} from "…"`).
+        let specifiers: Vec<_> = it.specifiers.iter().flatten().collect();
+        let all_types = !specifiers.is_empty()
+            && specifiers.iter().all(|specifier| {
+                matches!(specifier, ImportDeclarationSpecifier::ImportSpecifier(named) if named.import_kind.is_type())
+            });
+        if all_types && !self.types.verbatim {
+            return self.blank(it.span);
+        }
         for specifier in it.specifiers.iter().flatten() {
             if let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier {
                 if named.import_kind.is_type() {
@@ -1395,9 +1760,14 @@ impl<'a> Visit<'a> for Stripper<'_> {
         self.assigned_fields(it);
         if it.r#abstract {
             // `abstract class` → `class`: blank the keyword.
-            let text = self.text(it.span).to_owned();
+            // (After the decorators, whose names may contain the word.)
+            let from = it
+                .decorators
+                .last()
+                .map_or(it.span.start, |decorator| decorator.span.end);
+            let text = self.text(Range::new(from, it.body.span.start)).to_owned();
             if let Some(index) = text.find("abstract") {
-                let start = it.span.start + u32::try_from(index).expect("fits");
+                let start = from + u32::try_from(index).expect("fits");
                 self.blank(Range::new(start, start + 8));
             }
         }
@@ -1593,7 +1963,8 @@ mod tests {
                 "class A { x; constructor(       x        ) { this.x = x;} }",
             ),
             ("function f(this: A, b) {}", "function f(         b) {}"),
-            ("const v = <T>w", "const v =    w"),
+            ("const v = <T>w", "const v = (w)"),
+            ("const f = () => <T>{ a: 1 }", "const f = () => ({ a: 1 })"),
         ] {
             let out = stripped(source);
             assert_eq!(out, expected);

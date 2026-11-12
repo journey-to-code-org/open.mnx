@@ -68,7 +68,7 @@ const pathOf = (uri) => fileURLToPath(uri);
 
 // TypeScript's own hover, completion and go to definition in a `<script lang="ts">` component's
 // script and `{…}` expressions (typescript.js).
-const isTypeScript = (text) => /<script[^>]*\blang=["']ts["']/i.test(text);
+const isTypeScript = (text) => /<script[^>]*\slang\s*=\s*["']?ts(?![\w-])/i.test(text);
 const typeScript = createTypeScriptServices({
   virtual: (path, text) => backend.virtual(path, text),
   textOf: (path) => documents.get(pathToFileURL(path).href)?.getText() ?? null,
@@ -116,7 +116,7 @@ const publish = (uri) => connection.sendDiagnostics({ uri, diagnostics: [...(com
 
 function checkTypes(document) {
   const text = document.getText();
-  if (!/<script[^>]*\blang=["']ts["']/i.test(text)) return;
+  if (!/<script[^>]*\slang\s*=\s*["']?ts(?![\w-])/i.test(text)) return;
   const path = pathOf(document.uri);
   const module = typecheckModule(path);
   if (!module) return;

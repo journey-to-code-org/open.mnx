@@ -90,8 +90,19 @@ impl EnumInfo {
 
 /// The lowered declaration, ready to replace the source text.
 pub struct Lowered {
+    /// The lowering. A computed member's code is a placeholder (`placeholder(range)`), for the
+    /// script's JavaScript in that range once every edit inside it is made.
     pub text: String,
     pub info: EnumInfo,
+    /// Edits inside computed members' initializers: bare member names as `Enum.member`.
+    pub edits: Vec<(oxc_span::Span, String)>,
+    /// The computed members' initializers, to strip of types like the rest of the script.
+    pub computed: Vec<oxc_span::Span>,
+}
+
+/// Stands for the JavaScript of `range` in a lowering's text, until it's known.
+pub fn placeholder(range: oxc_span::Span) -> String {
+    format!("\u{E000}{}-{}\u{E001}", range.start, range.end)
 }
 
 /// Lower `declaration`, whose source (`export` included, if it has one) is `text`. `previous`
@@ -102,6 +113,7 @@ pub fn lower(
     text_start: u32,
     exported: bool,
     previous: &[EnumInfo],
+    constants: &HashMap<String, EnumValue>,
 ) -> Result<Lowered, (u32, String, Option<String>)> {
     let name = declaration.id.name.to_string();
     let merged = previous
@@ -138,6 +150,8 @@ pub fn lower(
         .chain(member_names.iter().cloned())
         .collect();
 
+    let mut edits = Vec::new();
+    let mut computed = Vec::new();
     let mut members: Vec<(String, Option<EnumValue>)> = Vec::new();
     // For each member: its value, or the JavaScript that computes it.
     let mut lowered: Vec<(u32, String, Result<EnumValue, String>)> = Vec::new();
@@ -186,6 +200,7 @@ pub fn lower(
                     enum_name: &name,
                     current: &current,
                     others: &others,
+                    constants,
                 };
                 match evaluate(initializer, &scope) {
                     Some(value) => Ok(value),
@@ -197,7 +212,9 @@ pub fn lower(
                                 Some("an exported enum is created once, for the module: use a constant, or don't export the enum".into()),
                             ));
                         }
-                        Err(qualify(source, initializer, &name, &all_names))
+                        edits.extend(qualify(initializer, &name, &all_names));
+                        computed.push(initializer.span());
+                        Err(placeholder(initializer.span()))
                     }
                 }
             }
@@ -289,6 +306,8 @@ pub fn lower(
             declared: false,
             origin: None,
         },
+        edits,
+        computed,
     })
 }
 
@@ -319,6 +338,7 @@ pub fn declared(declaration: &TSEnumDeclaration<'_>, previous: &[EnumInfo]) -> E
                     enum_name: &name,
                     current: &current,
                     others: &others,
+                    constants: &HashMap::new(),
                 },
             ),
         };
@@ -596,8 +616,23 @@ pub struct Scope<'s> {
     pub enum_name: &'s str,
     /// This enum's members so far.
     pub current: &'s HashMap<&'s str, &'s EnumValue>,
-    /// Enums declared before, by name.
+    /// Enums declared before, by name (`N.E` for one in a namespace).
     pub others: &'s HashMap<&'s str, HashMap<&'s str, &'s EnumValue>>,
+    /// `const`s with constant values, by the names they're read as here (`base`, `NS.base`).
+    pub constants: &'s HashMap<String, EnumValue>,
+}
+
+/// `A.B.c` as text, when it's names all the way down.
+fn dotted(expression: &Expression<'_>) -> Option<String> {
+    match expression {
+        Expression::Identifier(identifier) => Some(identifier.name.to_string()),
+        Expression::StaticMemberExpression(member) => Some(format!(
+            "{}.{}",
+            dotted(&member.object)?,
+            member.property.name
+        )),
+        _ => None,
+    }
 }
 
 /// Evaluate a constant enum expression, as TypeScript does; `None` when it isn't one.
@@ -618,25 +653,41 @@ pub fn evaluate(expression: &Expression<'_>, scope: &Scope<'_>) -> Option<EnumVa
     match expression {
         Expression::NumericLiteral(literal) => Some(Number(literal.value)),
         Expression::StringLiteral(literal) => Some(Text(text(literal.value))),
-        Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
-            let quasi = template.quasis.first()?;
-            Some(Text(quasi.value.cooked.as_ref().map_or_else(
-                || quasi.value.raw.to_string(),
-                |cooked| text(*cooked),
-            )))
-        }
         Expression::ParenthesizedExpression(inner) => evaluate(&inner.expression, scope),
         Expression::TSAsExpression(inner) => evaluate(&inner.expression, scope),
         Expression::TSSatisfiesExpression(inner) => evaluate(&inner.expression, scope),
         Expression::Identifier(identifier) => match identifier.name.as_str() {
             "Infinity" => Some(Number(f64::INFINITY)),
             "NaN" => Some(Number(f64::NAN)),
-            name => scope.current.get(name).map(|value| (*value).clone()),
+            name => scope
+                .current
+                .get(name)
+                .map(|value| (*value).clone())
+                .or_else(|| scope.constants.get(name).cloned()),
         },
-        Expression::StaticMemberExpression(member) => match &member.object {
-            Expression::Identifier(object) => lookup(&object.name, &member.property.name),
-            _ => None,
-        },
+        Expression::StaticMemberExpression(member) => {
+            let object = dotted(&member.object)?;
+            lookup(&object, &member.property.name).or_else(|| {
+                scope
+                    .constants
+                    .get(&format!("{object}.{}", member.property.name))
+                    .cloned()
+            })
+        }
+        // `${A}-${B}`: each part's text, joined.
+        Expression::TemplateLiteral(template) => {
+            let mut out = String::new();
+            for (index, quasi) in template.quasis.iter().enumerate() {
+                out.push_str(&quasi.value.cooked.as_ref().map(|cooked| text(*cooked))?);
+                if let Some(expression) = template.expressions.get(index) {
+                    out.push_str(&match evaluate(expression, scope)? {
+                        Number(number) => js_number(number),
+                        Text(text) => text,
+                    });
+                }
+            }
+            Some(Text(out))
+        }
         Expression::ComputedMemberExpression(member) => {
             match (&member.object, &member.expression) {
                 (Expression::Identifier(object), Expression::StringLiteral(key)) => {
@@ -695,42 +746,75 @@ pub fn evaluate(expression: &Expression<'_>, scope: &Scope<'_>) -> Option<EnumVa
     }
 }
 
-/// A computed initializer's JavaScript, with bare references to the enum's own members written
-/// as `Enum.member`, as TypeScript writes them.
+/// A computed initializer's edits: bare references to the enum's own members written as
+/// `Enum.member`, as TypeScript writes them, except where a function's own binding of the same
+/// name is meant.
 fn qualify(
-    source: &str,
     initializer: &Expression<'_>,
     enum_name: &str,
     members: &[String],
-) -> String {
+) -> Vec<(oxc_span::Span, String)> {
+    use oxc_ast::ast::{ArrowFunctionExpression, BindingIdentifier, Function, ObjectProperty};
+    use oxc_syntax::scope::ScopeFlags;
+    struct Bindings(Vec<String>);
+    impl<'a> Visit<'a> for Bindings {
+        fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+            self.0.push(it.name.to_string());
+        }
+    }
     struct Names<'m> {
+        enum_name: &'m str,
         members: &'m [String],
-        found: Vec<(u32, u32, String)>,
+        shadowed: Vec<Vec<String>>,
+        found: Vec<(oxc_span::Span, String)>,
+    }
+    impl Names<'_> {
+        fn member(&self, name: &str) -> bool {
+            self.members.iter().any(|member| member == name)
+                && !self.shadowed.iter().flatten().any(|bound| bound == name)
+        }
     }
     impl<'a> Visit<'a> for Names<'_> {
         fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
-            if self.members.iter().any(|member| member == it.name.as_str()) {
+            if self.member(&it.name) {
                 self.found
-                    .push((it.span.start, it.span.end, it.name.to_string()));
+                    .push((it.span, format!("{}.{}", self.enum_name, it.name)));
             }
-            walk::walk_identifier_reference(self, it);
+        }
+        fn visit_object_property(&mut self, it: &ObjectProperty<'a>) {
+            // `{ A }`: the property keeps its name.
+            if let (true, Expression::Identifier(value)) = (it.shorthand, &it.value) {
+                if self.member(&value.name) {
+                    self.found
+                        .push((it.span, format!("{0}: {1}.{0}", value.name, self.enum_name)));
+                }
+                return;
+            }
+            walk::walk_object_property(self, it);
+        }
+        fn visit_function(&mut self, it: &Function<'a>, flags: ScopeFlags) {
+            let mut bindings = Bindings(Vec::new());
+            walk::walk_function(&mut bindings, it, flags);
+            self.shadowed.push(bindings.0);
+            walk::walk_function(self, it, flags);
+            self.shadowed.pop();
+        }
+        fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
+            let mut bindings = Bindings(Vec::new());
+            walk::walk_arrow_function_expression(&mut bindings, it);
+            self.shadowed.push(bindings.0);
+            walk::walk_arrow_function_expression(self, it);
+            self.shadowed.pop();
         }
     }
     let mut names = Names {
+        enum_name,
         members,
+        shadowed: Vec::new(),
         found: Vec::new(),
     };
     names.visit_expression(initializer);
-    let span = initializer.span();
-    let mut out = String::new();
-    let mut at = span.start as usize;
-    for (start, end, name) in names.found {
-        out.push_str(&source[at..start as usize]);
-        out.push_str(&format!("{enum_name}.{name}"));
-        at = end as usize;
-    }
-    out.push_str(&source[at..span.end as usize]);
-    out
+    names.found
 }
 
 /// A JavaScript string's text (lone surrogates, which a key can't name usefully, as U+FFFD).
@@ -775,24 +859,49 @@ fn to_int32(number: f64) -> i32 {
     }
 }
 
-/// A number as JavaScript prints it (`String(n)`), for the integers and plain decimals enums use.
+/// A number as JavaScript prints it (`String(n)`).
 pub fn js_number(number: f64) -> String {
     if number.is_nan() {
-        "NaN".to_owned()
-    } else if number.is_infinite() {
-        if number > 0.0 {
+        return "NaN".to_owned();
+    }
+    if number.is_infinite() {
+        return if number > 0.0 {
             "Infinity"
         } else {
             "-Infinity"
         }
-        .to_owned()
-    } else if number == 0.0 {
-        "0".to_owned()
-    } else if number.fract() == 0.0 && number.abs() < 1e21 {
-        format!("{number:.0}")
-    } else {
-        format!("{number}")
+        .to_owned();
     }
+    if number == 0.0 {
+        return "0".to_owned();
+    }
+    let sign = if number < 0.0 { "-" } else { "" };
+    // The shortest digits that read back as the number, and where the point goes (`n`, as in
+    // ECMAScript's Number::toString).
+    let exponential = format!("{:e}", number.abs());
+    let (mantissa, exponent) = exponential.split_once('e').expect("`{:e}` has an `e`");
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let k = i32::try_from(digits.len()).expect("few digits");
+    let n = exponent.parse::<i32>().expect("an exponent") + 1;
+    let zeros = |count: i32| "0".repeat(usize::try_from(count).unwrap_or(0));
+    let body = if k <= n && n <= 21 {
+        format!("{digits}{}", zeros(n - k))
+    } else if 0 < n && n <= 21 {
+        let (whole, fraction) = digits.split_at(usize::try_from(n).expect("positive"));
+        format!("{whole}.{fraction}")
+    } else if -6 < n && n <= 0 {
+        format!("0.{}{digits}", zeros(-n))
+    } else {
+        let (first, rest) = digits.split_at(1);
+        let point = if rest.is_empty() {
+            String::new()
+        } else {
+            format!(".{rest}")
+        };
+        let e = n - 1;
+        format!("{first}{point}e{}{e}", if e >= 0 { "+" } else { "" })
+    };
+    format!("{sign}{body}")
 }
 
 #[cfg(test)]
@@ -810,6 +919,14 @@ mod tests {
             (f64::NAN, "NaN"),
             (f64::INFINITY, "Infinity"),
             (1e20, "100000000000000000000"),
+            (1e21, "1e+21"),
+            (5e-7, "5e-7"),
+            (0.000_001, "0.000001"),
+            (1.0 / 3.0, "0.3333333333333333"),
+            (0.1 + 0.2, "0.30000000000000004"),
+            (123.456, "123.456"),
+            (-2.5e-10, "-2.5e-10"),
+            (9_007_199_254_740_994.0, "9007199254740994"),
         ] {
             assert_eq!(js_number(number), text);
         }

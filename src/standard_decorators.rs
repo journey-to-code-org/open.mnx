@@ -53,7 +53,7 @@ pub(super) fn helpers(used: &HashSet<&'static str>, out: &mut String) {
 }
 
 /// A member's name, as the decorators see it.
-enum Key {
+pub(super) enum Key {
     /// `x`
     Identifier(String),
     /// `"x"`, `1`, `["x"]`: the name as a string.
@@ -65,7 +65,7 @@ enum Key {
 }
 
 impl Key {
-    fn of(key: &PropertyKey<'_>, computed: bool) -> Self {
+    pub(super) fn of(key: &PropertyKey<'_>, computed: bool) -> Self {
         match key {
             PropertyKey::StaticIdentifier(identifier) if !computed => {
                 Self::Identifier(identifier.name.to_string())
@@ -208,6 +208,15 @@ impl Member {
     }
 }
 
+/// An `accessor`'s private storage field, unless its name is computed.
+pub(super) fn storage(key: &Key, start: u32) -> Option<String> {
+    match key {
+        Key::Identifier(name) | Key::Private(name) => Some(format!("#{name}_accessor_storage")),
+        Key::Literal(_) => Some(format!("#_zb_accessor_storage_{start}")),
+        Key::Computed(_) => None,
+    }
+}
+
 /// A field's (or accessor's) extra initializers, run right after it's defined.
 fn extra_initializers(is_static: bool, n: usize) -> String {
     if is_static {
@@ -305,12 +314,16 @@ impl Stripper<'_> {
             let n = members.len();
             // A computed name evaluates the decorators written before it (as `tsc` does), so
             // they're evaluated in order with it.
-            if element_decorators(element).is_empty() {
+            // (Not a field's name without `useDefineForClassFields`: the field goes, and is
+            // assigned in the constructor.)
+            let kept =
+                self.define_fields || !matches!(element, ClassElement::PropertyDefinition(_));
+            if element_decorators(element).is_empty() && kept {
                 if let Some(Key::Computed(range)) = element_key(element) {
                     if !evaluated.is_empty() {
+                        // (Each evaluation ends `, `, so the name follows.)
                         let mut before = vec![Piece::Text("(".to_owned())];
                         before.extend(std::mem::take(&mut evaluated));
-                        before.push(Piece::Text(", ".to_owned()));
                         self.insert_pieces(range.start, before);
                         self.insert_pieces(range.end, vec![Piece::Text(")".to_owned())]);
                     }
@@ -350,7 +363,9 @@ impl Stripper<'_> {
                         return self.not_here(&property.decorators);
                     }
                     let key = Key::of(&property.key, property.computed);
-                    let assigned = !self.define_fields && !matches!(key, Key::Private(_));
+                    // (A static `#private` field stays a field.)
+                    let assigned = !self.define_fields
+                        && !(matches!(key, Key::Private(_)) && property.r#static);
                     if assigned {
                         if let Key::Computed(range) = key {
                             return self.fail(
@@ -584,10 +599,10 @@ impl Stripper<'_> {
             self.blank(accessor.span);
             return None;
         }
-        let storage = match key {
-            Key::Identifier(name) | Key::Private(name) => format!("#{name}_accessor_storage"),
-            Key::Literal(_) => format!("#_zb_accessor_storage_{}", accessor.span.start),
-            Key::Computed(range) => {
+        let storage = match storage(key, accessor.span.start) {
+            Some(storage) => storage,
+            None => {
+                let range = accessor.key.span();
                 self.fail(
                     range.start,
                     "an `accessor` with a computed name isn't supported",
@@ -602,8 +617,15 @@ impl Stripper<'_> {
         let static_ = if accessor.r#static { "static " } else { "" };
         self.replacements
             .push((replaced, format!("{static_}{storage}{newlines}")));
+        // Without `useDefineForClassFields`, an instance accessor's storage is assigned in the
+        // constructor, its decorators' initializers with it (`assigned_fields`).
+        let assigned = !self.define_fields && !accessor.r#static;
         if let Some(n) = n {
-            self.initialized(accessor.value.as_ref().map(GetSpan::span), accessor.span, n);
+            if assigned {
+                self.field_wraps.insert(accessor.span.start, n);
+            } else {
+                self.initialized(accessor.value.as_ref().map(GetSpan::span), accessor.span, n);
+            }
         }
         let name = match key {
             Key::Identifier(name) => name.clone(),
@@ -623,7 +645,7 @@ impl Stripper<'_> {
             ),
         };
         let mut after = String::new();
-        if let Some(n) = n {
+        if let (Some(n), false) = (n, assigned) {
             after.push_str(&extra_initializers(accessor.r#static, n));
             after.push(' ');
         }

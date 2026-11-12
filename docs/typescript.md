@@ -11,7 +11,10 @@ What has to run is written where it was, as TypeScript itself writes it, **with 
 - an **`enum`** becomes an object (see [Enums](#enums));
 - a **`namespace`** becomes TypeScript's function wrapper, `const N = {}; (function (N) { … })(N);`, with each exported member assigned to it, and references to an exported variable read through it (`N.x`), as `tsc` writes them. A namespace with only types writes nothing; one declared again, or after a function or class of the same name, adds to it; `namespace A.B.C` and exported nested namespaces work;
 - a **parameter property** (`constructor(private x: number)`) becomes a field and an assignment at the top of the constructor, or right after `super(…)` in a subclass;
-- **`import X = A.B`** becomes `const X = A.B` when it's read as a value, and nothing when it names a type.
+- **`import X = A.B`** becomes `const X = A.B` when it's read as a value (by the script or the template) or names a value a namespace exports, and nothing when it names a type;
+- **`<T>value`** becomes `(value)`, so it means what it did after `return` and a line break, as an arrow's `{…}` body, or at the start of a statement.
+
+Some code is **moved**: a field's value into the constructor (see [tsconfig.json](#tsconfigjson)), a decorator into its call. It's moved with every rewrite inside it, and onto one line, so the lines it leaves and joins keep their count: comments go, a statement that ended at a line break gets its `;`, and a line break inside a template literal is written `\n`. A tagged template over more than one line can't be moved that way (its tag sees the raw text), and is an error that says to write it on one line.
 
 A plugin test compiles each of these with both the compiler and `tsc` and checks they do the same thing. The compiler never runs the TypeScript type checker and never emits code from a type.
 
@@ -28,6 +31,7 @@ Only what TypeScript itself refuses in an ES module, and a component script is o
 | `import x = require("…")` | CommonJS; `tsc` refuses it in an ES module too (TS1202). | `import x from "…"` |
 | `export = value` | CommonJS (TS1203). | A component script exports nothing: props go on the host tag |
 | `export namespace N { … }` | A component's exports are its interface; only `export enum` belongs there. | Drop `export` (the namespace works inside the component), or move it to a module |
+| `export const { a, b } = value` in a namespace | Not lowered yet (`tsc` lowers it). | `export const a = value.a, b = value.b` |
 
 Each is an error at the construct, with the replacement in its help text. In a `.zb.tsx` file, `<T>value` is refused by the parser, as `tsc` refuses it in any `.tsx` file.
 
@@ -37,7 +41,7 @@ A TypeScript component is compiled under its **nearest `tsconfig.json`** (follow
 
 | Option | What it changes |
 |---|---|
-| `useDefineForClassFields` (or a `target` below ES2022, which turns it off) | Off, fields are **assigned** in the constructor rather than defined, as `tsc` writes them: an instance field's initializer moves into the constructor after `super(…)` and the parameter properties (a constructor is written if there's none), a static one becomes `static { this.x = …; }`, a field with no initializer goes, and a parameter property is no field of its own. `#private` fields stay fields. With no tsconfig, or no `target`, fields are defined, as for a modern target. |
+| `useDefineForClassFields` (or a `target` below ES2022, which turns it off) | Off, fields are **assigned** in the constructor rather than defined, as `tsc` writes them: an instance field's initializer moves into the constructor after `super(…)` and the parameter properties (a constructor is written if there's none), a static one becomes `static { this.x = …; }`, a field with no initializer goes, and a parameter property is no field of its own. A `#private` instance field (and an `accessor`'s storage) is declared where it was and assigned in the constructor in order with the rest, as `tsc` writes it; a static `#private` field stays a field. With no tsconfig, or no `target`, fields are defined, as for a modern target. |
 | `verbatimModuleSyntax` | Imports are kept as written, so a type imported without `type` is an error, as in `tsc` (TS1484), rather than dropped. |
 | `paths` and `baseUrl` | A non-relative import (`@shared/sizes`) of a TypeScript module is found through them, for the enums in it. |
 | `experimentalDecorators` | `@` means TypeScript's legacy decorators: see [Decorators](#decorators). |
@@ -46,7 +50,7 @@ Every other option leaves the output as it is: Zubra writes modern JavaScript fo
 
 ## Decorators
 
-With **`experimentalDecorators`** on, decorators are TypeScript's legacy ones (what Lit, Angular and most decorator libraries were written for), written as `tsc` writes them: each `@decorator` goes from where it was, and `__decorate` calls follow the class on its last line, instance members first, then static ones, then the class with its constructor's parameter decorators. A class decorator wraps the class, `const A = ((A) => { …; return __decorate([…], A); })(class A { … });`, on the class's own lines. TypeScript's two helpers are added to the script's first line when they're used. A plugin test runs a class with every kind of decorator through both the compiler and `tsc`. `emitDecoratorMetadata` isn't written.
+With **`experimentalDecorators`** on, decorators are TypeScript's legacy ones (what Lit, Angular and most decorator libraries were written for), written as `tsc` writes them: each `@decorator` goes from where it was, and `__decorate` calls follow the class on its last line, instance members first, then static ones, then the class with its constructor's parameter decorators. A class decorator wraps the class, `const A = (() => { var A = class { static { A = this; } … }; …; return A = __decorate([…], A); })();`, on the class's own lines, so the class's own references to `A` see what the decorator returns, as `tsc`'s `A_1` does. `export default` works, named or not. Legacy decorators on a class *expression* are refused, as TypeScript refuses them (TS1206; `tsc` writes nothing for them). TypeScript's two helpers are added to the script's first line when they're used. A plugin test runs a class with every kind of decorator through both the compiler and `tsc`. `emitDecoratorMetadata` isn't written.
 
 **Standard decorators** (TC39's, TypeScript's default since 5.0) are lowered the way `tsc` lowers them for ES2022, since no browser runs them yet, with TypeScript's own helpers (`__esDecorate`, `__runInitializers`, `__setFunctionName`, `__propKey`) on the script's first line. The class is wrapped in a function that holds the decorators' bookkeeping, `const A = (() => { let _zb_d0, …; return class A { static { /* applies them */ } … }; })();`, and everything stays on the class's own lines, with each member's code where it was:
 
@@ -116,7 +120,7 @@ The types aren't thrown away. Three things in the script carry their type text i
 <my-select size="small" options={[]}>…</my-select>
 ```
 
-Each member types the prop of its name (in the typings, the manifest and the type check), and the two lists must match: a member with no prop on the host tag, or a prop the interface doesn't have, is an error naming it. The host still gives the defaults; `declare const` keeps working beside it.
+Each member types the prop of its name (in the typings, the manifest and the type check), and the two lists must match: a member with no prop on the host tag, or a prop the interface doesn't have, is an error naming it. The host still gives the defaults, and `zubra check --types` checks them against these types, a text default (`size="big"`) included; `declare const` keeps working beside it. A method member (`pick(item: Option): void`) types a function prop. When `Props` has members the script doesn't list (`interface Props extends Base`, or `type Props = Base & { … }`), a host prop it doesn't list is typed `Props["name"]`, for TypeScript to resolve.
 
 The script's own `type` and `interface` declarations are **exported from the generated `.d.ts`**, with or without `export` written on them (`export interface`, `export type` and `export type { … }` are type-only, so the no-exports rule for component scripts doesn't apply to them), and its imports are **re-emitted as `import type`**, so a type the interface mentions resolves wherever the typings are used.
 
@@ -181,15 +185,21 @@ How it works, the way Vue's and Svelte's tooling work:
     - a `zb-then` value is the awaited type;
     - an `onclick` handler's `event` is a `MouseEvent`;
     - a child's `onpick` handler's event is the child's `CustomEvent<…>`;
-    - a child's `count={…}` is checked against the child's `count`.
-  - A signal the template reads is its value there, as the template unwraps it.
-- Those files go in `.zubra-types/` at the project root (removed afterwards; `--keep` keeps them). A tsconfig there extends the project's and joins the two folders with `rootDirs`, so `./badge.zb` and `./types` resolve from either.
+    - a child's `count={…}` is checked against the child's `count`, and `open:bind={on}` both ways;
+    - a `zb-switch`'s value is compared with each `zb-case`'s `is`;
+    - a `<zb-window>` or `<zb-document>` listener's event is the window's or the document's (`onstorage` is a `StorageEvent`).
+  - A signal the template reads is its value there, as the template unwraps it (a `Signal.State` or `Signal.Computed`; another object with a `get` method stays itself). A `const enum` is read as written.
+  - A `zb-catch` error is `unknown`, as a `catch` variable is under `strict`: narrow it (`error instanceof Error`) before reading `.message`.
+- Those files go in `.zubra-types/check/` at the project root (removed afterwards; `--keep` keeps them; the editor's checks each use a folder of their own beside it). A tsconfig there extends the project's and joins the two folders with `rootDirs`, so `./badge.zb` and `./types` resolve from either. A component imported from outside the project is mirrored inside the folder too.
+- The map is in the compiler's UTF-8 bytes, and converted to the string positions `tsc` and editors count in, so an error after an emoji or an accented letter lands on the right column; `tsc` runs from the project's folder, so its paths are read right wherever you run the command from.
 - The project's own `tsc` runs once (TypeScript is the project's, as with `vue-tsc`), and each error is moved back through the map.
 - No type checker is in the compile path. Checking is this separate step, for CI and the editor.
 
 **In VS Code**, the extension shows the same errors in a TypeScript component when it opens and each time it's saved, beside the compiler's own diagnostics (it uses the project's `@zubra/compiler` and `typescript`, in a process of its own). In a TypeScript component it also gives **hover, completion and go to definition from TypeScript**, in the script and in every `{…}` of the template, from TypeScript 5.9's language service, which it ships with (the native TypeScript 7 has no language service API yet), over the same file. Type errors come from the project's own TypeScript, when you save.
 
-Only `<script lang="ts">` components are checked. A JavaScript component's file is there so the components that use it get its props' and events' types. A required prop with no `declare const` is `unknown` to the checker, so give it a type. `.zb.tsx` components aren't checked this way yet.
+Only `<script lang="ts">` components are checked. A JavaScript component's file is there so the components that use it get its props' and events' types, and a `.zb.tsx` component's typings are there for the same reason (its own code is TypeScript, which `tsc` checks as it is, with your `jsx` settings). A required prop with no `declare const` is `unknown` to the checker, so give it a type. `--format json` gives each error as the Rust CLI's `check --format json` does, path relative to where it ran, with a `code` (`TS2322`).
+
+Type errors in the editor are worked out when a file opens and when it's saved; while you type, the last ones stay where they were until the next save.
 
 ## What this means for complex props
 

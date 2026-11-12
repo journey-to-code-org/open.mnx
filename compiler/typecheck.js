@@ -49,6 +49,40 @@ function nearestTsconfig(directory) {
   }
 }
 
+/** A function from a UTF-8 byte offset in `text` (the compiler's) to a string index (UTF-16). */
+function unitsOf(text) {
+  const table = new Uint32Array(Buffer.byteLength(text) + 1);
+  let bytes = 0;
+  let units = 0;
+  for (const character of text) {
+    const size = Buffer.byteLength(character);
+    for (let i = 0; i < size; i++) table[bytes + i] = units;
+    bytes += size;
+    units += character.length;
+  }
+  table[bytes] = units;
+  return (offset) => table[Math.min(offset, bytes)];
+}
+
+/** Whether a process is running (an editor's check that owns a folder). */
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+/** The deepest folder containing every one of `paths`. */
+function commonFolder(paths) {
+  let common = paths[0];
+  for (const path of paths) {
+    while (common !== dirname(common) && path !== common && !path.startsWith(common + sep)) common = dirname(common);
+  }
+  return common;
+}
+
 /** `offset` in `text` as a line and column, both from 1. */
 function position(text, offset) {
   const before = text.slice(0, offset);
@@ -78,18 +112,30 @@ export function checkTypes(paths, { root, tsc, keep = false, out, folder, texts 
   const tsconfig = nearestTsconfig(dirname(files[0]));
   root ??= tsconfig ? dirname(tsconfig) : process.cwd();
   tsc ??= findTsc(root);
-  // `folder`: a folder of its own inside `.zubra-types`, for a check running beside another.
-  out ??= folder ? join(root, '.zubra-types', folder) : join(root, '.zubra-types');
+  // `folder`: a folder of its own inside `.zubra-types`, for a check running beside another (a
+  // terminal's is `check`, an editor's `editor-<pid>`), so neither removes the other's files.
+  const types = join(root, '.zubra-types');
+  out ??= join(types, folder ?? 'check');
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+  // An editor's check that was stopped part way leaves its folder: removed once its process is gone.
+  if (existsSync(types)) {
+    for (const entry of readdirSync(types)) {
+      const pid = Number(/^editor-(\d+)$/.exec(entry)?.[1]);
+      if (pid && !running(pid)) rmSync(join(types, entry), { recursive: true, force: true });
+    }
+  }
 
   // The components they import too (their files give the importers their types), checked only
   // where they were asked for.
   const all = new Set(files);
   for (const file of files) {
-    for (const path of Object.keys(sources(file))) if (path.endsWith('.zb')) all.add(path);
+    for (const path of Object.keys(sources(file))) if (/\.zb(\.[jt]sx)?$/.test(path)) all.add(path);
   }
   const asked = new Set(files);
+  // The generated files mirror the components from a folder holding all of them (and the
+  // project), so one imported from outside the project stays inside `out` too.
+  const base = commonFolder([root, ...all]);
   const virtual = new Map(); // the generated .zb.ts path → { source, code, mappings, file }
   const diagnostics = [];
   for (const file of all) {
@@ -101,30 +147,43 @@ export function checkTypes(paths, { root, tsc, keep = false, out, folder, texts 
       if (!asked.has(file)) continue;
       // A component that doesn't compile: `zubra check` reports that; here, it's one error.
       const [first] = response.diagnostics;
-      diagnostics.push({ file, line: first?.line ?? 1, column: first?.column ?? 1, code: 'zubra', message: first?.message ?? response.error });
+      diagnostics.push({ file, line: first?.line ?? 1, column: first?.column ?? 1, code: 'zubra', message: first?.message ?? response.error, help: first?.help ?? null });
       continue;
     }
     const { code, mappings } = JSON.parse(response.output);
-    const target = join(out, `${relative(root, file)}.ts`);
+    // (A `.zb.tsx` child's typings are imported as `<file>.types`.)
+    const target = join(out, `${relative(base, file)}${/\.[jt]sx$/.test(file) ? '.types' : ''}.ts`);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, code);
     const source = (texts[file] ?? readFileSync(file, 'utf8')).replace(/\r\n?/g, '\n');
-    virtual.set(target, { source, code, mappings, file, asked: asked.has(file) });
+    // The compiler's offsets are UTF-8 bytes; tsc's positions and the source's are string
+    // indexes, which differ after any character outside ASCII.
+    const inCode = unitsOf(code);
+    const inSource = unitsOf(source);
+    const units = mappings.map(([generated, original, length]) => [
+      inCode(generated),
+      inSource(original),
+      inCode(generated + length) - inCode(generated),
+    ]);
+    virtual.set(target, { source, code, mappings: units, file, asked: asked.has(file) });
   }
 
   const config = {
     ...(tsconfig ? { extends: tsconfig } : {}),
     compilerOptions: {
       noEmit: true,
-      rootDirs: [root, out],
+      rootDirs: [base, out],
       skipLibCheck: true,
       allowArbitraryExtensions: true,
+      // (A component imports a `.zb.tsx` one by its file name.)
+      allowImportingTsExtensions: true,
     },
     files: [...virtual.keys()],
     include: [],
   };
   writeFileSync(join(out, 'tsconfig.json'), JSON.stringify(config, null, 2));
-  const result = spawnSync(process.execPath, [tsc, '-p', join(out, 'tsconfig.json'), '--pretty', 'false'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+  // (From `root`, which tsc's paths are relative to.)
+  const result = spawnSync(process.execPath, [tsc, '-p', join(out, 'tsconfig.json'), '--pretty', 'false'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 });
   if (result.error) throw result.error;
   const output = `${result.stdout}${result.stderr}`;
 
@@ -163,8 +222,18 @@ export function checkTypes(paths, { root, tsc, keep = false, out, folder, texts 
     diagnostics.push(last);
   }
   if (result.status !== 0 && !reportedAny) throw new Error(`tsc failed:\n${output}`);
+  // The same error twice (a switch's value is checked with each case), or an error in the
+  // generated scaffolding that's also reported where it was written (a typo in a prop's type
+  // shows in the typings too): once is enough.
+  const unique = diagnostics.filter((diagnostic, index) => !diagnostics.some((other, at) => at < index
+    && other.file === diagnostic.file && other.line === diagnostic.line && other.column === diagnostic.column
+    && other.code === diagnostic.code && other.message === diagnostic.message) && !(
+    diagnostic.line === 1 && diagnostic.column === 1 && diagnostic.code !== 'zubra'
+    && diagnostics.some((other, at) => at !== index && other.file === diagnostic.file && other.code === diagnostic.code
+      && other.message === diagnostic.message && (other.line !== 1 || other.column !== 1 || at < index))
+  ));
   if (!keep) rmSync(out, { recursive: true, force: true });
-  return { diagnostics, checked: files.length, out };
+  return { diagnostics: unique, checked: files.length, out };
 }
 
 /** `file:line:column - error TS1234: message`. */

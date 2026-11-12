@@ -46,6 +46,10 @@ pub fn reference_rewrites(program: &Program<'_>) -> Vec<(Span, String)> {
             AstKind::ObjectProperty(property) if property.shorthand => {
                 rewrites.push((property.span, format!("{name}: {param}.{name}")));
             }
+            // `({ x } = value)` (and `{ x = 1 }`): the target keeps its name too.
+            AstKind::AssignmentTargetPropertyIdentifier(_) => {
+                rewrites.push((span, format!("{name}: {param}.{name}")));
+            }
             _ => rewrites.push((span, format!("{param}.{name}"))),
         }
     };
@@ -56,20 +60,54 @@ pub fn reference_rewrites(program: &Program<'_>) -> Vec<(Span, String)> {
             rewrite(*reference, param, &name);
         }
     }
-    // A name another declaration of an enclosing namespace exports: unresolved here, since each
-    // declaration is its own scope, and read through the namespace.
+    // A name another declaration of an enclosing namespace exports, read through the namespace:
+    // unresolved here (each declaration is its own scope), or resolved to a binding outside that
+    // namespace, which the export shadows.
+    let mut candidates: Vec<(String, oxc_semantic::ReferenceId, Option<Span>)> = Vec::new();
     for (name, references) in scoping.root_unresolved_references() {
         for reference_id in references {
+            candidates.push((name.to_string(), *reference_id, None));
+        }
+    }
+    for symbol in scoping.symbol_ids() {
+        let declared = scoping.symbol_span(symbol);
+        for reference_id in scoping.get_resolved_reference_ids(symbol) {
+            candidates.push((
+                scoping.symbol_name(symbol).to_owned(),
+                *reference_id,
+                Some(declared),
+            ));
+        }
+    }
+    let exported_variables: HashSet<oxc_semantic::SymbolId> =
+        variables.iter().map(|(symbol, _)| *symbol).collect();
+    for (name, reference_id, declared) in &candidates {
+        if let Some(symbol) = scoping.get_reference(*reference_id).symbol_id() {
+            if exported_variables.contains(&symbol) {
+                continue;
+            }
+        }
+        {
             let node = scoping.get_reference(*reference_id).node_id();
-            let mut enclosing: Vec<(&str, Vec<String>)> = Vec::new(); // innermost first
+            let mut enclosing: Vec<(&str, String, Span)> = Vec::new(); // innermost first
             for kind in nodes.ancestor_kinds(node) {
                 if let AstKind::TSNamespaceDeclaration(namespace) = kind {
-                    enclosing.push((namespace.id.name.as_str(), Vec::new()));
+                    enclosing.push((
+                        namespace.id.name.as_str(),
+                        parameter(namespace),
+                        namespace.span,
+                    ));
                 }
             }
             // Each enclosing namespace's path: the names outward from it.
-            let names: Vec<&str> = enclosing.iter().map(|(name, _)| *name).collect();
-            for (index, (param, _)) in enclosing.iter().enumerate() {
+            let names: Vec<&str> = enclosing.iter().map(|(name, ..)| *name).collect();
+            for (index, (_, param, span)) in enclosing.iter().enumerate() {
+                // A binding declared inside this namespace is what the name means there.
+                if declared.is_some_and(|declared| {
+                    span.start <= declared.start && declared.end <= span.end
+                }) {
+                    break;
+                }
                 let path = names[index..]
                     .iter()
                     .rev()
@@ -114,6 +152,13 @@ fn collect(
         }
         let mut inner = path.to_vec();
         let (param, statements) = descend(namespace, &mut inner);
+        // `namespace A.B`: `B` is one of `A`'s exports.
+        for depth in path.len() + 1..inner.len() {
+            exports
+                .entry(inner[..depth].join("."))
+                .or_default()
+                .insert(inner[depth].clone());
+        }
         let key = inner.join(".");
         for statement in statements {
             let Statement::ExportDeclaration(export) = statement else {
@@ -168,8 +213,33 @@ fn descend<'n, 'a>(
     match &namespace.body {
         TSNamespaceDeclarationBody::TSNamespaceDeclaration(inner) => descend(inner, path),
         TSNamespaceDeclarationBody::TSModuleBlock(block) => {
-            (namespace.id.name.to_string(), block.body.as_slice())
+            (parameter(namespace), block.body.as_slice())
         }
+    }
+}
+
+/// The parameter a namespace's function is written with: its name, or `N_1` when its block
+/// declares that name itself (as `tsc` renames it).
+pub fn parameter(namespace: &TSNamespaceDeclaration<'_>) -> String {
+    let name = namespace.id.name.as_str();
+    let TSNamespaceDeclarationBody::TSModuleBlock(block) = &namespace.body else {
+        return name.to_owned();
+    };
+    let declares = block.body.iter().any(|statement| {
+        // (An exported variable is the namespace's property, not a declaration.)
+        if let Statement::ExportDeclaration(export) = statement {
+            if matches!(export.declaration, Declaration::VariableDeclaration(_)) {
+                return false;
+            }
+        }
+        crate::typescript::declared_names(statement)
+            .iter()
+            .any(|declared| declared == name)
+    });
+    if declares {
+        format!("{name}_1")
+    } else {
+        name.to_owned()
     }
 }
 
@@ -216,6 +286,22 @@ pub fn value_aliases(program: &Program<'_>) -> HashSet<u32> {
     let semantic = SemanticBuilder::new().build(program).semantic;
     let scoping = semantic.scoping();
     let mut found = HashSet::new();
+    // What each namespace exports as a value: an alias of one is a value even if only the
+    // template reads it.
+    let mut exports: HashMap<String, HashSet<String>> = HashMap::new();
+    collect(&program.body, &[], &mut exports, &mut Vec::new());
+    let names_a_value = |alias: &oxc_ast::ast::TSImportEqualsDeclaration<'_>| {
+        let span = alias.module_reference.span();
+        let target: String = program.source_text[span.start as usize..span.end as usize]
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        target.rsplit_once('.').is_some_and(|(path, name)| {
+            exports
+                .get(path)
+                .is_some_and(|exported| exported.contains(name))
+        })
+    };
     let mut visit = |statements: &[Statement<'_>]| {
         for statement in statements {
             let alias = match statement {
@@ -230,6 +316,10 @@ pub fn value_aliases(program: &Program<'_>) -> HashSet<u32> {
                 },
                 _ => continue,
             };
+            if !alias.import_kind.is_type() && names_a_value(alias) {
+                found.insert(alias.span.start);
+                continue;
+            }
             let Some(symbol) = alias.id.symbol_id.get() else {
                 continue;
             };

@@ -61,9 +61,25 @@ pub fn with<T>(options: Options, f: impl FnOnce() -> T) -> T {
 
 /// Whether a component (its source, at `path`) is TypeScript: only those read a tsconfig.json.
 pub fn is_typescript(path: &str, source: &str) -> bool {
-    path.ends_with(".tsx")
-        || source.contains("<script lang=\"ts\"")
-        || source.contains("<script lang='ts'")
+    if path.ends_with(".tsx") {
+        return true;
+    }
+    // Any `<script …>` tag with `lang="ts"` (however it's spaced or quoted).
+    let lower = source.to_ascii_lowercase();
+    lower.match_indices("<script").any(|(start, _)| {
+        let tag = &lower[start + "<script".len()..];
+        let tag = &tag[..tag.find('>').unwrap_or(tag.len())];
+        tag.match_indices("lang").any(|(at, _)| {
+            let before = tag[..at].chars().last();
+            let rest = tag[at + 4..].trim_start();
+            before.is_some_and(char::is_whitespace)
+                && rest.strip_prefix('=').is_some_and(|value| {
+                    let value = value.trim_start();
+                    let value = value.trim_start_matches(['"', '\'']);
+                    value.starts_with("ts") && !value[2..].starts_with(char::is_alphanumeric)
+                })
+        })
+    })
 }
 
 /// The options for the component at `path`: its nearest `tsconfig.json`, or the defaults.
@@ -324,6 +340,27 @@ fn jsonc(text: &str) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_typescript_script_is_found_however_its_tag_is_spaced() {
+        for source in [
+            "<script lang=\"ts\">",
+            "<script  lang=\"ts\">",
+            "<script\n  lang='ts'>",
+            "<SCRIPT lang = \"ts\">",
+            "<script setup lang=ts>",
+        ] {
+            assert!(super::is_typescript("x.zb", source), "{source}");
+        }
+        for source in [
+            "<script>",
+            "<script lang=\"tsx\">",
+            "<script data-lang=\"ts\">",
+            "<p lang=\"ts\">",
+        ] {
+            assert!(!super::is_typescript("x.zb", source), "{source}");
+        }
+    }
+
     use super::*;
 
     #[test]

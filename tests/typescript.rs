@@ -538,7 +538,11 @@ fn a_this_parameter_an_angle_bracket_assertion_and_an_import_alias_are_types_or_
         js.contains("function f(              a        ) { return a }"),
         "{js}"
     );
-    assert!(js.contains("const n =       f.call(window, port)"), "{js}");
+    assert!(js.contains("const n = (f.call(window, port))"), "{js}");
+    // An alias only the template reads is still a value.
+    let source = "<script lang=\"ts\">\n  namespace Config { export const port = 8080 }\n  import port = Config.port\n</script>\n<zb-x><p>{port}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains("const  port = Config.port"), "{js}");
 }
 
 #[test]
@@ -749,6 +753,66 @@ fn accessor_fields_are_lowered_without_decorators_too() {
     );
     let legacy = zubra::typescript_to_js("class B { accessor x = 1 }", Some(&options)).unwrap();
     assert!(legacy.contains("#x_accessor_storage = 1"), "{legacy}");
+}
+
+#[test]
+fn an_import_of_only_inline_types_goes_entirely() {
+    let source = "<script lang=\"ts\">\n  import { type Option, type Other } from './types'\n  const a: Option | Other | null = null\n</script>\n<zb-x><p>{a}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(!js.contains("./types"), "{js}");
+    let kept = module("import D, { type E } from './d';\nconsole.log(D);\n");
+    assert!(kept.contains("import D, "), "{kept}");
+}
+
+#[test]
+fn legacy_decorators_on_a_class_expression_are_refused_and_export_default_works() {
+    let mut options = serde_json::Map::new();
+    options.insert(
+        "experimentalDecorators".to_owned(),
+        serde_json::Value::Bool(true),
+    );
+    let error = zubra::typescript_to_js(
+        "declare const d: any;\nconst X = class { @d m() {} };",
+        Some(&options),
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("aren't valid on a class expression (TS1206)"),
+        "{}",
+        error.message
+    );
+    let named = zubra::typescript_to_js(
+        "declare const c: any;\n@c export default class A {}\n",
+        Some(&options),
+    )
+    .unwrap();
+    assert!(
+        named.contains("const A = (() => { var A = class"),
+        "{named}"
+    );
+    assert!(named.contains("export { A as default };"), "{named}");
+    assert!(!named.contains("export default"), "{named}");
+    let anonymous = zubra::typescript_to_js(
+        "declare const c: any;\nexport default @c class {}\n",
+        Some(&options),
+    )
+    .unwrap();
+    assert!(
+        anonymous.contains(
+            "export default  ((__zb_c) => { return __zubraDecorate([c], __zb_c); })(class {"
+        ),
+        "{anonymous}"
+    );
+}
+
+#[test]
+fn a_decorator_named_like_a_keyword_is_still_a_decorator() {
+    let js = module(
+        "const abstractFactory = (c: any, ctx: any) => c;\n@abstractFactory abstract class A {}\n",
+    );
+    assert!(js.contains("[abstractFactory]"), "{js}");
 }
 
 #[test]

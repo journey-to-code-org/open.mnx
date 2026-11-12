@@ -222,12 +222,22 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
             }
         }
         for prop in &props {
-            let Some((_, text)) = members.iter().find(|(name, _)| name == &prop.name) else {
-                return Err(Diagnostic::new(
-                    prop.span,
-                    format!("prop `{}` isn't in `interface Props`", prop.name),
-                )
-                .with_help(format!("add `{}: <type>` to `Props`", prop.name)));
+            let listed = members.iter().find(|(name, _)| name == &prop.name);
+            // `Props` with members it doesn't list: TypeScript resolves the prop's type.
+            let open = format!(
+                "Props[{}]",
+                serde_json::to_string(&prop.name).unwrap_or_default()
+            );
+            let text = match listed {
+                Some((_, text)) => text,
+                None if script.props_open => &open,
+                None => {
+                    return Err(Diagnostic::new(
+                        prop.span,
+                        format!("prop `{}` isn't in `interface Props`", prop.name),
+                    )
+                    .with_help(format!("add `{}: <type>` to `Props`", prop.name)));
+                }
             };
             if !script
                 .prop_types
@@ -648,6 +658,7 @@ impl<'a> TemplateParser<'a> {
                             consequent: vec![node],
                             alternate: Vec::new(),
                             animate,
+                            switch_value: None,
                             span,
                         });
                         chain = Some((nodes.len() - 1, false));
@@ -1030,6 +1041,7 @@ impl<'a> TemplateParser<'a> {
                 consequent,
                 alternate,
                 animate: false,
+                switch_value: None,
                 span,
             });
         }
@@ -1056,6 +1068,7 @@ impl<'a> TemplateParser<'a> {
                 consequent: vec![node],
                 alternate: Vec::new(),
                 animate: false,
+                switch_value: None,
                 span,
             });
         }
@@ -1945,6 +1958,7 @@ fn attach_branch(
                 consequent: vec![node],
                 alternate: Vec::new(),
                 animate,
+                switch_value: None,
                 span,
             }];
         }
@@ -2136,6 +2150,7 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
                     consequent,
                     alternate,
                     animate,
+                    switch_value: None,
                     span,
                 };
                 alternate = vec![node];
@@ -2205,7 +2220,8 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
         "zb-switch" => {
             allow_attributes(&element, &["value", "animate"])?;
             let animate = flag(&element, "animate", "<zb-switch value={…} animate>")?;
-            let (value, _) = required_expression(&element, "value")?;
+            let (value, value_span) = required_expression(&element, "value")?;
+            let switch_value = Some(value_span);
             // Each zb-case, in order, then an optional zb-else: an zb-if chain.
             let mut cases: Vec<(Expression, Span, Vec<Node>, Span)> = Vec::new();
             let mut otherwise: Option<Vec<Node>> = None;
@@ -2277,6 +2293,7 @@ fn lower_directive(mut element: Element) -> Result<Node, Diagnostic> {
                     consequent,
                     alternate,
                     animate,
+                    switch_value,
                     span,
                 }];
             }
