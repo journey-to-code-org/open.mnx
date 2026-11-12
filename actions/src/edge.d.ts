@@ -16,6 +16,11 @@ export interface EdgeActionsOptions<Extra extends object = object> {
   origins?: string[];
   /** Called when a server function throws. The client gets a generic error either way. */
   onError?: (error: unknown, request: Request) => void;
+  /**
+   * The largest post read, files and fields together, in bytes: 10 MB by default, `Infinity` for
+   * no limit. A bigger one gets `{ error: 'Too large' }` (status 413) and the function doesn't run.
+   */
+  maxBytes?: number;
   /** What else a server function gets beside `request`; `extra` is fetch's second argument (`{ env, ctx }`). */
   context?: (from: { request: Request } & Extra) => object | Promise<object>;
 }
