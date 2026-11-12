@@ -151,6 +151,23 @@ fn respond(request: &Map<String, Value>) -> Value {
         };
     }
 
+    // `typescript`: the JavaScript the compiler reduces a script's TypeScript to (types blanked,
+    // enums lowered), for tests that run it against `tsc`'s output, and for tools that show it.
+    if text("command") == Some("typescript") {
+        return match crate::typescript_to_js(source) {
+            Ok(output) => {
+                json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
+            }
+            Err(error) => json!({
+                "ok": false,
+                "output": null,
+                "error": error.render_in(source, &path),
+                "warnings": [],
+                "diagnostics": [entry(&path, &error, "error")],
+            }),
+        };
+    }
+
     // `refactor`: edits for the editor to apply. `action: "extract"` turns the markup in the byte
     // range `start..end` into a new component called `tag`; `output` is JSON text:
     // `{ tag, fileName, fileSource, edits: [{ start, end, text }], props, events }`.
@@ -254,7 +271,7 @@ fn respond(request: &Map<String, Value>) -> Value {
         };
     }
 
-    let warnings = crate::warnings(source);
+    let warnings = crate::warnings_with(source, &path, &loader);
     let mut diagnostics: Vec<Value> = warnings
         .iter()
         .map(|warning| entry(&path, warning, "warning"))
@@ -367,7 +384,7 @@ fn respond(request: &Map<String, Value>) -> Value {
             };
             crate::compile_declarations_for(source, file_name(&path), framework)
         }
-        ("compile", "interface") => crate::compile_interface(source),
+        ("compile", "interface") => crate::compile_interface_with(source, &path, &loader),
         ("compile", "server") => crate::compile_server(source),
         ("compile", "manifest") => {
             let name = file_name(&path);
@@ -425,14 +442,24 @@ fn respond(request: &Map<String, Value>) -> Value {
     // still whole, and the server can say what it dropped.
     let omitted = crate::validate::take_omitted();
     match result {
-        Ok(output) => json!({
-            "ok": true,
-            "output": if command == "check" { Value::Null } else { Value::String(output) },
-            "error": null,
-            "warnings": rendered_warnings,
-            "omitted": omitted,
-            "diagnostics": diagnostics,
-        }),
+        Ok(output) => {
+            let mut response = json!({
+                "ok": true,
+                "output": if command == "check" { Value::Null } else { Value::String(output) },
+                "error": null,
+                "warnings": rendered_warnings,
+                "omitted": omitted,
+                "diagnostics": diagnostics,
+            });
+            // `"client": true` on a check: why the component needs its module in the browser
+            // (empty when its server HTML is complete on its own).
+            if command == "check" && request.get("client").and_then(Value::as_bool) == Some(true) {
+                if let Ok(reasons) = crate::client_reasons(source, &path, &loader) {
+                    response["client"] = json!(reasons);
+                }
+            }
+            response
+        }
         Err(error) => {
             diagnostics.push(entry(&path, &error, "error"));
             json!({
@@ -607,6 +634,28 @@ mod tests {
             json!({ "path": "/app/badge.zb", "files": files, "emit": "dts", "framework": "react" }),
         );
         assert!(react["output"].as_str().unwrap().contains("ZbBadgeReact"));
+    }
+
+    #[test]
+    fn a_check_can_say_whether_the_component_needs_the_browser() {
+        let files = json!({
+            "/app/label.zb": "<zb-label text=\"x\"><b>{text}</b></zb-label>",
+            "/app/counter.zb": "<script>\n  let n = 0\n</script>\n<zb-counter><p>{n}</p></zb-counter>",
+        });
+        let label = call(
+            json!({ "command": "check", "path": "/app/label.zb", "files": files, "client": true }),
+        );
+        assert_eq!(label["client"], json!([]));
+        let counter = call(
+            json!({ "command": "check", "path": "/app/counter.zb", "files": files, "client": true }),
+        );
+        assert_eq!(counter["client"], json!(["state `n`"]));
+        let plain = call(json!({ "command": "check", "path": "/app/counter.zb", "files": files }));
+        assert!(plain.get("client").is_none(), "only when asked");
+        let interface =
+            call(json!({ "path": "/app/counter.zb", "files": files, "emit": "interface" }));
+        let interface: Value = serde_json::from_str(interface["output"].as_str().unwrap()).unwrap();
+        assert_eq!(interface["client"], json!(["state `n`"]));
     }
 
     #[test]

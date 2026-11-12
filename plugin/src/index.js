@@ -278,7 +278,8 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         const element = JSON.stringify(`${path}${QUERY}element`);
         // In development the wrapper accepts its updates: the element it wraps hot-reloads itself.
         return `import Element from ${element};\nimport { wrap } from ${JSON.stringify(`${runtime}/${variant}`)};\n`
-          + `export { tag } from ${element};\nexport default wrap(Element);\n`
+          // Everything the element module exports by name: its tag, and its `export enum`s.
+          + `export * from ${element};\nexport default wrap(Element);\n`
           + (dev && meta.framework === 'vite' ? 'if (import.meta.hot) import.meta.hot.accept(() => {});\n' : '');
       }
       for (const dependency of dependencies(path)) this.addWatchFile?.(dependency);

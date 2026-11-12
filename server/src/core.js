@@ -19,7 +19,8 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message) }) {
+export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), clientModules = 'all' }) {
+  if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
   const memo = new Map();
   const once = (key, make) => {
     if (!cache || !memo.has(key)) memo.set(key, make());
@@ -77,7 +78,15 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     const styles = names.map(css).join('\n');
     return `${styles ? `<style data-zb-components>${styles}</style>\n` : ''}${importMap()}`;
   };
-  const scripts = (names, async = false) => (names.length ? `<script type="module"${async ? ' async' : ''}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '');
+  // `clientModules: 'needed'`: a component whose server HTML is complete on its own (the
+  // compiler's `client` list is empty: no state, handlers, hooks or values computed in the
+  // browser, in it or the components it uses) gets no module. For pages that never change
+  // those components' props from script.
+  const shipped = (names) => (clientModules === 'needed' ? names.filter((name) => (describe(name).client ?? ['unknown']).length > 0) : names);
+  const scripts = (all, async = false) => {
+    const names = shipped(all);
+    return names.length ? `<script type="module"${async ? ' async' : ''}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '';
+  };
 
   /** What a request for `pathname` gets: `{ status, type, body }`, or null if it isn't ours. */
   function serve(pathname) {

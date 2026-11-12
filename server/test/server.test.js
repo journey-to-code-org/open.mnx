@@ -94,6 +94,34 @@ test('a page: render, finish (CSS, import map, modules), and the browser modules
   await page.done();
 });
 
+test("clientModules: 'needed' leaves out the modules of components whose server HTML is complete", async () => {
+  assert.throws(() => createZubra({ components, clientModules: 'some' }), /clientModules is "all" or "needed"/);
+  const zubra = createZubra({ components, clientModules: 'needed' });
+  assert.deepEqual(zubra.describe('book-card').client, [], 'shows its props, and nothing else');
+  assert.ok(zubra.describe('count-stepper').client.some((reason) => reason.includes('form control')));
+  assert.ok(zubra.describe('hello-there').client.includes('imports `@zubra/runtime`'));
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const body = page.render('book-card', { book: { title: 'Dune', price: 999 }, featured: true }) + page.render('count-stepper', { value: 2 });
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const html = await (await fetch(url)).text();
+  assert.match(html, /import '\/_zubra\/components\/count-stepper\.js';<\/script>/);
+  assert.doesNotMatch(html, /components\/book-card\.js/, 'no module for the card');
+  const page = await open(url);
+  await page.waitForFunction(() => customElements.get('count-stepper'));
+  assert.equal(await page.evaluate(() => customElements.get('book-card')), undefined, 'never defined');
+  assert.equal(await page.evaluate(() => document.querySelector('book-card').shadowRoot.querySelector('h3').textContent), 'Dune');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('book-card').shadowRoot.querySelector('h3')).marginTop), '0px', 'its styles came with the server HTML');
+  assert.deepEqual(page.errors, []);
+  await page.done();
+  // The default still ships every module.
+  const all = createZubra({ components }).page();
+  all.render('book-card', { book: { title: 'Dune', price: 999 } });
+  assert.match(all.scripts(), /book-card\.js/);
+});
+
 test('a rendered component in another\'s slot: both render on the server and both hydrate', async () => {
   const zubra = createZubra({ components });
   const url = await listen((req, res) => {

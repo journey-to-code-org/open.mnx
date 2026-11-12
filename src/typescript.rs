@@ -51,6 +51,11 @@ pub struct Types {
     /// template doesn't read them (see `script::elide_type_only_imports`), since otherwise the
     /// browser would import a name the module doesn't export at runtime.
     pub type_only: Vec<String>,
+    /// The script's enums, in declaration order (a merged enum appears once per declaration).
+    pub enums: Vec<crate::enums::EnumInfo>,
+    /// Every named or default import, type-only ones included: (local, imported, specifier,
+    /// offset). The compiler reads relative TypeScript modules for the enums among them.
+    pub imported: Vec<(String, String, String, u32)>,
 }
 
 /// Strip the types from `source` (a `<script lang="ts">` body starting at `start`).
@@ -68,6 +73,7 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
     let mut stripper = Stripper {
         source,
         blanks: Vec::new(),
+        replacements: Vec::new(),
         types: Types::default(),
         error: None,
     };
@@ -92,8 +98,43 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
             }
         }
     }
-    let stripped =
+    let blanked =
         String::from_utf8(bytes).expect("blanking ASCII-bounded ranges keeps UTF-8 valid");
+    // Generated code (enums) goes in last. It keeps the lines but not the byte offsets, so the
+    // offsets recorded in `types` move with it.
+    stripper.replacements.sort_by_key(|(range, _)| range.start);
+    let mut stripped = String::with_capacity(blanked.len());
+    let mut shifts: Vec<(u32, i64)> = Vec::new();
+    let mut at_byte = 0usize;
+    let mut shift = 0i64;
+    for (range, text) in &stripper.replacements {
+        stripped.push_str(&blanked[at_byte..range.start as usize]);
+        stripped.push_str(text);
+        at_byte = range.end as usize;
+        shift += text.len() as i64 - i64::from(range.end - range.start);
+        shifts.push((range.end, shift));
+    }
+    stripped.push_str(&blanked[at_byte..]);
+    if !shifts.is_empty() {
+        let moved = |offset: u32| -> u32 {
+            let shift = shifts
+                .iter()
+                .take_while(|(end, _)| *end <= offset)
+                .last()
+                .map_or(0, |(_, shift)| *shift);
+            u32::try_from(i64::from(offset) + shift).expect("script fits in u32")
+        };
+        stripper.types.emits = std::mem::take(&mut stripper.types.emits)
+            .into_iter()
+            .map(|(offset, text)| (moved(offset), text))
+            .collect();
+        for prop in &mut stripper.types.props {
+            prop.2 = moved(prop.2);
+        }
+        for import in &mut stripper.types.imported {
+            import.3 = moved(import.3);
+        }
+    }
     // What's left must be JavaScript; if it isn't, this is a construct the stripper missed.
     let check = Allocator::default();
     if let Some(error) = Parser::new(&check, &stripped, SourceType::mjs())
@@ -160,6 +201,7 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
     let mut stripper = Stripper {
         source,
         blanks: Vec::new(),
+        replacements: Vec::new(),
         types: Types::default(),
         error: None,
     };
@@ -174,11 +216,31 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
 struct Stripper<'s> {
     source: &'s str,
     blanks: Vec<Range>,
+    /// Code generated in place of a construct (an enum), with the same number of lines.
+    replacements: Vec<(Range, String)>,
     types: Types,
     error: Option<(u32, String, Option<String>)>,
 }
 
 impl Stripper<'_> {
+    /// An enum (with `export` before it when `exported`): lowered in place, its values kept.
+    fn enum_declaration(&mut self, it: &TSEnumDeclaration<'_>, span: Range, exported: bool) {
+        if it.declare {
+            let info = crate::enums::declared(it, &self.types.enums);
+            self.types.declarations.push(info.declaration());
+            self.types.enums.push(info);
+            return self.blank(span);
+        }
+        match crate::enums::lower(self.source, it, span.start, exported, &self.types.enums) {
+            Ok(lowered) => {
+                self.types.declarations.push(lowered.info.declaration());
+                self.types.enums.push(lowered.info);
+                self.replacements.push((span, lowered.text));
+            }
+            Err((offset, message, help)) => self.fail(offset, message, help.as_deref()),
+        }
+    }
+
     fn blank(&mut self, range: Range) {
         if range.start < range.end {
             self.blanks.push(range);
@@ -293,13 +355,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_ts_enum_declaration(&mut self, it: &TSEnumDeclaration<'a>) {
-        self.fail(
-            it.span.start,
-            "`enum` needs code generated for it, so it isn't supported in a component script",
-            Some(
-                "use a `const` object (`const Color = { Red: \"red\" } as const`) and a union type",
-            ),
-        );
+        self.enum_declaration(it, it.span, false);
     }
 
     fn visit_ts_namespace_declaration(&mut self, it: &TSNamespaceDeclaration<'a>) {
@@ -345,6 +401,15 @@ impl<'a> Visit<'a> for Stripper<'_> {
                 self.blank(export.span);
                 return;
             }
+            // `export enum Size { … }`: the element module exports it (see `script.rs`).
+            Statement::ExportDeclaration(export)
+                if matches!(export.declaration, Declaration::TSEnumDeclaration(_)) =>
+            {
+                if let Declaration::TSEnumDeclaration(declaration) = &export.declaration {
+                    self.enum_declaration(declaration, export.span, true);
+                }
+                return;
+            }
             // `export type { A, B }`: re-exported names, kept for the typings.
             Statement::ExportNamedDeclaration(export)
                 if export.export_kind == ImportOrExportKind::Type =>
@@ -364,6 +429,22 @@ impl<'a> Visit<'a> for Stripper<'_> {
         // The same bindings as `import type`, for the typings (a type-only import can't have a
         // default and named bindings at once, so those are split).
         let from = self.text(it.source.span).to_owned();
+        let specifier = it.source.value.as_str().unwrap_or_default().to_owned();
+        for item in it.specifiers.iter().flatten() {
+            let imported = match item {
+                ImportDeclarationSpecifier::ImportSpecifier(named) => {
+                    named.imported.name().as_str().to_owned()
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => "default".to_owned(),
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => continue,
+            };
+            self.types.imported.push((
+                item.local().name.to_string(),
+                imported,
+                specifier.clone(),
+                it.span.start,
+            ));
+        }
         let mut named = Vec::new();
         for specifier in it.specifiers.iter().flatten() {
             match specifier {
@@ -640,13 +721,13 @@ mod tests {
 
     #[test]
     fn multi_line_types_keep_their_line_breaks() {
-        let source = "interface Picked {\n  option: string\n  index: number\n}\ntype Pair =\n  | [number, number]\n  | null\nenum E { A }";
+        let source = "interface Picked {\n  option: string\n  index: number\n}\ntype Pair =\n  | [number, number]\n  | null\nimport x = require('x')";
         same_shape(&format!(
             "{}\nconst after = 1",
-            &source[..source.find("enum").unwrap()]
+            &source[..source.find("import").unwrap()]
         ));
         let error = strip(source, Span::new(1, 1)).unwrap_err();
-        assert_eq!(error.span.line, 8, "the enum is still on line 8");
+        assert_eq!(error.span.line, 8, "the import is still on line 8");
     }
 
     #[test]
@@ -664,9 +745,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_syntax_that_needs_code_generated() {
+    fn rejects_what_it_can_t_reduce_and_says_what_to_write() {
         for (source, expected, line) in [
-            ("const a = 1\nenum Color { Red }", "`enum`", 3),
+            (
+                "const a = 1\nenum Color { Red = \"r\", Green }",
+                "needs an initializer",
+                3,
+            ),
             ("namespace N { export const x = 1 }", "`namespace`", 2),
             (
                 "class A { constructor(private x: number) {} }",
@@ -685,6 +770,7 @@ mod tests {
             );
             let help = error.help.as_deref().unwrap_or_default();
             assert!(help.ends_with("see docs/typescript.md"), "{source}: {help}");
+            // (`needs an initializer` is the enum rule TypeScript has too.)
             assert_eq!(error.span.line, line, "{source}");
         }
         let error = strip("const = 1", Span::new(1, 1)).unwrap_err();

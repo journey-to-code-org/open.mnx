@@ -1,0 +1,17 @@
+<!-- Enum props, written in TypeScript: an attribute takes a member's value or its name. -->
+<script lang="ts">
+  export enum Size {
+    Small,
+    Medium = 4,
+    Large,
+  }
+  export enum Tone {
+    Warm = "warm",
+    Cool = "cool",
+  }
+  declare const size: Size
+  declare const tone: Tone
+</script>
+<zb-enums size={Size.Medium} tone={Tone.Warm}>
+  <p>{size} {Size[size]} {tone}</p>
+</zb-enums>
