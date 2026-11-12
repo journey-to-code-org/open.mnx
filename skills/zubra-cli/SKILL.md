@@ -3,13 +3,13 @@ name: zubra-cli
 description: Run the Zubra compiler from a shell or a build: check a component, compile it to HTML or JavaScript, publish a component library, copy in a registry component, convert a React component, or drive the compiler as a long-lived process from another language. Use for any `zubra …` or `npx zubra …` command.
 ---
 
-Two binaries share the name. The **Rust CLI** (`zubra`, built with `cargo build --release` into `target/release/zubra`) does `check`, `compile`, `convert`, `request` and `serve`. The **npm CLI** (`npx zubra`, from `@zubra/compiler`, WebAssembly, no Rust) does `check` (with `--server`), `compile` (`--emit`, `--framework`, `--props`, `--partial`, `--output`), `convert` (without `--component`), `build --lib`, `build --embed` and `add`; `--format json`, `--stdin`, `--slots`, `request` and `serve` need the Rust CLI. In a project made by `npm create zubra`, use `npx zubra`. In this repository, `target/release/zubra` (or `cargo run --release --`).
+Two binaries share the name. The **Rust CLI** (`zubra`, built with `cargo build --release` into `target/release/zubra`) does `check`, `compile`, `convert`, `request` and `serve`. The **npm CLI** (`npx zubra`, from `@zubra/compiler`, WebAssembly, no Rust) does `check` (with `--server` and `--client`), `compile` (`--emit`, `--framework`, `--props`, `--partial`, `--output`), `convert` (without `--component`), `build --lib`, `build --embed` and `add`; `--format json`, `--stdin`, `--slots`, `request` and `serve` need the Rust CLI. In a project made by `npm create zubra`, use `npx zubra`. In this repository, `target/release/zubra` (or `cargo run --release --`).
 
 ## Commands
 
 | | |
 |---|---|
-| `zubra check <file>... [--format json] [--server]` | Errors and warnings with carets and suggested fixes; exit 1 on an error. `--server` also reports every part the server can't render (an error for `checked`, `selected`, `value` and `disabled`). `--format json` for tooling. |
+| `zubra check <file>... [--format json] [--server] [--client]` | Errors and warnings with carets and suggested fixes; exit 1 on an error. `--server` also reports every part the server can't render (an error for `checked`, `selected`, `value` and `disabled`). `--client` says whether each component needs its module in the browser, and why. `--format json` for tooling. |
 | `zubra fmt <file \| dir>... [--check]` | Lays `.zb` files out (indentation, tidy tags) without changing what they compile to; `--check` fails if a file would change. Run it after editing a component. |
 | `zubra compile <file>` | Server HTML. `--props props.json` gives prop values (required props need one); `--slots slots.json` gives slot content (`--slots-html` to keep it as HTML); `--partial` leaves browser-only parts empty instead of failing. |
 | `zubra compile <file> --emit js` | The custom element module. `--emit dts\|manifest\|html-data\|interface\|css` gives the typings (`--framework react\|vue\|svelte\|solid` types the default export as that framework's wrapper), Custom Elements Manifest, VS Code data, prop/event interface, or stylesheet. |

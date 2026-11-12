@@ -7,7 +7,7 @@
 //   zubra add <component>... [--dir src/components] [--force]     copy registry components in
 //   zubra add --list
 //   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
-//   zubra check <file>... [--server]          --server: what a server without JavaScript leaves out
+//   zubra check <file>... [--server] [--client]  --server: what a server without JavaScript leaves out; --client: whether each needs its module in the browser
 //   zubra fmt <file | dir>... [--check] [--indent <n> | --tabs] [--width <n>]   (--stdin: in to out)
 //   zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--as jsx|zubra] [--out <file> | --stdout]   React → zubra JSX, or .zb; a custom element → .zb
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, watch, writeFileSync } from 'node:fs';
@@ -83,7 +83,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) rest.push(arg);
-    else if (['--lib', '--embed', '--force', '--list', '--partial', '--stdout', '--server', '--watch', '--check', '--stdin', '--tabs'].includes(arg)) flags[arg.slice(2)] = true;
+    else if (['--lib', '--embed', '--force', '--list', '--partial', '--stdout', '--server', '--client', '--watch', '--check', '--stdin', '--tabs'].includes(arg)) flags[arg.slice(2)] = true;
     else flags[arg.slice(2)] = args[++i];
   }
   return { flags, rest };
@@ -210,10 +210,15 @@ function main(argv) {
     let failed = false;
     for (const file of command === 'check' ? rest : rest.slice(0, 1)) {
       const response = compileFile(file, {
-        command, emit: flags.emit ?? 'html', framework: flags.framework, runtime: flags.runtime, partial: flags.partial, server: flags.server,
+        command, emit: flags.emit ?? 'html', framework: flags.framework, runtime: flags.runtime, partial: flags.partial, server: flags.server, client: flags.client,
         props: flags.props ? JSON.parse(readFileSync(flags.props, 'utf8')) : undefined,
       });
       for (const warning of response.warnings) process.stderr.write(warning);
+      if (response.client) {
+        process.stderr.write(response.client.length
+          ? `${file}: needs its module in the browser: ${response.client.join('; ')}\n`
+          : `${file}: no client JavaScript needed: its server HTML is complete (0 KB), unless a page changes its props from script\n`);
+      }
       if (!response.ok) {
         process.stderr.write(response.error);
         failed = true;
