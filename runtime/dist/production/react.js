@@ -16,15 +16,9 @@
 //   works the same way.
 import * as React from 'react';
 import { serverContent } from './server.js';
-<<<<<<< HEAD
 import { outletsOf } from './outlet.js';
-=======
-<<<<<<< HEAD
 import { routeLinks } from './navigation.js';
-=======
 import './context.js';
->>>>>>> interop/form-libraries
->>>>>>> interop/navigation
 import { subscribe, read } from './bridge.js';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
@@ -207,7 +201,6 @@ export function wrap(Element) {
 }
 
 /**
-<<<<<<< HEAD
  * Route links inside Zubra components through the app's router while this component is mounted:
  * `useRouteLinks(useNavigate())` (React Router), `useRouteLinks(useRouter().push)` (Next.js).
  * The function can change between renders. Options as for `routeLinks` (`@zubra/runtime/navigation`).
@@ -216,7 +209,9 @@ export function useRouteLinks(navigate, options) {
   const latest = React.useRef(navigate);
   latest.current = navigate;
   React.useEffect(() => routeLinks((to, info) => latest.current(to, info), options), []);
-=======
+}
+
+/**
  * Provide a Context Protocol value to every element inside: an app's theme, locale or current user,
  * read by components with `inject(context)` (or Lit's `@consume`).
  *
@@ -235,7 +230,6 @@ export function ZubraContext({ context, value, children }) {
   // and the element's announcement makes the children ask again.
   const early = legacy || typeof window === 'undefined' ? {} : { context, value };
   return React.createElement('zb-context', { ...early, ref, style: { display: 'contents' } }, children);
->>>>>>> interop/form-libraries
 }
 
 /**
