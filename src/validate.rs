@@ -809,7 +809,7 @@ fn same_type(default: &Value, value: &Value) -> bool {
     default.is_null() || std::mem::discriminant(default) == std::mem::discriminant(value)
 }
 
-fn kebab(name: &str) -> String {
+pub(crate) fn kebab(name: &str) -> String {
     let mut output = String::new();
     for character in name.chars() {
         if character.is_ascii_uppercase() {

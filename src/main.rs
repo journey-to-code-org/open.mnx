@@ -64,7 +64,7 @@ fn run() -> Result<(), String> {
     }
     if command.as_deref() != Some("compile") {
         return Err(
-            "usage: zubra check <component.zb>... [--format human|json]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
+            "usage: zubra check <component.zb>... [--format human|json] [--server] [--client]\n       zubra fmt <file.zb | folder>... [--check] [--stdin] [--indent <n> | --tabs] [--width <n>]\n       zubra convert <Component.jsx | my-element.js> [--prefix <word>] [--component <Name>] [--as jsx|zubra] [--out <file> | --stdout]\n       zubra request < request.json\n       zubra serve   (JSON lines: a request per line in, a response per line out)\n       zubra compile <component.zb> [--emit html|js|css|dts|manifest|html-data|interface|server] [--props <props.json>] [--slots <slots.json> [--slots-html]] [--partial] [--runtime <module>] [--keep-imports] [--no-imports] [--devtools] [--css-import <specifier> --css-import-inline <specifier>] [--framework react|vue] [--module-path <path>] [--output <file>]".into(),
         );
     }
     let source_path = arguments
@@ -126,7 +126,7 @@ fn run() -> Result<(), String> {
     }
     let source = fs::read_to_string(&source_path)
         .map_err(|error| format!("{source_path}: unable to read source: {error}"))?;
-    for warning in zubra::warnings(&source) {
+    for warning in zubra::warnings_with(&source, &source_path, &zubra::filesystem) {
         eprint!("{}", warning.render_warning(&source, &source_path));
     }
     if emit != "html" {
@@ -178,7 +178,7 @@ fn run() -> Result<(), String> {
             "dts" => zubra::compile_declarations_for(&source, &name, framework),
             "manifest" => zubra::compile_manifest(&source, &module_path),
             "html-data" => zubra::compile_html_data(&source),
-            "interface" => zubra::compile_interface(&source),
+            "interface" => zubra::compile_interface_with(&source, &source_path, &zubra::filesystem),
             "server" => zubra::compile_server(&source),
             _ => {
                 return Err(format!(
@@ -405,6 +405,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
     let mut json = false;
     let mut stdin = false;
     let mut server = false;
+    let mut client = false;
     let mut arguments = arguments.into_iter();
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -422,6 +423,8 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             "--stdin" => stdin = true,
             // What a server without JavaScript leaves out (rendered with the defaults).
             "--server" => server = true,
+            // Whether each component needs its module in the browser, and why.
+            "--client" => client = true,
             _ if argument.starts_with("--") => {
                 return Err(format!("unexpected argument `{argument}`"))
             }
@@ -429,7 +432,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
         }
     }
     if files.is_empty() || (stdin && files.len() != 1) {
-        return Err("usage: zubra check <component.zb>... [--format human|json] [--server] [--stdin (one path; source from standard input)]".into());
+        return Err("usage: zubra check <component.zb>... [--format human|json] [--server] [--client] [--stdin (one path; source from standard input)]".into());
     }
     let mut report = Vec::new();
     let mut errors = 0;
@@ -442,7 +445,7 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
             fs::read_to_string(path)
                 .map_err(|error| format!("{path}: unable to read source: {error}"))?
         };
-        for warning in zubra::warnings(&source) {
+        for warning in zubra::warnings_with(&source, path, &zubra::filesystem) {
             human.push_str(&warning.render_warning(&source, path));
             report.push(entry(path, &source, &warning, "warning"));
         }
@@ -480,6 +483,21 @@ fn check(arguments: Vec<String>) -> Result<(), String> {
                     human.push_str(&error.render_in(&source, path));
                     report.push(entry(path, &source, &error, "error"));
                 }
+            }
+        }
+        if client {
+            if let Ok(reasons) = zubra::client_reasons(&source, path, &zubra::filesystem) {
+                if reasons.is_empty() {
+                    human.push_str(&format!("{path}: no client JavaScript needed: its server HTML is complete (0 KB), unless a page changes its props from script\n"));
+                } else {
+                    human.push_str(&format!(
+                        "{path}: needs its module in the browser: {}\n",
+                        reasons.join("; ")
+                    ));
+                }
+                report.push(
+                    serde_json::json!({ "file": path, "severity": "info", "client": reasons }),
+                );
             }
         }
     }
