@@ -339,6 +339,26 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 </zb-card>
 ```
 
+### Outlets (experimental)
+
+A slot can't be inside `zb-each`, so a list can't take one piece of content per item that way. An **outlet** asks the app to render it: `<zb-outlet name="row" item={item}>` marks the place, and the app's framework renders into it through a portal, so what it renders keeps the app's context, state and handlers. From React, a `render<Name>` prop fills the outlets of that name:
+
+```html
+<zb-row-list items={[]}>
+  <ul>
+    <zb-each items={items} as="item" key={item.id}>
+      <li><zb-outlet name="row" item={item}></zb-outlet></li>
+    </zb-each>
+  </ul>
+</zb-row-list>
+```
+
+```jsx
+<RowList items={rows} renderRow={(item) => <Row item={item} />} />
+```
+
+The list keeps its keys and order; a keyed move keeps each row's React state, and a removed row unmounts. A template with an outlet imports `@zubra/runtime/outlet` (an import map needs that entry). Only the React adapter fills outlets so far, they render after JavaScript (the server leaves them empty), and `--emit element` refuses a template with one. Other frameworks can claim them through the `outletconnect` event (`runtime/src/outlet.js` has the protocol).
+
 ## Styles
 
 ```html

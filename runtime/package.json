@@ -50,6 +50,26 @@
       "production": "./dist/production/bridge.js",
       "default": "./src/bridge.js"
     },
+    "./context": {
+      "types": "./types/context.d.ts",
+      "production": "./dist/production/context.js",
+      "default": "./src/context.js"
+    },
+    "./forms": {
+      "types": "./types/forms.d.ts",
+      "production": "./dist/production/forms.js",
+      "default": "./src/forms.js"
+    },
+    "./navigation": {
+      "types": "./types/navigation.d.ts",
+      "production": "./dist/production/navigation.js",
+      "default": "./src/navigation.js"
+    },
+    "./outlet": {
+      "types": "./types/outlet.d.ts",
+      "production": "./dist/production/outlet.js",
+      "default": "./src/outlet.js"
+    },
     "./testing": {
       "types": "./types/testing.d.ts",
       "production": "./dist/production/testing.js",
@@ -89,7 +109,8 @@
     "@angular/forms": ">=16",
     "@zag-js/vanilla": ">=1.47",
     "react": ">=18",
-    "vue": "^3.3"
+    "vue": "^3.3",
+    "react-dom": ">=18"
   },
   "peerDependenciesMeta": {
     "@angular/core": {
@@ -106,6 +127,9 @@
     },
     "vue": {
       "optional": true
+    },
+    "react-dom": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -116,6 +140,8 @@
     "@angular/forms": "22.2.5",
     "@angular/platform-browser": "22.2.5",
     "@babel/core": "8.1.0",
+    "@felte/vanilla": "0.3.14",
+    "@tanstack/react-form": "1.33.5",
     "@types/react": "19.3.0",
     "@zag-js/combobox": "1.47.0",
     "@zag-js/vanilla": "1.47.0",
@@ -126,13 +152,17 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-dom18": "npm:react-dom@18.3.1",
+    "react-hook-form": "7.92.0",
+    "react-router": "8.5.1",
     "react18": "npm:react@18.3.1",
     "rxjs": "7.8.2",
     "signal-polyfill": "0.2.2",
     "typescript": "^7.0.2",
+    "vee-validate": "4.15.1",
     "vscode-html-languageservice": "5.6.2",
     "vscode-languageserver-textdocument": "1.0.16",
-    "vue": "3.5.45"
+    "vue": "3.5.45",
+    "vue-router": "5.5.0"
   },
   "files": [
     "src",
