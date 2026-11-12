@@ -1,4 +1,7 @@
-<zb-plain-rows rows={[{ id: 1, text: "milk" }, { id: 2, text: "eggs" }, { id: 3, text: "bread" }]} shown={true}>
+<zb-plain-rows
+  rows={[{ id: 1, text: "milk" }, { id: 2, text: "eggs" }, { id: 3, text: "bread" }]}
+  shown={true}
+>
   <ul>
     <zb-each items={rows} as="row" key={row.id}>
       <li data-id={row.id}>{row.text}</li>
