@@ -46,6 +46,11 @@ pub struct Types {
     /// imports as `import type`, so the types the interface mentions resolve.
     pub declarations: Vec<String>,
     pub imports: Vec<String>,
+    /// Imported names the script uses only as types (one type reference or more, no value
+    /// reference). TypeScript drops these imports; the compiler drops them too once it knows the
+    /// template doesn't read them (see `script::elide_type_only_imports`), since otherwise the
+    /// browser would import a name the module doesn't export at runtime.
+    pub type_only: Vec<String>,
 }
 
 /// Strip the types from `source` (a `<script lang="ts">` body starting at `start`).
@@ -67,6 +72,7 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         error: None,
     };
     stripper.visit_program(&parsed.program);
+    stripper.types.type_only = type_only_imports(&parsed.program);
     if let Some((offset, message, help)) = stripper.error {
         // Types are removed, never compiled (the "erasable syntax only" rule); each refusal says
         // what to write and where the rule is explained.
@@ -103,6 +109,43 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`); docs/typescript.md has the rule"));
     }
     Ok((stripped, stripper.types))
+}
+
+/// Imported bindings referenced only in type positions (`x: Option`, `typeof thing` in a type),
+/// with at least one such reference. An import with no references at all is kept: the template
+/// may read it, and if not, it's what TypeScript keeps under `verbatimModuleSyntax` anyway.
+pub(crate) fn type_only_imports(program: &oxc_ast::ast::Program<'_>) -> Vec<String> {
+    let semantic = oxc_semantic::SemanticBuilder::new().build(program).semantic;
+    let scoping = semantic.scoping();
+    let mut names = Vec::new();
+    for statement in &program.body {
+        let Statement::ImportDeclaration(import) = statement else {
+            continue;
+        };
+        if import.import_kind.is_type() {
+            continue;
+        }
+        for specifier in import.specifiers.iter().flatten() {
+            if let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier {
+                if named.import_kind.is_type() {
+                    continue;
+                }
+            }
+            let local = specifier.local();
+            let Some(symbol) = local.symbol_id.get() else {
+                continue;
+            };
+            let references = scoping.get_resolved_references(symbol).collect::<Vec<_>>();
+            // (`typeof thing` in a type is flagged as a type reference, not a read.)
+            let value = references
+                .iter()
+                .any(|reference| reference.flags().is_value());
+            if !references.is_empty() && !value {
+                names.push(local.name.to_string());
+            }
+        }
+    }
+    names
 }
 
 /// The type syntax in a TSX file (`as T`, annotations, type arguments): ranges to blank. For a
