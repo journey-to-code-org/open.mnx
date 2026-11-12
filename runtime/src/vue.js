@@ -12,8 +12,11 @@
 //   `v-model:<prop>`, and `v-model` binds the `value` pair (or the only pair, if there's one).
 // - Other attributes and listeners (class, style, @click, …) go to the element; slots become its
 //   children, named slots with `slot="name"`.
-import { defineComponent, h, withDirectives, Text, Comment, Fragment } from 'vue';
+import { defineComponent, h, withDirectives, Text, Comment, Fragment, customRef, getCurrentScope, onScopeDispose } from 'vue';
 import { serverContent } from './server.js';
+import { routeLinks } from './navigation.js';
+import './context.js';
+import { subscribe, read, writable } from './bridge.js';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 const pascal = (tag) => tag.split(/[-.]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('');
@@ -122,4 +125,67 @@ export function wrap(Element) {
       };
     },
   });
+}
+
+/**
+ * Route links inside Zubra components through Vue Router (or any `push`) until the current effect
+ * scope ends: `useRouteLinks((to) => router.push(to))` in a component's `setup`. Returns the
+ * function that stops it.
+ */
+export function useRouteLinks(navigate, options) {
+  const stop = routeLinks(navigate, options);
+  if (getCurrentScope()) onScopeDispose(stop);
+  return stop;
+}
+
+/**
+ * Provide a Context Protocol value to every element inside: an app's theme, locale or current user,
+ * read by components with `inject(context)` (or Lit's `@consume`).
+ *
+ *   <ZubraContext :context="theme" :value="dark ? 'dark' : 'light'">…</ZubraContext>
+ *
+ * `value` can also be a signal. It renders a `<zb-context>` element, which is `display: contents`.
+ */
+export const ZubraContext = defineComponent({
+  name: 'ZubraContext',
+  props: { context: { default: undefined }, value: { default: undefined } },
+  setup(given, { slots }) {
+    // Set as DOM properties when the element is created, before its children are inserted.
+    return () => h('zb-context', { '.context': given.context, '.value': given.value, style: 'display: contents' }, slots.default?.());
+  },
+});
+
+/**
+ * A Zubra signal (or a function of signals) as a Vue ref: reading `.value` tracks it in
+ * templates, computeds and watchers, and assigning `.value` writes the signal when it's writable
+ * (a `Signal.State`, `state()`, `from()`), so `v-model="cart"` works on one.
+ *
+ *   const items = useSignal(cart, { deep: true })
+ *
+ * The subscription ends with the effect scope it was created in (the component's `setup`); outside
+ * one, call `stop()` on the ref when done. With `deep: true` a mutation inside an array or object
+ * triggers too.
+ */
+export function useSignal(source, { deep = false } = {}) {
+  let stop = () => {};
+  const ref = customRef((track, trigger) => {
+    let first = true;
+    stop = subscribe(source, () => {
+      if (first) first = false;
+      else trigger();
+    }, { deep });
+    return {
+      get() {
+        track();
+        return read(source);
+      },
+      set(value) {
+        if (!writable(source)) throw new TypeError('zubra: useSignal(): this signal is read-only (a computed); write the state it reads');
+        source.set(value);
+      },
+    };
+  });
+  Object.defineProperty(ref, 'stop', { value: () => stop() });
+  if (getCurrentScope()) onScopeDispose(() => stop());
+  return ref;
 }

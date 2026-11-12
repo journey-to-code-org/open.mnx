@@ -19,6 +19,7 @@ dependencies = []
 
 [project.optional-dependencies]
 jinja = ["jinja2>=3"]
+django = ["django>=4.2"]
 
 [project.urls]
 Repository = "https://github.com/journey-to-code-org/zubra"

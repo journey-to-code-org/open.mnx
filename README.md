@@ -339,6 +339,26 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 </zb-card>
 ```
 
+### Outlets (experimental)
+
+A slot can't be inside `zb-each`, so a list can't take one piece of content per item that way. An **outlet** asks the app to render it: `<zb-outlet name="row" item={item}>` marks the place, and the app's framework renders into it through a portal, so what it renders keeps the app's context, state and handlers. From React, a `render<Name>` prop fills the outlets of that name:
+
+```html
+<zb-row-list items={[]}>
+  <ul>
+    <zb-each items={items} as="item" key={item.id}>
+      <li><zb-outlet name="row" item={item}></zb-outlet></li>
+    </zb-each>
+  </ul>
+</zb-row-list>
+```
+
+```jsx
+<RowList items={rows} renderRow={(item) => <Row item={item} />} />
+```
+
+The list keeps its keys and order; a keyed move keeps each row's React state, and a removed row unmounts. A template with an outlet imports `@zubra/runtime/outlet` (an import map needs that entry). Only the React adapter fills outlets so far, they render after JavaScript (the server leaves them empty), and `--emit element` refuses a template with one. Other frameworks can claim them through the `outletconnect` event (`runtime/src/outlet.js` has the protocol).
+
 ## Styles
 
 ```html
@@ -593,6 +613,15 @@ cd dist && npm publish
 
 `--watch` rebuilds after each change (a compile error keeps the last good build), for an app that imports the library while you work on it, such as Next.js, whose bundler takes no plugins.
 
+**Embed components in sites with no build step** (WordPress, Shopify, Webflow, Squarespace, any CMS):
+
+```sh
+npx zubra build --embed src/components --out embed --name acme-widgets   # --base https://cdn.example/ for the snippets
+```
+
+`embed/` is one flat folder of ES modules with relative imports (the entry `acme-widgets.js`, each component, and the production runtime it uses), so a single `<script type="module">` defines every component from any static host, including asset folders that allow no subfolders. Next to it: `html/<tag>.html`, a snippet per component for an Embed or HTML block; `wordpress/acme-widgets/`, a plugin with a block (a sidebar field per prop) and a shortcode (`[star_rating max="10"]`) per component; `shopify/`, a theme app extension with an app block per component, its props as settings; and a `README.md` saying how to install each. Arrays and objects are JSON text there. A component that imports an npm package (a Zag machine, `@zubra/sync`) can't be embedded this way, and the build says which.
+**Test a library through every framework.** `@zubra/runtime/testing` mounts a component as plain HTML, through the React adapter or through the Vue adapter, so one test runs the way each kind of consumer uses it: `for (const framework of await frameworks()) { const view = await mount(StarRating, { framework, props: { value: 1 } }); … view.events('valuechange') … await view.set({ value: 3 }); view.unmount(); }`. Events arrive through the framework's own handlers, props are set its way, slots are its children, and a `<prop>change` event updates the prop as a two-way binding would. It runs in any browser test runner; [`examples/testing-vitest`](examples/testing-vitest) is Vitest's browser mode.
+
 The package needs no bundler or Zubra tooling on the consumer's side:
 
 - an ES module per element (`@acme/ui/quantity-stepper`), and `index.js` exporting every element by class name;
@@ -673,6 +702,7 @@ The result is compiled as part of the conversion, and a compile error is shown a
 - `--emit manifest` writes a [Custom Elements Manifest](https://github.com/webcomponents/custom-elements-manifest) (`custom-elements.json`, schema 2.1.0): the tag, each prop as an attribute and a field with its type and default, events with their `CustomEvent<…>` types, slots (the default slot is `""`) and the description. Editors, Storybook and documentation tools read this format. `--module-path` sets the module path it records.
 - `--emit dts` writes TypeScript declarations: the element class with typed properties and typed `addEventListener`, a `…Props` interface, an `…EventMap`, the `tag` constant and an `HTMLElementTagNameMap` entry. `--framework react|vue|svelte|solid` types the default export as that framework's wrapper, which is what the plugin writes.
 - Types are inferred from defaults: `{ sample: "…" }` becomes `{ sample: string }`, `["a"]` becomes `string[]`, and a required prop with no default is `unknown`.
+- **`npx zubra mcp`** is an [MCP](https://modelcontextprotocol.io) server for coding agents, built from the manifest: `list_components`, `describe_component` (props, events with their detail types, slots, which props are two-way), `component_usage` (the import and markup for HTML, React, Vue, Svelte, Solid or Angular) and `check_markup` (props a component doesn't have and events it doesn't fire in markup an agent wrote, with the nearest real name). Point it at a components folder, a `custom-elements.json` or an installed library (`npx zubra mcp @acme/ui`); in a client's config: `{ "mcpServers": { "components": { "command": "npx", "args": ["zubra", "mcp", "@acme/ui"] } } }`. It reads the manifest and nothing else: no network, no model.
 
 ## Safety
 
@@ -712,7 +742,7 @@ zubra request < request.json
 zubra serve
 ```
 
-`zubra check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values; what the HTML output can't render is reported only with `--server`, as warnings (errors for `checked`, `selected`, `value` and `disabled`). `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@zubra/runtime`), and `--keep-imports` leaves `./x.zb` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it, and `--devtools` adds what the browser DevTools panel reads (each part's source location, the script's signals by name, the file's path; for development builds, which `@zubra/unplugin` makes in Vite's dev server). `--emit element` writes the same element as one file with no runtime to install (see [Plain elements](docs/plain-elements.md)). `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `zubra check --server` also reports what a server without JavaScript leaves out (see "What the server can render"). `zubra request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`). `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. `zubra serve` keeps running and answers one request (or batch) per line on stdin with one response per line on stdout, for servers in other languages that render often (the [Python package](clients/python) is a client for it, and the Flask garden uses that).
+`zubra check` reports every error and warning in the given files without writing anything (exit status 1 on errors; `--format json` for editors and CI annotations; `--stdin` checks unsaved text as if it were at the one path given). It runs every check that doesn't need prop values; what the HTML output can't render is reported only with `--server`, as warnings (errors for `checked`, `selected`, `value` and `disabled`). `--emit html` (the default) writes server-rendered HTML. `--emit css` writes the scoped stylesheets of a component and the components it imports (`--no-imports` for its own only). `--props` and `--slots` supply values (defaults come from the component); `--slots-html` reads the slots as server-rendered HTML, kept as written, and `--partial` leaves what only the browser can compute for the element. `--emit js` writes the element module: `--runtime` changes the runtime import (default `@zubra/runtime`), and `--keep-imports` leaves `./x.zb` imports for a bundler (otherwise they become `./x.js`), and `--css-import <specifier> --css-import-inline <specifier>` imports the `<style>` through the bundler instead of inlining it, and `--devtools` adds what the browser DevTools panel reads (each part's source location, the script's signals by name, the file's path; for development builds, which `@zubra/unplugin` makes in Vite's dev server). `--emit element` writes the same element as one file with no runtime to install (see [Plain elements](docs/plain-elements.md)). `--emit dts` writes declarations (`--framework` for a wrapper's) and `--emit manifest` the manifest. Output goes to stdout, or to `--output <file>` with an atomic write. Warnings go to stderr. `zubra check --server` also reports what a server without JavaScript leaves out (see "What the server can render"). `zubra request` takes one JSON request on stdin and writes the JSON response, the interface the WebAssembly build exposes (see `src/request.rs`). `{ "requests": [ … ] }` is a batch, answered as `{ "ok", "responses": [ … ] }`. `zubra serve` keeps running and answers one request (or batch) per line on stdin with one response per line on stdout, for servers in other languages that render often (clients: the [Python package](clients/python), with Jinja and Django template tags, which the Flask garden uses; the [Ruby gem](clients/ruby), with Rails helpers; and the [PHP package](clients/php), with Blade directives for Laravel).
 
 ### Formatting
 

@@ -342,10 +342,35 @@ jobs:
         with:
           python-version: "3.13"
       - run: cargo build --locked
-      - run: pip install jinja2
+      - run: pip install jinja2 django
       # The package against the real compiler, then a wheel built and installed the way pip does.
       - run: python -W error::ResourceWarning -m unittest discover -s tests -v
         working-directory: clients/python
+        env:
+          ZUBRA_COMPILER: ${{ github.workspace }}/target/debug/zubra
+
+  server-clients:
+    name: Ruby and PHP packages (zubra gem, zubra/zubra)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+      - run: cargo build --locked
+      - run: ruby -Ilib -Itest test/test_zubra.rb
+        working-directory: clients/ruby
+        env:
+          ZUBRA_COMPILER: ${{ github.workspace }}/target/debug/zubra
+      - run: php tests/run.php
+        working-directory: clients/php
         env:
           ZUBRA_COMPILER: ${{ github.workspace }}/target/debug/zubra
 
@@ -530,6 +555,9 @@ jobs:
           path: compiler/zubra.wasm
           retention-days: 30
           overwrite: true
+      # (Its test-only dependencies: LiquidJS for the embed build's Shopify blocks.)
+      - run: npm ci
+        working-directory: compiler
       - run: npm test
         working-directory: compiler
       - run: npm ci
@@ -540,6 +568,17 @@ jobs:
         working-directory: plugin
       - run: node --test --test-name-pattern "WebAssembly" test/plugin.test.js
         working-directory: plugin
+      # Embed builds loaded in a browser (Playwright comes with runtime/).
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: runtime
+      - run: node --test test/embed.test.js
+        working-directory: compiler
+      # A library's tests in Vitest browser mode, through plain HTML, React and Vue
+      # (@zubra/runtime/testing).
+      - run: npm ci
+        working-directory: examples/testing-vitest
+      - run: npm test
+        working-directory: examples/testing-vitest
       # @zubra/server/edge against the Node entry. These tests skip without zubra.wasm, which the
       # job that runs the rest of the server's tests doesn't build; here they must run.
       - run: npm ci

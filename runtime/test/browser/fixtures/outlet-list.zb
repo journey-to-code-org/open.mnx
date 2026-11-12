@@ -1,0 +1,9 @@
+<!-- A keyed list that asks the app to render each row: an outlet per item. -->
+<zb-outlet-list items={[]}>
+  <ul>
+    <zb-each items={items} as="item" key={item.id}>
+      <li data-id={item.id}><zb-outlet name="row" item={item}></zb-outlet></li>
+    </zb-each>
+  </ul>
+  <footer><zb-outlet name="summary" item={items.length}></zb-outlet></footer>
+</zb-outlet-list>

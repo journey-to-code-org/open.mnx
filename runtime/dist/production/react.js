@@ -16,8 +16,28 @@
 //   works the same way.
 import * as React from 'react';
 import { serverContent } from './server.js';
+import { outletsOf } from './outlet.js';
+import { routeLinks } from './navigation.js';
+import './context.js';
+import { subscribe, read } from './bridge.js';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
+
+// `renderRow` serves `<zb-outlet name="row">`, `renderDetailPanel` serves `detail-panel`.
+const outletName = (key) => key.slice(6).replace(/[A-Z]/g, (letter, at) => (at ? '-' : '') + letter.toLowerCase());
+const isRenderer = (key, value) => key.length > 6 && key.startsWith('render') && /[A-Z]/.test(key[6]) && typeof value === 'function';
+// react-dom's createPortal, loaded when an element first has an outlet to fill: a page that
+// uses no outlets (or maps only `react` in an import map) never imports react-dom from here.
+let createPortal = null;
+const portals = () => (createPortal ? Promise.resolve() : import('react-dom').then((dom) => { createPortal = dom.createPortal; }));
+
+// A stable key per outlet, for its portal.
+const outletKeys = new WeakMap();
+let nextOutlet = 0;
+const outletKey = (outlet) => {
+  if (!outletKeys.has(outlet)) outletKeys.set(outlet, `zb-outlet-${++nextOutlet}`);
+  return outletKeys.get(outlet);
+};
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 
@@ -56,12 +76,67 @@ export function wrap(Element) {
     const values = {};
     const listeners = {};
     const rest = {};
+    const renderers = {};
     for (const key of Object.keys(all)) {
       if (key === 'children') continue;
       const event = key.length > 2 && key.startsWith('on') ? key.slice(2).toLowerCase() : null;
       if (Object.hasOwn(props, key)) values[key] = all[key];
       else if (event && events.includes(event)) listeners[event] = all[key];
+      else if (isRenderer(key, all[key])) renderers[outletName(key)] = all[key];
       else rest[key] = all[key];
+    }
+
+    // Outlets (experimental, outlet.js): `render<Name>` fills each `<zb-outlet name>` the element
+    // renders, through a portal, so what's rendered there is part of this React tree (context,
+    // state, events). `outlets` maps each claimed outlet to its current item.
+    const served = React.useRef(renderers);
+    served.current = renderers;
+    const [outlets, setOutlets] = React.useState(() => new Map());
+    useIsomorphicLayoutEffect(() => {
+      const node = element.current;
+      const claimed = new Set();
+      const owner = {
+        change: (outlet) => setOutlets((map) => new Map(map).set(outlet, outlet.item)),
+        disconnect: (outlet) => {
+          claimed.delete(outlet);
+          setOutlets((map) => {
+            const next = new Map(map);
+            next.delete(outlet);
+            return next;
+          });
+        },
+      };
+      const take = (outlets) => {
+        if (!outlets.length) return;
+        for (const outlet of outlets) {
+          outlet.owner = owner;
+          claimed.add(outlet);
+        }
+        const add = () => setOutlets((map) => {
+          const next = new Map(map);
+          for (const outlet of outlets) if (claimed.has(outlet)) next.set(outlet, outlet.item);
+          return next;
+        });
+        if (createPortal) add();
+        else portals().then(add);
+      };
+      const connected = (event) => {
+        if (!Object.hasOwn(served.current, event.outlet.name)) return;
+        event.claim(owner);
+        take([event.outlet]);
+      };
+      node.addEventListener('outletconnect', connected);
+      // Outlets the element rendered before this listener existed.
+      take(outletsOf(node).filter((outlet) => Object.hasOwn(served.current, outlet.name)));
+      return () => {
+        node.removeEventListener('outletconnect', connected);
+        for (const outlet of claimed) outlet.owner = null;
+      };
+    }, []);
+    const filled = [];
+    for (const [outlet, item] of outlets) {
+      const render = renderers[outlet.name];
+      if (render && createPortal) filled.push(createPortal(render(item), outlet, outletKey(outlet)));
     }
 
     // Subscribe once per event; always call the latest handler.
@@ -115,11 +190,70 @@ export function wrap(Element) {
     // @zubra/server's injectShadowRoots; this works without one.)
     if (React.Children.count(all.children) === 0) {
       const html = typeof window === 'undefined' ? serverContent(Element, { props: json ? JSON.parse(json) : {}, name: rest.name }) : '';
-      return React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true });
+      return React.createElement(React.Fragment, null,
+        React.createElement(tag, { ...host, dangerouslySetInnerHTML: { __html: html }, suppressHydrationWarning: true }), filled);
     }
-    return React.createElement(tag, host, all.children);
+    return React.createElement(React.Fragment, null, React.createElement(tag, host, all.children), filled);
   });
   Component.displayName = pascal(tag);
   Component.element = Element;
   return Component;
+}
+
+/**
+ * Route links inside Zubra components through the app's router while this component is mounted:
+ * `useRouteLinks(useNavigate())` (React Router), `useRouteLinks(useRouter().push)` (Next.js).
+ * The function can change between renders. Options as for `routeLinks` (`@zubra/runtime/navigation`).
+ */
+export function useRouteLinks(navigate, options) {
+  const latest = React.useRef(navigate);
+  latest.current = navigate;
+  React.useEffect(() => routeLinks((to, info) => latest.current(to, info), options), []);
+}
+
+/**
+ * Provide a Context Protocol value to every element inside: an app's theme, locale or current user,
+ * read by components with `inject(context)` (or Lit's `@consume`).
+ *
+ *   <ZubraContext context={theme} value={dark ? 'dark' : 'light'}>…</ZubraContext>
+ *
+ * `value` can also be a signal. It renders a `<zb-context>` element, which is `display: contents`.
+ */
+export function ZubraContext({ context, value, children }) {
+  const ref = React.useRef(null);
+  useIsomorphicLayoutEffect(() => {
+    ref.current.context = context;
+    ref.current.value = value;
+  });
+  // React 19 sets these as properties when it creates the element, before the children are in
+  // the document, so they're answered on their first request; React 18 sets them in the effect,
+  // and the element's announcement makes the children ask again.
+  const early = legacy || typeof window === 'undefined' ? {} : { context, value };
+  return React.createElement('zb-context', { ...early, ref, style: { display: 'contents' } }, children);
+}
+
+/**
+ * Read a Zubra signal (or a function of signals) in a React component, re-rendering when it
+ * changes: a store shared with elements, a `computed`, a `@zubra/sync` field.
+ *
+ *   const items = useSignal(cart, { deep: true })   // write with cart.set(...) or cart.get().push(...)
+ *
+ * Built on `useSyncExternalStore`, so it's safe under concurrent rendering and on the server
+ * (where it reads the value once). With `deep: true` a mutation inside an array or object
+ * re-renders too; the value is the same object, so memoize on the returned value with care.
+ * Pass a stable source (module-level, or from `useMemo`): a new function each render
+ * re-subscribes each render.
+ */
+export function useSignal(source, { deep = false } = {}) {
+  const store = React.useMemo(() => {
+    let version = 0;
+    return {
+      subscribe: (notify) => subscribe(source, () => { version++; notify(); }, { deep }),
+      // Without `deep`, the value itself is the snapshot (React compares it with Object.is);
+      // with it, a counter that each notification moves, so a mutation counts as a change.
+      snapshot: deep ? () => version : () => read(source),
+    };
+  }, [source, deep]);
+  React.useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
+  return read(source);
 }

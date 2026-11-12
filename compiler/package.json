@@ -22,6 +22,14 @@
     "./library": {
       "types": "./library.d.ts",
       "default": "./library.js"
+    },
+    "./embed": {
+      "types": "./embed.d.ts",
+      "default": "./embed.js"
+    },
+    "./mcp": {
+      "types": "./mcp.d.ts",
+      "default": "./mcp.js"
     }
   },
   "files": [
@@ -33,6 +41,10 @@
     "cli.js",
     "library.js",
     "library.d.ts",
+    "embed.js",
+    "embed.d.ts",
+    "mcp.js",
+    "mcp.d.ts",
     "registry",
     "!registry/test"
   ],
@@ -46,5 +58,8 @@
   },
   "bin": {
     "zubra": "cli.js"
+  },
+  "devDependencies": {
+    "liquidjs": "10.30.1"
   }
 }

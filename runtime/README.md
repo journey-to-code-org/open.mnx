@@ -13,9 +13,14 @@ ships one, this package deletes code instead of components being rewritten.
 | `src/element.js` hooks | Plain functions (see the project's hooks decision) | `state`, `from`, `computed`, `watch`, `onMount`, `onUnmount`, `id`, `props`, `host`, `emit`, `hydrated` |
 | `src/element.js` slots | Light-DOM slotting with the host's child methods routed to the slots, so frameworks can keep managing the children; native `<slot>` in shadow DOM | Done |
 | `src/react.js`, `src/vue.js` | Adapters: an element as a React (18, 19) or Vue 3 component | Done |
+| `src/testing.js` | `mount(Element, { framework })`: a component through plain HTML, the React adapter or the Vue adapter, for one test per framework in any browser test runner | Done |
+| `src/navigation.js` | Links inside components through the app's router: `routeLinks(navigate)`; `useRouteLinks` in the React and Vue adapters. Not a router | Done |
+| `src/forms.js` | A control as a form library's field: React Hook Form (`registerProps`, `fieldProps`), TanStack Form (`fieldProps`), VeeValidate (`vueFieldProps`), Felte (`felteControl`) | Done |
+| `src/bridge.js` | Signals read from framework code: `subscribe`, and `toStore` (the Svelte store contract and an RxJS-style Subscribable); React and Vue `useSignal` | Done |
 | `types/` | TypeScript declarations for every entry point | Done |
 | `src/element.js` forms | Form-associated custom elements (`ElementInternals`) | `formValue`, `validity`, `onFormReset`, `onFormRestore`, `onFormDisabled`; native control API on the element |
 | `src/element.js` context | [Context Protocol](https://github.com/webcomponents-cg/community-protocols/blob/main/proposals/context.md) (`context-request` / `context-provider` events) | `createContext`, `provide`, `inject`; interoperates with any protocol implementation |
+| `src/context.js` | The same protocol, provided from the app: `<zb-context>` with `context` and `value` properties; `ZubraContext` in the React and Vue adapters | Done |
 
 ## The production build
 
@@ -81,6 +86,25 @@ await tick();
 
 A write to a signal an effect has already read in the same run does not re-run it (same as a
 computed in the reference). Derive the value instead of writing it back.
+
+## Signals in framework code
+
+A signal elements read can be read by the app too, so state is shared rather than copied in by
+props and back out by events (`@zubra/runtime/bridge`):
+
+```js
+import { state } from '@zubra/runtime';
+export const cart = state([]);                       // cart-state.js, imported by elements too
+
+// React                                             // Vue
+const items = useSignal(cart, { deep: true });       const items = useSignal(cart, { deep: true }); // a ref
+// Svelte: const items = toStore(cart, { deep: true }), then {$items.length}
+// Solid: from(toStore(cart))     Angular: toSignal(toStore(cart), { requireSync: true })
+```
+
+`subscribe` and the stores are effects owned by nothing: they last until unsubscribed (Vue's ref
+stops with the scope it was made in; React's hook with the component). `deep: true` reads through
+an array or plain object, so a mutation inside it notifies.
 
 ## Tests
 
