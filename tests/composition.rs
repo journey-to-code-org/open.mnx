@@ -272,3 +272,26 @@ fn both_outputs_check_how_a_child_is_used() {
         "<script>import './badge.zb'</script>\n<zb-x n={1}><zb-badge count={n}></zb-badge></zb-x>";
     assert!(js(source, &files(&[("./badge.zb", BADGE)]), None).is_ok());
 }
+
+#[test]
+fn class_and_style_directives_set_a_childs_host_in_both_outputs() {
+    let children = files(&[("./badge.zb", BADGE)]);
+    let source = "<script>import './badge.zb'\nlet out = true;\nlet off = false;\nlet hue = \"red\";</script>\n<zb-x><zb-badge count={1} class:out={out} class:off={off} style:color={hue}></zb-badge></zb-x>";
+    let rendered = html(source, &children).unwrap();
+    assert!(rendered.contains("<zb-badge class=\"out\""), "{rendered}");
+    assert!(rendered.contains("style=\"color: red\""), "{rendered}");
+    assert!(!rendered.contains("off"), "{rendered}");
+    let module = js(source, &children, Some(".js")).unwrap();
+    assert!(module.contains("toggle: \"out\""), "{module}");
+    assert!(module.contains("toggle: \"off\""), "{module}");
+    // An unknown prop is still refused beside them.
+    let typo = source.replace("count={1}", "cuont={1}");
+    assert!(html(&typo, &children)
+        .unwrap_err()
+        .message
+        .contains("has no prop `cuont`"));
+    assert!(js(&typo, &children, Some(".js"))
+        .unwrap_err()
+        .message
+        .contains("has no prop `cuont`"));
+}
