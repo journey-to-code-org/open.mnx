@@ -202,29 +202,6 @@ fn exported(exports: &serde_json::Value, subpath: &str) -> Option<String> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::exported;
-    use serde_json::json;
-
-    #[test]
-    fn exports_patterns_and_conditions() {
-        let map = json!({ "./ui/*": { "require": "./nope/*", "import": "./components/*" }, "./c*c.zb": "./x/c*c.zb" });
-        assert_eq!(
-            exported(&map, "./ui/cart.zb").as_deref(),
-            Some("./components/cart.zb")
-        );
-        assert_eq!(exported(&map, "./ui/").as_deref(), Some("./components/"));
-        assert_eq!(exported(&map, "./other.zb"), None);
-        // The two ends of `./c*c.zb` overlap on `./c.zb`: no match, and no slicing past them.
-        assert_eq!(exported(&map, "./c.zb"), None);
-        assert_eq!(exported(&map, "./cXc.zb").as_deref(), Some("./x/cXc.zb"));
-        assert_eq!(
-            exported(&json!("./index.js"), "."),
-            Some("./index.js".to_owned())
-        );
-        assert_eq!(exported(&json!("./index.js"), "./x.zb"), None);
-    }
 /// The contexts the script provides or injects, each with a key that's the same in every file
 /// that imports it: the module (as the loader resolves it, or else joined to `path`) and the
 /// export's name. The default comes from `export const name = createContext(value)` in the
@@ -314,4 +291,29 @@ fn joined(from: &str, specifier: &str) -> String {
         }
     }
     parts.join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exported;
+    use serde_json::json;
+
+    #[test]
+    fn exports_patterns_and_conditions() {
+        let map = json!({ "./ui/*": { "require": "./nope/*", "import": "./components/*" }, "./c*c.zb": "./x/c*c.zb" });
+        assert_eq!(
+            exported(&map, "./ui/cart.zb").as_deref(),
+            Some("./components/cart.zb")
+        );
+        assert_eq!(exported(&map, "./ui/").as_deref(), Some("./components/"));
+        assert_eq!(exported(&map, "./other.zb"), None);
+        // The two ends of `./c*c.zb` overlap on `./c.zb`: no match, and no slicing past them.
+        assert_eq!(exported(&map, "./c.zb"), None);
+        assert_eq!(exported(&map, "./cXc.zb").as_deref(), Some("./x/cXc.zb"));
+        assert_eq!(
+            exported(&json!("./index.js"), "."),
+            Some("./index.js".to_owned())
+        );
+        assert_eq!(exported(&json!("./index.js"), "./x.zb"), None);
+    }
 }
