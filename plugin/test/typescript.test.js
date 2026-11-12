@@ -112,6 +112,40 @@ const fixtures = {
     const item = new Derived(2);
     globalThis.result = [Object.keys(item), item.y, item.extra, item.read(), Assigned.counted, Object.keys(new Plain())];`,
   },
+  'legacy decorators (experimentalDecorators)': {
+    options: { experimentalDecorators: true },
+    source: `
+    const log: string[] = [];
+    function track(name: string) {
+      return (target: any, key?: string, descriptor?: PropertyDescriptor) => {
+        log.push(name + ":" + (typeof target === "function" ? "class " + target.name : "proto") + ":" + String(key) + ":" + typeof descriptor);
+        if (descriptor && typeof descriptor.value === "function") {
+          const original = descriptor.value;
+          descriptor.value = function (...args: any[]) { return original.apply(this, args) * 10; };
+        }
+      };
+    }
+    function sealed<T extends new (...args: any[]) => object>(constructor: T) {
+      log.push("sealed:" + constructor.name);
+      return class extends constructor { sealed = true };
+    }
+    function inject(token: string) {
+      return (target: any, key: string | undefined, index: number) => { log.push("param:" + token + ":" + String(key) + ":" + index); };
+    }
+    @sealed
+    @track("class")
+    class Service {
+      @track("static") static make() { return 1; }
+      @track("method") @track("second") run(@inject("arg") value: number) { return value; }
+      @track("field") name = "s";
+      @track("getter") get size() { return 2; }
+      set size(value: number) {}
+      constructor(@inject("ctor") public readonly id: number) {}
+    }
+    class Plain { @track("plain") go() { return 3; } }
+    const service = new Service(7);
+    globalThis.result = [log, service.run(2), Service.make(), new Plain().go(), (service as any).sealed, service.id];`,
+  },
   'lines after an enum keep their numbers': `
     enum Lines {
       A,

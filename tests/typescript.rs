@@ -655,3 +655,41 @@ fn a_tsconfig_that_appears_or_changes_is_seen_by_a_long_lived_compiler() {
     std::fs::write(root.join("tsconfig.json"), "{ \"compilerOptions\": {} }").unwrap();
     assert!(zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").is_ok());
 }
+
+// ---- decorators -------------------------------------------------------------------------------
+
+#[test]
+fn legacy_decorators_are_written_as_typescript_writes_them_keeping_lines() {
+    let root = project("decorators", &[
+        ("tsconfig.json", "{ \"compilerOptions\": { \"experimentalDecorators\": true } }"),
+        ("x.zb", "<script lang=\"ts\">\n  function bump(target: any, key: string, descriptor: PropertyDescriptor) { const run = descriptor.value; descriptor.value = () => run() + 1 }\n  class Counter {\n    @bump\n    next() { return 1 }\n  }\n  const value = new Counter().next()\n</script>\n<zb-x><p>{value}</p></zb-x>"),
+    ]);
+    let js = zubra::compile_js_file(root.join("x.zb").to_str().unwrap(), "@zubra/runtime").unwrap();
+    assert!(
+        js.contains("const __zubraDecorate = function (decorators, target, key, desc) {"),
+        "{js}"
+    );
+    assert!(
+        js.contains("  class Counter {\n    \n    next() { return 1 }\n  } __zubraDecorate([bump], Counter.prototype, \"next\", null);\n  const value = new Counter().next()"),
+        "{js}"
+    );
+}
+
+#[test]
+fn standard_decorators_are_an_error_that_says_how_to_use_legacy_ones() {
+    let source = "<script lang=\"ts\">\n  function log(value: any, context: any) { return value }\n  class A { @log run() {} }\n</script>\n<zb-x><p>x</p></zb-x>";
+    let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("standard decorators aren't run by any browser yet"),
+        "{}",
+        error.message
+    );
+    assert!(error
+        .help
+        .as_deref()
+        .unwrap_or_default()
+        .contains("experimentalDecorators"));
+    assert_eq!(error.span.line, 3);
+}

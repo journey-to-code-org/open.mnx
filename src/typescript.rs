@@ -86,6 +86,8 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         value_aliases: HashSet::new(),
         define_fields: options.define_class_fields,
         copies: Vec::new(),
+        experimental_decorators: options.experimental_decorators,
+        decorator_helpers: HashSet::new(),
     };
     stripper.types.verbatim = options.verbatim_module_syntax;
     if source.contains("namespace") || source.contains("module") || source.contains("import") {
@@ -95,6 +97,17 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         stripper.value_aliases = crate::namespaces::value_aliases(&parsed.program);
     }
     stripper.visit_program(&parsed.program);
+    // The legacy decorator helpers, TypeScript's own, on the first line (so no line moves).
+    let mut helpers = String::new();
+    if stripper.decorator_helpers.contains("decorate") {
+        helpers.push_str(DECORATE);
+    }
+    if stripper.decorator_helpers.contains("param") {
+        helpers.push_str(PARAM);
+    }
+    if !helpers.is_empty() {
+        stripper.replacements.push((Range::new(0, 0), helpers));
+    }
     stripper.types.type_only = type_only_imports(&parsed.program);
     if let Some((offset, message, help)) = stripper.error {
         // Types are removed, never compiled (the "erasable syntax only" rule); each refusal says
@@ -210,6 +223,41 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
     Ok((stripped, stripper.types))
 }
 
+/// Generated text, or a copy of the script's own JavaScript.
+enum Piece {
+    Text(String),
+    Copy(Range),
+}
+
+/// `a, b, c` from pieces that are each one item (a copy, or a `__param(…)` call of three).
+fn join(pieces: Vec<Piece>) -> Vec<Piece> {
+    let mut out = Vec::new();
+    let mut depth = 0;
+    for piece in pieces {
+        let starts_item = depth == 0;
+        if starts_item && !out.is_empty() {
+            out.push(Piece::Text(", ".to_owned()));
+        }
+        if let Piece::Text(text) = &piece {
+            if text.starts_with("__zubraParam(") {
+                depth = 2;
+            } else if depth > 0 {
+                depth -= 1;
+            }
+        } else if depth > 0 {
+            depth -= 1;
+        }
+        out.push(piece);
+    }
+    out
+}
+
+/// TypeScript's `__decorate` helper, for legacy decorators.
+const DECORATE: &str = "const __zubraDecorate = function (decorators, target, key, desc) { var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d; if (typeof Reflect === \"object\" && typeof Reflect.decorate === \"function\") r = Reflect.decorate(decorators, target, key, desc); else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r; return c > 3 && r && Object.defineProperty(target, key, r), r; }; ";
+
+/// TypeScript's `__param` helper, for parameter decorators.
+const PARAM: &str = "const __zubraParam = function (paramIndex, decorator) { return function (target, key) { decorator(target, key, paramIndex); } }; ";
+
 /// Where a constructor's `super(…);` statement ends.
 fn super_call_end(body: &oxc_ast::ast::FunctionBody<'_>) -> Option<u32> {
     body.statements
@@ -316,6 +364,8 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
         value_aliases: HashSet::new(),
         define_fields: true,
         copies: Vec::new(),
+        experimental_decorators: false,
+        decorator_helpers: HashSet::new(),
     };
     stripper.visit_program(&parsed.program);
     stripper
@@ -345,6 +395,10 @@ struct Stripper<'s> {
     /// Text moved within the script (a field's initializer into the constructor): inserted at the
     /// offset, as `prefix` + the range's JavaScript + `suffix`, once the types are blanked.
     copies: Vec<(u32, String, Range, String)>,
+    /// `experimentalDecorators`: `@` means TypeScript's legacy decorators.
+    experimental_decorators: bool,
+    /// The legacy decorator helpers the lowering used (`decorate`, `param`).
+    decorator_helpers: HashSet<&'static str>,
 }
 
 impl Stripper<'_> {
@@ -499,13 +553,16 @@ impl Stripper<'_> {
             }
             Declaration::ClassDeclaration(class) => {
                 self.blank(keyword);
+                self.visit_declaration(declaration);
+                // After what the class's decorators write there.
                 if let Some(id) = &class.id {
-                    self.replacements.push((
-                        Range::new(class.span.end, class.span.end),
+                    self.copies.push((
+                        class.span.end,
                         format!(" {param}.{0} = {0};", id.name),
+                        Range::new(0, 0),
+                        String::new(),
                     ));
                 }
-                self.visit_declaration(declaration);
             }
             Declaration::TSEnumDeclaration(declaration) if declaration.declare => {
                 self.blank(export.span)
@@ -702,6 +759,193 @@ impl Stripper<'_> {
         if let Some(close) = close {
             self.copies
                 .push((at, close.to_owned(), Range::new(0, 0), String::new()));
+        }
+    }
+
+    /// Decorators on a class and its members. With `experimentalDecorators` they're TypeScript's
+    /// legacy ones, written as `tsc` writes them: each `@` goes, and `__decorate` calls follow
+    /// the class (instance members, then static ones, then the class itself, its constructor's
+    /// parameter decorators with it). Standard decorators aren't run by any browser yet.
+    fn decorators(&mut self, class: &Class<'_>) {
+        let decorated_member = class.body.body.iter().any(|element| match element {
+            ClassElement::MethodDefinition(method) => {
+                !method.decorators.is_empty()
+                    || method
+                        .value
+                        .params
+                        .items
+                        .iter()
+                        .any(|param| !param.decorators.is_empty())
+            }
+            ClassElement::PropertyDefinition(property) => !property.decorators.is_empty(),
+            ClassElement::AccessorProperty(accessor) => !accessor.decorators.is_empty(),
+            _ => false,
+        });
+        if class.decorators.is_empty() && !decorated_member {
+            return;
+        }
+        let first = class
+            .decorators
+            .first()
+            .map(|decorator| decorator.span.start)
+            .unwrap_or(class.span.start);
+        if !self.experimental_decorators {
+            return self.fail(
+                first,
+                "standard decorators aren't run by any browser yet, and the compiler doesn't lower them",
+                Some("for TypeScript's legacy decorators (what Lit, Angular and most libraries use), set `\"experimentalDecorators\": true` in tsconfig.json"),
+            );
+        }
+        let Some(id) = &class.id else {
+            return self.fail(
+                first,
+                "a decorated class needs a name here",
+                Some("declare it: `@decorator class Name { … }`"),
+            );
+        };
+        let name = id.name.to_string();
+        // Each decorator goes from where it was; its expression is copied into the call.
+        let mut calls: Vec<(bool, Vec<Piece>)> = Vec::new(); // (static, call)
+        let mut class_level: Vec<Piece> = class
+            .decorators
+            .iter()
+            .map(|decorator| Piece::Copy(decorator.expression.span()))
+            .collect();
+        for decorator in &class.decorators {
+            self.remove(decorator.span);
+        }
+        for element in &class.body.body {
+            let (decorators, key, computed, is_static, descriptor, params) = match element {
+                ClassElement::MethodDefinition(method) => (
+                    &method.decorators,
+                    &method.key,
+                    method.computed,
+                    method.r#static,
+                    "null",
+                    Some((
+                        &method.value.params,
+                        method.kind == MethodDefinitionKind::Constructor,
+                    )),
+                ),
+                ClassElement::PropertyDefinition(property) => (
+                    &property.decorators,
+                    &property.key,
+                    property.computed,
+                    property.r#static,
+                    "void 0",
+                    None,
+                ),
+                ClassElement::AccessorProperty(accessor) => (
+                    &accessor.decorators,
+                    &accessor.key,
+                    accessor.computed,
+                    accessor.r#static,
+                    "void 0",
+                    None,
+                ),
+                _ => continue,
+            };
+            let mut pieces: Vec<Piece> = decorators
+                .iter()
+                .map(|decorator| Piece::Copy(decorator.expression.span()))
+                .collect();
+            for decorator in decorators {
+                self.remove(decorator.span);
+            }
+            let mut constructor = false;
+            if let Some((params, is_constructor)) = params {
+                constructor = is_constructor;
+                for (index, param) in params.items.iter().enumerate() {
+                    for decorator in &param.decorators {
+                        self.decorator_helpers.insert("param");
+                        let call = vec![
+                            Piece::Text(format!("__zubraParam({index}, ")),
+                            Piece::Copy(decorator.expression.span()),
+                            Piece::Text(")".to_owned()),
+                        ];
+                        if is_constructor {
+                            class_level.extend(call);
+                        } else {
+                            pieces.extend(call);
+                        }
+                        self.remove(decorator.span);
+                    }
+                }
+            }
+            if constructor || pieces.is_empty() {
+                continue;
+            }
+            if computed || matches!(key, oxc_ast::ast::PropertyKey::PrivateIdentifier(_)) {
+                return self.fail(
+                    key.span().start,
+                    "a legacy decorator on a computed or private member isn't supported",
+                    Some("give the member a plain name"),
+                );
+            }
+            let key_text = match key {
+                oxc_ast::ast::PropertyKey::StaticIdentifier(identifier) => {
+                    serde_json::to_string(identifier.name.as_str()).unwrap_or_default()
+                }
+                other => self.text(other.span()).to_owned(),
+            };
+            self.decorator_helpers.insert("decorate");
+            let target = if is_static {
+                name.clone()
+            } else {
+                format!("{name}.prototype")
+            };
+            let mut call = vec![Piece::Text("__zubraDecorate([".to_owned())];
+            call.extend(join(pieces));
+            call.push(Piece::Text(format!(
+                "], {target}, {key_text}, {descriptor});"
+            )));
+            calls.push((is_static, call));
+        }
+        // Instance members, then static ones.
+        calls.sort_by_key(|(is_static, _)| *is_static);
+        let mut after: Vec<Piece> = Vec::new();
+        for (_, call) in calls {
+            after.push(Piece::Text(" ".to_owned()));
+            after.extend(call);
+        }
+        if class_level.is_empty() {
+            self.insert_pieces(class.span.end, after);
+            return;
+        }
+        // A class decorator may return another class: `const A = ((A) => { …; return
+        // __decorate([…], A); })(class A { … });`, on the class's own lines.
+        self.decorator_helpers.insert("decorate");
+        let mut before = vec![Piece::Text(format!("const {name} = (({name}) => {{"))];
+        before.extend(after);
+        before.push(Piece::Text(" return __zubraDecorate([".to_owned()));
+        before.extend(join(class_level));
+        before.push(Piece::Text(format!("], {name}); }})(")));
+        let class_keyword = class
+            .decorators
+            .last()
+            .map_or(class.span.start, |decorator| {
+                let rest = &self.source[decorator.span.end as usize..class.span.end as usize];
+                decorator.span.end + u32::try_from(rest.find("class").unwrap_or(0)).unwrap_or(0)
+            });
+        self.insert_pieces(class_keyword, before);
+        self.insert_pieces(class.span.end, vec![Piece::Text(");".to_owned())]);
+    }
+
+    /// Take out `range` (a decorator), keeping its line breaks.
+    fn remove(&mut self, range: Range) {
+        let newlines = "\n".repeat(self.text(range).matches('\n').count());
+        self.replacements.push((range, newlines));
+    }
+
+    /// Insert text and copies of the script's JavaScript (types blanked) at `at`, in order.
+    fn insert_pieces(&mut self, at: u32, pieces: Vec<Piece>) {
+        for piece in pieces {
+            match piece {
+                Piece::Text(text) => self
+                    .copies
+                    .push((at, text, Range::new(0, 0), String::new())),
+                Piece::Copy(range) => self.copies.push((at, String::new(), range, String::new())),
+            }
         }
     }
 
@@ -1043,6 +1287,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
         }
         self.parameter_properties(it);
         self.assigned_fields(it);
+        self.decorators(it);
         if it.r#abstract {
             // `abstract class` → `class`: blank the keyword.
             let text = self.text(it.span).to_owned();

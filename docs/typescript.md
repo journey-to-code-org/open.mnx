@@ -40,8 +40,15 @@ A TypeScript component is compiled under its **nearest `tsconfig.json`** (follow
 | `useDefineForClassFields` (or a `target` below ES2022, which turns it off) | Off, fields are **assigned** in the constructor rather than defined, as `tsc` writes them: an instance field's initializer moves into the constructor after `super(…)` and the parameter properties (a constructor is written if there's none), a static one becomes `static { this.x = …; }`, a field with no initializer goes, and a parameter property is no field of its own. `#private` fields stay fields. With no tsconfig, or no `target`, fields are defined, as for a modern target. |
 | `verbatimModuleSyntax` | Imports are kept as written, so a type imported without `type` is an error, as in `tsc` (TS1484), rather than dropped. |
 | `paths` and `baseUrl` | A non-relative import (`@shared/sizes`) of a TypeScript module is found through them, for the enums in it. |
+| `experimentalDecorators` | `@` means TypeScript's legacy decorators: see [Decorators](#decorators). |
 
 Every other option leaves the output as it is: Zubra writes modern JavaScript for the browser whatever `target` says (it reads `target` only for the class-fields default), and `strict`, `lib` and the rest are for type checking. An `extends` that names a package isn't followed.
+
+## Decorators
+
+With **`experimentalDecorators`** on, decorators are TypeScript's legacy ones (what Lit, Angular and most decorator libraries were written for), written as `tsc` writes them: each `@decorator` goes from where it was, and `__decorate` calls follow the class on its last line, instance members first, then static ones, then the class with its constructor's parameter decorators. A class decorator wraps the class, `const A = ((A) => { …; return __decorate([…], A); })(class A { … });`, on the class's own lines. TypeScript's two helpers are added to the script's first line when they're used. A plugin test runs a class with every kind of decorator through both the compiler and `tsc`. `emitDecoratorMetadata` isn't written.
+
+**Standard decorators** (the TC39 proposal, TypeScript's default) are an error for now: no browser runs them yet, so the compiler would have to lower them, and it doesn't yet. The error says how to use legacy decorators instead.
 
 ## Enums
 
