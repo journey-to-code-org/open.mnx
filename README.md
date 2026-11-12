@@ -357,7 +357,7 @@ A slot can't be inside `zb-each`, so a list can't take one piece of content per 
 <RowList items={rows} renderRow={(item) => <Row item={item} />} />
 ```
 
-The list keeps its keys and order; a keyed move keeps each row's React state, and a removed row unmounts. A template with an outlet imports `@zubra/runtime/outlet` (an import map needs that entry). Only the React adapter fills outlets so far, and they render after JavaScript (the server leaves them empty). Other frameworks can claim them through the `outletconnect` event (`runtime/src/outlet.js` has the protocol).
+The list keeps its keys and order; a keyed move keeps each row's React state, and a removed row unmounts. A template with an outlet imports `@zubra/runtime/outlet` (an import map needs that entry). Only the React adapter fills outlets so far, they render after JavaScript (the server leaves them empty), and `--emit element` refuses a template with one. Other frameworks can claim them through the `outletconnect` event (`runtime/src/outlet.js` has the protocol).
 
 ## Styles
 

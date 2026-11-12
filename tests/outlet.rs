@@ -29,3 +29,17 @@ fn a_template_with_an_outlet_imports_the_outlet_module() {
     );
     assert!(!js("<zb-x><p>plain</p></zb-x>", "@zubra/runtime").contains("runtime/outlet"));
 }
+
+#[test]
+fn emit_element_refuses_an_outlet() {
+    let dir = std::env::temp_dir().join(format!("zubra-outlet-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("x.zb");
+    std::fs::write(&path, "<zb-x><zb-outlet name=\"a\"></zb-outlet></zb-x>").unwrap();
+    let error = zubra::compile_element_file(path.to_str().unwrap()).unwrap_err();
+    assert!(
+        error.message.contains("doesn't support <zb-outlet>"),
+        "{}",
+        error.message
+    );
+}
