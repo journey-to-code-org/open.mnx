@@ -235,6 +235,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
         script,
         nodes,
         children: Vec::new(),
+        contexts: Vec::new(),
     })
 }
 
@@ -2560,6 +2561,8 @@ fn resolve_server_exports(script: &mut crate::ast::Script, tag: &str, nodes: &mu
             source: Some(serde_json::json!(url).to_string()),
             mutable: false,
             span: export.span,
+            id_call: None,
+            inject: None,
         });
     }
     point_forms_at(nodes, &urls);

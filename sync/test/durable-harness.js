@@ -3,6 +3,7 @@
 // `evict()` drops every object, as Workers may: the next call makes a new one on the same storage.
 import { syncObject } from '../src/durable-core.js';
 import { durableStorage } from './durable-storage.js';
+import { checkStore, oneWinner, storeOver } from './store-contract.js';
 
 /** An object like a SyncObject subclass: the core, plus the app's own methods. */
 export class Market {
@@ -17,6 +18,16 @@ export class Market {
   authorize({ request, collection, kind }) {
     if (kind === 'read') return true;
     return collection !== 'stock' || request.headers.get('cookie') === `farmer=${this.env?.FARMER}`;
+  }
+  // store.test.js: the store contract, run where a library's rules would run, in the object.
+  async store() {
+    return storeOver(await this.documents(), (...args) => this.write(...args));
+  }
+  async checkStore() {
+    await checkStore(await this.store());
+  }
+  async oneWinner() {
+    await oneWinner(await this.store());
   }
   async take(key, qty) {
     const left = (await this.documents()).get('stock', key)?.qty ?? 0;

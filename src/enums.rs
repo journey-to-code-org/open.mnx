@@ -530,6 +530,8 @@ pub fn resolve_imports(
                 source: Some(object.clone()),
                 mutable: false,
                 span: import.span,
+                id_call: None,
+                inject: None,
             });
             component
                 .script
@@ -569,6 +571,8 @@ pub fn resolve_imports(
                 source: Some(object),
                 mutable: false,
                 span: import.span,
+                id_call: None,
+                inject: None,
             });
         }
         component.script.enums.push(info);

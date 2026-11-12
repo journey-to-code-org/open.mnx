@@ -338,7 +338,22 @@ fn respond(request: &Map<String, Value>) -> Value {
                 .get("partial")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            crate::compile_html_with_options(
+            // `idPrefix`: put before the id bases this render gives hosts (`id()`), so
+            // components rendered separately into one page don't share ids.
+            let id_prefix = text("idPrefix").unwrap_or("");
+            if !id_prefix
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+            {
+                return failure("`idPrefix` takes letters, digits, `-` and `_`");
+            }
+            // `context`: values the page provides (context key → value), see `with_provided`.
+            let provided: Vec<(String, Value)> = match request.get("context") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::Object(values)) => values.clone().into_iter().collect(),
+                Some(_) => return failure("`context` maps context keys to values"),
+            };
+            crate::validate::with_provided(provided, || crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
                 source,
                 &path,
                 &props,
@@ -359,7 +374,7 @@ fn respond(request: &Map<String, Value>) -> Value {
                         .unwrap_or_default(),
                 },
                 &loader,
-            )
+            )))
         }
         ("compile", "css")
             if request
@@ -539,6 +554,67 @@ mod tests {
 
     fn call(request: Value) -> Value {
         serde_json::from_str(&handle(&request.to_string())).unwrap()
+    }
+
+    #[test]
+    fn a_long_lived_process_reuses_a_parsed_component_but_never_a_stale_one() {
+        // The same parent, rendered again with other props, then with its child edited, then
+        // with a grandchild edited and with a child that has gone: each answer is the current one.
+        let parent = r#"<script>import ZbChild from './child.zb'</script><zb-parent name="x"><zb-child label={name}></zb-child></zb-parent>"#;
+        let child = |text: &str| {
+            format!(
+                r#"<script>import ZbLeaf from './leaf.zb'</script><zb-child label=""><b>{text} {{label}}</b><zb-leaf></zb-leaf></zb-child>"#
+            )
+        };
+        let render = |name: &str, child: &str, leaf: &str| {
+            let mut files = json!({ "/app/parent.zb": parent, "/app/child.zb": child });
+            if !leaf.is_empty() {
+                files["/app/leaf.zb"] = json!(format!("<zb-leaf><i>{leaf}</i></zb-leaf>"));
+            }
+            call(
+                json!({ "path": "/app/parent.zb", "files": files, "emit": "html", "props": { "name": name } }),
+            )
+        };
+        let html = |response: Value| response["output"].as_str().unwrap_or_default().to_owned();
+        assert!(html(render("Ann", &child("Hi"), "one")).contains("<b>Hi Ann</b>"));
+        assert!(
+            html(render("Bo", &child("Hi"), "one")).contains("<b>Hi Bo</b>"),
+            "props are the render's own"
+        );
+        assert!(
+            html(render("Bo", &child("Bye"), "one")).contains("<b>Bye Bo</b>"),
+            "an edited child is parsed again"
+        );
+        assert!(
+            html(render("Bo", &child("Bye"), "two")).contains("<i>two</i>"),
+            "so is an edited grandchild"
+        );
+        let gone = render("Bo", &child("Bye"), "");
+        assert_eq!(
+            gone["ok"], false,
+            "a child that's gone is an error, not the last parse: {gone}"
+        );
+        assert!(html(render("Cy", &child("Bye"), "two")).contains("<b>Bye Cy</b>"));
+    }
+
+    #[test]
+    fn warnings_follow_the_source_they_are_for() {
+        let files = |source: &str| json!({ "/app/w.zb": source });
+        let warned = |source: &str| {
+            call(json!({ "path": "/app/w.zb", "files": files(source), "emit": "html" }))["warnings"]
+                .as_array()
+                .map_or(0, Vec::len)
+        };
+        let plain = r#"<zb-w label=""><p>{label}</p></zb-w>"#;
+        let shadowing = r#"<zb-w title=""><p>{title}</p></zb-w>"#;
+        assert_eq!(warned(plain), 0);
+        assert_eq!(
+            warned(shadowing),
+            1,
+            "`title` is every element's built-in property"
+        );
+        assert_eq!(warned(shadowing), 1, "the same again, from the cache");
+        assert_eq!(warned(plain), 0);
     }
 
     #[test]

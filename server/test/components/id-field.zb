@@ -1,0 +1,9 @@
+<!-- A labelled field whose ids come from id(). -->
+<script>
+  import { id } from '@zubra/runtime'
+  const inputId = id()
+  const hintId = id()
+</script>
+<id-field label="Name" more={false}>
+  <label for={inputId}>{label}</label><input id={inputId} aria-describedby={hintId} /><small id={hintId}>hint</small><zb-if test={more}><output for={inputId}>more</output></zb-if>
+</id-field>
