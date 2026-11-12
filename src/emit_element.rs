@@ -866,7 +866,7 @@ pub fn emit(
     Ok(out)
 }
 
-/// zb-await and spreads: the runtime's.
+/// zb-await, spreads and outlets: the runtime's.
 fn refuse_unsupported(nodes: &[Node]) -> Result<(), Diagnostic> {
     for node in nodes {
         match node {
@@ -877,6 +877,13 @@ fn refuse_unsupported(nodes: &[Node]) -> Result<(), Diagnostic> {
                 )
             }
             Node::Element(element) => {
+                if element.name == "zb-outlet" {
+                    return Err(Diagnostic::new(
+                        element.span,
+                        "--emit element doesn't support <zb-outlet>: outlets are filled by @zubra/runtime's adapters",
+                    )
+                    .with_help(HINT));
+                }
                 for attribute in &element.attributes {
                     if attribute.name == crate::parser::SPREAD {
                         return Err(Diagnostic::new(

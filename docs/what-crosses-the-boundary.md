@@ -32,11 +32,11 @@ A leaf takes data in and sends events out: a date picker, a chart, a rating, a t
 
 | Doesn't cross | Why | What to do instead |
 |---|---|---|
+| **Render props** (a function prop that returns the consumer's markup) | The element can't render React or Vue nodes; it only knows the DOM | Slots: let the consumer put real elements inside. Per item, in React: an outlet (`<zb-outlet name="row" item={item}>` and `renderRow`, experimental; see the README's "Outlets"). Elsewhere, render it in the component and expose the data by event |
 | **Render props** (a function prop that returns the consumer's markup) | The element can't render React or Vue nodes; it only knows the DOM | Slots: let the consumer put real elements inside. If the markup depends on data the component owns, render it in the component and expose the data by event |
-| **Framework context objects** (React `useContext`, Vue `provide/inject`, Svelte `setContext`) | Those are the framework's own trees, invisible from inside the element | Provide the value with `<ZubraContext>` / `<zb-context>` (above), keep it in a shared signal both sides read, or pass it as a prop |
 | **Framework lifecycle** (Suspense, transitions, error boundaries, `useTransition`, Vue's `<KeepAlive>`) | The element has the DOM's lifecycle: connected, disconnected, attributes changed. It can't suspend the consumer's tree or be kept alive by it | Make loading a prop or an event; `resource()` and `<zb-await>` handle it inside the component |
 | **Framework hooks inside the component** | `useState` needs React's renderer; the component runs once and binds | The Zubra hooks (`state`, `computed`, `effect`, `onMount`, `inject`) and plain functions built on them |
-| **The consumer's components as the component's children by name** (`<Table rowComponent={Row}>`) | The element can't instantiate a framework component | Slots, or a component written in the framework |
+| **The consumer's components as the component's children by name** (`<Table rowComponent={Row}>`) | The element can't instantiate a framework component | Slots; in React, an outlet with `renderRow={(item) => <Row item={item} />}` (experimental); or a component written in the framework |
 | **Deep styling of the component's internals from the consumer**, in shadow DOM | That's the encapsulation shadow DOM provides | Light DOM (the default) if the consumer should style it, or `::part` and custom properties for what the component chooses to expose |
 
 ## Two cases that look like they cross and don't quite

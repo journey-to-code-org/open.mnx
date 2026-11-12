@@ -373,6 +373,12 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             ),
         );
     }
+    // `<zb-outlet>` (experimental) is defined by `@zubra/runtime/outlet`, imported for its side
+    // effect when a template has one, so it's defined before the template sets its `item`.
+    if out.contains("<zb-outlet") {
+        let header_end = out.find('\n').map_or(0, |at| at + 1);
+        out.insert_str(header_end, &format!("import {};\n", json(&entry("outlet"))));
+    }
     // `animate`'s leave and glide come from `@zubra/runtime/motion`, likewise.
     if out.contains(ANIMATE) {
         let header_end = out.find('\n').map_or(0, |at| at + 1);
