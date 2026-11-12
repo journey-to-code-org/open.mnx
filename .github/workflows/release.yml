@@ -99,7 +99,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           SHA: ${{ steps.version.outputs.sha }}
         run: |
-          tagged=$(gh api "repos/$GH_REPO/git/ref/tags/v$VERSION" --jq .object.sha 2> /dev/null || true)
+          # A missing tag is a failed lookup: gh prints GitHub's 404 body on stdout, so test the exit
+          # status rather than the output (5.9.0's first run read that body as the tag's commit).
+          if ! tagged=$(gh api "repos/$GH_REPO/git/ref/tags/v$VERSION" --jq .object.sha 2> /dev/null); then
+            tagged=
+          fi
           if [ -z "$tagged" ]; then
             gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$SHA" > /dev/null
             echo "Tagged $SHA as v$VERSION."
