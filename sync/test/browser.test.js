@@ -87,6 +87,11 @@ before(async () => {
     if (url.pathname === '/live') return res.end(page(`<task-item doc="${doc}"></task-item>`, { interval: 60_000 }));
     const connectTo = url.searchParams.has('rtc') ? { interval: 60_000, webrtc: true } : url.searchParams.has('connect') ? { interval: 60_000 } : false;
     if (url.pathname === '/board') return res.end(page(`<board-view doc="${doc}"></board-view>`, connectTo, 'board-view'));
+    // Connected, with a store whose next get() waits window.slowNext ms (this device's own edit
+    // takes that long to record its clock beside the document), and whose next set() is issued at
+    // once but finishes window.slowNextSet ms later (a change from elsewhere is that long in
+    // being stored before it's shown). window.dropSets: nothing is stored (a tab closing mid-write).
+    if (url.pathname === '/connected-slow') return res.end(page(`<script type="module">import { configure, indexedDBStore } from '/sync/index.js'; const store = indexedDBStore(); window.slowNext = 0; window.slowNextSet = 0; window.slowedSets = 0; const later = (ms) => new Promise((done) => setTimeout(done, ms)); configure({ store: { get: (c, k) => { const wait = window.slowNext; window.slowNext = 0; return later(wait).then(() => store.get(c, k)); }, set: (c, k, f) => { if (window.dropSets) return Promise.resolve(); const wait = window.slowNextSet; window.slowNextSet = 0; if (wait) window.slowedSets++; return store.set(c, k, f).then((r) => later(wait).then(() => r)); } } });</script><task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
     // Connected with a scope (?scope= is the JSON connect() gets), live, polling once a minute.
@@ -239,6 +244,162 @@ test('connected: a device that was offline catches up both ways, and concurrent 
   await a.tab.waitForTimeout(300); // its pushes fail meanwhile; the write waits in the outbox
   await a.context.setOffline(false);
   await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
+  await a.context.close();
+  await b.context.close();
+});
+
+test("an older change arriving while this device's own edit is being recorded doesn't replace it", async () => {
+  const a = await device('race');
+  const context = await browser.newContext();
+  const b = await context.newPage();
+  await b.goto(`${base}/connected-slow?doc=race`);
+  await ready(b);
+  // A edits first, offline, so its change is older but reaches the log later.
+  await a.context.setOffline(true);
+  await a.tab.fill('.title', 'from A, earlier');
+  await a.tab.waitForTimeout(50);
+  // B edits after it; recording B's clock beside the document is held up for 1.5 s, and in that
+  // time A comes back and its older change arrives at B.
+  await b.evaluate(() => (window.slowNext = 1500));
+  await b.fill('.title', 'from B, later');
+  await a.context.setOffline(false);
+  await b.waitForTimeout(2500);
+  assert.equal(await b.inputValue('.title'), 'from B, later', 'B still shows its own, newer edit');
+  await b.reload();
+  await ready(b);
+  await title(b, 'from B, later');
+  await title(a.tab, 'from B, later');
+  await a.context.close();
+  await context.close();
+});
+
+test("an edit made here while an older change from elsewhere is being stored stays on screen, and stored", async () => {
+  const a = await device('race2');
+  const context = await browser.newContext();
+  const b = await context.newPage();
+  await b.goto(`${base}/connected-slow?doc=race2`);
+  await ready(b);
+  await a.context.setOffline(true);
+  await a.tab.fill('.title', 'from A, earlier');
+  await a.tab.waitForTimeout(50);
+  // A's older change reaches B, and storing it takes 1.5 s; B edits the same field meanwhile.
+  await b.evaluate(() => (window.slowNextSet = 1500));
+  await a.context.setOffline(false);
+  await b.waitForFunction(() => window.slowedSets === 1, null, { timeout: 10000 });
+  await b.fill('.title', 'from B, later');
+  await b.waitForTimeout(2500);
+  assert.equal(await b.inputValue('.title'), 'from B, later');
+  await b.reload();
+  await ready(b);
+  await title(b, 'from B, later');
+  await title(a.tab, 'from B, later');
+  await a.context.close();
+  await context.close();
+});
+
+test("an edit whose clock wasn't stored before the tab closed still beats an older change", async () => {
+  const context = await browser.newContext();
+  const a = await context.newPage();
+  await a.goto(`${base}/connected-slow?doc=race3`);
+  await ready(a);
+  const b = await device('race3');
+  // B ticks the box offline: an older change that will reach the log late.
+  await b.context.setOffline(true);
+  await b.tab.check('input[type=checkbox]');
+  await b.tab.uncheck('input[type=checkbox]');
+  await b.tab.waitForTimeout(50);
+  // A ticks it later, offline too, and its tab closes before the clock is stored beside it.
+  await context.setOffline(true);
+  await a.evaluate(() => (window.slowNext = 60_000));
+  await a.check('input[type=checkbox]');
+  await a.waitForTimeout(300);
+  await a.close();
+  // B's older change reaches the log; then A opens the app again.
+  await b.context.setOffline(false);
+  await b.tab.waitForTimeout(500);
+  await context.setOffline(false);
+  const again = await context.newPage();
+  await again.goto(`${base}/connected?doc=race3`);
+  await ready(again);
+  await again.waitForTimeout(1000);
+  assert.equal(await again.locator('.state').textContent(), 'done', "A's newer tick stands on A");
+  await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
+  await b.context.close();
+  await context.close();
+});
+
+test('an edit that never reached the store before the tab closed is shown again when the app reopens', async () => {
+  const context = await browser.newContext();
+  const a = await context.newPage();
+  await a.goto(`${base}/connected-slow?doc=race4`);
+  await ready(a);
+  await context.setOffline(true);
+  await a.evaluate(() => (window.dropSets = true));
+  await a.check('input[type=checkbox]');
+  await a.fill('.title', 'kept in the outbox only');
+  await a.waitForTimeout(300);
+  await a.close();
+  // Opened again with the log still out of reach: what waits to be sent is what this device shows.
+  await context.setOffline(false);
+  const again = await context.newPage();
+  await again.route('**/_zb/sync/**', (route) => route.abort('internetdisconnected'));
+  await again.goto(`${base}/connected?doc=race4`);
+  await ready(again);
+  await title(again, 'kept in the outbox only');
+  assert.equal(await again.locator('.state').textContent(), 'done');
+  await again.unroute('**/_zb/sync/**');
+  const other = await device('race4');
+  await title(other.tab, 'kept in the outbox only');
+  await other.context.close();
+  await context.close();
+});
+
+test("an unsent edit that a newer change from elsewhere has since beaten isn't put back on reopening", async () => {
+  const a = await device('race5');
+  const b = await device('race5');
+  // A's pushes can't get through, but it still hears from the log.
+  await a.tab.route('**/_zb/sync/push', (route) => route.abort('internetdisconnected'));
+  await a.tab.fill('.title', 'from A, unsent');
+  await a.tab.waitForTimeout(200);
+  await b.tab.fill('.title', 'from B, newer');
+  await title(a.tab, 'from B, newer');
+  // A reopens with its older edit still waiting to be sent.
+  await a.tab.close();
+  const again = await a.context.newPage();
+  await again.route('**/_zb/sync/push', (route) => route.abort('internetdisconnected'));
+  await again.goto(`${base}/connected?doc=race5`);
+  await ready(again);
+  await again.waitForTimeout(800);
+  assert.equal(await again.inputValue('.title'), 'from B, newer');
+  await a.context.close();
+  await b.context.close();
+});
+
+test('a long time offline: edits wait one per field, outlive the tab, and merge when it next opens', async () => {
+  const a = await device('away');
+  const b = await device('away');
+  await a.context.setOffline(true);
+  // A long session offline: a few hundred keystrokes and a checkbox, with pushes failing meanwhile.
+  await a.tab.click('.title');
+  await a.tab.keyboard.type('notes from the river '.repeat(15), { delay: 0 });
+  await a.tab.check('input[type=checkbox]');
+  await a.tab.waitForTimeout(300);
+  const waiting = await a.tab.evaluate(() => JSON.parse(localStorage.getItem('zubra-sync:outbox')).map((c) => c.field).sort());
+  assert.deepEqual(waiting, ['completed', 'title'], 'one change per field, not one per keystroke');
+  // The tab is closed before the network comes back; the others carry on.
+  await a.tab.close();
+  await b.tab.fill('.title', 'B, while A was away');
+  await b.tab.waitForTimeout(300);
+  // Back online, the app is opened again: what waited goes, and the newer title stands.
+  await a.context.setOffline(false);
+  const again = await a.context.newPage();
+  await again.goto(`${base}/connected?doc=away`);
+  await ready(again);
+  await b.tab.waitForSelector('.state:has-text("done")', { timeout: 5000 });
+  await title(again, 'B, while A was away');
+  assert.equal(await again.locator('.state').textContent(), 'done');
+  assert.equal(await again.evaluate(() => JSON.parse(localStorage.getItem('zubra-sync:outbox')).length), 0);
+  assert.equal(await b.tab.inputValue('.title'), 'B, while A was away');
   await a.context.close();
   await b.context.close();
 });

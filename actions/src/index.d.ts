@@ -12,6 +12,11 @@ export interface ActionsOptions {
   /** Called when a server function throws. The client gets a generic error either way. */
   onError?: (error: unknown, request: Request) => void;
   /**
+   * The largest post read, files and fields together, in bytes: 10 MB by default, `Infinity` for
+   * no limit. A bigger one gets `{ error: 'Too large' }` (status 413) and the function doesn't run.
+   */
+  maxBytes?: number;
+  /**
    * What else a server function gets beside `request`, per request: the signed-in user, a
    * database handle. `req` is Node's request (Node, Express, Fastify); `c` is Hono's context.
    */

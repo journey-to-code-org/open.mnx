@@ -1,0 +1,26 @@
+<button type="button" @text="label || 'Copy'"></button>
+<style webc:scoped>
+  button.done { color: green; }
+</style>
+<script>
+  customElements.define('copy-button', class extends HTMLElement {
+    #timer = null;
+    connectedCallback() {
+      this.button = this.querySelector('button');
+      this.onclick = () => this.copy();
+    }
+    disconnectedCallback() {
+      clearTimeout(this.#timer);
+    }
+    async copy() {
+      await navigator.clipboard.writeText(this.getAttribute('text') ?? '');
+      this.button.textContent = 'Copied!';
+      this.button.classList.add('done');
+      clearTimeout(this.#timer);
+      this.#timer = setTimeout(() => {
+        this.button.textContent = this.getAttribute('label') ?? 'Copy';
+        this.button.classList.remove('done');
+      }, 1500);
+    }
+  });
+</script>

@@ -52,11 +52,19 @@ fn own(component: &ComponentAst, found: &mut Vec<String>) {
         .map(|import| import.specifier.as_str())
         .collect();
     for import in &script.imports {
-        if !component_imports.contains(&import.specifier.as_str()) {
-            found.push(format!("imports `{}`", import.specifier));
+        if component_imports.contains(&import.specifier.as_str()) || server_safe(import, script) {
+            continue;
         }
+        found.push(format!("imports `{}`", import.specifier));
     }
-    statements(&script.body, found);
+    // `const inputId = id()` is rendered by the server when every `id()` call is such a binding.
+    let server_ids: Vec<&str> = script
+        .bindings
+        .iter()
+        .filter(|binding| binding.id_call.is_some() && script.server_ids)
+        .map(|binding| binding.name.as_str())
+        .collect();
+    statements(&script.body, &server_ids, found);
     if !script.server_exports.is_empty() {
         found.push("server functions (actions)".into());
     }
@@ -138,7 +146,7 @@ fn attribute_reason(attribute: &Attribute) -> Option<String> {
 /// The script's top-level statements that run in the browser when the element starts: a
 /// `const` computed by a call, destructuring, or a statement that isn't a declaration.
 /// Definitions (functions, classes, arrow functions, values the server can compute) don't.
-fn statements(body: &str, found: &mut Vec<String>) {
+fn statements(body: &str, server_ids: &[&str], found: &mut Vec<String>) {
     if body.trim().is_empty() {
         return;
     }
@@ -172,8 +180,10 @@ fn statements(body: &str, found: &mut Vec<String>) {
                         found.push("destructuring in the script".into());
                         continue;
                     };
-                    // `let`s are state, reported above.
-                    if declaration.kind.is_const() {
+                    // `let`s are state, reported above; ids the server renders are known.
+                    if declaration.kind.is_const()
+                        && !server_ids.contains(&identifier.name.as_str())
+                    {
                         if let Some(init) = &declarator.init {
                             if !(Pure {
                                 arrows: &arrows,
@@ -449,6 +459,32 @@ impl Pure<'_, '_> {
             _ => false,
         }
     }
+}
+
+/// An import of only `id` from `@zubra/runtime`, whose calls the server renders (`server_ids`).
+fn server_safe(import: &crate::ast::Import, script: &crate::ast::Script) -> bool {
+    if import.specifier != "@zubra/runtime" || !script.server_ids {
+        return false;
+    }
+    let Some(names) = import
+        .text
+        .split_once('{')
+        .and_then(|(before, rest)| {
+            before
+                .trim_start()
+                .strip_prefix("import")
+                .filter(|b| b.trim().is_empty())
+                .and(rest.split_once('}'))
+        })
+        .map(|(names, _)| names)
+    else {
+        return false;
+    };
+    names
+        .split(',')
+        .map(|name| name.split(" as ").next().unwrap_or_default().trim())
+        .filter(|name| !name.is_empty())
+        .all(|name| name == "id")
 }
 
 #[cfg(test)]

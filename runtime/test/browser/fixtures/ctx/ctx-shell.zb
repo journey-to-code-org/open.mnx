@@ -1,0 +1,11 @@
+<!-- Provides the theme to what it renders, following its `tone` prop. -->
+<script>
+  import { provide, signal, from } from '@zubra/runtime'
+  import { theme } from './theme.js'
+  import './ctx-themed.zb'
+  let mode = from(tone)
+  provide(theme, signal(mode))
+</script>
+<ctx-shell tone="dark">
+  <section><ctx-themed></ctx-themed></section>
+</ctx-shell>
