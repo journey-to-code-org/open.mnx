@@ -618,6 +618,24 @@ jobs:
       # What addons.mozilla.org's validator checks, warnings included.
       - run: npx --yes web-ext lint --source-dir editors/devtools --self-hosted --warnings-as-errors
 
+  benchmark:
+    name: js-framework-benchmark (Zubra's implementation passes the benchmark's checks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The implementation builds from the published packages, as it would in the benchmark's repository.
+      - run: npm ci
+        working-directory: benchmarks/js-framework-benchmark
+      - run: npm run build
+        working-directory: benchmarks/js-framework-benchmark
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: benchmarks/js-framework-benchmark
+      - run: npm test
+        working-directory: benchmarks/js-framework-benchmark
+
   prettier-plugin:
     name: Prettier plugin (prettier-plugin-zubra)
     runs-on: ubuntu-latest

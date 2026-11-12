@@ -44,6 +44,7 @@ export default [
     { file: 'docs/javascript-support.md', label: 'What JavaScript runs where' },
     { file: 'docs/security.md', label: 'Security model' },
     { file: 'docs/framework-matrix.md', label: 'The framework matrix' },
+    { file: 'docs/performance.md', label: 'Performance' },
     { file: 'docs/convert-measured.md', label: '`zubra convert`, measured' },
     { file: 'CHANGELOG.md', slug: 'changelog', label: 'Changelog' },
   ] },
