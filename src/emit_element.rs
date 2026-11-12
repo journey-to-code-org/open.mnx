@@ -229,6 +229,7 @@ pub fn emit(
         .imports
         .iter()
         .flat_map(|import| crate::reactive::imported_names(&import.text))
+        .chain(emit_js::module_names(component))
         .collect();
     // The local names of the hooks that make signals.
     let makers: Vec<String> = runtime_imports
@@ -456,6 +457,11 @@ pub fn emit(
         out.push('\n');
         out.push_str(&module_imports);
     }
+    for declaration in &component.script.module_declarations {
+        out.push('\n');
+        out.push_str(declaration.text.trim_end_matches(';'));
+        out.push_str(";\n");
+    }
     out.push_str(&format!("\nexport const tag = {};\n", json(&component.tag)));
 
     // The styles.
@@ -502,14 +508,17 @@ pub fn emit(
         .iter()
         .map(|prop| {
             format!(
-                "      {}: {{ attribute: {}, default: {}, required: {}{} }},\n",
+                "      {}: {{ attribute: {}, default: {}, required: {}{}{} }},\n",
                 property_key(&prop.name),
                 json(&prop.attribute),
                 prop.default
                     .as_ref()
                     .map_or_else(|| "undefined".to_owned(), |value| value.to_string()),
                 prop.required(),
-                if prop.model { ", model: true" } else { "" }
+                if prop.model { ", model: true" } else { "" },
+                // An enum prop's members, as the runtime's spec has them.
+                validate::enum_literal(component, &prop.name)
+                    .map_or_else(String::new, |members| format!(", enum: {members}"))
             )
         })
         .collect();
@@ -615,13 +624,26 @@ pub fn emit(
     }
     if !interface.props.is_empty() {
         let mut from_json = None;
+        let mut from_enum = None;
         out.push_str("\n  attributeChangedCallback(name, previous, raw) {\n    // raw is the attribute's text, or null once it's removed.\n    switch (name) {\n");
         for prop in &interface.props {
             let default = prop
                 .default
                 .as_ref()
                 .map_or_else(|| "undefined".to_owned(), |value| value.to_string());
+            let members = validate::enum_literal(component, &prop.name);
             let parsed = match &prop.default {
+                // An enum: the member whose value is the text, or the member it names.
+                _ if members.is_some() => {
+                    let helper = from_enum
+                        .get_or_insert_with(|| names.module("fromEnum"))
+                        .clone();
+                    format!(
+                        "raw === null ? {default} : {helper}(raw, {}, {default}, {})",
+                        members.as_deref().unwrap_or_default(),
+                        json(&prop.attribute)
+                    )
+                }
                 Some(serde_json::Value::Bool(true)) => "raw !== \"false\"".to_owned(),
                 Some(serde_json::Value::Bool(false)) => "raw !== null".to_owned(),
                 Some(serde_json::Value::Number(_)) => {
@@ -650,6 +672,9 @@ pub fn emit(
         out.push_str("    }\n  }\n");
         if from_json.is_some() {
             uses.insert("fromJson");
+        }
+        if from_enum.is_some() {
+            uses.insert("fromEnum");
         }
     }
 

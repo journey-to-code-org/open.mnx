@@ -437,7 +437,17 @@ fn lower_uncached(
             }
             Statement::FunctionDeclaration(_)
             | Statement::TSTypeAliasDeclaration(_)
-            | Statement::TSInterfaceDeclaration(_) => {
+            | Statement::TSInterfaceDeclaration(_)
+            | Statement::TSEnumDeclaration(_) => {
+                helpers.push(span.start as usize..span.end as usize);
+            }
+            // `export enum`: exported by the element module, as in a `.zb` script.
+            Statement::ExportDeclaration(export)
+                if matches!(
+                    export.declaration,
+                    oxc_ast::ast::Declaration::TSEnumDeclaration(_)
+                ) =>
+            {
                 helpers.push(span.start as usize..span.end as usize);
             }
             Statement::VariableDeclaration(declaration)
