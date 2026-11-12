@@ -2,8 +2,8 @@
 // `zubra` from npm (@zubra/compiler): the WebAssembly compiler on the command line, with no Rust.
 //
 //   zubra build --lib <dir> [--out dist] [--name <package>] [--version <x.y.z>] [--watch]
-//   zubra mcp [custom-elements.json | components dir | package]...   an MCP server describing the components, for coding agents
 //   zubra build --embed <dir> [--out embed] [--name <slug>] [--base <url>]   one script tag; WordPress, Shopify, HTML snippets
+//   zubra mcp [custom-elements.json | components dir | package]...   an MCP server describing the components, for coding agents
 //   zubra add <component>... [--dir src/components] [--force]     copy registry components in
 //   zubra add --list
 //   zubra compile <file> [--emit js|html|css|dts|manifest] [--framework react|vue|svelte|solid] [--partial]
@@ -145,7 +145,6 @@ function main(argv) {
     process.stderr.write(`zubra mcp: ${components.length} component${components.length === 1 ? '' : 's'} (${components.map((c) => c.tag).join(', ')}), on standard input and output\n`);
     return serveMcp(components);
   }
-  if (command === 'build') {
   if (command === 'build' && flags.embed) {
     if (rest.length !== 1) throw new Error('usage: zubra build --embed <components dir> [--out embed] [--name <slug>] [--base <url>]');
     const out = flags.out ?? 'embed';
