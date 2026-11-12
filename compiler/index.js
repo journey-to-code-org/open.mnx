@@ -71,11 +71,89 @@ export function sources(path, files = {}, key = resolve(path)) {
   // compiler reads the enums in them (a `const enum` is inlined).
   const typescript = /\.tsx$/.test(absolute) || /<script[^>]*\blang=["']ts["']/i.test(source);
   if (typescript) {
-    for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"](\.{1,2}\/[^'"]+)['"]/g)) {
-      if (!/\.zb(\.[jt]sx)?$/.test(specifier)) typescriptModule(dirname(absolute), specifier, files, 0);
+    // Its tsconfig.json (and what that extends), whose options change the output.
+    const config = tsconfig(dirname(absolute), files);
+    for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+)['"]/g)) {
+      if (/\.zb(\.[jt]sx)?$/.test(specifier)) continue;
+      if (specifier.startsWith('.')) typescriptModule(dirname(absolute), specifier, files, 0);
+      // A non-relative import through `paths`.
+      else for (const target of mapPath(config?.paths ?? [], specifier)) typescriptModule('/', target, files, 0);
     }
   }
   return files;
+}
+
+/** The nearest tsconfig.json above `directory`, into `files` with what it extends: its `paths`, resolved (src/tsconfig.rs). */
+function tsconfig(directory, files) {
+  for (let at = directory; ; at = dirname(at)) {
+    const path = join(at, 'tsconfig.json');
+    if (existsSync(path)) {
+      const options = {};
+      readConfig(path, files, options, 0);
+      return options;
+    }
+    if (dirname(at) === at) return null;
+  }
+}
+
+function readConfig(path, files, options, depth) {
+  let text;
+  try { text = readFileSync(path, 'utf8'); } catch { return; }
+  files[path] = text;
+  const config = jsonc(text);
+  if (!config) return;
+  if (depth < 8) {
+    for (const parent of [config.extends ?? []].flat()) {
+      if (/^\.{1,2}\//.test(parent)) readConfig(resolve(dirname(path), parent.endsWith('.json') ? parent : `${parent}.json`), files, options, depth + 1);
+    }
+  }
+  const compiler = config.compilerOptions ?? {};
+  if (compiler.baseUrl !== undefined) options.baseUrl = resolve(dirname(path), compiler.baseUrl);
+  if (compiler.paths) options.pathsBase = dirname(path), options.rawPaths = compiler.paths;
+  if (options.rawPaths) {
+    const base = options.baseUrl ?? options.pathsBase;
+    options.paths = Object.entries(options.rawPaths).map(([pattern, targets]) => [pattern, targets.map((target) => resolve(base, target))]);
+  }
+}
+
+/** `specifier` through `paths`: candidate paths, most specific pattern first. */
+function mapPath(paths, specifier) {
+  const found = [];
+  for (const [pattern, targets] of paths) {
+    const star = pattern.indexOf('*');
+    if (star < 0) {
+      if (pattern === specifier) found.push([pattern.length, targets]);
+      continue;
+    }
+    const [prefix, suffix] = [pattern.slice(0, star), pattern.slice(star + 1)];
+    if (specifier.startsWith(prefix) && specifier.endsWith(suffix) && specifier.length >= prefix.length + suffix.length) {
+      const matched = specifier.slice(prefix.length, specifier.length - suffix.length);
+      found.push([prefix.length, targets.map((target) => target.replace('*', matched))]);
+    }
+  }
+  return found.sort((a, b) => b[0] - a[0]).flatMap(([, targets]) => targets);
+}
+
+/** JSON with comments and trailing commas, as tsconfig.json allows. */
+function jsonc(text) {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const character = text[i];
+    if (character === '"') {
+      const end = text.indexOf('"', i + 1);
+      let close = end;
+      while (close > 0 && text[close - 1] === '\\') close = text.indexOf('"', close + 1);
+      out += text.slice(i, close + 1);
+      i = close;
+    } else if (character === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      out += '\n';
+    } else if (character === '/' && text[i + 1] === '*') {
+      i = text.indexOf('*/', i + 2) + 1;
+      if (i === 0) break;
+    } else out += character;
+  }
+  try { return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1')); } catch { return null; }
 }
 
 /** A relative TypeScript module, as the compiler resolves it (src/enums.rs `resolve_module`), and its re-exports. */

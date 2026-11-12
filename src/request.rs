@@ -154,7 +154,9 @@ fn respond(request: &Map<String, Value>) -> Value {
     // `typescript`: the JavaScript the compiler reduces a script's TypeScript to (types blanked,
     // enums lowered), for tests that run it against `tsc`'s output, and for tools that show it.
     if text("command") == Some("typescript") {
-        return match crate::typescript_to_js(source) {
+        // `compilerOptions`: as a tsconfig.json would set them.
+        let compiler_options = request.get("compilerOptions").and_then(Value::as_object);
+        return match crate::typescript_to_js(source, compiler_options) {
             Ok(output) => {
                 json!({ "ok": true, "output": output, "error": null, "warnings": [], "diagnostics": [] })
             }

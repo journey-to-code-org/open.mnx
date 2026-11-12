@@ -49,6 +49,7 @@ mod runtime_expression;
 mod scanner;
 mod script;
 mod styles;
+mod tsconfig;
 mod typescript;
 mod validate;
 
@@ -76,7 +77,16 @@ fn load(
     path: &str,
     loader: Option<Loader<'_>>,
 ) -> Result<ast::ComponentAst, Diagnostic> {
-    if let Some(component) = parsed::get(source, path, loader) {
+    // A TypeScript component is compiled under its nearest tsconfig.json. The options are read
+    // before the cache is asked, and are part of what it checks: a tsconfig.json that changed,
+    // or appeared nearer, means a fresh parse.
+    let options = match loader {
+        Some(loader) if tsconfig::is_typescript(path, source) => {
+            tsconfig::for_component(path, loader)
+        }
+        _ => tsconfig::Options::default(),
+    };
+    if let Some(component) = parsed::get(source, path, loader, &options) {
         return Ok(component);
     }
     // Record what the loader answers, so a later request can check that the imports are unchanged.
@@ -92,13 +102,16 @@ fn load(
         }
         answer
     };
-    let mut component = parser::parse(source)?;
-    components::load(
-        &mut component,
-        path,
-        loader.map(|_| &recording as Loader<'_>),
-    )?;
-    parsed::put(source, path, &component, answers.into_inner());
+    let component = tsconfig::with(options.clone(), || {
+        let mut component = parser::parse(source)?;
+        components::load(
+            &mut component,
+            path,
+            loader.map(|_| &recording as Loader<'_>),
+        )?;
+        Ok(component)
+    })?;
+    parsed::put(source, path, &component, answers.into_inner(), options);
     Ok(component)
 }
 
@@ -125,22 +138,31 @@ mod parsed {
     struct Entry {
         component: ComponentAst,
         answers: Vec<Answer>,
+        /// The tsconfig.json options it was parsed under.
+        options: crate::tsconfig::Options,
     }
 
     thread_local! {
         static CACHE: RefCell<HashMap<(String, String), Entry>> = RefCell::new(HashMap::new());
     }
 
-    pub fn get(source: &str, path: &str, loader: Option<Loader<'_>>) -> Option<ComponentAst> {
+    pub fn get(
+        source: &str,
+        path: &str,
+        loader: Option<Loader<'_>>,
+        options: &crate::tsconfig::Options,
+    ) -> Option<ComponentAst> {
         CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
             let key = (path.to_owned(), source.to_owned());
             let entry = cache.get(&key)?;
-            let unchanged = entry.answers.iter().all(|answer| {
-                loader.is_some_and(|loader| {
-                    loader(&answer.specifier, &answer.from).is_ok_and(|found| found == answer.found)
-                })
-            });
+            let unchanged = entry.options == *options
+                && entry.answers.iter().all(|answer| {
+                    loader.is_some_and(|loader| {
+                        loader(&answer.specifier, &answer.from)
+                            .is_ok_and(|found| found == answer.found)
+                    })
+                });
             if unchanged {
                 return Some(entry.component.clone());
             }
@@ -149,7 +171,13 @@ mod parsed {
         })
     }
 
-    pub fn put(source: &str, path: &str, component: &ComponentAst, answers: Vec<Answer>) {
+    pub fn put(
+        source: &str,
+        path: &str,
+        component: &ComponentAst,
+        answers: Vec<Answer>,
+        options: crate::tsconfig::Options,
+    ) {
         CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
             if cache.len() >= LIMIT {
@@ -160,6 +188,7 @@ mod parsed {
                 Entry {
                     component: component.clone(),
                     answers,
+                    options,
                 },
             );
         });
@@ -715,8 +744,15 @@ fn collect_stylesheets(
 /// The JavaScript a `<script lang="ts">` body is reduced to: types blanked in place, enums
 /// lowered (see docs/typescript.md). `source` is the script's text alone.
 #[doc(hidden)]
-pub fn typescript_to_js(source: &str) -> Result<String, Diagnostic> {
-    typescript::strip(source, diagnostic::Span::new(1, 1)).map(|(javascript, _)| javascript)
+pub fn typescript_to_js(
+    source: &str,
+    compiler_options: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Result<String, Diagnostic> {
+    let options =
+        compiler_options.map_or_else(tsconfig::Options::default, tsconfig::from_compiler_options);
+    tsconfig::with(options, || {
+        typescript::strip(source, diagnostic::Span::new(1, 1)).map(|(javascript, _)| javascript)
+    })
 }
 
 /// Things that compile but may not do what was meant: a `'use …'` directive Zubra doesn't know,

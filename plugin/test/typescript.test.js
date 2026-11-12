@@ -92,6 +92,26 @@ const fixtures = {
     function describe(this: { name: string }, suffix: string) { return this.name + suffix; }
     const n = <number>(<unknown>"5");
     globalThis.result = [describe.call({ name: "a" }, "!"), n, Port];`,
+  'without useDefineForClassFields: fields are assignments in the constructor': {
+    options: { useDefineForClassFields: false },
+    source: `
+    class Base { constructor(public base: number) {} }
+    class Assigned extends Base {
+      y = this.x * 2;
+      declared: number;
+      static counted = 1;
+      #own = 5;
+      ["computed"] = "c";
+      constructor(public x: number) {
+        super(x)
+      }
+      read() { return this.#own; }
+    }
+    class Plain { a = 1; b?: string; }
+    class Derived extends Assigned { extra = this.y + 1 }
+    const item = new Derived(2);
+    globalThis.result = [Object.keys(item), item.y, item.extra, item.read(), Assigned.counted, Object.keys(new Plain())];`,
+  },
   'lines after an enum keep their numbers': `
     enum Lines {
       A,
@@ -102,9 +122,9 @@ const fixtures = {
     globalThis.result = [Number(at)];`,
 };
 
-function viaZubra(source) {
+function viaZubra(source, compilerOptions) {
   const result = spawnSync(compiler, ['request'], {
-    input: JSON.stringify({ command: 'typescript', path: '/fixture.ts', files: { '/fixture.ts': source } }),
+    input: JSON.stringify({ command: 'typescript', path: '/fixture.ts', files: { '/fixture.ts': source }, compilerOptions }),
     encoding: 'utf8',
   });
   const response = JSON.parse(result.stdout);
@@ -112,12 +132,13 @@ function viaZubra(source) {
   return response.output;
 }
 
-function viaTsc(directory, name, source) {
+function viaTsc(directory, name, source, compilerOptions = {}) {
   const file = join(directory, `${name}.ts`);
   writeFileSync(file, source);
   // `--noCheck`: emit only (the fixtures read enums in ways the checker would refuse to print).
   // `--isolatedModules`, as a component script is compiled on its own.
-  spawnSync(tsc, ['--target', 'esnext', '--module', 'esnext', '--noCheck', '--isolatedModules', '--outDir', directory, file], { encoding: 'utf8' });
+  const options = Object.entries(compilerOptions).flatMap(([key, value]) => [`--${key}`, String(value)]);
+  spawnSync(tsc, ['--target', 'esnext', '--module', 'esnext', '--noCheck', '--isolatedModules', ...options, '--outDir', directory, file], { encoding: 'utf8' });
   return readFileSync(join(directory, `${name}.js`), 'utf8');
 }
 
@@ -133,11 +154,12 @@ const ready = existsSync(compiler) && existsSync(tsc);
 test('enums: the compiler\'s JavaScript does what tsc\'s does', { skip: !ready && 'needs target/debug/zubra and TypeScript' }, async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'zubra-ts-'));
   let index = 0;
-  for (const [name, source] of Object.entries(fixtures)) {
+  for (const [name, fixture] of Object.entries(fixtures)) {
     await t.test(name, () => {
+      const { source, options } = typeof fixture === 'string' ? { source: fixture } : fixture;
       const trimmed = source.replace(/^\n/, '').replace(/^ {4}/gm, '');
-      const ours = viaZubra(trimmed);
-      const theirs = viaTsc(directory, `fixture${index++}`, trimmed);
+      const ours = viaZubra(trimmed, options);
+      const theirs = viaTsc(directory, `fixture${index++}`, trimmed, options);
       assert.deepEqual(run(ours), run(theirs), `zubra:\n${ours}\n\ntsc:\n${theirs}`);
       assert.equal(ours.split('\n').length, trimmed.split('\n').length, 'the same number of lines');
     });

@@ -440,8 +440,9 @@ fn an_imported_const_enum_is_inlined_since_typescript_erases_it() {
   import { Size, Tone } from './index.js'
   declare const size: Size
   declare const tone: Tone
+  const total = Size.Large + 1
 </script>
-<zb-x size={Size.Large} tone={Tone.Cool}><p>{size} {tone} {Size.Small}</p></zb-x>"#;
+<zb-x size={Size.Large} tone={Tone.Cool}><p>{size} {tone} {Size.Small} {total}</p></zb-x>"#;
     let loader = loader(files);
     let js =
         zubra::compile_js_with(source, "x.zb", "@zubra/runtime", Some(".js"), &loader).unwrap();
@@ -451,7 +452,8 @@ fn an_imported_const_enum_is_inlined_since_typescript_erases_it() {
     assert!(js.contains("enum: { Small: 1, Large: 4 }"), "{js}");
     assert!(js.contains(r#""tone": { attribute: "tone", default: "cool", required: false, enum: { Warm: "warm", Cool: "cool" } },"#), "{js}");
     let html = zubra::compile_html_with(source, "x.zb", "{}", "{}", &loader).unwrap();
-    assert_eq!(html, "<zb-x><p>4 cool 1</p></zb-x>");
+    // The inlined enum is declared before the script's bindings, which can use it.
+    assert_eq!(html, "<zb-x><p>4 cool 1 5</p></zb-x>");
 }
 
 #[test]
@@ -557,4 +559,99 @@ fn what_typescript_itself_refuses_in_an_es_module_is_refused_with_its_error_code
             error.message
         );
     }
+}
+
+// ---- tsconfig.json ----------------------------------------------------------------------------
+
+/// A project folder: `(relative path, contents)`.
+fn project(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!("zubra-tsconfig-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for (path, contents) in files {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+    root
+}
+
+#[test]
+fn the_nearest_tsconfig_with_what_it_extends_decides_how_class_fields_are_written() {
+    let component = "<script lang=\"ts\">\n  class Counter { count = 1; constructor(public step: number) {} }\n  const counter = new Counter(2)\n</script>\n<zb-x><p>{counter.count}</p></zb-x>";
+    let root = project("fields", &[
+        ("tsconfig.base.json", "{\n  // ES2020: fields are assignments\n  \"compilerOptions\": { \"target\": \"ES2020\", },\n}"),
+        ("tsconfig.json", "{ \"extends\": \"./tsconfig.base\" }"),
+        ("src/x.zb", component),
+        ("modern/tsconfig.json", "{ \"compilerOptions\": { \"target\": \"ES2022\" } }"),
+        ("modern/x.zb", component),
+    ]);
+    let older =
+        zubra::compile_js_file(root.join("src/x.zb").to_str().unwrap(), "@zubra/runtime").unwrap();
+    assert!(
+        older.contains("class Counter {  constructor(       step        ) { this.step = step; this.count = 1;} }"),
+        "{older}"
+    );
+    let modern =
+        zubra::compile_js_file(root.join("modern/x.zb").to_str().unwrap(), "@zubra/runtime")
+            .unwrap();
+    assert!(
+        modern.contains("class Counter { step; count = 1; constructor(       step        ) { this.step = step;} }"),
+        "{modern}"
+    );
+}
+
+#[test]
+fn verbatim_module_syntax_keeps_imports_and_wants_type_on_types() {
+    let root = project("verbatim", &[
+        ("tsconfig.json", "{ \"compilerOptions\": { \"verbatimModuleSyntax\": true } }"),
+        ("types.ts", "export interface Option { id: string }\n"),
+        ("x.zb", "<script lang=\"ts\">\n  import { Option } from './types'\n  const itemsDefault: Option[] = []\n</script>\n<zb-x items={itemsDefault}><p>x</p></zb-x>"),
+    ]);
+    let error =
+        zubra::compile_js_file(root.join("x.zb").to_str().unwrap(), "@zubra/runtime").unwrap_err();
+    assert!(error.message.contains("TS1484"), "{}", error.message);
+    assert_eq!(
+        error.help.as_deref(),
+        Some("write `import type { Option }`, or `import { type Option }`")
+    );
+    assert_eq!(error.span.line, 2);
+}
+
+#[test]
+fn paths_reach_a_const_enum_in_another_folder() {
+    let root = project("paths", &[
+        ("tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \"./src\", \"paths\": { \"@shared/*\": [\"shared/*\"] } } }"),
+        ("src/shared/sizes.ts", "export const enum Size { Small = 1, Large = 2 }\n"),
+        ("src/components/x.zb", "<script lang=\"ts\">\n  import { Size } from '@shared/sizes'\n  const big = Size.Large\n</script>\n<zb-x><p>{big}</p></zb-x>"),
+    ]);
+    let js = zubra::compile_js_file(
+        root.join("src/components/x.zb").to_str().unwrap(),
+        "@zubra/runtime",
+    )
+    .unwrap();
+    assert!(js.contains("const Size = { Small: 1, Large: 2 };"), "{js}");
+    assert!(!js.contains("@shared/sizes'"), "{js}");
+}
+
+#[test]
+fn a_tsconfig_that_appears_or_changes_is_seen_by_a_long_lived_compiler() {
+    // The parse cache (one compiler answering many requests) keys on the source and checks the
+    // imports; the tsconfig.json options are part of what it checks too.
+    let root = project("cache", &[
+        ("types.ts", "export interface Option { id: string }\n"),
+        ("x.zb", "<script lang=\"ts\">\n  import { Option } from './types'\n  const itemsDefault: Option[] = []\n</script>\n<zb-x items={itemsDefault}><p>x</p></zb-x>"),
+    ]);
+    let file = root.join("x.zb");
+    assert!(zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").is_ok());
+    // A tsconfig.json appears beside it: the same source is compiled again, and now refused.
+    std::fs::write(
+        root.join("tsconfig.json"),
+        "{ \"compilerOptions\": { \"verbatimModuleSyntax\": true } }",
+    )
+    .unwrap();
+    let error = zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").unwrap_err();
+    assert!(error.message.contains("TS1484"), "{}", error.message);
+    // And when it changes back.
+    std::fs::write(root.join("tsconfig.json"), "{ \"compilerOptions\": {} }").unwrap();
+    assert!(zubra::compile_js_file(file.to_str().unwrap(), "@zubra/runtime").is_ok());
 }

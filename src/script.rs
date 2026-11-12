@@ -37,18 +37,38 @@ use crate::{
 /// read). An import left with no names goes entirely; one that keeps some is rewritten with
 /// those. Without this, `import { Option } from './types'` (an interface) would reach the
 /// browser, which refuses a module importing a name its source doesn't export.
-pub fn elide_type_only_imports(script: &mut Script, used: &std::collections::HashSet<String>) {
+///
+/// Under `verbatimModuleSyntax` imports are kept as written, and such a name is an error, as in
+/// `tsc` (TS1484): it has to be imported with `type`.
+pub fn elide_type_only_imports(
+    script: &mut Script,
+    used: &std::collections::HashSet<String>,
+) -> Result<(), Diagnostic> {
     if script.type_only_imports.is_empty() {
-        return;
+        return Ok(());
     }
     let elided: Vec<String> = std::mem::take(&mut script.type_only_imports)
         .into_iter()
         .filter(|name| !used.contains(name))
         .collect();
     if elided.is_empty() {
-        return;
+        return Ok(());
+    }
+    if script.verbatim {
+        let name = &elided[0];
+        let span = script
+            .typed_imports
+            .iter()
+            .find(|import| &import.local == name)
+            .map_or(Span::new(1, 1), |import| import.span);
+        return Err(Diagnostic::new(
+            span,
+            format!("`{name}` is a type, and with `verbatimModuleSyntax` it must be imported with `type` (TypeScript's TS1484)"),
+        )
+        .with_help(format!("write `import type {{ {name} }}`, or `import {{ type {name} }}`")));
     }
     remove_import_names(script, &elided);
+    Ok(())
 }
 
 /// Take `names` out of the script's imports: an import left with none goes; one that keeps some
@@ -120,6 +140,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         type_imports: types.imports.clone(),
         type_only_imports: types.type_only.clone(),
         enums: types.enums.clone(),
+        verbatim: types.verbatim,
         typed_imports: types
             .imported
             .iter()

@@ -221,7 +221,7 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
             }
         }
         crate::ast::for_each_expression(&nodes, &mut |expression, _| record(expression));
-        script::elide_type_only_imports(&mut script, &used);
+        script::elide_type_only_imports(&mut script, &used)?;
     }
     Ok(ComponentAst {
         tag: host.name,

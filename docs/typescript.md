@@ -31,6 +31,18 @@ Only what TypeScript itself refuses in an ES module, and a component script is o
 
 Each is an error at the construct, with the replacement in its help text. In a `.zb.tsx` file, `<T>value` is refused by the parser, as `tsc` refuses it in any `.tsx` file.
 
+## tsconfig.json
+
+A TypeScript component is compiled under its **nearest `tsconfig.json`** (following a relative `extends`; comments and trailing commas are fine). The CLI reads it from disk; `@zubra/compiler` sends it to the WebAssembly build with the component. Only the options that change what the JavaScript does are read:
+
+| Option | What it changes |
+|---|---|
+| `useDefineForClassFields` (or a `target` below ES2022, which turns it off) | Off, fields are **assigned** in the constructor rather than defined, as `tsc` writes them: an instance field's initializer moves into the constructor after `super(…)` and the parameter properties (a constructor is written if there's none), a static one becomes `static { this.x = …; }`, a field with no initializer goes, and a parameter property is no field of its own. `#private` fields stay fields. With no tsconfig, or no `target`, fields are defined, as for a modern target. |
+| `verbatimModuleSyntax` | Imports are kept as written, so a type imported without `type` is an error, as in `tsc` (TS1484), rather than dropped. |
+| `paths` and `baseUrl` | A non-relative import (`@shared/sizes`) of a TypeScript module is found through them, for the enums in it. |
+
+Every other option leaves the output as it is: Zubra writes modern JavaScript for the browser whatever `target` says (it reads `target` only for the class-fields default), and `strict`, `lib` and the rest are for type checking. An `extends` that names a package isn't followed.
+
 ## Enums
 
 An `enum` is lowered where it's written. When every member is a constant (the usual case), it's an object literal, a numeric member with its reverse mapping as TypeScript gives it:

@@ -168,6 +168,8 @@ pub struct Script {
     /// Imported names whose values the compiler knows (a regular enum from a TypeScript
     /// module): still imported at runtime, but build-time values for defaults and server HTML.
     pub imported_values: Vec<Binding>,
+    /// `verbatimModuleSyntax` was on for this script (see `elide_type_only_imports`).
+    pub verbatim: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

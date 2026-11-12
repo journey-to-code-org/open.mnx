@@ -57,10 +57,14 @@ pub struct Types {
     /// Every named or default import, type-only ones included: (local, imported, specifier,
     /// offset). The compiler reads relative TypeScript modules for the enums among them.
     pub imported: Vec<(String, String, String, u32)>,
+    /// `verbatimModuleSyntax`: imports stay as written (a type imported without `type` is an
+    /// error instead of being dropped).
+    pub verbatim: bool,
 }
 
 /// Strip the types from `source` (a `<script lang="ts">` body starting at `start`).
 pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
+    let options = crate::tsconfig::current();
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
     let at = |offset: u32| span_after(start, source, offset as usize);
@@ -80,8 +84,10 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         depth: 0,
         seen: Vec::new(),
         value_aliases: HashSet::new(),
-        define_fields: true,
+        define_fields: options.define_class_fields,
+        copies: Vec::new(),
     };
+    stripper.types.verbatim = options.verbatim_module_syntax;
     if source.contains("namespace") || source.contains("module") || source.contains("import") {
         for (span, text) in crate::namespaces::reference_rewrites(&parsed.program) {
             stripper.replacements.push((span, text));
@@ -113,6 +119,23 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         String::from_utf8(bytes).expect("blanking ASCII-bounded ranges keeps UTF-8 valid");
     // Generated code (enums) goes in last. It keeps the lines but not the byte offsets, so the
     // offsets recorded in `types` move with it.
+    // Moved text, now that its types are blanked: on one line, so the lines it leaves and the
+    // lines it joins keep their count.
+    for (at, prefix, range, suffix) in std::mem::take(&mut stripper.copies) {
+        let moved: String = blanked[range.start as usize..range.end as usize]
+            .chars()
+            .map(|character| {
+                if character == '\n' || character == '\r' {
+                    ' '
+                } else {
+                    character
+                }
+            })
+            .collect();
+        stripper
+            .replacements
+            .push((Range::new(at, at), format!("{prefix}{moved}{suffix}")));
+    }
     // A rewrite inside removed text (a reference in a type, in a `declare` block) or inside a
     // construct that's generated whole (an enum) has nothing left to change.
     let blanks = std::mem::take(&mut stripper.blanks);
@@ -134,7 +157,10 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         !blanks.iter().any(inside) && !whole.iter().any(inside)
     });
     stripper.blanks = blanks;
-    stripper.replacements.sort_by_key(|(range, _)| range.start);
+    // (An insertion at the start of a removed range goes before it.)
+    stripper
+        .replacements
+        .sort_by_key(|(range, _)| (range.start, range.end));
     let mut stripped = String::with_capacity(blanked.len());
     let mut shifts: Vec<(u32, i64)> = Vec::new();
     let mut at_byte = 0usize;
@@ -182,6 +208,21 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`); docs/typescript.md has the rule"));
     }
     Ok((stripped, stripper.types))
+}
+
+/// Where a constructor's `super(…);` statement ends.
+fn super_call_end(body: &oxc_ast::ast::FunctionBody<'_>) -> Option<u32> {
+    body.statements
+        .iter()
+        .find_map(|statement| match statement {
+            Statement::ExpressionStatement(expression) => match &expression.expression {
+                Expression::CallExpression(call) if matches!(call.callee, Expression::Super(_)) => {
+                    Some(expression.span.end)
+                }
+                _ => None,
+            },
+            _ => None,
+        })
 }
 
 /// The names a statement declares in its block (for namespaces merging into them).
@@ -274,6 +315,7 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
         seen: Vec::new(),
         value_aliases: HashSet::new(),
         define_fields: true,
+        copies: Vec::new(),
     };
     stripper.visit_program(&parsed.program);
     stripper
@@ -298,8 +340,11 @@ struct Stripper<'s> {
     /// `import X = A.B` aliases read as values (by their start): the rest are types only.
     value_aliases: HashSet<u32>,
     /// `useDefineForClassFields` (TypeScript's default for modern targets): a parameter property
-    /// is a class field too.
+    /// is a class field too. Without it, fields are assignments in the constructor.
     define_fields: bool,
+    /// Text moved within the script (a field's initializer into the constructor): inserted at the
+    /// offset, as `prefix` + the range's JavaScript + `suffix`, once the types are blanked.
+    copies: Vec<(u32, String, Range, String)>,
 }
 
 impl Stripper<'_> {
@@ -548,21 +593,7 @@ impl Stripper<'_> {
             .collect::<Vec<_>>()
             .join(" ");
         // After the `super(…)` call, in a subclass.
-        let after_super = class.heritage.as_ref().and_then(|_| {
-            body.statements
-                .iter()
-                .find_map(|statement| match statement {
-                    Statement::ExpressionStatement(expression) => match &expression.expression {
-                        Expression::CallExpression(call)
-                            if matches!(call.callee, Expression::Super(_)) =>
-                        {
-                            Some(expression.span.end)
-                        }
-                        _ => None,
-                    },
-                    _ => None,
-                })
-        });
+        let after_super = class.heritage.as_ref().and_then(|_| super_call_end(body));
         match after_super {
             Some(at) => self
                 .replacements
@@ -572,6 +603,105 @@ impl Stripper<'_> {
                 self.replacements
                     .push((Range::new(at, at), format!(" {assignments}")));
             }
+        }
+    }
+
+    /// Without `useDefineForClassFields` (an older `target`, or set false), TypeScript assigns
+    /// fields rather than defining them: an instance field's initializer moves into the
+    /// constructor (`this.y = …`, after `super(…)` and the parameter properties; a constructor
+    /// is written if there's none), a static one becomes `static { this.s = …; }`, and a field
+    /// with no initializer goes. `#private` fields stay fields, as in `tsc`.
+    fn assigned_fields(&mut self, class: &Class<'_>) {
+        if self.define_fields {
+            return;
+        }
+        let mut instance: Vec<(String, Range)> = Vec::new();
+        for element in &class.body.body {
+            let ClassElement::PropertyDefinition(property) = element else {
+                continue;
+            };
+            if property.declare
+                || property.r#type == PropertyDefinitionType::TSAbstractPropertyDefinition
+                || matches!(
+                    property.key,
+                    oxc_ast::ast::PropertyKey::PrivateIdentifier(_)
+                )
+            {
+                continue;
+            }
+            let key = self.text(property.key.span()).to_owned();
+            let target = match &property.key {
+                oxc_ast::ast::PropertyKey::StaticIdentifier(_) if !property.computed => {
+                    format!(".{key}")
+                }
+                _ => format!("[{key}]"),
+            };
+            let span = Range::new(property.span.start, property.span.end);
+            let newlines = "\n".repeat(self.text(span).matches('\n').count());
+            self.replacements.push((span, newlines));
+            if let Some(value) = &property.value {
+                if property.r#static {
+                    self.copies.push((
+                        span.start,
+                        format!("static {{ this{target} = "),
+                        value.span(),
+                        "; }".to_owned(),
+                    ));
+                } else {
+                    instance.push((target, value.span()));
+                }
+            }
+        }
+        if instance.is_empty() {
+            return;
+        }
+        let constructor = class.body.body.iter().find_map(|element| match element {
+            ClassElement::MethodDefinition(method)
+                if method.kind == MethodDefinitionKind::Constructor =>
+            {
+                method.value.body.as_ref()
+            }
+            _ => None,
+        });
+        let derived = class.heritage.is_some();
+        let mut close = None;
+        let at = match constructor {
+            Some(body) => match derived.then(|| super_call_end(body)).flatten() {
+                Some(at) => at,
+                None => body.span.start + 1,
+            },
+            None => {
+                let at = class.body.span.start + 1;
+                let open = if derived {
+                    " constructor() { super(...arguments);"
+                } else {
+                    " constructor() {"
+                };
+                self.copies
+                    .push((at, open.to_owned(), Range::new(0, 0), String::new()));
+                close = Some(" }");
+                at
+            }
+        };
+        // Right after `super(…)`, a `;` first (the statement may not end with one), unless the
+        // parameter properties already wrote one there.
+        let separated = constructor.is_some()
+            && derived
+            && !self
+                .replacements
+                .iter()
+                .any(|(range, text)| range.start == at && range.end == at && text.starts_with(';'));
+        for (index, (target, value)) in instance.into_iter().enumerate() {
+            let prefix = if index == 0 && separated {
+                format!("; this{target} = ")
+            } else {
+                format!(" this{target} = ")
+            };
+            self.copies.push((at, prefix, value, ";".to_owned()));
+        }
+        if let Some(close) = close {
+            self.copies
+                .push((at, close.to_owned(), Range::new(0, 0), String::new()));
         }
     }
 
@@ -912,6 +1042,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
             return self.blank(it.span);
         }
         self.parameter_properties(it);
+        self.assigned_fields(it);
         if it.r#abstract {
             // `abstract class` → `class`: blank the keyword.
             let text = self.text(it.span).to_owned();

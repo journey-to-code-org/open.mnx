@@ -480,11 +480,18 @@ pub fn resolve_imports(
         ]
         .iter()
         .any(|extension| import.specifier.ends_with(extension));
-        if !relative || asset || crate::components::is_component(&import.specifier) {
+        if asset || crate::components::is_component(&import.specifier) {
             continue;
         }
-        let Some((file, mut info)) =
-            find_exported(loader, path, &import.specifier, &import.imported, 0)
+        // A non-relative import, through tsconfig.json's `paths` (`@app/enums` → `/…/src/enums`).
+        let specifiers = if relative {
+            vec![import.specifier.clone()]
+        } else {
+            crate::tsconfig::map_path(&crate::tsconfig::current(), &import.specifier)
+        };
+        let Some((file, mut info)) = specifiers
+            .iter()
+            .find_map(|specifier| find_exported(loader, path, specifier, &import.imported, 0))
         else {
             continue;
         };
@@ -524,15 +531,19 @@ pub fn resolve_imports(
                 &mut component.script,
                 std::slice::from_ref(&import.local),
             );
-            component.script.bindings.push(crate::ast::Binding {
-                name: import.local.clone(),
-                init: crate::expression::parse(&object).ok(),
-                source: Some(object.clone()),
-                mutable: false,
-                span: import.span,
-                id_call: None,
-                inject: None,
-            });
+            // At the top of the module, so it's declared before every script binding.
+            component.script.bindings.insert(
+                0,
+                crate::ast::Binding {
+                    name: import.local.clone(),
+                    init: crate::expression::parse(&object).ok(),
+                    source: Some(object.clone()),
+                    mutable: false,
+                    span: import.span,
+                    id_call: None,
+                    inject: None,
+                },
+            );
             component
                 .script
                 .module_declarations

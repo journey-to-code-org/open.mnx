@@ -52,6 +52,7 @@ Zubra ready for the business kit, and Zubra beside other frameworks. For the kit
   - **Parameter properties** (`constructor(private x: number)`): a field (TypeScript's `useDefineForClassFields` default) and an assignment first in the constructor, or after `super(…)` in a subclass.
   - **`import X = A.B`**: `const X = A.B`, or nothing when it names a type. **`this` parameters** and **`<T>value`** assertions are types, and go.
   - Still refused, as `tsc` refuses them in an ES module: `import x = require()` (TS1202) and `export =` (TS1203).
+- **TypeScript components follow their `tsconfig.json`.** The nearest one above a component (with a relative `extends`; comments and trailing commas allowed) is read for the options that change the JavaScript, by the CLI from disk and by `@zubra/compiler`, which sends it to the WebAssembly build. `useDefineForClassFields` off (or a `target` below ES2022) writes class fields as `tsc` does then: initializers assigned in the constructor (a constructor is written if there's none), statics in a `static {}` block, and no field for a parameter property. `verbatimModuleSyntax` keeps imports as written and makes a type imported without `type` an error (TS1484). `paths` and `baseUrl` find a non-relative TypeScript module, for its enums.
 
 ### Fixed
 
