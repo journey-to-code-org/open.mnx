@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { build } from 'esbuild';
-import { useBrowser, open, here, site } from './harness.js';
+import { useBrowser, open, here, site, emitElement } from './harness.js';
 
 const CART = "import { state, computed } from '@zubra/runtime';\nexport const cart = state([]);\nexport const total = computed(() => cart.get().length * 2);\n";
 useBrowser({ 'cart-count': join(here, 'fixtures/cart-count.zb') }, { 'cart-state.js': CART });
@@ -107,8 +107,12 @@ const read = (page) => page.evaluate(() => ({
 }));
 const settle = (page) => page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 20)));
 
+// A plain element (--emit element) tracks only its own state(), not a signal from @zubra/runtime
+// (docs/plain-elements.md), so a store shared with the app is @zubra/runtime's.
+const runtimeStore = emitElement && '--emit element output does not follow @zubra/runtime signals (docs/plain-elements.md)';
+
 for (const name of ['bridge-react19', 'bridge-react18', 'bridge-vue3']) {
-  test(`${name}: the app and an element share a signal, both ways`, async () => {
+  test(`${name}: the app and an element share a signal, both ways`, { skip: runtimeStore }, async () => {
     const react = name.includes('react');
     const { page, messages } = await open('<div id="root"></div>', { modules: [name] });
     await page.waitForSelector('zb-cart-count output');
