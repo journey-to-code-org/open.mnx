@@ -143,7 +143,12 @@ pub fn manifest(component: &ComponentAst, module_path: &str) -> Result<String, D
     let mut attributes = Vec::new();
     let mut members = Vec::new();
     for prop in &interface.props {
-        let type_ = json!({ "text": prop_type(prop) });
+        let mut type_ = json!({ "text": prop_type(prop) });
+        // An exported enum: the type points at its declaration in this module.
+        if let Some(info) = validate::prop_enum(component, &prop.name).filter(|info| info.exported)
+        {
+            type_["references"] = json!([{ "name": info.name, "module": module_path }]);
+        }
         let default = prop.default.as_ref().map(Value::to_string);
         let mut attribute = Map::new();
         attribute.insert("name".into(), json!(prop.attribute));
@@ -211,16 +216,44 @@ pub fn manifest(component: &ComponentAst, module_path: &str) -> Result<String, D
     }
 
     let reference = json!({ "name": class, "module": module_path });
+    let mut declarations = vec![Value::Object(declaration)];
+    let mut exports = vec![
+        json!({ "kind": "js", "name": "default", "declaration": reference }),
+        json!({ "kind": "custom-element-definition", "name": component.tag, "declaration": reference }),
+    ];
+    // `export enum`s: variables of the module, typed with their members and values.
+    for declaration in &component.script.module_declarations {
+        let members = validate::enum_members(component, &declaration.name);
+        let text = members
+            .iter()
+            .filter_map(|(name, value)| {
+                Some(format!(
+                    "{}: {}",
+                    crate::enums::member_key(name),
+                    value.as_ref()?.literal()
+                ))
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        declarations.push(json!({
+            "kind": "variable",
+            "name": declaration.name,
+            "description": format!("The enum `{}`.", declaration.name),
+            "type": { "text": format!("{{ {text} }}") },
+        }));
+        exports.push(json!({
+            "kind": "js",
+            "name": declaration.name,
+            "declaration": { "name": declaration.name, "module": module_path },
+        }));
+    }
     let manifest = json!({
         "schemaVersion": "2.1.0",
         "modules": [{
             "kind": "javascript-module",
             "path": module_path,
-            "declarations": [Value::Object(declaration)],
-            "exports": [
-                { "kind": "js", "name": "default", "declaration": reference },
-                { "kind": "custom-element-definition", "name": component.tag, "declaration": reference },
-            ],
+            "declarations": declarations,
+            "exports": exports,
         }],
     });
     Ok(serde_json::to_string_pretty(&manifest).expect("JSON serializes") + "\n")
@@ -246,6 +279,24 @@ pub fn html_data(component: &ComponentAst) -> Result<String, Diagnostic> {
         attribute.insert("description".into(), json!(description));
         if matches!(prop.default, Some(Value::Bool(_))) {
             attribute.insert("valueSet".into(), json!("v"));
+        }
+        // An enum prop: its members, by the text the attribute takes (a string member's
+        // value; a number member's name, with its value).
+        if let Some(info) = validate::prop_enum(component, &prop.name) {
+            let values: Vec<Value> = validate::enum_members(component, &info.name)
+                .into_iter()
+                .filter_map(|(name, value)| match value? {
+                    crate::enums::EnumValue::String(text) => Some(json!({
+                        "name": text,
+                        "description": format!("`{}.{name}`", info.name),
+                    })),
+                    crate::enums::EnumValue::Number(number) => Some(json!({
+                        "name": name,
+                        "description": format!("`{}.{name}` (`{}`)", info.name, crate::enums::js_number(number)),
+                    })),
+                })
+                .collect();
+            attribute.insert("values".into(), Value::Array(values));
         }
         attributes.push(Value::Object(attribute));
     }

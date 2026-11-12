@@ -29,6 +29,12 @@ fn load_from(
     loader: Option<Loader<'_>>,
     stack: &mut Vec<String>,
 ) -> Result<(), Diagnostic> {
+    // Enums from the TypeScript modules it imports.
+    if let Some(loader) = loader {
+        if !component.script.typed_imports.is_empty() {
+            crate::enums::resolve_imports(component, path, loader)?;
+        }
+    }
     for import in component.script.components.clone() {
         let Some(loader) = loader else {
             return Err(Diagnostic::new(

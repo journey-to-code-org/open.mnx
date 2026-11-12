@@ -14,6 +14,7 @@ useBrowser({
   greeting: join(here, 'fixtures/greeting.zb'),
   pair: join(here, 'fixtures/pair.zb'),
   typed: join(here, 'fixtures/typed.zb'),
+  enums: join(here, 'fixtures/enums.zb'),
   clock: join(here, 'fixtures/clock.zb'),
   inline: join(here, 'fixtures/inline.zb'),
   state: join(here, 'fixtures/state.zb'),
@@ -53,6 +54,31 @@ test('renders from its defaults and updates when props change', async () => {
   });
   assert.deepEqual(await read(), ['Journey to Code', 'from', 'json'], 'array/object attributes are parsed as JSON');
   assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('an enum prop\'s attribute takes a member\'s value or its name', async () => {
+  const { page, messages } = await open('<zb-enums></zb-enums>', { modules: ['enums'] });
+  const read = () => page.textContent('zb-enums p');
+  assert.equal(await read(), '4 Medium warm');
+  const set = (name, value) => page.evaluate(async ([name, value]) => {
+    const el = document.querySelector('zb-enums');
+    el.setAttribute(name, value);
+    await el.updateComplete;
+  }, [name, value]);
+  await set('size', 'Large');
+  assert.equal(await read(), '5 Large warm', 'a numeric enum by member name');
+  await set('size', '0');
+  assert.equal(await read(), '0 Small warm', 'a numeric enum by value');
+  await set('tone', 'cool');
+  assert.equal(await read(), '0 Small cool', 'a string enum by value');
+  await set('tone', 'Warm');
+  assert.equal(await read(), '0 Small warm', 'a string enum by member name');
+  assert.deepEqual(messages, []);
+  await set('size', 'Huge');
+  assert.equal(await read(), '4 Medium warm', 'anything else is the default');
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /attribute "size" is "Huge", not one of Small, Medium, Large/);
   await page.close();
 });
 
