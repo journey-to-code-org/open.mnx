@@ -117,6 +117,34 @@ test('ids from id(): each render on a page gets its own, linked before JavaScrip
   await page.done();
 });
 
+test('page.provide(): every component the page renders gets the value, on the server and after hydrating', async () => {
+  const zubra = createZubra({ components: join(here, 'context-components') });
+  assert.throws(() => zubra.page().provide('theme', 'dark'), /takes \{ module/);
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const before = page.render('ctx-themed');
+    page.provide({ module: './theme.js', export: 'theme' }, 'dark');
+    const body = before + page.render('ctx-themed') + page.render('ctx-themed');
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const html = await (await fetch(url)).text();
+  assert.equal((html.match(/<p class="dark">dark<\/p>/g) ?? []).length, 2, 'the two rendered after provide()');
+  // The module the component imports is served from the components folder, and nothing outside it.
+  assert.equal((await fetch(`${url}/_zubra/components/theme.js`)).status, 200);
+  const { request } = await import('node:http');
+  // (Dots are resolved before the request reaches us; an encoded slash isn't, and is decoded after.)
+  const status = await new Promise((resolve) => request(`${url}/`, { path: '/_zubra/components/..%2F..%2Fsrc%2Findex.js' }, (response) => resolve(response.statusCode)).end());
+  assert.equal(status, 404, 'no way out of the components folder');
+  assert.match(html, /<ctx-themed>\s*<p><\/p>/, 'the one before: its default is left to the browser');
+  const page = await open(url);
+  await page.waitForFunction(() => customElements.get('ctx-themed'));
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('ctx-themed')].map((el) => el.updateComplete)));
+  assert.deepEqual(await page.$$eval('ctx-themed p', (ps) => ps.map((p) => p.textContent)), ['light', 'dark', 'dark'], 'the elements start from the page\'s value');
+  assert.deepEqual(page.errors, []);
+  await page.done();
+});
+
 test("clientModules: 'needed' leaves out the modules of components whose server HTML is complete", async () => {
   assert.throws(() => createZubra({ components, clientModules: 'some' }), /clientModules is "all" or "needed"/);
   const zubra = createZubra({ components, clientModules: 'needed' });

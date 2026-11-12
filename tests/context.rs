@@ -70,3 +70,27 @@ fn without_the_module_a_provided_value_still_renders_but_a_default_is_the_browse
         });
     assert!(error.is_err(), "{error:?}");
 }
+
+#[test]
+fn a_render_can_start_with_values_the_page_provides() {
+    let files = serde_json::json!({ "/app/themed.zb": THEMED });
+    let call = |context: serde_json::Value| -> serde_json::Value {
+        serde_json::from_str(&zubra::handle_request(
+            &serde_json::json!({ "path": "/app/themed.zb", "files": files, "emit": "html", "partial": true, "context": context }).to_string(),
+        ))
+        .unwrap()
+    };
+    let html = call(serde_json::json!({ "/app/theme.js#theme": "sepia" }));
+    let html = html["output"].as_str().unwrap();
+    assert!(
+        html.contains("<p class=\"sepia\">sepia</p>") && html.contains("data-zb-inject"),
+        "{html}"
+    );
+    // Another context's key, or none: the default is the browser's (no module given here).
+    let other = call(serde_json::json!({ "/app/other.js#theme": "sepia" }));
+    assert!(
+        other["output"].as_str().unwrap().contains("<p></p>"),
+        "{other}"
+    );
+    assert_eq!(call(serde_json::json!(["no"]))["ok"], false);
+}

@@ -330,7 +330,13 @@ fn respond(request: &Map<String, Value>) -> Value {
             {
                 return failure("`idPrefix` takes letters, digits, `-` and `_`");
             }
-            crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
+            // `context`: values the page provides (context key → value), see `with_provided`.
+            let provided: Vec<(String, Value)> = match request.get("context") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(Value::Object(values)) => values.clone().into_iter().collect(),
+                Some(_) => return failure("`context` maps context keys to values"),
+            };
+            crate::validate::with_provided(provided, || crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
                 source,
                 &path,
                 &props,
@@ -351,7 +357,7 @@ fn respond(request: &Map<String, Value>) -> Value {
                         .unwrap_or_default(),
                 },
                 &loader,
-            ))
+            )))
         }
         ("compile", "css")
             if request

@@ -174,6 +174,20 @@ pub fn with_id_prefix<T>(prefix: &str, render: impl FnOnce() -> T) -> T {
     result
 }
 
+/// Run `render` with `values` (context key → value) already provided, as if a component above
+/// everything rendered provided them: a page's values (`@zubra/server`'s `page.provide()`).
+pub fn with_provided<T>(values: Vec<(String, Value)>, render: impl FnOnce() -> T) -> T {
+    let count = values.len();
+    PROVIDED.with(|provided| provided.borrow_mut().extend(values));
+    let result = render();
+    PROVIDED.with(|provided| {
+        let mut provided = provided.borrow_mut();
+        let keep = provided.len() - count;
+        provided.truncate(keep);
+    });
+    result
+}
+
 /// The next id base for a host of `tag` in this render: `<prefix><tag>-s<n>`, in document order.
 /// The `s` keeps them apart from the bases the element counts itself (`<tag>-<n>`), for
 /// elements made in the browser.
