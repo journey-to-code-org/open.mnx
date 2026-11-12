@@ -145,8 +145,14 @@ export function documentsView({ find, list, names }) {
       const fields = find(collection, key);
       return fields && structuredClone(fields);
     },
-    /** Every document in a collection: `[{ key, ...fields }]`. */
-    all: (collection) => list(collection).map(({ key, fields }) => ({ key, ...structuredClone(fields) })),
+    /**
+     * Every document in a collection whose key starts with `prefix` (all of them by default):
+     * `[{ key, ...fields }]`, in the order they were first written to.
+     */
+    all: (collection, prefix = '') =>
+      list(collection)
+        .filter(({ key }) => key.startsWith(prefix))
+        .map(({ key, fields }) => ({ key, ...structuredClone(fields) })),
     /** The collections that have documents, in the order they were first written to. */
     collections: () => names(),
   };

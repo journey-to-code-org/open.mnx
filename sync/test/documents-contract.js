@@ -30,6 +30,16 @@ export const documentsContract = [
     assert.deepEqual((await h.documents()).all('orders'), [{ key: 'o1', status: 'placed', qty: 3 }]);
     assert.equal((await h.documents()).get('orders', 'nope'), undefined);
   }],
+  ['all() takes a key prefix: the documents under it, in the order they were first written to', async (h) => {
+    await h.write('seats', 'show-12/B4', { state: 'held' });
+    await h.write('seats', 'show-13/A1', { state: 'free' });
+    await h.write('seats', 'show-12/A2', { state: 'taken' });
+    const docs = await h.documents();
+    assert.deepEqual(docs.all('seats', 'show-12/'), [{ key: 'show-12/B4', state: 'held' }, { key: 'show-12/A2', state: 'taken' }]);
+    assert.deepEqual(docs.all('seats', 'show-14/'), []);
+    assert.equal(docs.all('seats').length, 3);
+    assert.equal(docs.all('seats', '').length, 3);
+  }],
   ["the server's write comes after a device clock that runs ahead, reaches a live page, and is logged", async (h) => {
     await h.push([change('status', 'placed', '999999999999999-00003-fast')]);
     const stream = events(await h.live('p1'));

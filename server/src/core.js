@@ -19,7 +19,7 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), clientModules = 'all' }) {
+export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), clientModules = 'all', localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
   if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
   const memo = new Map();
   const once = (key, make) => {
@@ -43,9 +43,11 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
   const byTag = () => once('tags', () => new Map([...files.keys()].map((name) => [describe(name).tag, name])));
   const nameOf = (nameOrTag) => (files.has(nameOrTag) ? nameOrTag : byTag().get(nameOrTag));
 
-  const render = (name, props = {}, slots = {}, pending = []) => {
+  // `idPrefix`: renders that end up in one page number their hosts' ids apart (`id()`).
+  // `context`: the values the page provides (`page.provide()`), by context key.
+  const render = (name, props = {}, slots = {}, pending = [], idPrefix = '', context = {}) => {
     const path = pathOf(name);
-    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}) });
+    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}), ...(idPrefix ? { idPrefix } : {}), ...(Object.keys(context).length ? { context } : {}) });
     if (!response.ok) throw new Error(response.error);
     // A value that isn't a safe URL (a user's `javascript:` link) is left out, as the element
     // leaves it out in the browser; the page still renders, and this says what was dropped.
@@ -84,7 +86,9 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     const rest = decodeURIComponent(pathname.slice(base.length + 1));
     if (rest.startsWith('components/') && rest.endsWith('.js')) {
       const name = rest.slice('components/'.length, -3);
-      if (!files.has(name)) return { status: 404, type: 'text/plain', body: 'Not found' };
+      // A plain module a component imports (`./theme.js`): the host serves it from the
+      // components folder, as it is.
+      if (!files.has(name)) return localModule(rest.slice('components/'.length)) ?? { status: 404, type: 'text/plain', body: 'Not found' };
       return { status: 200, type: TYPES['.js'], body: js(name) };
     }
     // The runtime and @zubra/sync are the host's to serve (from disk on Node, from static assets elsewhere).
@@ -102,6 +106,8 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
   /** One page: render components into it, then `finish()` it (or use `head()` and `scripts()`). */
   function page() {
     const used = [];
+    let renders = 0;
+    const provided = {};
     const use = (name) => {
       if (!used.includes(name)) used.push(name);
     };
@@ -112,16 +118,32 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     let streamed = 0;
     return {
       used,
+      /**
+       * Provide a context's value to every component this page renders from now on, as a
+       * component above them would: `page.provide({ module: './theme.js', export: 'theme' },
+       * 'dark')`, where `module` is the file that exports `createContext()`, relative to the
+       * components folder. Components render with it, and their elements start from it. To
+       * change it in the browser, put the page in a `<zb-context>` with the same value.
+       */
+      provide(context, value) {
+        if (!context || typeof context.module !== 'string' || typeof context.export !== 'string') {
+          throw new Error("@zubra/server: page.provide() takes { module: './theme.js', export: 'theme' } and a value");
+        }
+        provided[contextKey(context)] = value;
+        return this;
+      },
       render(name, props = {}, slots) {
         const key = nameOf(name) ?? name;
         use(key);
+        renders += 1;
+        const idPrefix = renders === 1 ? '' : `r${renders}-`;
         const promises = Object.entries(props).filter(([, value]) => value && typeof value.then === 'function');
-        if (!promises.length) return render(key, props, slots);
+        if (!promises.length) return render(key, props, slots, [], idPrefix, provided);
         const given = Object.fromEntries(Object.entries(props).filter(([, value]) => !(value && typeof value.then === 'function')));
         const names = promises.map(([name]) => name);
         const id = String(streamed++);
-        const shell = withStreamId(render(key, given, slots, names), id);
-        const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0 };
+        const shell = withStreamId(render(key, given, slots, names, idPrefix, provided), id);
+        const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0, idPrefix };
         // Each pending region is a named range (`<?start name>`…`<?end>`) that a streamed
         // `<template for>` replaces (out-of-order streaming).
         entry.names = pendingRegions(shell).map(() => `zb-${id}-${entry.count++}`);
@@ -182,7 +204,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
         }
         entry.given[name] = value;
         entry.promises.delete(name);
-        const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()]), entry.id);
+        const resolved = withStreamId(render(entry.key, entry.given, entry.slots, [...entry.promises.keys()], entry.idPrefix, provided), entry.id);
         const swaps = new Map(regionSwaps(entry.shell, resolved).map((swap) => [swap.index, swap.html]));
         entry.shell = resolved;
         // The regions still pending keep their names; one that resolved is replaced, along with
@@ -222,7 +244,9 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return { shadowTags, pattern };
   }
 
-  function injectShadowRoots(html, { forms = true, lightDom = false } = {}) {
+  // `hosts` counts the hosts given content so far, for their id prefixes; a stream shares one
+  // across its chunks.
+  function injectShadowRoots(html, { forms = true, lightDom = false, hosts = { count: 0 } } = {}) {
     const { shadowTags, pattern } = shadowHosts(lightDom);
     if (!pattern) return html;
     let out = '';
@@ -235,7 +259,8 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
       const props = propsFrom(match[2] ?? '', info);
       let rendered;
       try {
-        rendered = render(name, props);
+        // Each host is its own render: its own prefix keeps their ids apart.
+        rendered = render(name, props, {}, [], `h${++hosts.count}-`);
       } catch {
         continue; // leave it to the browser rather than break the page
       }
@@ -533,4 +558,17 @@ function fallbackInput(attributeText, info, props) {
   if (value == null || value === false || value === '') return '';
   const text = value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value);
   return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-zb-fallback>`;
+}
+
+/** `module` (`./x.js`, `../x.js`) joined to the folder `base`, with `.` and `..` resolved, as the
+ * compiler joins a component's import to its path. */
+export function joinPath(base, module) {
+  if (!module.startsWith('./') && !module.startsWith('../')) return module;
+  const parts = base ? base.split('/') : [];
+  for (const part of module.split('/')) {
+    if (part === '.' || part === '') continue;
+    if (part === '..') parts.pop();
+    else parts.push(part);
+  }
+  return parts.join('/');
 }

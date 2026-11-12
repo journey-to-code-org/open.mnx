@@ -39,11 +39,15 @@ const theStore = () => (store ??= typeof indexedDB === 'undefined' ? memoryStore
 const writers = new Set();
 /** @internal Called with `(collection, key, fields)` on each local save. */
 export const onWrite = (fn) => (writers.add(fn), () => writers.delete(fn));
-/** @internal A change from elsewhere: store it, and show it in this tab and the others. */
-export async function receive(collection, key, fields) {
+/**
+ * @internal A change from elsewhere: store it, and show it in this tab and the others. `keep(field)`
+ * is asked again before showing it: a field edited here while it was being stored isn't shown.
+ */
+export async function receive(collection, key, fields, keep = () => true) {
   await theStore().set(collection, key, fields);
-  deliver(collection, key, fields, null);
-  channel?.postMessage({ collection, key, fields });
+  const shown = Object.fromEntries(Object.entries(fields).filter(([field]) => keep(field)));
+  deliver(collection, key, shown, null);
+  channel?.postMessage({ collection, key, fields: shown });
 }
 /** @internal The store in use. */
 export const currentStore = () => theStore();

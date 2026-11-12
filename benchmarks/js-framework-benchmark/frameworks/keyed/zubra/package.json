@@ -1,0 +1,27 @@
+{
+  "name": "js-framework-benchmark-zubra",
+  "version": "1.0.0",
+  "description": "Zubra: web components written as HTML, compiled to custom elements",
+  "type": "module",
+  "js-framework-benchmark": {
+    "frameworkVersionFromPackage": "@zubra/runtime",
+    "frameworkHomeURL": "https://journey-to-code-org.github.io/zubra/",
+    "language": "JavaScript",
+    "repoURL": "https://github.com/journey-to-code-org/zubra"
+  },
+  "scripts": {
+    "dev": "node build.mjs --watch",
+    "build-prod": "node build.mjs"
+  },
+  "author": "Mikey Nichols",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/krausest/js-framework-benchmark#readme",
+  "dependencies": {
+    "@zubra/runtime": "5.7.0"
+  },
+  "devDependencies": {
+    "@zubra/compiler": "5.7.0",
+    "@zubra/unplugin": "5.7.0",
+    "esbuild": "0.28.2"
+  }
+}

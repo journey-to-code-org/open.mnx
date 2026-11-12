@@ -5,12 +5,41 @@ export const MOUNT = '/_zb/action/';
 export const SCRIPT_PATH = '/_zb/actions.js';
 export const COOKIE = '__zb_result';
 export const CLEAR = `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+/** The largest post read by default: 10 MB, files and fields together. */
+export const MAX_BYTES = 10 * 1024 * 1024;
+/** What a function's caller gets for a post over the limit; the function doesn't run. */
+export const TOO_LARGE = Object.freeze({ error: 'Too large' });
 
 /**
  * `routes`: a Map of URL → function. `client`: the enhancing script's source, served at
  * SCRIPT_PATH, or null when the host serves it as a static file.
  */
-export function createActionsCore({ routes, client = null, origins = [], onError = (error) => console.error(error), context = () => ({}) }) {
+export function createActionsCore({ routes, client = null, origins = [], onError = (error) => console.error(error), context = () => ({}), maxBytes = MAX_BYTES }) {
+  if (!(maxBytes > 0)) throw new TypeError('@zubra/actions: `maxBytes` is the largest post to read, in bytes (Infinity for no limit)');
+  const over = Symbol('too large');
+  /** The post's fields and files, or `over` when it's bigger than maxBytes (counted as it's read). */
+  async function readForm(request) {
+    if (Number(request.headers.get('content-length')) > maxBytes) return over;
+    if (maxBytes === Infinity || !request.body) return request.formData();
+    let seen = 0;
+    let tooLarge = false;
+    const counted = request.body.pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          seen += chunk.byteLength;
+          if (seen <= maxBytes) return controller.enqueue(chunk);
+          tooLarge = true;
+          controller.error(new RangeError('too large'));
+        },
+      }),
+    );
+    try {
+      return await new Response(counted, { headers: { 'content-type': request.headers.get('content-type') ?? '' } }).formData();
+    } catch (error) {
+      if (tooLarge) return over;
+      throw error;
+    }
+  }
   const allowed = (request) => {
     const site = request.headers.get('sec-fetch-site');
     if (site) return site === 'same-origin' || site === 'none';
@@ -41,13 +70,19 @@ export function createActionsCore({ routes, client = null, origins = [], onError
     if (!fn) return text(404, 'Not Found');
     const wantsJson = (request.headers.get('accept') ?? '').includes('application/json');
     let value;
-    let failed = false;
+    let status = 200;
     try {
-      const more = await context({ request, ...extra });
-      value = await fn(await request.formData(), { ...more, request });
+      const form = await readForm(request);
+      if (form === over) {
+        status = 413;
+        value = TOO_LARGE;
+      } else {
+        const more = await context({ request, ...extra });
+        value = await fn(form, { ...more, request });
+      }
     } catch (error) {
       onError(error, request);
-      failed = true;
+      status = 500;
       value = { error: 'Something went wrong' };
     }
     if (value instanceof Response) {
@@ -63,7 +98,7 @@ export function createActionsCore({ routes, client = null, origins = [], onError
     }
     if (wantsJson) {
       return new Response(JSON.stringify(value ?? null), {
-        status: failed ? 500 : 200,
+        status,
         headers: { 'content-type': 'application/json' },
       });
     }

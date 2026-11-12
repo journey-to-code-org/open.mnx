@@ -1,0 +1,23 @@
+<script>
+  let message = '';
+  export async function upload(formData) {
+    'use server';
+    const photo = formData.get('photo');
+    if (!(photo instanceof File) || !photo.size) return { error: 'Choose a photo' };
+    const bytes = new Uint8Array(await photo.arrayBuffer());
+    return { name: photo.name, type: photo.type, size: photo.size, first: bytes[0], caption: formData.get('caption') };
+  }
+</script>
+
+<photo-form>
+  <form
+    action={upload}
+    enctype="multipart/form-data"
+    onaction={(event) => (message = event.detail.error ?? event.detail.value?.error ?? `${event.detail.value.name} ${event.detail.value.size}`)}
+  >
+    <input name="caption" />
+    <input name="photo" type="file" />
+    <button type="submit">Upload</button>
+    <p class="message">{message}</p>
+  </form>
+</photo-form>

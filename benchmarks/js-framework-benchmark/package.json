@@ -1,0 +1,13 @@
+{
+  "name": "zubra-js-framework-benchmark",
+  "private": true,
+  "type": "module",
+  "description": "Zubra's implementation for krausest/js-framework-benchmark (frameworks/keyed/zubra, in its layout), and a runner that checks it with the benchmark's own steps.",
+  "scripts": {
+    "build": "cd frameworks/keyed/zubra && npm install --no-audit --no-fund && npm run build-prod",
+    "test": "node run.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

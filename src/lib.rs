@@ -75,9 +75,94 @@ fn load(
     path: &str,
     loader: Option<Loader<'_>>,
 ) -> Result<ast::ComponentAst, Diagnostic> {
+    if let Some(component) = parsed::get(source, path, loader) {
+        return Ok(component);
+    }
+    // Record what the loader answers, so a later request can check that the imports are unchanged.
+    let answers = std::cell::RefCell::new(Vec::new());
+    let recording = |specifier: &str, from: &str| {
+        let answer = loader.map_or_else(|| Err(String::new()), |loader| loader(specifier, from));
+        if let Ok(found) = &answer {
+            answers.borrow_mut().push(parsed::Answer {
+                specifier: specifier.to_owned(),
+                from: from.to_owned(),
+                found: found.clone(),
+            });
+        }
+        answer
+    };
     let mut component = parser::parse(source)?;
-    components::load(&mut component, path, loader)?;
+    components::load(
+        &mut component,
+        path,
+        loader.map(|_| &recording as Loader<'_>),
+    )?;
+    parsed::put(source, path, &component, answers.into_inner());
     Ok(component)
+}
+
+/// Components already parsed and loaded, for a long-lived process (`zubra serve`, the WebAssembly
+/// build behind `@zubra/server`) that renders the same files again and again. Parsing is most of
+/// the cost of rendering a component; the rendering itself depends on the props and isn't kept.
+/// An entry is used only when the source is the same and every import the loader answered last
+/// time answers the same now, so an edited file or child is parsed again.
+mod parsed {
+    use crate::ast::ComponentAst;
+    use crate::components::Loader;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    /// The most components kept; past it, the cache starts again (a server renders a few dozen).
+    const LIMIT: usize = 512;
+
+    pub struct Answer {
+        pub specifier: String,
+        pub from: String,
+        pub found: (String, String),
+    }
+
+    struct Entry {
+        component: ComponentAst,
+        answers: Vec<Answer>,
+    }
+
+    thread_local! {
+        static CACHE: RefCell<HashMap<(String, String), Entry>> = RefCell::new(HashMap::new());
+    }
+
+    pub fn get(source: &str, path: &str, loader: Option<Loader<'_>>) -> Option<ComponentAst> {
+        CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let key = (path.to_owned(), source.to_owned());
+            let entry = cache.get(&key)?;
+            let unchanged = entry.answers.iter().all(|answer| {
+                loader.is_some_and(|loader| {
+                    loader(&answer.specifier, &answer.from).is_ok_and(|found| found == answer.found)
+                })
+            });
+            if unchanged {
+                return Some(entry.component.clone());
+            }
+            cache.remove(&key);
+            None
+        })
+    }
+
+    pub fn put(source: &str, path: &str, component: &ComponentAst, answers: Vec<Answer>) {
+        CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.len() >= LIMIT {
+                cache.clear();
+            }
+            cache.insert(
+                (path.to_owned(), source.to_owned()),
+                Entry {
+                    component: component.clone(),
+                    answers,
+                },
+            );
+        });
+    }
 }
 
 /// Run `compile` on the component's `.zb` text: the source itself, or what a JSX component
@@ -637,6 +722,27 @@ pub fn typescript_to_js(source: &str) -> Result<String, Diagnostic> {
 /// and a prop that shadows a built-in property of every element (`hidden` hides the host; `title`
 /// also shows a tooltip).
 pub fn warnings(source: &str) -> Vec<Diagnostic> {
+    // A pure function of the text, asked for on every request: kept per source, as parsed
+    // components are (`parsed`), for long-lived processes that render the same files again.
+    thread_local! {
+        static SEEN: std::cell::RefCell<std::collections::HashMap<String, Vec<Diagnostic>>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    if let Some(found) = SEEN.with(|seen| seen.borrow().get(source).cloned()) {
+        return found;
+    }
+    let found = warnings_of(source);
+    SEEN.with(|seen| {
+        let mut seen = seen.borrow_mut();
+        if seen.len() >= 512 {
+            seen.clear();
+        }
+        seen.insert(source.to_owned(), found.clone());
+    });
+    found
+}
+
+fn warnings_of(source: &str) -> Vec<Diagnostic> {
     let parsed = if jsx::looks_like_jsx(source) {
         // A JSX component's props are its parameters; their names are checked the same way.
         jsx::lower(source, "component.zb.tsx", None)
