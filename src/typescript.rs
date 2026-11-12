@@ -1097,6 +1097,30 @@ mod tests {
     }
 
     #[test]
+    fn what_runs_is_written_in_place_keeping_lines() {
+        for (source, expected) in [
+            (
+                "namespace N {\n  export const x = 1\n}",
+                "const N = {}; (function (N) {\n  N.x = 1\n})(N);",
+            ),
+            (
+                "namespace T { export type A = 1 }",
+                "                                 ",
+            ),
+            (
+                "class A { constructor(public x: number) {} }",
+                "class A { x; constructor(       x        ) { this.x = x;} }",
+            ),
+            ("function f(this: A, b) {}", "function f(         b) {}"),
+            ("const v = <T>w", "const v =    w"),
+        ] {
+            let out = stripped(source);
+            assert_eq!(out, expected);
+            assert_eq!(out.matches('\n').count(), source.matches('\n').count());
+        }
+    }
+
+    #[test]
     fn rejects_what_it_can_t_reduce_and_says_what_to_write() {
         for (source, expected, line) in [
             (
@@ -1104,15 +1128,8 @@ mod tests {
                 "needs an initializer",
                 3,
             ),
-            ("namespace N { export const x = 1 }", "`namespace`", 2),
-            (
-                "class A { constructor(private x: number) {} }",
-                "parameter properties",
-                2,
-            ),
-            ("const v = <string>thing", "type assertions", 2),
-            ("import fs = require('fs')", "require", 2),
-            ("function f(this: Window) {}", "`this` parameter", 2),
+            ("import fs = require('fs')", "TS1202", 2),
+            ("export = 1", "TS1203", 2),
         ] {
             let error = strip(source, Span::new(2, 1)).unwrap_err();
             assert!(
