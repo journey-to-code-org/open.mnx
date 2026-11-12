@@ -26,6 +26,10 @@
     "./embed": {
       "types": "./embed.d.ts",
       "default": "./embed.js"
+    },
+    "./mcp": {
+      "types": "./mcp.d.ts",
+      "default": "./mcp.js"
     }
   },
   "files": [
@@ -39,6 +43,8 @@
     "library.d.ts",
     "embed.js",
     "embed.d.ts",
+    "mcp.js",
+    "mcp.d.ts",
     "registry",
     "!registry/test"
   ],
