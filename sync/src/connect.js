@@ -91,13 +91,25 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   const outbox = outboxOf(JSON.parse(remember('zubra-sync:outbox', () => '[]')), (pending) =>
     keep('zubra-sync:outbox', JSON.stringify(pending)));
 
+  // This device's stamps, kept here the moment a field is edited. Storing them beside the document
+  // takes an await, and a change from elsewhere merged in that time must still lose to them.
+  const mine = new Map(); // JSON [collection, key] → { field: clock }
+  const newest = (a, b) => (a && (!b || a > b) ? a : b);
+  const own = ({ collection, key, field, clock: stamp }) => {
+    const id = JSON.stringify([collection, key]);
+    if (!mine.has(id)) mine.set(id, {});
+    mine.get(id)[field] = newest(stamp, mine.get(id)[field]);
+  };
+
   // Local writes: stamp each field, remember the stamp beside the document, queue it.
   const off = onWrite(async (collection, key, fields) => {
     const stamped = {};
     for (const [field, value] of Object.entries(fields)) {
       const stamp = clocks.tick();
       stamped[field] = stamp;
-      outbox.add({ collection, key, field, value, clock: stamp });
+      const change = { collection, key, field, value, clock: stamp };
+      own(change);
+      outbox.add(change);
     }
     const doc = (await currentStore().get(collection, key)) ?? {};
     await currentStore().set(collection, key, { [CLOCKS]: { ...doc[CLOCKS], ...stamped } });
@@ -152,17 +164,21 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
       if (!byDoc.has(id)) byDoc.set(id, []);
       byDoc.get(id).push(change);
     }
-    for (const changes of byDoc.values()) {
+    for (const [id, changes] of byDoc) {
       const { collection, key } = changes[0];
       const doc = (await currentStore().get(collection, key)) ?? {};
+      // What's stored, and what this device has stamped since that may not be stored yet.
       const known = { ...doc[CLOCKS] };
+      for (const [field, stamp] of Object.entries(mine.get(id) ?? {})) known[field] = newest(stamp, known[field]);
       const fields = {};
       for (const change of changes) {
         if (known[change.field] && known[change.field] >= change.clock) continue;
         known[change.field] = change.clock;
         fields[change.field] = change.value;
       }
-      if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known });
+      // An edit made here while the change was being stored still wins on screen.
+      const stillNewer = (field) => field === CLOCKS || !(mine.get(id)?.[field] > known[field]);
+      if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known }, stillNewer);
     }
     // Never move the cursor back (a live backlog can arrive after a newer push), unless the server
     // says this device's cursor was past the end of its log: then it starts over from what it sent.
@@ -229,8 +245,30 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   const loop = setInterval(() => flush().then(() => (open ? undefined : pull())), interval);
   const online = () => flush().then(pull);
   addEventListener('online', online);
+  // What's still waiting to be sent is newer than what's stored wherever the store says otherwise:
+  // a tab that closed with writes queued can leave the stored value behind the outbox.
+  async function replay() {
+    const byDoc = new Map();
+    for (const change of outbox.pending()) {
+      const id = JSON.stringify([change.collection, change.key]);
+      byDoc.set(id, [...(byDoc.get(id) ?? []), change]);
+    }
+    for (const changes of byDoc.values()) {
+      const { collection, key } = changes[0];
+      const doc = (await currentStore().get(collection, key)) ?? {};
+      const known = { ...doc[CLOCKS] };
+      const fields = {};
+      for (const change of changes) {
+        if (known[change.field] && known[change.field] >= change.clock) continue;
+        known[change.field] = change.clock;
+        fields[change.field] = change.value;
+      }
+      if (Object.keys(fields).length) await receive(collection, key, { ...fields, [CLOCKS]: known });
+    }
+  }
+
   // Components wait for this first pull before applying what's stored (index.js: fresh first).
-  const first = flush().then(pull);
+  const first = (applying = applying.then(replay).catch(() => {})).then(flush).then(pull);
   startingPull(first);
   first.then(listen);
   return {
