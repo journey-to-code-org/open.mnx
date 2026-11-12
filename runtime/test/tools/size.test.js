@@ -20,7 +20,8 @@ const BUDGETS = {
   // And `animate`'s hooks in zb-if and zb-each — about 160 B; leave() and glide() themselves are
   // `src/motion.js`, loaded only by components that animate — to 15 KB, and the list work for
   // the js-framework-benchmark — a keyed zb-each moving only the rows out of order, about 125 B —
-  // to 15.25 KB.)
+  // to 15.25 KB. Clearing a list that is all its parent holds by emptying the parent, about
+  // 120 B more, fits within it.)
   'src/index.js': { gzip: 15.25 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
   // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`, 14 KB until the list work).
