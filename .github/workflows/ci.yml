@@ -23,6 +23,8 @@ jobs:
       - run: cargo test --workspace --locked
       # The release's binary archives (.github/workflows/release.yml).
       - run: scripts/package-binary.test.sh
+      # The weekly canary's choice of framework versions (.github/workflows/canary.yml).
+      - run: node --test scripts/canary.test.js
       # The repository's own components are laid out by zubra fmt.
       - run: cargo run --locked -- fmt --check .
 
