@@ -158,3 +158,90 @@ fn only_lang_ts_is_accepted() {
         error.message
     );
 }
+
+// Import elision: TypeScript drops an import whose names the module uses only as types, even
+// without `import type`. Kept, `import { Option } from './types'` (an interface) makes the browser
+// refuse the module: './types' has no runtime export named `Option`.
+
+fn imports(js: &str) -> Vec<&str> {
+    js.lines()
+        .filter(|line| line.starts_with("import "))
+        .collect()
+}
+
+#[test]
+fn an_import_used_only_as_a_type_is_dropped_like_typescript_drops_it() {
+    let source = r#"<script lang="ts">
+  import { Option } from './types'
+  const itemsDefault: Option[] = []
+</script>
+<zb-pick items={itemsDefault}><p>{items.length}</p></zb-pick>"#;
+    for js in [
+        compile_js(source, "@zubra/runtime", "pick.zb").unwrap(),
+        zubra::compile_element_with(source, "pick.zb", Some(".js"), &|_, _| {
+            Err("no components".to_owned())
+        })
+        .unwrap(),
+    ] {
+        assert!(!js.contains("./types"), "{js}");
+    }
+    // The typings still need it, as a type.
+    let dts = compile_declarations(source, "pick.zb").unwrap();
+    assert!(
+        dts.contains("import type { Option } from './types';"),
+        "{dts}"
+    );
+}
+
+#[test]
+fn only_the_type_only_names_go_and_the_rest_of_the_import_is_rewritten() {
+    let source = r#"<script lang="ts">
+  import Def, { Option, format, type Other, Size as S } from './types' with { type: 'module' }
+  import * as T from './ns'
+  let thing: T.Thing | null = null
+  let d: typeof Def | null = null
+  let o: Other | Option | null = null
+  const label = format(S.Large)
+</script>
+<zb-mixed><p>{label}</p></zb-mixed>"#;
+    let js = compile_js(source, "@zubra/runtime", "mixed.zb").unwrap();
+    let lines = imports(&js);
+    assert!(
+        lines.contains(&"import { format, Size as S } from './types' with { type: 'module' };"),
+        "{js}"
+    );
+    assert!(!js.contains("./ns"), "{js}");
+}
+
+#[test]
+fn a_type_only_name_the_template_reads_is_kept() {
+    let source = r#"<script lang="ts">
+  import { Size } from './size'
+  let chosen: Size | null = null
+</script>
+<zb-size big={Size.Large}><p>{chosen === Size.Small}</p></zb-size>"#;
+    let js = compile_js(source, "@zubra/runtime", "size.zb").unwrap();
+    assert!(
+        imports(&js).contains(&"import { Size } from './size';"),
+        "{js}"
+    );
+}
+
+#[test]
+fn an_import_the_script_never_mentions_is_kept_for_the_template_or_its_side_effects() {
+    let source = r#"<script lang="ts">
+  import { register } from './setup'
+  import './polyfill'
+</script>
+<zb-plain><p>x</p></zb-plain>"#;
+    let js = compile_js(source, "@zubra/runtime", "plain.zb").unwrap();
+    assert!(js.contains("import { register } from './setup';"), "{js}");
+    assert!(js.contains("import './polyfill';"), "{js}");
+}
+
+#[test]
+fn a_tsx_component_s_type_only_import_is_dropped_too() {
+    let source = "import { Option } from './types'\nexport default function ZbPick({ items }: { items: Option[] }) {\n  const first: Option | undefined = items[0]\n  return <p>{first ? first.id : ''}</p>\n}\n";
+    let js = compile_js(source, "@zubra/runtime", "pick.zb.tsx").unwrap();
+    assert!(!js.contains("./types"), "{js}");
+}

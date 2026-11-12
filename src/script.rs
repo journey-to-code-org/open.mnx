@@ -23,11 +23,65 @@ use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{Binding, ComponentImport, Emit, Import, Script, ServerExport},
+    ast::{Binding, ComponentImport, Emit, Import, ImportKind, ImportName, Script, ServerExport},
     diagnostic::{Diagnostic, Span},
     expression,
     scanner::span_after,
 };
+
+/// Drop the imported names a TypeScript script uses only as types, as TypeScript does, unless
+/// the component reads them elsewhere (`used`: every name its host attributes and template
+/// read). An import left with no names goes entirely; one that keeps some is rewritten with
+/// those. Without this, `import { Option } from './types'` (an interface) would reach the
+/// browser, which refuses a module importing a name its source doesn't export.
+pub fn elide_type_only_imports(script: &mut Script, used: &std::collections::HashSet<String>) {
+    if script.type_only_imports.is_empty() {
+        return;
+    }
+    let elided: Vec<String> = std::mem::take(&mut script.type_only_imports)
+        .into_iter()
+        .filter(|name| !used.contains(name))
+        .collect();
+    if elided.is_empty() {
+        return;
+    }
+    let mut kept_imports = Vec::new();
+    for mut import in std::mem::take(&mut script.imports) {
+        let before = import.names.len();
+        import.names.retain(|name| !elided.contains(&name.local));
+        if import.names.len() == before {
+            kept_imports.push(import);
+            continue;
+        }
+        if import.names.is_empty() {
+            continue;
+        }
+        // `import A, * as B, { c, d as e } from "x" with { … }`, from what's left.
+        let mut clauses = Vec::new();
+        let named: Vec<&str> = import
+            .names
+            .iter()
+            .filter(|name| name.kind == ImportKind::Named)
+            .map(|name| name.text.as_str())
+            .collect();
+        for name in &import.names {
+            if name.kind != ImportKind::Named {
+                clauses.push(name.text.clone());
+            }
+        }
+        if !named.is_empty() {
+            clauses.push(format!("{{ {} }}", named.join(", ")));
+        }
+        let head = format!("import {} from ", clauses.join(", "));
+        let tail = import.text[import.specifier_range.clone()].to_owned()
+            + &import.text[import.specifier_range.end..];
+        import.specifier_range = head.len()..head.len() + (import.specifier_range.len());
+        import.text = head + &tail;
+        kept_imports.push(import);
+    }
+    script.imports = kept_imports;
+    script.runtime_names.retain(|name| !elided.contains(name));
+}
 
 /// Parse `source` (the text between `<script>` and `</script>`), which begins at `start` in the
 /// component file.
@@ -55,6 +109,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         declared_types: types.bindings.clone(),
         type_declarations: types.declarations.clone(),
         type_imports: types.imports.clone(),
+        type_only_imports: types.type_only.clone(),
         prop_types: types
             .props
             .iter()
@@ -213,10 +268,31 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         span: at(import.source.span.start),
                     });
                 }
+                let names = import
+                    .specifiers
+                    .iter()
+                    .flatten()
+                    .map(|specifier| ImportName {
+                        local: specifier.name().to_string(),
+                        text: source
+                            [specifier.span().start as usize..specifier.span().end as usize]
+                            .to_owned(),
+                        kind: match specifier {
+                            ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
+                                ImportKind::Default
+                            }
+                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                                ImportKind::Namespace
+                            }
+                            ImportDeclarationSpecifier::ImportSpecifier(_) => ImportKind::Named,
+                        },
+                    })
+                    .collect();
                 script.imports.push(Import {
                     text: source[range.clone()].to_owned(),
                     specifier,
                     specifier_range,
+                    names,
                 });
                 import_ranges.push(range);
                 import_locals.push(

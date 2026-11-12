@@ -128,6 +128,9 @@ pub struct Script {
     /// with a hint. They did nothing before 5.3, so in 5.x they compile, as they did; 6.0 makes
     /// them errors.
     pub unknown_directives: Vec<crate::diagnostic::Diagnostic>,
+    /// Imported names a TypeScript script uses only as types (see
+    /// [`crate::script::elide_type_only_imports`]).
+    pub type_only_imports: Vec<String>,
 }
 
 /// An exported function marked `'use server'`. Its body never reaches the browser: the browser
@@ -174,6 +177,24 @@ pub struct Import {
     pub text: String,
     pub specifier: String,
     pub specifier_range: std::ops::Range<usize>,
+    /// The bindings it declares, in order (for dropping the ones used only as types).
+    pub names: Vec<ImportName>,
+}
+
+/// One binding of an `import`: `Thing` (default), `* as ns` or `{ a as b }`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportName {
+    pub local: String,
+    /// The specifier's source text (`a as b`, `* as ns`, `Thing`).
+    pub text: String,
+    pub kind: ImportKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImportKind {
+    Default,
+    Namespace,
+    Named,
 }
 
 #[derive(Clone, Debug, PartialEq)]

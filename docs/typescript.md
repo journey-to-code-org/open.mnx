@@ -8,6 +8,8 @@ The compiler reduces TypeScript to JavaScript by **blanking out the type syntax 
 
 This is the same subset Node's type stripping accepts and the same one TypeScript's `erasableSyntaxOnly` flag enforces: **syntax that would need JavaScript generated for it is not accepted.** The compiler never runs the TypeScript type checker, never resolves a type across files, and never emits code from a type.
 
+**Imports used only as types go too**, as TypeScript, esbuild and Babel drop them: `import { Option } from './types'` with `Option` used only in annotations leaves the module, so the browser never asks `./types` for a name it doesn't export at runtime. A name the host or the template reads (`{Size.Large}`) is kept, and so is an import the script never mentions (the template may use it, or it's there for its side effects). Writing `import type` says it outright, and is still the clearest.
+
 What that buys: no `tsc` in the compile path, byte-identical output from the Rust CLI and the WebAssembly build, and source positions that are always right. What it costs is the list below.
 
 ## What is refused, and what to write instead

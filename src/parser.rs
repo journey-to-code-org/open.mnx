@@ -207,6 +207,22 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     }
     let mut nodes = host.children;
     resolve_server_exports(&mut script, &host.name, &mut nodes);
+    // Imports the script uses only as types go, unless the host or the template reads them.
+    if !script.type_only_imports.is_empty() {
+        let mut used = std::collections::HashSet::new();
+        let mut record = |expression: &crate::expression::Expression| {
+            expression.for_each_identifier(&mut |name| {
+                used.insert(name.to_owned());
+            });
+        };
+        for prop in &props {
+            if let PropDefault::Expression(expression, _) = &prop.default {
+                record(expression);
+            }
+        }
+        crate::ast::for_each_expression(&nodes, &mut |expression, _| record(expression));
+        script::elide_type_only_imports(&mut script, &used);
+    }
     Ok(ComponentAst {
         tag: host.name,
         tag_span: host.span,
