@@ -1564,6 +1564,18 @@ function defineElement(tag, definition) {
   const live = new Set(); // WeakRefs to the elements, kept only for hot reloads
   // @hot-end
   const byAttribute = Object.fromEntries(Object.entries(props).map(([name, spec]) => [spec.attribute, name]));
+  // HTML lowercases attribute names, so `maxValue` in a page arrives as `maxvalue`, which isn't
+  // the prop's attribute (`max-value`): the element would ignore it without a word.
+  const lowercased = Object.entries(props)
+    .filter(([name, spec]) => name !== name.toLowerCase() && spec.attribute !== name.toLowerCase())
+    .map(([name, spec]) => [name.toLowerCase(), name, spec.attribute]);
+  const checkAttributeCase = (element) => {
+    for (const [lower, name, attribute] of lowercased) {
+      if (element.hasAttribute(lower) && !element.hasAttribute(attribute)) {
+        console.warn(`zubra: <${tag}> ignores the attribute "${lower}": HTML lowercases attribute names, and the prop ${name} is the attribute "${attribute}"${see('writing-a-component')}`);
+      }
+    }
+  };
 
   let internals; // (element) => its ElementInternals; set in the static block below
   class ZubraElement extends HTMLElement {
@@ -1658,7 +1670,10 @@ function defineElement(tag, definition) {
         // Server markup without its comments: start once the code that puts them back is here.
         loadRemark().then(() => { if (this.isConnected && !this.#scope) this.connectedCallback(); });
         return;
-      } else this.#boot();
+      } else {
+        if (lowercased.length) checkAttributeCase(this);
+        this.#boot();
+      }
       this.#cleanups = this.#hooks.mount.map((fn) => fn()).filter((cleanup) => typeof cleanup === 'function');
       this.#started();
     }

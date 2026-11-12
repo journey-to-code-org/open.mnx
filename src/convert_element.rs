@@ -734,18 +734,90 @@ fn unscope(css: &str, tag: &str) -> (Option<String>, String) {
             }
         }
     }
+    // The component's own rules; then `::slotted()` rules (a scope with no lower boundary);
+    // then real `::part()` rules, outside any scope. (See `styles.rs`.)
     let scope = format!("@scope ({tag}) to ([data-zb-slotted=\"{tag}\"]) {{");
-    let body = match rest.strip_prefix(&scope) {
-        Some(inner) if inner.trim_end().ends_with('}') => {
-            let inner = inner.trim_end();
-            inner[..inner.len() - 1].trim_matches('\n').to_owned()
-        }
-        _ => rest.to_owned(),
+    let Some((own, after)) = block(rest, &scope) else {
+        let body = rest
+            .replace(":scope:is(", ":host(")
+            .replace(":scope", ":host");
+        return (layer, format!("{prelude}{body}"));
     };
+    let mut body = unscope_parts(own.trim_matches('\n'));
+    let mut after = after.trim_start();
+    if let Some((slotted, rest)) = block(after, &format!("@scope ({tag}) {{")) {
+        let slotted = slotted.trim_matches('\n').replace(
+            &format!(":where([data-zb-slotted=\"{tag}\"]):is("),
+            "::slotted(",
+        );
+        body.push('\n');
+        body.push_str(&slotted);
+        after = rest.trim_start();
+    }
+    if !after.is_empty() {
+        let outside = after
+            .trim_end()
+            .replace(&format!(":where({tag}) "), "")
+            .replace(&format!(":where({tag})"), ":scope");
+        body.push('\n');
+        body.push_str(&outside);
+    }
     let body = body
         .replace(":scope:is(", ":host(")
         .replace(":scope", ":host");
     (layer, format!("{prelude}{body}"))
+}
+
+/// `text` starting with `header` (which ends with `{`): the block's inside, and what follows it.
+fn block<'t>(text: &'t str, header: &str) -> Option<(&'t str, &'t str)> {
+    let inner = text.strip_prefix(header)?;
+    let mut depth = 1usize;
+    for (index, character) in inner.char_indices() {
+        match character {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((&inner[..index], &inner[index + 1..]));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `@scope (child) to ([data-zb-slotted]) {\n[part~="a"][part~="b"]:hover { … }\n}` back to
+/// `child::part(a b):hover { … }` (a light-DOM child's parts, `styles.rs`).
+fn unscope_parts(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(at) = rest.find("@scope (") {
+        let header_end = rest[at..].find(") to ([data-zb-slotted]) {");
+        let Some(header_end) = header_end else {
+            break;
+        };
+        let prefix = &rest[at + "@scope (".len()..at + header_end];
+        let header = &rest[at..at + header_end + ") to ([data-zb-slotted]) {".len()];
+        let Some((inner, after)) = block(&rest[at..], header) else {
+            break;
+        };
+        let inner = inner.trim();
+        let mut names = Vec::new();
+        let mut selector = inner;
+        while let Some(name) = selector
+            .strip_prefix("[part~=\"")
+            .and_then(|tail| tail.split_once("\"]"))
+        {
+            names.push(name.0);
+            selector = name.1;
+        }
+        out.push_str(&rest[..at]);
+        out.push_str(&format!("{prefix}::part({}){selector}", names.join(" ")));
+        rest = after.strip_prefix('\n').unwrap_or(after);
+    }
+    out.push_str(rest);
+    out
 }
 
 fn escape_text(text: &str) -> String {

@@ -1,0 +1,14 @@
+<!-- A parent styling its children's parts. -->
+<script>
+  import './part-child.zb'
+  import './part-shadow-child.zb'
+</script>
+<style>
+  zb-part-child::part(title) { color: rgb(0, 0, 255) }
+  zb-part-child::part(title note) { color: rgb(0, 128, 0) }
+  zb-part-shadow-child::part(title) { color: rgb(0, 128, 0) }
+</style>
+<zb-part-parent>
+  <zb-part-child><em part="title" class="given">parent's own content</em></zb-part-child>
+  <zb-part-shadow-child></zb-part-shadow-child>
+</zb-part-parent>

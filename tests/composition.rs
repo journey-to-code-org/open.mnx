@@ -272,3 +272,58 @@ fn both_outputs_check_how_a_child_is_used() {
         "<script>import './badge.zb'</script>\n<zb-x n={1}><zb-badge count={n}></zb-badge></zb-x>";
     assert!(js(source, &files(&[("./badge.zb", BADGE)]), None).is_ok());
 }
+
+#[test]
+fn a_camelcase_prop_written_in_lowercase_on_a_child_warns() {
+    let meter = "<zb-meter max-value={5} label=\"x\"><p>{maxValue}</p></zb-meter>";
+    let app = "<script>\n  import './meter.zb'\n</script>\n<zb-app>\n  <zb-meter maxvalue=\"8\" label=\"a\"></zb-meter>\n  <zb-meter maxValue={9}></zb-meter>\n  <zb-if test={true}><zb-meter max-value={3}></zb-meter><zb-meter maxvalue={2}></zb-meter></zb-if>\n</zb-app>";
+    let loader = |specifier: &str, _from: &str| {
+        (specifier == "./meter.zb")
+            .then(|| ("meter.zb".to_owned(), meter.to_owned()))
+            .ok_or_else(|| "not found".to_owned())
+    };
+    let warnings = zubra::warnings_with(app, "app.zb", &loader);
+    let found: Vec<(usize, &str)> = warnings
+        .iter()
+        .map(|warning| (warning.span.line, warning.message.as_str()))
+        .collect();
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert_eq!(found[0].0, 5);
+    assert_eq!(found[1].0, 7);
+    assert!(
+        found[0].1.contains("`maxvalue` isn't a prop of <zb-meter>")
+            && found[0]
+                .1
+                .contains("the prop `maxValue` is the attribute `max-value`"),
+        "{}",
+        found[0].1
+    );
+    assert_eq!(warnings[0].help.as_deref(), Some("write `max-value`"));
+    // Without the imports loaded (no path), it's the same as warnings().
+    assert!(zubra::warnings(app).is_empty());
+}
+
+#[test]
+fn a_parent_needs_the_browser_when_a_child_does() {
+    let counter = "<script>\n  let n = 0\n</script>\n<zb-counter><button onclick={() => n++}>{n}</button></zb-counter>";
+    let label = "<zb-label text=\"x\"><b>{text}</b></zb-label>";
+    let page = |child: &str| {
+        format!("<script>\n  import './{child}.zb'\n</script>\n<zb-page><zb-{child}></zb-{child}></zb-page>")
+    };
+    let loader = |specifier: &str, _from: &str| match specifier {
+        "./counter.zb" => Ok(("counter.zb".to_owned(), counter.to_owned())),
+        "./label.zb" => Ok(("label.zb".to_owned(), label.to_owned())),
+        _ => Err("not found".to_owned()),
+    };
+    assert_eq!(
+        zubra::client_reasons(&page("label"), "page.zb", &loader).unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        zubra::client_reasons(&page("counter"), "page.zb", &loader).unwrap(),
+        vec![
+            "<zb-counter>: state `n`".to_owned(),
+            "<zb-counter>: handles `click`".to_owned()
+        ]
+    );
+}
