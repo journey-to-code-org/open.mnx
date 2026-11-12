@@ -339,6 +339,26 @@ Custom hooks are plain functions that call these. A detached element pauses: lon
 </zb-card>
 ```
 
+### Outlets (experimental)
+
+A slot can't be inside `zb-each`, so a list can't take one piece of content per item that way. An **outlet** asks the app to render it: `<zb-outlet name="row" item={item}>` marks the place, and the app's framework renders into it through a portal, so what it renders keeps the app's context, state and handlers. From React, a `render<Name>` prop fills the outlets of that name:
+
+```html
+<zb-row-list items={[]}>
+  <ul>
+    <zb-each items={items} as="item" key={item.id}>
+      <li><zb-outlet name="row" item={item}></zb-outlet></li>
+    </zb-each>
+  </ul>
+</zb-row-list>
+```
+
+```jsx
+<RowList items={rows} renderRow={(item) => <Row item={item} />} />
+```
+
+The list keeps its keys and order; a keyed move keeps each row's React state, and a removed row unmounts. A template with an outlet imports `@zubra/runtime/outlet` (an import map needs that entry). Only the React adapter fills outlets so far, they render after JavaScript (the server leaves them empty), and `--emit element` refuses a template with one. Other frameworks can claim them through the `outletconnect` event (`runtime/src/outlet.js` has the protocol).
+
 ## Styles
 
 ```html
@@ -600,6 +620,7 @@ npx zubra build --embed src/components --out embed --name acme-widgets   # --bas
 ```
 
 `embed/` is one flat folder of ES modules with relative imports (the entry `acme-widgets.js`, each component, and the production runtime it uses), so a single `<script type="module">` defines every component from any static host, including asset folders that allow no subfolders. Next to it: `html/<tag>.html`, a snippet per component for an Embed or HTML block; `wordpress/acme-widgets/`, a plugin with a block (a sidebar field per prop) and a shortcode (`[star_rating max="10"]`) per component; `shopify/`, a theme app extension with an app block per component, its props as settings; and a `README.md` saying how to install each. Arrays and objects are JSON text there. A component that imports an npm package (a Zag machine, `@zubra/sync`) can't be embedded this way, and the build says which.
+**Test a library through every framework.** `@zubra/runtime/testing` mounts a component as plain HTML, through the React adapter or through the Vue adapter, so one test runs the way each kind of consumer uses it: `for (const framework of await frameworks()) { const view = await mount(StarRating, { framework, props: { value: 1 } }); … view.events('valuechange') … await view.set({ value: 3 }); view.unmount(); }`. Events arrive through the framework's own handlers, props are set its way, slots are its children, and a `<prop>change` event updates the prop as a two-way binding would. It runs in any browser test runner; [`examples/testing-vitest`](examples/testing-vitest) is Vitest's browser mode.
 
 The package needs no bundler or Zubra tooling on the consumer's side:
 

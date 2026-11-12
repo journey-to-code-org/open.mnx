@@ -1,0 +1,20 @@
+{
+  "name": "zubra-testing-vitest",
+  "private": true,
+  "type": "module",
+  "description": "A component library's tests in Vitest browser mode, each run through plain HTML, React and Vue with @zubra/runtime/testing.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@vitest/browser-playwright": "5.1.0",
+    "@zubra/compiler": "file:../../compiler",
+    "@zubra/runtime": "file:../../runtime",
+    "@zubra/unplugin": "file:../../plugin",
+    "playwright": "1.63.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vitest": "5.1.0",
+    "vue": "3.5.45"
+  }
+}
