@@ -52,6 +52,26 @@ const SAME = [
   'Array.isArray(rows)', 'Number.isInteger(4.0)', '[...words, "kiwi"].length', '({ ...user, name: "Grace" }).name',
   'rows.reduce((best, row) => (row.kg > best.kg ? row : best)).label', 'empty.join("-") === ""',
   '((x) => (y) => x + y)(2)(3)', '[3, 1, 2].toSorted((a, b) => a - b).join()', '"b" < "a"', '10 < 9',
+  // ES2019–ES2024 additions (plan: roadmap-ecmascript E1).
+  'rows.findLast((row) => row.kg < 5).label', 'rows.findLastIndex((row) => row.tags.length > 0)',
+  'rows.findLast((row) => row.kg > 99) ?? "none"', 'rows.findLastIndex((row) => row.kg > 99)',
+  'words.with(-1, "kiwi").join()', 'words.with(0, "kiwi").join()',
+  'words.toSpliced(1, 2, "kiwi", "plum").join()', 'words.toSpliced(-1).join()', 'words.toSpliced(1).join()',
+  'words.toSpliced().join()', 'words.toSpliced(2, 0, "kiwi").join()', 'words.toSpliced(1, -3).join()',
+  '[1, [2, [3, [4]]]].flat().length', '[1, [2, [3, [4]]]].flat(2).length', '[1, [2]].flat(0).length',
+  'rows.flatMap((row) => row.tags).join()', 'rows.flatMap((row) => (row.kg > 3 ? [row.label, row.kg] : [])).join()',
+  'rows.flatMap((row) => [[row.label]]).length',
+  'Object.keys(Object.fromEntries(rows.map((row) => [row.label, row.kg]))).join()',
+  'Object.fromEntries([["b", 1], ["2", 2], ["a", 3], ["1", 4], ["b", 5]]).b',
+  'Object.keys(Object.fromEntries([["b", 1], ["2", 2], ["a", 3], ["1", 4], ["b", 5]])).join()',
+  'Object.keys(Object.groupBy(rows, (row) => (row.kg > 3 ? "heavy" : "light"))).join()',
+  'Object.groupBy(rows, (row) => (row.kg > 3 ? "heavy" : "light")).heavy.map((row) => row.label).join()',
+  'Object.keys(Object.groupBy(words, (word) => word.length)).join()',
+  'Object.groupBy(words, (word, i) => i % 2)[1].join()',
+  'Object.hasOwn(user, "name")', 'Object.hasOwn(user, "toString")', 'Object.hasOwn(words, 3)',
+  'Object.hasOwn(words, 4)', 'Object.hasOwn(words, "length")', 'Object.hasOwn(text, 0)',
+  'Object.keys({ b: 1, 2: 2, a: 3, 1: 4 }).join()', 'words.toSpliced(2, 99, "kiwi").join()',
+  'Object.keys(Object.fromEntries([["b", 1], ["4294967295", 2], ["4294967294", 3]])).join()',
 ];
 
 // Left for the browser (not deterministic everywhere, not JSON, or not in the subset).
@@ -59,6 +79,8 @@ const LEFT = [
   'Math.random()', 'Date.now()', 'new Date().getFullYear()', 'cents.toLocaleString()',
   'new Intl.NumberFormat("en").format(cents)', 'Math.abs(1) / 0', 'Math.sqrt(-1)', 'rows.map(function (row) { return row.kg })',
   'window.innerWidth + Math.abs(0)', 'rows.sort().length', 'Object.entries(user).map(([key]) => key).join()', 'words.map((word, i, all) => all.length).join()',
+  'words.with(9, "kiwi").join()', 'Object.fromEntries([["a"]]).a', 'Object.hasOwn(nothing, "a")',
+  '[1, [2, [3]]].flat(Infinity).length', 'Object.fromEntries([["a"]]).a === undefined', 'rows.flatMap((row) => row.tags, null).length + Math.random()',
 ];
 
 const component = (expression) => `<script>${SCRIPT}</script>\n<x-e>\n  <p>{${expression}}</p>\n</x-e>\n`;

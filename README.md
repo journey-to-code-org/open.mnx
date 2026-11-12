@@ -526,7 +526,7 @@ Where to call it:
 The HTML output evaluates the component's JavaScript where the answer is the same everywhere:
 - in templates and in the script's `const`s and `let`s: literals, props, member access, arithmetic, comparisons, logic, ternaries and template literals;
 - arrow functions defined in the script (`const money = (cents) => …`), and arrow callbacks;
-- string, array and number methods: `.includes`, `.map`, `.filter`, `.reduce`, `.join`, `.slice`, `.padStart`, `.toFixed`, `.toSorted`, …;
+- string, array and number methods: `.includes`, `.map`, `.filter`, `.reduce`, `.join`, `.slice`, `.padStart`, `.toFixed`, `.toSorted`, `.flatMap`, `.findLast`, …, and `Object.fromEntries` and `Object.groupBy`;
 - `Math` (except `random`), `Number()`, `String()`, `Boolean()` and `Object.keys()`, `Object.values()` and `Object.entries()`.
 
 That's the same in the Rust CLI, the WebAssembly build and every server. `compiler/test/server-evaluation.test.js` checks it against V8. What isn't deterministic (`Date`, `Intl`, `Math.random()`, `toLocaleString()`), what reaches the browser (`window`, `document`), and anything else outside the subset is left for the browser. `zubra check --server` lists those places, rendering with the defaults. It's an error for `checked`, `selected`, `value` and `disabled`, because without JavaScript the form would be wrong.
