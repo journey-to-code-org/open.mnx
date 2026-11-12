@@ -185,10 +185,12 @@ impl Evaluator<'_> {
                                 .as_str()
                                 .ok_or(Unsupported)?
                                 .to_owned();
-                            let value = self.eval(&property.value)?;
-                            if !matches!(value, Val::Undefined) {
-                                fields.insert(key, value.into_json()?);
-                            }
+                            // A key holding `undefined` still exists (`Object.keys` lists it),
+                            // and JSON can't hold that: leave the object for the browser.
+                            match self.eval(&property.value)? {
+                                Val::Undefined => return Err(Unsupported),
+                                value => fields.insert(key, value.into_json()?),
+                            };
                         }
                         ObjectPropertyKind::SpreadProperty(spread) => {
                             match self.eval(&spread.argument)? {
