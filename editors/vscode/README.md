@@ -4,6 +4,7 @@ Language support for [Zubra](https://journey-to-code-org.github.io/zubra/): `.zb
 
 - **Syntax highlighting** for `.zb`: HTML, `{…}` as JavaScript, `<script>` and `<script lang="ts">` as JavaScript and TypeScript, `<style>` and `<style lang="scss">` as CSS and SCSS, and Zubra's directives and event attributes.
 - **Diagnostics as you type**: the compiler's own errors and warnings, with their suggestions ("did you mean `count`?").
+- **Type errors** in `<script lang="ts">` components, from your project's own TypeScript (what `npx zubra check --types` reports): the script, every template expression, child props and event handlers, worked out when the file opens and each time it's saved. Needs `@zubra/compiler` and `typescript` installed in the project.
 - **Completion** of directives, imported components, their props and events, and of props inside `{…}`.
 - **Hover** documentation for imported components: description, props with types and defaults, events and slots.
 - **Go to definition** for imported components.

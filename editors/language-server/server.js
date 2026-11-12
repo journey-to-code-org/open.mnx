@@ -13,9 +13,10 @@
 import { createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind, DiagnosticSeverity, CompletionItemKind, InsertTextFormat, MarkupKind, CodeActionKind } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { createBackend, importsOf, locateImport, readText } from './backend.js';
+import { spawn } from 'node:child_process';
+import { createBackend, importsOf, locateImport, readText, typecheckModule } from './backend.js';
 import { completions, documentation, hostOf, interfaceOf, offsetAt, positionAt, tagAt } from './analysis.js';
 
 const EXTRACT_COMMAND = 'zubra.applyExtractComponent'; // not the editor command's name: the client registers the server's commands itself
@@ -47,7 +48,8 @@ connection.onInitialize(async (params) => {
   client.disabledActions = actions?.disabledSupport === true;
   return {
     capabilities: {
-      textDocumentSync: TextDocumentSyncKind.Incremental,
+      // `save`: type errors are worked out when a file is saved.
+      textDocumentSync: { openClose: true, change: TextDocumentSyncKind.Incremental, save: { includeText: false } },
       completionProvider: { triggerCharacters: ['<', ' ', '{'] },
       hoverProvider: true,
       definitionProvider: true,
@@ -86,6 +88,54 @@ function componentsOf(uri, text) {
   return found;
 }
 
+// Type errors (`zubra check --types`, the project's own TypeScript), by document: worked out when
+// a TypeScript component opens and each time it's saved, in a process of their own, and shown
+// with the compiler's own diagnostics.
+const typeErrors = new Map(); // uri → LSP diagnostics
+const compileErrors = new Map(); // uri → LSP diagnostics
+const typeRuns = new Map(); // uri → the running check, to stop when a newer one starts
+const worker = join(dirname(fileURLToPath(import.meta.url)), 'typecheck-worker.js');
+const publish = (uri) => connection.sendDiagnostics({ uri, diagnostics: [...(compileErrors.get(uri) ?? []), ...(typeErrors.get(uri) ?? [])] });
+
+function checkTypes(document) {
+  const text = document.getText();
+  if (!/<script[^>]*\blang=["']ts["']/i.test(text)) return;
+  const path = pathOf(document.uri);
+  const module = typecheckModule(path);
+  if (!module) return;
+  typeRuns.get(document.uri)?.kill();
+  const child = spawn(process.execPath, [worker], { stdio: ['pipe', 'pipe', 'ignore'] });
+  typeRuns.set(document.uri, child);
+  let output = '';
+  child.stdout.on('data', (chunk) => (output += chunk));
+  child.on('close', () => {
+    if (typeRuns.get(document.uri) !== child) return;
+    typeRuns.delete(document.uri);
+    let result;
+    try { result = JSON.parse(output); } catch { return; }
+    if (result.error) return;
+    const lines = text.split('\n');
+    typeErrors.set(document.uri, result.diagnostics
+      .filter((diagnostic) => resolve(diagnostic.file) === path)
+      .map((diagnostic) => {
+        const line = Math.max(diagnostic.line - 1, 0);
+        const character = Math.max(diagnostic.column - 1, 0);
+        const word = (lines[line] ?? '').slice(character).match(/^[\w$]+|^"[^"]*"|^./)?.[0] ?? '';
+        return {
+          range: { start: { line, character }, end: { line, character: character + Math.max(word.length, 1) } },
+          severity: DiagnosticSeverity.Error,
+          source: 'zubra (TypeScript)',
+          code: diagnostic.code,
+          message: diagnostic.message,
+        };
+      }));
+    publish(document.uri);
+  });
+  child.stdin.end(JSON.stringify({ module, file: path, text }));
+}
+documents.onDidOpen((event) => checkTypes(event.document));
+documents.onDidSave((event) => checkTypes(event.document));
+
 const timers = new Map();
 function validate(document) {
   clearTimeout(timers.get(document.uri));
@@ -110,11 +160,16 @@ function validate(document) {
           message: diagnostic.help ? `${diagnostic.message}\n${diagnostic.help}` : diagnostic.message,
         };
       });
-    connection.sendDiagnostics({ uri: document.uri, diagnostics });
+    compileErrors.set(document.uri, diagnostics);
+    publish(document.uri);
   }, 100));
 }
 documents.onDidChangeContent((change) => validate(change.document));
-documents.onDidClose((event) => connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] }));
+documents.onDidClose((event) => {
+  typeRuns.get(event.document.uri)?.kill();
+  for (const map of [typeErrors, compileErrors, typeRuns]) map.delete(event.document.uri);
+  connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
+});
 
 const kinds = { directive: CompletionItemKind.Keyword, component: CompletionItemKind.Class, attribute: CompletionItemKind.Property, event: CompletionItemKind.Event, variable: CompletionItemKind.Variable };
 connection.onCompletion(({ textDocument, position }) => {

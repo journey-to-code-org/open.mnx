@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -51,7 +51,15 @@ before(async () => {
   execFileSync('cargo', ['build', '--quiet'], { cwd: repo, stdio: 'inherit' });
   dir = mkdtempSync(join(tmpdir(), 'zb-lsp-'));
   writeFileSync(join(dir, 'badge.zb'), '<!-- A small badge. -->\n<script>\n  import { emit } from \'@zubra/runtime\'\n  emit(\'pick\', 1)\n</script>\n<zb-badge label="new" count={0}>\n  <b>{label}</b><zb-slot name="icon"></zb-slot>\n</zb-badge>\n');
-  server = spawn(process.execPath, [join(here, '../server.js'), '--stdio']);
+  // For type errors: the repository's @zubra/compiler/typecheck, against the native CLI, and
+  // TypeScript and @zubra/runtime's types where the project would have them.
+  writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, lib: ['ES2022', 'DOM'] } }));
+  mkdirSync(join(dir, 'node_modules/@zubra'), { recursive: true });
+  symlinkSync(join(repo, 'runtime'), join(dir, 'node_modules/@zubra/runtime'), 'dir');
+  symlinkSync(join(repo, 'compiler/node_modules/typescript'), join(dir, 'node_modules/typescript'), 'dir');
+  server = spawn(process.execPath, [join(here, '../server.js'), '--stdio'], {
+    env: { ...process.env, ZUBRA_TYPECHECK: join(repo, 'compiler/typecheck.js'), ZUBRA_COMPILER: compiler },
+  });
   let buffer = Buffer.alloc(0);
   server.stdout.on('data', (chunk) => {
     buffer = Buffer.concat([buffer, chunk]);
@@ -103,6 +111,34 @@ test('diagnostics as you type, at the right place, with the fix in the message',
   notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: PAGE.replace('lable={1}', 'label="one"') }] });
   const fixed = await diagnosticsFor(uri);
   assert.deepEqual(fixed.filter((diagnostic) => diagnostic.severity === 1), [], 'cleared once fixed, without saving');
+});
+
+test('type errors from the project\'s TypeScript, when a TypeScript component opens and is saved', { timeout: 60_000, skip: !existsSync(join(repo, 'compiler/node_modules/typescript')) && 'needs npm ci in compiler/' }, async () => {
+  const uri = pathToFileURL(join(dir, 'typed.zb')).href;
+  const text = "<script lang=\"ts\">\n  interface Item { name: string }\n  const items: Item[] = []\n</script>\n<zb-typed>\n  <zb-each items={items} as=\"item\"><p>{item.nmae}</p></zb-each>\n</zb-typed>\n";
+  writeFileSync(join(dir, 'typed.zb'), text);
+  notify('textDocument/didOpen', { textDocument: { uri, languageId: 'zubra', version: 1, text } });
+  const typed = async () => {
+    for (;;) {
+      const diagnostics = await diagnosticsFor(uri);
+      const found = diagnostics.filter((diagnostic) => diagnostic.source === 'zubra (TypeScript)');
+      if (found.length) return found;
+    }
+  };
+  const [error] = await typed();
+  assert.equal(error.code, 'TS2339');
+  assert.match(error.message, /Property 'nmae' does not exist on type 'Item'/);
+  assert.deepEqual(error.range, { start: { line: 5, character: 44 }, end: { line: 5, character: 48 } }, 'on `nmae`');
+
+  // Fixed and saved: checked again, and the error goes.
+  const fixed = text.replace('nmae', 'name');
+  writeFileSync(join(dir, 'typed.zb'), fixed);
+  notify('textDocument/didChange', { textDocument: { uri, version: 2 }, contentChanges: [{ text: fixed }] });
+  notify('textDocument/didSave', { textDocument: { uri } });
+  for (;;) {
+    const diagnostics = await diagnosticsFor(uri);
+    if (!diagnostics.some((diagnostic) => diagnostic.source === 'zubra (TypeScript)')) break;
+  }
 });
 
 test('completion: directives and imported components, their props and events', async () => {

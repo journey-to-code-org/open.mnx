@@ -72,21 +72,33 @@ function offsetOf(text, line, column) {
  * diagnostic is `{ file, line, column, code, message }`, placed in the `.zb` file when it came
  * from one. `tsc` and `root` can be given; by default they're found from the components.
  */
-export function checkTypes(paths, { root, tsc, keep = false } = {}) {
+export function checkTypes(paths, { root, tsc, keep = false, out, folder, texts = {} } = {}) {
   const files = components(paths);
   if (!files.length) return { diagnostics: [], checked: 0 };
   const tsconfig = nearestTsconfig(dirname(files[0]));
   root ??= tsconfig ? dirname(tsconfig) : process.cwd();
   tsc ??= findTsc(root);
-  const out = join(root, '.zubra-types');
+  // `folder`: a folder of its own inside `.zubra-types`, for a check running beside another.
+  out ??= folder ? join(root, '.zubra-types', folder) : join(root, '.zubra-types');
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
 
+  // The components they import too (their files give the importers their types), checked only
+  // where they were asked for.
+  const all = new Set(files);
+  for (const file of files) {
+    for (const path of Object.keys(sources(file))) if (path.endsWith('.zb')) all.add(path);
+  }
+  const asked = new Set(files);
   const virtual = new Map(); // the generated .zb.ts path → { source, code, mappings, file }
   const diagnostics = [];
-  for (const file of files) {
-    const response = request({ command: 'virtual', path: file, files: sources(file) });
+  for (const file of all) {
+    // `texts`: an editor's unsaved text, by path.
+    const files = sources(file);
+    for (const [path, text] of Object.entries(texts)) if (path in files || path === file) files[path] = text;
+    const response = request({ command: 'virtual', path: file, files });
     if (!response.ok) {
+      if (!asked.has(file)) continue;
       // A component that doesn't compile: `zubra check` reports that; here, it's one error.
       const [first] = response.diagnostics;
       diagnostics.push({ file, line: first?.line ?? 1, column: first?.column ?? 1, code: 'zubra', message: first?.message ?? response.error });
@@ -96,7 +108,8 @@ export function checkTypes(paths, { root, tsc, keep = false } = {}) {
     const target = join(out, `${relative(root, file)}.ts`);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, code);
-    virtual.set(target, { source: readFileSync(file, 'utf8').replace(/\r\n?/g, '\n'), code, mappings, file });
+    const source = (texts[file] ?? readFileSync(file, 'utf8')).replace(/\r\n?/g, '\n');
+    virtual.set(target, { source, code, mappings, file, asked: asked.has(file) });
   }
 
   const config = {
@@ -118,8 +131,10 @@ export function checkTypes(paths, { root, tsc, keep = false } = {}) {
   // `path(line,col): error TS1234: message`, with continuation lines indented.
   const pattern = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
   let last = null;
+  let reportedAny = false;
   for (const line of output.split('\n')) {
     const match = line.match(pattern);
+    if (match) reportedAny = true;
     if (!match) {
       if (last && /^\s/.test(line) && line.trim()) last.message += `\n${line.trim()}`;
       continue;
@@ -127,6 +142,10 @@ export function checkTypes(paths, { root, tsc, keep = false } = {}) {
     const [, reported, row, col, code, message] = match;
     const absolute = resolve(root, reported);
     const entry = virtual.get(absolute) ?? virtual.get(resolve(out, reported));
+    if (entry && !entry.asked) {
+      last = null;
+      continue;
+    }
     if (!entry) {
       last = { file: absolute, line: Number(row), column: Number(col), code, message };
       diagnostics.push(last);
@@ -143,7 +162,7 @@ export function checkTypes(paths, { root, tsc, keep = false } = {}) {
     }
     diagnostics.push(last);
   }
-  if (result.status !== 0 && !diagnostics.length) throw new Error(`tsc failed:\n${output}`);
+  if (result.status !== 0 && !reportedAny) throw new Error(`tsc failed:\n${output}`);
   if (!keep) rmSync(out, { recursive: true, force: true });
   return { diagnostics, checked: files.length, out };
 }

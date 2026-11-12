@@ -20,7 +20,8 @@
     "server.js",
     "analysis.js",
     "backend.js",
-    "packages.js"
+    "packages.js",
+    "typecheck-worker.js"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.js\""

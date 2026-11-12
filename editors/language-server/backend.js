@@ -26,6 +26,19 @@ export function compilerEntries(root) {
 }
 
 /**
+ * The `@zubra/compiler/typecheck` nearest `path` (what `zubra check --types` runs), for type
+ * errors in the editor; `ZUBRA_TYPECHECK` names one outright. Null when there's none.
+ */
+export function typecheckModule(path) {
+  if (process.env.ZUBRA_TYPECHECK) return process.env.ZUBRA_TYPECHECK;
+  for (const entry of compilerEntries(dirname(resolve(path)))) {
+    const module = join(dirname(entry), 'typecheck.js');
+    if (existsSync(module)) return module;
+  }
+  return null;
+}
+
+/**
  * A CLI that `cargo build` made in a zubra checkout at or above `root` (target/debug or
  * target/release, the newer of the two), as @zubra/server finds it. Null when there's none.
  */

@@ -83,3 +83,14 @@ test('a clean project has no errors, and nothing is left beside the components',
   assert.deepEqual(diagnostics, []);
   assert.equal(existsSync(out), false);
 });
+
+test('one component, with the components it imports, and unsaved text in place of the file', { skip }, () => {
+  const inbox = "<script lang=\"ts\">\n  import './badge.zb'\n</script>\n<zb-inbox><zb-badge count={1}></zb-badge></zb-inbox>\n";
+  const root = project({ 'src/badge.zb': badge.replace('{count}', '{count.nope}'), 'src/inbox.zb': inbox });
+  const file = join(root, 'src/inbox.zb');
+  // Only what was asked for is reported: badge.zb's own error isn't.
+  assert.deepEqual(checkTypes([file], { root }).diagnostics, []);
+  const unsaved = inbox.replace('count={1}', 'count={"one"}');
+  const { diagnostics } = checkTypes([file], { root, texts: { [file]: unsaved }, out: join(root, '.zubra-types', 'editor') });
+  assert.deepEqual(diagnostics.map(({ line, column, code }) => [line, column, code]), [[4, 28, 'TS2345']]);
+});

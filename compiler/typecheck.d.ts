@@ -20,7 +20,18 @@ export function findTsc(from: string): string;
  */
 export function checkTypes(
   paths: string[],
-  options?: { root?: string; tsc?: string; keep?: boolean },
+  options?: {
+    root?: string;
+    tsc?: string;
+    /** Keep the generated files (in `out`) afterwards. */
+    keep?: boolean;
+    /** Where the generated files go: `.zubra-types` at the root by default. */
+    out?: string;
+    /** A folder of its own inside `.zubra-types`, for a check running beside another. */
+    folder?: string;
+    /** Text to check in place of what's on disk, by path (an editor's unsaved files). */
+    texts?: Record<string, string>;
+  },
 ): { diagnostics: TypeDiagnostic[]; checked: number; out: string };
 
 /** `file:line:column - error TS1234: message`. */
