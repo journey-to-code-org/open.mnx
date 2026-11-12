@@ -15,11 +15,8 @@
 //   children, named slots with `slot="name"`.
 import { defineComponent, h, withDirectives, Text, Comment, Fragment, customRef, getCurrentScope, onScopeDispose } from 'vue';
 import { serverContent } from './server.js';
-<<<<<<< HEAD
 import { routeLinks } from './navigation.js';
-=======
 import './context.js';
->>>>>>> interop/form-libraries
 import { subscribe, read, writable } from './bridge.js';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
@@ -132,7 +129,6 @@ export function wrap(Element) {
 }
 
 /**
-<<<<<<< HEAD
  * Route links inside Zubra components through Vue Router (or any `push`) until the current effect
  * scope ends: `useRouteLinks((to) => router.push(to))` in a component's `setup`. Returns the
  * function that stops it.
@@ -142,7 +138,8 @@ export function useRouteLinks(navigate, options) {
   if (getCurrentScope()) onScopeDispose(stop);
   return stop;
 }
-=======
+
+/**
  * Provide a Context Protocol value to every element inside: an app's theme, locale or current user,
  * read by components with `inject(context)` (or Lit's `@consume`).
  *
@@ -158,7 +155,6 @@ export const ZubraContext = defineComponent({
     return () => h('zb-context', { '.context': given.context, '.value': given.value, style: 'display: contents' }, slots.default?.());
   },
 });
->>>>>>> interop/form-libraries
 
 /**
  * A Zubra signal (or a function of signals) as a Vue ref: reading `.value` tracks it in
