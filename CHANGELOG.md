@@ -4,6 +4,12 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 5.8.0 — 2026-11-11
+
+Zubra ready for the business kit, and Zubra beside other frameworks. For the kit: Sync's documents are a synchronous store with a key prefix, Actions take files, `class:` and `style:` work on child components, and a device offline for hours (or one whose tab closes mid-write) never loses its edits or shows an older change over them. Beside other frameworks: context and signals shared with the app, form libraries, the app's router, experimental React outlets, testing through every framework, a no-build `--embed` output, an MCP server for coding agents, and server templates for Django, Rails and Laravel.
+
+**One behaviour change:** Actions now read a post only up to `maxBytes`, 10 MB by default. A bigger post gets `{ error: 'Too large' }` and the function doesn't run; set `createActions({ maxBytes: Infinity })` for the old behaviour.
+
 ### Added
 
 - **Sync: `documents().all(collection, prefix)`** gives only the documents whose key starts with `prefix` (`all('seats', 'show-12/')`), as `scope` does for pages. With it, `documents()` and `write()` are a synchronous store in a few lines, for code that keeps its rules apart from where documents live: reads with no `await`, and a write in the documents before its promise settles. Documented, and tested on each log and inside a Durable Object, including after an eviction.
