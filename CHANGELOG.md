@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Sync: `documents().all(collection, prefix)`** gives only the documents whose key starts with `prefix` (`all('seats', 'show-12/')`), as `scope` does for pages. With it, `documents()` and `write()` are a synchronous store in a few lines, for code that keeps its rules apart from where documents live: reads with no `await`, and a write in the documents before its promise settles. Documented, and tested on each log and inside a Durable Object, including after an eviction.
+
 ### Fixed
 
 - **`class:` and `style:` on a child component set its host element**, as on any element, in both outputs. They were refused as unknown props (`<quantity-stepper class:out={…}>`: "has no prop `class:out`"). Found by Tailgate.

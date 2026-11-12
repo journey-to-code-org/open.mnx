@@ -126,10 +126,22 @@ export async function claim(formData, context) {
 }
 ```
 
-- **`documents()`** reads the log once, then keeps up with every push and write. `get(collection, key)` is a document's fields (a copy); `all(collection)` is every document in a collection with its `key`; `collections()` names the collections that have any. Reads are synchronous.
+- **`documents()`** reads the log once, then keeps up with every push and write. `get(collection, key)` is a document's fields (a copy); `all(collection, prefix)` is every document in a collection with its `key`, only those whose key starts with `prefix` when it's given (`all('seats', 'show-12/')`), in the order they were first written to; `collections()` names the collections that have any. Reads are synchronous.
 - **`write(collection, key, fields)`** stamps each field with the server's clock (`createSyncServer({ device })`, `server` by default), which is always later than any clock it has seen. So the write wins over everything before it, and a device that writes afterwards wins over it, as between any two devices. The view has it at once; then it's logged and sent to every live page. A server that hasn't read its log yet (it just started) reads it before its first write, so that write comes after every clock in it. If the log refuses a write, `write()` rejects and the documents take it back out; a push the log refuses never reaches them.
 - **To keep a document the server's alone**, refuse `kind: 'change'` for it in `authorize`, and let `kind: 'presence'` through if people should see who else has it open.
 - One process: the view is this process's, like the live subscribers. Several processes need a shared log and should decide such things in one place.
+- **As a synchronous store** for code that keeps its rules apart from where documents live (`get`, `under`, `write`), the three are a few lines over these, and keep its one rule: a write is in the documents before its promise settles, so a check and a write with no `await` between are one step.
+
+  ```js
+  const docs = await sync.documents();
+  const store = {
+    get: (collection, key) => docs.get(collection, key) ?? null,
+    under: (collection, prefix = '') => docs.all(collection, prefix).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+    write: sync.write,
+  };
+  ```
+
+  On Workers, build it inside the Durable Object's own methods (`await this.documents()`), not in the Worker: the stub's documents are a copy. `sync/test/store.test.js` checks this on each log and inside an object.
 
 ### On Cloudflare Workers: a Durable Object
 
