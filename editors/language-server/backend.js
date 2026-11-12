@@ -3,6 +3,7 @@
 // otherwise a CLI: the one named, ZUBRA_COMPILER, a cargo build in a zubra checkout, or `zubra` on
 // PATH. Both give the same diagnostics, and both format (`format` answers { ok, output } or
 // { ok: false, error }).
+import { packageFile } from './packages.js';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, win32 } from 'node:path';
@@ -112,7 +113,10 @@ function wasmBackend(wasm) {
       const files = wasm.sources(path);
       files[resolve(path)] = text;
       // Imports of the unsaved text, too.
-      for (const specifier of importsOf(text)) wasm.sources(resolve(dirname(path), specifier), files);
+      for (const specifier of importsOf(text)) {
+        const found = locateImport(dirname(path), specifier);
+        if (found) wasm.sources(found.path, files, found.key);
+      }
       return wasm.request({ command: 'check', path: resolve(path), files }).diagnostics;
     },
     manifest(path) {
@@ -133,7 +137,10 @@ function wasmBackend(wasm) {
       const absolute = resolve(path);
       const files = wasm.sources(absolute);
       files[absolute] = text;
-      for (const specifier of importsOf(text)) wasm.sources(resolve(dirname(absolute), specifier), files);
+      for (const specifier of importsOf(text)) {
+        const found = locateImport(dirname(absolute), specifier);
+        if (found) wasm.sources(found.path, files, found.key);
+      }
       return refactored(wasm.request({ command: 'refactor', action: 'extract', path: absolute, files, ...extraction }));
     },
   };
@@ -240,9 +247,9 @@ function cliBackend(locate, onUnavailable) {
       const absolute = resolve(path);
       const files = { [absolute]: text };
       for (const specifier of importsOf(text)) {
-        const imported = resolve(dirname(absolute), specifier);
-        const source = readText(imported);
-        if (source !== null) files[imported] = source;
+        const found = locateImport(dirname(absolute), specifier);
+        const source = found && readText(found.path);
+        if (source != null) files[found.key] = source;
       }
       const result = run(['request'], JSON.stringify({ command: 'refactor', action: 'extract', path: absolute, files, ...extraction }));
       if (result.error) return { ok: false, reason: result.error.message };
@@ -254,7 +261,20 @@ function cliBackend(locate, onUnavailable) {
 /** `.zb` files a component's script imports (relative specifiers). */
 export function importsOf(text) {
   const script = text.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
-  return [...script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"](\.{1,2}\/[^'"]+\.zb)['"]/g)].map((match) => match[1]);
+  return [...script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]((?:\.{1,2}\/|[@\w])[^'"]*\.zb)['"]/g)].map((match) => match[1]);
+}
+
+/**
+ * Where an import of the file in `dir` is: `{ path, key }`, the key being how the compiler knows
+ * it (the path; a package's component by its specifier), or null for a package that isn't there.
+ */
+export function locateImport(dir, specifier) {
+  if (specifier.startsWith('.')) {
+    const path = resolve(dir, specifier);
+    return { path, key: path };
+  }
+  const found = packageFile(dir, specifier);
+  return found.path ? { path: found.path, key: specifier } : null;
 }
 
 export const readText = (path) => {

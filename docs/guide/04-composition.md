@@ -58,6 +58,29 @@ Components render into **light DOM** by default: their markup is part of the pag
 
 `createContext`, `provide` and `inject` pass a value down the tree without props, following the community Context Protocol (so they also work with Lit's context). For app-wide state, a module that exports `state()` signals works too: every component that reads one updates when it changes.
 
+## Components from a package
+
+A component can import another from an installed package, by the package's name:
+
+```html
+<script>
+  import '@acme/kit/components/cart-panel.zb'
+</script>
+<shop-page>
+  <cart-panel title="Your cart"></cart-panel>
+</shop-page>
+```
+
+It's looked for as Node looks for a package, in the `node_modules` of the file's folder and each folder above it. A package with `exports` must export its components (`"./components/*": "./components/*"`); a package without one exposes every file. The package's component is checked like any child, so a wrong prop is an error in your file, and its own relative imports work as they do in yours. A missing package, or a file the package doesn't export, is an error that says which.
+
+The CLI, `@zubra/compiler`, the Vite plugin and the language server all follow this. On a server, tell `@zubra/server` which folders hold a package's components, so it can serve their modules and render them by name or tag:
+
+```js
+const zubra = createZubra({ components: 'src/components', packages: ['@acme/kit/components'] });
+```
+
+Each folder adds one import map entry, sending `@acme/kit/components/` to the server's component route. Two components with one tag (yours and a package's) can't both be rendered by that tag: the server says which two, and each still renders by its name (`@acme/kit/components/cart-panel`). The edge entry, `zubra build` and the manifest don't read packages yet.
+
 ## Ready-made components, and publishing your own
 
 `npx zubra add modal-dialog` copies a component from the registry into your project: twenty-six accessible components, from form controls and charts to tabs, menus and a dialog. When yours are ready to share, `npx zubra build --lib src/components` makes them a package that works in every framework (the README's "Sharing components" section).

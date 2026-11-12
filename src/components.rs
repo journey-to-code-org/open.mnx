@@ -86,16 +86,14 @@ fn load_from(
 
 /// The filesystem loader the CLI uses: specifiers are paths relative to the importing file.
 pub fn filesystem(specifier: &str, from: &str) -> Result<(String, String), String> {
-    if !(specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/'))
-    {
-        return Err(
-            "component imports must be relative paths (./ or ../) when compiling files".to_owned(),
-        );
-    }
     let base = std::path::Path::new(from)
         .parent()
         .unwrap_or(std::path::Path::new("."));
-    let path = base.join(specifier);
+    let path = if crate::request::is_relative(specifier) {
+        base.join(specifier)
+    } else {
+        package_file(base, specifier)?
+    };
     let path =
         std::fs::canonicalize(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     let source =
@@ -114,4 +112,110 @@ pub fn component_extension(specifier: &str) -> Option<&'static str> {
     [".zb.jsx", ".zb.tsx", ".zb"]
         .into_iter()
         .find(|extension| specifier.ends_with(extension))
+}
+
+/// Where a package's component (`@acme/kit/components/cart-panel.zb`) is, looked for as Node looks
+/// for a package: in the node_modules of `dir` and each folder above it. A package with `exports`
+/// must export the path (`"./components/*": "./components/*"`); one without exposes every file.
+/// The same rule as `packageFile` in `@zubra/compiler`.
+pub fn package_file(dir: &std::path::Path, specifier: &str) -> Result<std::path::PathBuf, String> {
+    let parts: Vec<&str> = specifier.split('/').collect();
+    let scoped = usize::from(specifier.starts_with('@')) + 1;
+    if parts.len() <= scoped {
+        return Err(format!(
+            "`{specifier}` names a package, not a component in it"
+        ));
+    }
+    let name = parts[..scoped].join("/");
+    let subpath = format!("./{}", parts[scoped..].join("/"));
+    let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
+    for at in dir.ancestors() {
+        let root = at.join("node_modules").join(&name);
+        if !root.exists() {
+            continue;
+        }
+        let manifest: serde_json::Value = std::fs::read_to_string(root.join("package.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or(serde_json::Value::Null);
+        let target = match manifest.get("exports") {
+            None => Some(subpath.clone()),
+            Some(exports) => exported(exports, &subpath),
+        }
+        .ok_or_else(|| format!("{name} doesn't export {subpath} (its package.json \"exports\")"))?;
+        let path = root.join(&target);
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err(format!("{name} has no {}", target.trim_start_matches("./")))
+        };
+    }
+    Err(format!(
+        "{name} isn't installed: it isn't in any node_modules above {}",
+        dir.display()
+    ))
+}
+
+/// The file `exports` maps `subpath` to: an exact key, or one with a `*`; a string, or the first
+/// condition an import meets.
+fn exported(exports: &serde_json::Value, subpath: &str) -> Option<String> {
+    fn pick(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(target) => Some(target.clone()),
+            serde_json::Value::Array(values) => values.iter().find_map(pick),
+            // Read in its own order: the first condition an import meets.
+            serde_json::Value::Object(conditions) => conditions
+                .iter()
+                .find(|(condition, _)| matches!(condition.as_str(), "import" | "node" | "default"))
+                .and_then(|(_, value)| pick(value)),
+            _ => None,
+        }
+    }
+    let keyed = exports
+        .as_object()
+        .is_some_and(|map| map.keys().any(|key| key.starts_with('.')));
+    if !keyed {
+        return (subpath == ".").then(|| pick(exports)).flatten();
+    }
+    let map = exports.as_object()?;
+    if let Some(value) = map.get(subpath) {
+        return pick(value);
+    }
+    map.iter().find_map(|(key, value)| {
+        let star = key.find('*')?;
+        let (before, after) = (&key[..star], &key[star + 1..]);
+        if subpath.len() < before.len() + after.len()
+            || !subpath.starts_with(before)
+            || !subpath.ends_with(after)
+        {
+            return None;
+        }
+        let matched = &subpath[before.len()..subpath.len() - after.len()];
+        pick(value).map(|target| target.replace('*', matched))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exported;
+    use serde_json::json;
+
+    #[test]
+    fn exports_patterns_and_conditions() {
+        let map = json!({ "./ui/*": { "require": "./nope/*", "import": "./components/*" }, "./c*c.zb": "./x/c*c.zb" });
+        assert_eq!(
+            exported(&map, "./ui/cart.zb").as_deref(),
+            Some("./components/cart.zb")
+        );
+        assert_eq!(exported(&map, "./ui/").as_deref(), Some("./components/"));
+        assert_eq!(exported(&map, "./other.zb"), None);
+        // The two ends of `./c*c.zb` overlap on `./c.zb`: no match, and no slicing past them.
+        assert_eq!(exported(&map, "./c.zb"), None);
+        assert_eq!(exported(&map, "./cXc.zb").as_deref(), Some("./x/cXc.zb"));
+        assert_eq!(
+            exported(&json!("./index.js"), "."),
+            Some("./index.js".to_owned())
+        );
+        assert_eq!(exported(&json!("./index.js"), "./x.zb"), None);
+    }
 }
