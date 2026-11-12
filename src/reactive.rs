@@ -362,7 +362,11 @@ impl<'n, N: Names> Rewriter<'n, N> {
                 .names
                 .in_script()
                 .then(|| format!("{}.{prop}", self.names.lowering().props)),
-            Kind::State | Kind::Derived => Some(self.signal_read(name)),
+            // State (a `let`, `from()`) and derived `const`s are signals under the hood:
+            // `signal(count)` passes the signal itself, as for an explicit one.
+            Kind::State | Kind::Derived => {
+                (!self.passed_to_signal(identifier)).then(|| self.signal_read(name))
+            }
             // A signal reads like a value, in the template and (since 3.0) in the script.
             // `.get()`/`.set()` written out stay, and `signal(count)` is the signal itself.
             Kind::Signal => {
@@ -371,17 +375,7 @@ impl<'n, N: Names> Rewriter<'n, N> {
                 let explicit = [".get(", ".set(", "?.get("]
                     .iter()
                     .any(|call| rest.starts_with(call));
-                let passed = source[..identifier.span.start as usize]
-                    .trim_end()
-                    .strip_suffix('(')
-                    .is_some_and(|before| {
-                        before.ends_with("signal")
-                            && !before[..before.len() - "signal".len()].ends_with(|c: char| {
-                                c.is_alphanumeric() || c == '_' || c == '$' || c == '.'
-                            })
-                    })
-                    && rest.starts_with(')');
-                (!explicit && !passed).then(|| self.signal_read(name))
+                (!explicit && !self.passed_to_signal(identifier)).then(|| self.signal_read(name))
             }
             Kind::Callback(_) => {
                 self.fail(
@@ -398,6 +392,22 @@ impl<'n, N: Names> Rewriter<'n, N> {
                 None
             }
         }
+    }
+
+    /// Whether `identifier` is the whole argument of `signal(…)`: the signal is passed, not read.
+    fn passed_to_signal(&self, identifier: &IdentifierReference<'_>) -> bool {
+        let source = self.names.source();
+        let rest = source[identifier.span.end as usize..].trim_start();
+        source[..identifier.span.start as usize]
+            .trim_end()
+            .strip_suffix('(')
+            .is_some_and(|before| {
+                before.ends_with("signal")
+                    && !before[..before.len() - "signal".len()].ends_with(|c: char| {
+                        c.is_alphanumeric() || c == '_' || c == '$' || c == '.'
+                    })
+            })
+            && rest.starts_with(')')
     }
 
     /// Reading a signal's value.

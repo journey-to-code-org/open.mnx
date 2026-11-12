@@ -1,0 +1,7 @@
+<!-- Two fields, one with its own id. -->
+<script>
+  import './id-field.zb'
+</script>
+<id-form>
+  <id-field label="First"></id-field><id-field id="last" label="Last"></id-field>
+</id-form>

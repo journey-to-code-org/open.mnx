@@ -67,7 +67,7 @@ test("a value that isn't a safe URL is left out, the page still renders, and the
 
 test('a page: render, finish (CSS, import map, modules), and the browser modules served by handle()', async () => {
   const zubra = createZubra({ components });
-  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'order-form', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
+  assert.deepEqual(zubra.names, ['book-card', 'count-stepper', 'hello-there', 'id-field', 'order-form', 'review-list', 'review-panel', 'slot-child', 'slot-frame']);
   assert.equal(zubra.describe('count-stepper').form, true);
   const url = await listen((req, res) => {
     if (zubra.handle(req, res)) return;
@@ -91,6 +91,57 @@ test('a page: render, finish (CSS, import map, modules), and the browser modules
   const page = await open(url);
   await page.waitForFunction(() => document.querySelector('hello-there p').textContent.startsWith('Hello Ada!'));
   assert.deepEqual(page.errors, [], 'it hydrated the server markup');
+  await page.done();
+});
+
+test('ids from id(): each render on a page gets its own, linked before JavaScript and kept after', async () => {
+  const zubra = createZubra({ components });
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const body = page.render('id-field', { label: 'First' }) + page.render('id-field', { label: 'Last' });
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const read = (page) => page.$$eval('id-field', (fields) => fields.map((field) => [field.querySelector('input').id, field.querySelector('label').control === field.querySelector('input')]));
+  const plain = await open(url, { javascript: false });
+  const before = await read(plain);
+  assert.deepEqual(before, [['id-field-s1-1', true], ['r2-id-field-s1-1', true]], 'two renders, two sets of ids');
+  await plain.done();
+  const page = await open(url);
+  await page.waitForFunction(() => customElements.get('id-field'));
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('id-field')].map((el) => el.updateComplete)));
+  await page.evaluate(() => { for (const field of document.querySelectorAll('id-field')) field.more = true; });
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('id-field')].map((el) => el.updateComplete)));
+  assert.deepEqual(await page.$$eval('id-field output', (outputs) => outputs.map((output) => output.htmlFor.value)), ['id-field-s1-1', 'r2-id-field-s1-1'], 'the elements use them');
+  assert.deepEqual(page.errors, []);
+  await page.done();
+});
+
+test('page.provide(): every component the page renders gets the value, on the server and after hydrating', async () => {
+  const zubra = createZubra({ components: join(here, 'context-components') });
+  assert.throws(() => zubra.page().provide('theme', 'dark'), /takes \{ module/);
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const before = page.render('ctx-themed');
+    page.provide({ module: './theme.js', export: 'theme' }, 'dark');
+    const body = before + page.render('ctx-themed') + page.render('ctx-themed');
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const html = await (await fetch(url)).text();
+  assert.equal((html.match(/<p class="dark">dark<\/p>/g) ?? []).length, 2, 'the two rendered after provide()');
+  // The module the component imports is served from the components folder, and nothing outside it.
+  assert.equal((await fetch(`${url}/_zubra/components/theme.js`)).status, 200);
+  const { request } = await import('node:http');
+  // (Dots are resolved before the request reaches us; an encoded slash isn't, and is decoded after.)
+  const status = await new Promise((resolve) => request(`${url}/`, { path: '/_zubra/components/..%2F..%2Fsrc%2Findex.js' }, (response) => resolve(response.statusCode)).end());
+  assert.equal(status, 404, 'no way out of the components folder');
+  assert.match(html, /<ctx-themed>\s*<p><\/p>/, 'the one before: its default is left to the browser');
+  const page = await open(url);
+  await page.waitForFunction(() => customElements.get('ctx-themed'));
+  await page.evaluate(() => Promise.all([...document.querySelectorAll('ctx-themed')].map((el) => el.updateComplete)));
+  assert.deepEqual(await page.$$eval('ctx-themed p', (ps) => ps.map((p) => p.textContent)), ['light', 'dark', 'dark'], 'the elements start from the page\'s value');
+  assert.deepEqual(page.errors, []);
   await page.done();
 });
 

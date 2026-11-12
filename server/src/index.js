@@ -22,7 +22,7 @@ import { StringDecoder } from 'node:string_decoder';
 import * as nodeStream from 'node:stream';
 const { Transform } = nodeStream;
 import { findCompiler } from './compiler.js';
-import { createCore, parseAttributes, propsFrom, SOURCE_EXTENSION as SOURCE, TYPES } from './core.js';
+import { createCore, joinPath, parseAttributes, propsFrom, SOURCE_EXTENSION as SOURCE, TYPES } from './core.js';
 
 export { findCompiler, parseAttributes, propsFrom };
 
@@ -101,6 +101,14 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
   const core = createCore({
     warn,
     clientModules,
+    // The compiler keys a context by its module's path, joined to the importing component's.
+    contextKey: ({ module, export: name }) => `${joinPath(posix(root), module)}#${name}`,
+    // A `.js` file in the components folder that a component imports, served as it is.
+    localModule: (path) => {
+      const file = resolve(root, path);
+      if (!file.startsWith(root + sep) || extname(file) !== '.js' || !existsSync(file) || statSync(file).isDirectory()) return null;
+      return { status: 200, type: TYPES['.js'], body: readFileSync(file) };
+    },
     request: (body) => compiler.request(body),
     files,
     sourcesOf: (path) => compiler.sources(path),
@@ -153,6 +161,7 @@ export function createZubra({ components = 'components', prefix = '/_zubra', cac
   function injectShadowRootsStream(options) {
     const decoder = new StringDecoder('utf8');
     let carry = '';
+    options = { ...options, hosts: { count: 0 } }; // one count of hosts for the whole stream
     const pass = (text, flush) => {
       const all = carry + text;
       // Hold back from an unclosed `<` (a tag cut in two), and from an opened host tag whose

@@ -1,0 +1,9 @@
+<!-- Reads the theme from a component above it. -->
+<script>
+  import { inject } from '@zubra/runtime'
+  import { theme } from './theme.js'
+  const mode = inject(theme)
+</script>
+<ctx-themed>
+  <p class={mode}>{mode}</p>
+</ctx-themed>
