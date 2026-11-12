@@ -199,7 +199,7 @@ impl Evaluator<'_> {
                         }
                     }
                 }
-                Ok(Val::json(Value::Object(fields)))
+                Ok(Val::json(Value::Object(js_key_order(fields))))
             }
             Expression::StaticMemberExpression(member) => {
                 let object = self.eval(&member.object)?;
@@ -373,6 +373,9 @@ impl Evaluator<'_> {
                         && self.name(namespace).is_err()
                     {
                         let arguments = self.arguments(&call.arguments)?;
+                        if namespace == "Object" && member.property.name == "groupBy" {
+                            return self.group_by(&arguments);
+                        }
                         return builtin(namespace, member.property.name.as_str(), &arguments);
                     }
                 }
@@ -461,6 +464,28 @@ impl Evaluator<'_> {
         )
     }
 
+    /// `Object.groupBy(items, callback)`: the callback's result, as a property key, names the
+    /// group. Groups keep the order of their first item (index-like keys first, as in V8).
+    fn group_by(&mut self, arguments: &[Val]) -> Result<Val> {
+        let (Some(Val::Json(Value::Array(items))), Some(callback)) =
+            (arguments.first(), arguments.get(1))
+        else {
+            return Err(Unsupported);
+        };
+        let mut groups = Map::new();
+        for (position, item) in items.iter().enumerate() {
+            let key = js_string(&self.each(callback, item, position)?)?;
+            match groups
+                .entry(key)
+                .or_insert_with(|| Value::Array(Vec::new()))
+            {
+                Value::Array(group) => group.push(item.clone()),
+                _ => unreachable!("every group is an array"),
+            }
+        }
+        Ok(Val::json(Value::Object(js_key_order(groups))))
+    }
+
     fn method(&mut self, object: &Val, name: &str, arguments: Vec<Val>) -> Result<Val> {
         let arg = |index: usize| arguments.get(index).cloned().unwrap_or(Val::Undefined);
         match object {
@@ -512,6 +537,63 @@ impl Evaluator<'_> {
                         match value {
                             Val::Json(Value::Array(more)) => out.extend(more.iter().cloned()),
                             value => out.push(value.clone().into_json()?),
+                        }
+                    }
+                    Ok(Val::json(Value::Array(out)))
+                }
+                "findLast" | "findLastIndex" => {
+                    let callback = arg(0);
+                    for (position, item) in items.iter().enumerate().rev() {
+                        if truthy(&self.each(&callback, item, position)?) {
+                            return Ok(match name {
+                                "findLast" => Val::json(item.clone()),
+                                _ => int(position as i64),
+                            });
+                        }
+                    }
+                    Ok(match name {
+                        "findLast" => Val::Undefined,
+                        _ => int(-1),
+                    })
+                }
+                // Out of range is a RangeError: the browser reports it.
+                "with" => {
+                    let at = relative(items.len(), to_integer(&arg(0))?).ok_or(Unsupported)?;
+                    let mut out = items.clone();
+                    out[at] = arg(1).into_json()?;
+                    Ok(Val::json(Value::Array(out)))
+                }
+                "toSpliced" => {
+                    let start = range(items.len(), &arg(0), &Val::Undefined)?.0;
+                    let rest = items.len() - start;
+                    let removed = match arguments.len() {
+                        0 => 0,
+                        1 => rest,
+                        _ => to_integer(&arg(1))?.clamp(0, rest as i64) as usize,
+                    };
+                    let mut out = items[..start].to_vec();
+                    for value in arguments.iter().skip(2) {
+                        out.push(value.clone().into_json()?);
+                    }
+                    out.extend_from_slice(&items[start + removed..]);
+                    Ok(Val::json(Value::Array(out)))
+                }
+                "flat" => {
+                    let depth = match arg(0) {
+                        Val::Undefined => 1,
+                        value => to_integer(&value)?,
+                    };
+                    let mut out = Vec::new();
+                    flatten(items, depth, &mut out);
+                    Ok(Val::json(Value::Array(out)))
+                }
+                "flatMap" => {
+                    let callback = arg(0);
+                    let mut out = Vec::new();
+                    for (position, item) in items.iter().enumerate() {
+                        match self.each(&callback, item, position)? {
+                            Val::Json(Value::Array(more)) => out.extend(more),
+                            value => out.push(value.into_json()?),
                         }
                     }
                     Ok(Val::json(Value::Array(out)))
@@ -821,8 +903,67 @@ fn builtin(namespace: &str, name: &str, arguments: &[Val]) -> Result<Val> {
             ))),
             _ => Err(Unsupported),
         },
+        ("Object", "fromEntries") => {
+            let Some(Val::Json(Value::Array(entries))) = arguments.first() else {
+                return Err(Unsupported);
+            };
+            let mut fields = Map::new();
+            for entry in entries {
+                let Value::Array(pair) = entry else {
+                    return Err(Unsupported);
+                };
+                let key = js_string(&pair.first().cloned().map_or(Val::Undefined, Val::json))?;
+                // A missing value is `undefined`, which a JSON object can't hold.
+                fields.insert(key, pair.get(1).cloned().ok_or(Unsupported)?);
+            }
+            Ok(Val::json(Value::Object(js_key_order(fields))))
+        }
+        ("Object", "hasOwn") => {
+            let key = js_string(arguments.get(1).unwrap_or(&Val::Undefined))?;
+            let length = match arguments.first() {
+                Some(Val::Json(Value::Object(fields))) => {
+                    return Ok(bool(fields.contains_key(&key)))
+                }
+                Some(Val::Json(Value::Array(items))) => items.len(),
+                Some(Val::Json(Value::String(text))) => text.encode_utf16().count(),
+                // null and undefined throw; numbers and booleans have no own properties we model.
+                _ => return Err(Unsupported),
+            };
+            Ok(bool(
+                key == "length" || array_index(&key).is_some_and(|at| (at as usize) < length),
+            ))
+        }
         _ => Err(Unsupported),
     }
+}
+
+/// `Array.prototype.flat`'s flattening: nested arrays down to `depth` levels.
+fn flatten(items: &[Value], depth: i64, out: &mut Vec<Value>) {
+    for item in items {
+        match item {
+            Value::Array(more) if depth > 0 => flatten(more, depth - 1, out),
+            item => out.push(item.clone()),
+        }
+    }
+}
+
+/// The key as an array index (a canonical integer below 2³² − 1), which JavaScript orders
+/// before every other key of an object.
+fn array_index(key: &str) -> Option<u32> {
+    let at: u32 = key.parse().ok()?;
+    (at != u32::MAX && at.to_string() == key).then_some(at)
+}
+
+/// An object's keys in JavaScript's order: array indices ascending, then the rest as inserted.
+fn js_key_order(fields: Map<String, Value>) -> Map<String, Value> {
+    if !fields.keys().any(|key| array_index(key).is_some()) {
+        return fields;
+    }
+    let (mut indices, rest): (Vec<_>, Vec<_>) = fields
+        .into_iter()
+        .partition(|(key, _)| array_index(key).is_some());
+    indices.sort_by_key(|(key, _)| array_index(key));
+    indices.into_iter().chain(rest).collect()
 }
 
 fn global(name: &str, arguments: &[Val]) -> Result<Val> {

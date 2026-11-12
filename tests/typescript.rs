@@ -104,14 +104,15 @@ fn type_only_exports_are_erasable() {
 
 #[test]
 fn errors_point_into_the_typescript_source() {
-    // A non-erasable construct, on line 4.
-    let source = "<script lang=\"ts\">\n  const a: number = 1\n\n  enum Color { Red }\n</script>\n<zb-x><p>x</p></zb-x>";
+    // A construct TypeScript itself refuses in an ES module, on line 4.
+    let source = "<script lang=\"ts\">\n  const a: number = 1\n\n  import x = require('x')\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile(source, "{}").unwrap_err();
-    assert!(error.message.contains("`enum`"), "{}", error.message);
+    assert!(error.message.contains("require"), "{}", error.message);
     assert_eq!((error.span.line, error.span.column), (4, 3));
 
-    // A compiler check after stripping (an event name), still at the right place.
-    let source = "<script lang=\"ts\">\n  import { emit } from '@zubra/runtime'\n  const n: number = 1\n  emit<number>('valueChange', n)\n</script>\n<zb-x><p>x</p></zb-x>";
+    // A compiler check after stripping (an event name), still at the right place, after an enum
+    // whose lowering is longer than its source.
+    let source = "<script lang=\"ts\">\n  import { emit } from '@zubra/runtime'\n  enum E { A, B }\n  emit<number>('valueChange', E.A)\n</script>\n<zb-x><p>x</p></zb-x>";
     let error = compile_js(source, "@zubra/runtime", "x.zb").unwrap_err();
     assert!(
         error
@@ -157,4 +158,347 @@ fn only_lang_ts_is_accepted() {
         "{}",
         error.message
     );
+}
+
+// Import elision: TypeScript drops an import whose names the module uses only as types, even
+// without `import type`. Kept, `import { Option } from './types'` (an interface) makes the browser
+// refuse the module: './types' has no runtime export named `Option`.
+
+fn imports(js: &str) -> Vec<&str> {
+    js.lines()
+        .filter(|line| line.starts_with("import "))
+        .collect()
+}
+
+#[test]
+fn an_import_used_only_as_a_type_is_dropped_like_typescript_drops_it() {
+    let source = r#"<script lang="ts">
+  import { Option } from './types'
+  const itemsDefault: Option[] = []
+</script>
+<zb-pick items={itemsDefault}><p>{items.length}</p></zb-pick>"#;
+    for js in [
+        compile_js(source, "@zubra/runtime", "pick.zb").unwrap(),
+        zubra::compile_element_with(source, "pick.zb", Some(".js"), &|_, _| {
+            Err("no components".to_owned())
+        })
+        .unwrap(),
+    ] {
+        assert!(!js.contains("./types"), "{js}");
+    }
+    // The typings still need it, as a type.
+    let dts = compile_declarations(source, "pick.zb").unwrap();
+    assert!(
+        dts.contains("import type { Option } from './types';"),
+        "{dts}"
+    );
+}
+
+#[test]
+fn only_the_type_only_names_go_and_the_rest_of_the_import_is_rewritten() {
+    let source = r#"<script lang="ts">
+  import Def, { Option, format, type Other, Size as S } from './types' with { type: 'module' }
+  import * as T from './ns'
+  let thing: T.Thing | null = null
+  let d: typeof Def | null = null
+  let o: Other | Option | null = null
+  const label = format(S.Large)
+</script>
+<zb-mixed><p>{label}</p></zb-mixed>"#;
+    let js = compile_js(source, "@zubra/runtime", "mixed.zb").unwrap();
+    let lines = imports(&js);
+    assert!(
+        lines.contains(&"import { format, Size as S } from './types' with { type: 'module' };"),
+        "{js}"
+    );
+    assert!(!js.contains("./ns"), "{js}");
+}
+
+#[test]
+fn a_type_only_name_the_template_reads_is_kept() {
+    let source = r#"<script lang="ts">
+  import { Size } from './size'
+  let chosen: Size | null = null
+</script>
+<zb-size big={Size.Large}><p>{chosen === Size.Small}</p></zb-size>"#;
+    let js = compile_js(source, "@zubra/runtime", "size.zb").unwrap();
+    assert!(
+        imports(&js).contains(&"import { Size } from './size';"),
+        "{js}"
+    );
+}
+
+#[test]
+fn an_import_the_script_never_mentions_is_kept_for_the_template_or_its_side_effects() {
+    let source = r#"<script lang="ts">
+  import { register } from './setup'
+  import './polyfill'
+</script>
+<zb-plain><p>x</p></zb-plain>"#;
+    let js = compile_js(source, "@zubra/runtime", "plain.zb").unwrap();
+    assert!(js.contains("import { register } from './setup';"), "{js}");
+    assert!(js.contains("import './polyfill';"), "{js}");
+}
+
+#[test]
+fn a_tsx_component_s_type_only_import_is_dropped_too() {
+    let source = "import { Option } from './types'\nexport default function ZbPick({ items }: { items: Option[] }) {\n  const first: Option | undefined = items[0]\n  return <p>{first ? first.id : ''}</p>\n}\n";
+    let js = compile_js(source, "@zubra/runtime", "pick.zb.tsx").unwrap();
+    assert!(!js.contains("./types"), "{js}");
+}
+
+// ---- enums ----------------------------------------------------------------------------------
+
+fn element(source: &str) -> String {
+    zubra::compile_element_with(source, "x.zb", Some(".js"), &|_, _| {
+        Err("no components".to_owned())
+    })
+    .unwrap()
+}
+
+#[test]
+fn an_enum_is_lowered_to_an_object_in_place_with_its_lines() {
+    let source = "<script lang=\"ts\">\n  enum Size {\n    Small,\n    Large = 4,\n  }\n  const big = Size.Large\n</script>\n<zb-x><p>{big} {Size[4]}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        js.contains("  const Size = {\n    Small: 0, \"0\": \"Small\",\n    Large: 4, \"4\": \"Large\",\n  };\n  const big = Size.Large"),
+        "{js}"
+    );
+    // A numeric enum's reverse mapping works at build time too (an object indexed by a number).
+    assert_eq!(
+        compile(source, "{}").unwrap(),
+        "<zb-x><p>4 Large</p></zb-x>"
+    );
+}
+
+#[test]
+fn an_exported_enum_is_exported_by_the_module_and_typed_for_consumers() {
+    let source = r#"<script lang="ts">
+  export enum Size {
+    Small = "small",
+    Large = "large",
+  }
+  declare const size: Size
+</script>
+<zb-x size={Size.Small}><p>{size === Size.Large}</p></zb-x>"#;
+    let module = "export const Size = {\n  Small: \"small\",\n  Large: \"large\",\n};\n";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains(module), "{js}");
+    let element = element(source);
+    assert!(element.contains(module), "{element}");
+    for typings in [
+        compile_declarations(source, "x.zb").unwrap(),
+        zubra::compile_declarations_for(source, "x.zb", zubra::Framework::React).unwrap(),
+    ] {
+        assert!(
+            typings.contains(
+                "export declare enum Size {\n  Small = \"small\",\n  Large = \"large\",\n}"
+            ),
+            "{typings}"
+        );
+        assert!(typings.contains("size?: Size;"), "{typings}");
+    }
+}
+
+#[test]
+fn a_prop_whose_default_is_an_enum_member_is_typed_with_the_enum() {
+    let source = "<script lang=\"ts\">\n  export enum Size { Small, Large }\n</script>\n<zb-x size={Size.Large}><p>{size}</p></zb-x>";
+    let dts = compile_declarations(source, "x.zb").unwrap();
+    assert!(dts.contains("  size: Size;"), "{dts}");
+}
+
+#[test]
+fn a_prop_typed_with_an_unexported_enum_is_an_error_for_strings_and_a_warning_for_numbers() {
+    let strings = "<script lang=\"ts\">\n  enum Tone { Warm = \"warm\" }\n  declare const tone: Tone\n</script>\n<zb-x tone={Tone.Warm}><p>{tone}</p></zb-x>";
+    let error = compile_js(strings, "@zubra/runtime", "x.zb").unwrap_err();
+    assert!(
+        error.message.contains("doesn't export"),
+        "{}",
+        error.message
+    );
+    assert_eq!(error.help.as_deref(), Some("write `export enum Tone`"));
+
+    let numbers = "<script lang=\"ts\">\n  enum Size { Small, Large }\n  declare const size: Size\n</script>\n<zb-x size={Size.Large}><p>{size}</p></zb-x>";
+    assert!(compile_js(numbers, "@zubra/runtime", "x.zb").is_ok());
+    let warnings = zubra::warnings(numbers);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.message.contains("consumers can pass numbers")),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn an_enum_prop_s_attribute_takes_a_member_s_value_or_its_name() {
+    let source = "<script lang=\"ts\">\n  export enum Size { Small, Medium = 4, Large }\n  declare const size: Size\n</script>\n<zb-x size={Size.Medium}><p>{size}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        js.contains(r#""size": { attribute: "size", default: 4, required: false, enum: { Small: 0, Medium: 4, Large: 5 } },"#),
+        "{js}"
+    );
+    let element = element(source);
+    assert!(
+        element.contains(r#"this.size = raw === null ? 4 : fromEnum(raw, { Small: 0, Medium: 4, Large: 5 }, 4, "size");"#),
+        "{element}"
+    );
+    assert!(
+        element.contains("function fromEnum(raw, members, fallback, attribute) {"),
+        "{element}"
+    );
+    // Server rendering takes the same forms.
+    for given in [r#"{"size": "Large"}"#, r#"{"size": "5"}"#, r#"{"size": 5}"#] {
+        assert_eq!(
+            compile(source, given).unwrap(),
+            "<zb-x size=\"5\"><p>5</p></zb-x>",
+            "{given}"
+        );
+    }
+}
+
+#[test]
+fn the_manifest_and_html_data_know_an_enum_prop_s_members() {
+    let source = "<script lang=\"ts\">\n  export enum Size { Small, Large }\n  declare const size: Size\n</script>\n<zb-x size={Size.Small}><p>{size}</p></zb-x>";
+    let manifest: serde_json::Value =
+        serde_json::from_str(&compile_manifest(source, "x.js").unwrap()).unwrap();
+    let module = &manifest["modules"][0];
+    assert_eq!(
+        module["declarations"][1],
+        serde_json::json!({ "kind": "variable", "name": "Size", "description": "The enum `Size`.", "type": { "text": "{ Small: 0, Large: 1 }" } })
+    );
+    assert_eq!(
+        module["exports"][2],
+        serde_json::json!({ "kind": "js", "name": "Size", "declaration": { "name": "Size", "module": "x.js" } })
+    );
+    assert_eq!(
+        module["declarations"][0]["attributes"][0]["type"],
+        serde_json::json!({ "text": "Size", "references": [{ "name": "Size", "module": "x.js" }] })
+    );
+    let data: serde_json::Value =
+        serde_json::from_str(&zubra::compile_html_data(source).unwrap()).unwrap();
+    assert_eq!(
+        data["tags"][0]["attributes"][0]["values"],
+        serde_json::json!([
+            { "name": "Small", "description": "`Size.Small` (`0`)" },
+            { "name": "Large", "description": "`Size.Large` (`1`)" },
+        ])
+    );
+}
+
+#[test]
+fn enum_mistakes_are_errors_that_say_what_to_write() {
+    for (script, message) in [
+        (
+            "enum E { A = \"a\", B }",
+            "enum member `B` needs an initializer",
+        ),
+        (
+            "export enum E { A = Math.random() }",
+            "isn't a constant, and an exported enum's members must be",
+        ),
+        (
+            "export enum E { A }\n  enum E { B = 1 }",
+            "`E` is exported, so it's declared once",
+        ),
+        (
+            "enum E { A }\n  enum E { B }",
+            "this declaration adds to an earlier `enum E`",
+        ),
+    ] {
+        let source = format!("<script lang=\"ts\">\n  {script}\n</script>\n<zb-x><p>x</p></zb-x>");
+        let error = compile_js(&source, "@zubra/runtime", "x.zb").unwrap_err();
+        assert!(
+            error.message.contains(message),
+            "{script}: {}",
+            error.message
+        );
+    }
+}
+
+// Enums imported from TypeScript modules: their values are read from the module.
+
+fn loader(
+    files: &'static [(&'static str, &'static str)],
+) -> impl Fn(&str, &str) -> Result<(String, String), String> {
+    move |specifier: &str, _from: &str| {
+        let path = specifier.trim_start_matches("./").to_owned();
+        files
+            .iter()
+            .find(|(name, _)| *name == path)
+            .map(|(name, source)| ((*name).to_owned(), (*source).to_owned()))
+            .ok_or_else(|| format!("{path}: not found"))
+    }
+}
+
+#[test]
+fn an_imported_const_enum_is_inlined_since_typescript_erases_it() {
+    let files: &[(&str, &str)] = &[
+        ("index.ts", "export * from './sizes'\n"),
+        ("sizes.ts", "export const enum Size { Small = 1, Large = Small * 4 }\nexport enum Tone { Warm = \"warm\", Cool = \"cool\" }\n"),
+    ];
+    let source = r#"<script lang="ts">
+  import { Size, Tone } from './index.js'
+  declare const size: Size
+  declare const tone: Tone
+</script>
+<zb-x size={Size.Large} tone={Tone.Cool}><p>{size} {tone} {Size.Small}</p></zb-x>"#;
+    let loader = loader(files);
+    let js =
+        zubra::compile_js_with(source, "x.zb", "@zubra/runtime", Some(".js"), &loader).unwrap();
+    assert!(js.contains("import { Tone } from './index.js';"), "{js}");
+    assert!(!js.contains("import { Size"), "{js}");
+    assert!(js.contains("const Size = { Small: 1, Large: 4 };"), "{js}");
+    assert!(js.contains("enum: { Small: 1, Large: 4 }"), "{js}");
+    assert!(js.contains(r#""tone": { attribute: "tone", default: "cool", required: false, enum: { Warm: "warm", Cool: "cool" } },"#), "{js}");
+    let html = zubra::compile_html_with(source, "x.zb", "{}", "{}", &loader).unwrap();
+    assert_eq!(html, "<zb-x><p>4 cool 1</p></zb-x>");
+}
+
+#[test]
+fn an_imported_const_enum_that_can_t_be_worked_out_is_an_error_not_a_broken_import() {
+    let files: &[(&str, &str)] = &[("bad.ts", "export const enum Bad { A = Math.floor(1.5) }\n")];
+    let source = "<script lang=\"ts\">\n  import { Bad } from './bad'\n  const a = Bad.A\n</script>\n<zb-x><p>{a}</p></zb-x>";
+    let error = zubra::compile_js_with(
+        source,
+        "x.zb",
+        "@zubra/runtime",
+        Some(".js"),
+        &loader(files),
+    )
+    .unwrap_err();
+    assert!(
+        error.message.contains("`Bad` is a `const enum`"),
+        "{}",
+        error.message
+    );
+    assert!(
+        error.message.contains("would fail in the browser"),
+        "{}",
+        error.message
+    );
+    assert_eq!(error.span.line, 2);
+}
+
+#[test]
+fn types_after_an_enum_still_reach_the_typings() {
+    // The lowered enum is longer than its source, so what's recorded by offset moves with it.
+    let source = "<script lang=\"ts\">\n  import { emit } from '@zubra/runtime'\n  enum E { A, B }\n  declare const size: 'small' | 'large'\n  function pick() { emit<{ at: number }>('pick', { at: E.B }) }\n</script>\n<zb-x size=\"small\"><p onclick={pick}>x</p></zb-x>";
+    let dts = compile_declarations(source, "x.zb").unwrap();
+    assert!(dts.contains("pick: CustomEvent<{ at: number }>;"), "{dts}");
+    assert!(dts.contains("size: 'small' | 'large';"), "{dts}");
+}
+
+#[test]
+fn a_tsx_component_can_declare_and_export_enums_too() {
+    let source = "export enum Size { Small = \"small\", Large = \"large\" }\nenum Inner { A }\nexport default function ZbSized({ size = Size.Small }: { size?: Size }) {\n  return <p>{size === Size.Large ? \"big\" : Inner.A}</p>\n}\n";
+    let js = compile_js(source, "@zubra/runtime", "sized.zb.tsx").unwrap();
+    assert!(
+        js.contains("export const Size = { Small: \"small\", Large: \"large\" };"),
+        "{js}"
+    );
+    assert!(
+        js.contains("enum: { Small: \"small\", Large: \"large\" }"),
+        "{js}"
+    );
+    assert!(js.contains("const Inner = { A: 0, \"0\": \"A\" };"), "{js}");
 }

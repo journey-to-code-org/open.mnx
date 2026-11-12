@@ -1,0 +1,10 @@
+<!-- A grid that lays out what's slotted into it with ::slotted(), in light DOM. -->
+<style>
+  .grid { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch }
+  .grid > ::slotted(*) { align-self: start; outline: 2px solid rgb(0, 0, 255) }
+  ::slotted(.wide), .grid > .own { grid-column: span 2 }
+  p { color: rgb(255, 0, 0) }
+</style>
+<zb-slotted-grid>
+  <div class="grid"><zb-slot></zb-slot><p class="own">own</p></div>
+</zb-slotted-grid>

@@ -1,0 +1,102 @@
+// TypeScript in `<script lang="ts">`, checked against TypeScript itself: each fixture is reduced
+// to JavaScript by the compiler (`zubra request`, command `typescript`) and by `tsc`, both run, and
+// what they observe must be the same. The compiler writes enums differently (an object literal
+// where it can), so this is what says the difference doesn't show.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const compiler = process.env.ZUBRA_COMPILER ?? join(here, '../../target/debug/zubra');
+const tsc = join(here, '../node_modules/.bin/tsc');
+
+const fixtures = {
+  'numeric, auto-incremented, with reverse mapping': `
+    enum Size { Small, Medium = 4, Large }
+    globalThis.result = [Object.entries(Size), Size[4], Size.Large];`,
+  'members from earlier members, arithmetic and bitwise': `
+    enum Flags { None = 0, A = 1 << 0, B = 1 << 1, AB = A | B, Not = ~A, Neg = -B, Mix = (AB * 3) % 5 - 1, Shift = -16 >> 2, Zero = -16 >>> 28, Pow = 2 ** 3 }
+    globalThis.result = Object.entries(Flags);`,
+  'strings and template strings': `
+    enum Tone { Warm = "warm", Cool = \`cool\`, Both = Warm + "-" + Cool }
+    globalThis.result = Object.entries(Tone);`,
+  'heterogeneous': `
+    enum Mixed { No = 0, Yes = "YES", Again = 7, Next }
+    globalThis.result = Object.entries(Mixed);`,
+  'computed members, and members after them': `
+    const base = 10;
+    enum Computed { A = "abc".length, B = A * 2, C = base + 1, D = 5, E }
+    globalThis.result = Object.entries(Computed);`,
+  'merged declarations': `
+    enum Merged { A = 1, B }
+    enum Merged { C = B + 10, D }
+    globalThis.result = Object.entries(Merged);`,
+  "names that aren't identifiers, and duplicate values": `
+    enum Odd { "my-key" = 1, 'with space' = 1, Plain = 2, ["computed"] = 3 }
+    globalThis.result = [Object.entries(Odd), Odd[1]];`,
+  'one enum from another': `
+    enum First { A = 2 }
+    enum Second { B = First.A * 3, C = First["A"] + 1, D = \`x\` + First.A }
+    globalThis.result = Object.entries(Second);`,
+  'infinite and NaN members': `
+    enum Edge { Big = 1 / 0, Small = -1 / 0, Odd = 0 / 0 }
+    globalThis.result = [String(Edge.Big), String(Edge.Small), String(Edge.Odd), Edge.Odd !== Edge.Odd];`,
+  'a const enum, read by member': `
+    const enum Local { One = 1, Two = One + 1, Name = "n" }
+    globalThis.result = [Local.One, Local.Two, Local.Name];`,
+  'lines after an enum keep their numbers': `
+    enum Lines {
+      A,
+
+      B = 3,
+    }
+    const at = new Error().stack.split("\\n")[1].match(/:(\\d+):\\d+\\)?$/)[1];
+    globalThis.result = [Number(at)];`,
+};
+
+function viaZubra(source) {
+  const result = spawnSync(compiler, ['request'], {
+    input: JSON.stringify({ command: 'typescript', path: '/fixture.ts', files: { '/fixture.ts': source } }),
+    encoding: 'utf8',
+  });
+  const response = JSON.parse(result.stdout);
+  assert.ok(response.ok, response.error);
+  return response.output;
+}
+
+function viaTsc(directory, name, source) {
+  const file = join(directory, `${name}.ts`);
+  writeFileSync(file, source);
+  // `--noCheck`: emit only (the fixtures read enums in ways the checker would refuse to print).
+  // `--isolatedModules`, as a component script is compiled on its own.
+  spawnSync(tsc, ['--target', 'esnext', '--module', 'esnext', '--noCheck', '--isolatedModules', '--outDir', directory, file], { encoding: 'utf8' });
+  return readFileSync(join(directory, `${name}.js`), 'utf8');
+}
+
+function run(code) {
+  const context = vm.createContext({});
+  // The fixture's lines start at 1 in both, so a stack trace's line is comparable.
+  vm.runInContext(code.replace(/^"use strict";\n/, ''), context, { filename: 'fixture.js' });
+  return JSON.parse(JSON.stringify(context.result));
+}
+
+const ready = existsSync(compiler) && existsSync(tsc);
+
+test('enums: the compiler\'s JavaScript does what tsc\'s does', { skip: !ready && 'needs target/debug/zubra and TypeScript' }, async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'zubra-ts-'));
+  let index = 0;
+  for (const [name, source] of Object.entries(fixtures)) {
+    await t.test(name, () => {
+      const trimmed = source.replace(/^\n/, '').replace(/^ {4}/gm, '');
+      const ours = viaZubra(trimmed);
+      const theirs = viaTsc(directory, `fixture${index++}`, trimmed);
+      assert.deepEqual(run(ours), run(theirs), `zubra:\n${ours}\n\ntsc:\n${theirs}`);
+      assert.equal(ours.split('\n').length, trimmed.split('\n').length, 'the same number of lines');
+    });
+  }
+});

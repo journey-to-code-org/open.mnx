@@ -1,0 +1,6 @@
+<script>
+  import './slotted-grid.zb'
+</script>
+<zb-slotted-grid-page>
+  <zb-slotted-grid><div class="item">one</div><p class="wide">two <span class="deep">deep</span></p></zb-slotted-grid>
+</zb-slotted-grid-page>

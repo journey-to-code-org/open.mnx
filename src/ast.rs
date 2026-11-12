@@ -128,6 +128,36 @@ pub struct Script {
     /// with a hint. They did nothing before 5.3, so in 5.x they compile, as they did; 6.0 makes
     /// them errors.
     pub unknown_directives: Vec<crate::diagnostic::Diagnostic>,
+    /// Imported names a TypeScript script uses only as types (see
+    /// [`crate::script::elide_type_only_imports`]).
+    pub type_only_imports: Vec<String>,
+    /// The script's enums, with their values (for the typings, the manifest and attributes).
+    pub enums: Vec<crate::enums::EnumInfo>,
+    /// Declarations the module itself exports, outside the setup function: an `export enum`,
+    /// lowered (`export const Size = { … };`). Their names are module-level names.
+    pub module_declarations: Vec<ModuleDeclaration>,
+    /// A TypeScript script's named and default imports (type-only ones too), for the enums
+    /// among them (see [`crate::enums::resolve_imports`]).
+    pub typed_imports: Vec<TypedImport>,
+    /// Imported names whose values the compiler knows (a regular enum from a TypeScript
+    /// module): still imported at runtime, but build-time values for defaults and server HTML.
+    pub imported_values: Vec<Binding>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedImport {
+    pub local: String,
+    /// The name the module exports it as (`default` for a default import).
+    pub imported: String,
+    pub specifier: String,
+    pub span: Span,
+}
+
+/// A declaration at the top of the component's module (see [`Script::module_declarations`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModuleDeclaration {
+    pub name: String,
+    pub text: String,
 }
 
 /// An exported function marked `'use server'`. Its body never reaches the browser: the browser
@@ -174,6 +204,24 @@ pub struct Import {
     pub text: String,
     pub specifier: String,
     pub specifier_range: std::ops::Range<usize>,
+    /// The bindings it declares, in order (for dropping the ones used only as types).
+    pub names: Vec<ImportName>,
+}
+
+/// One binding of an `import`: `Thing` (default), `* as ns` or `{ a as b }`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportName {
+    pub local: String,
+    /// The specifier's source text (`a as b`, `* as ns`, `Thing`).
+    pub text: String,
+    pub kind: ImportKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImportKind {
+    Default,
+    Namespace,
+    Named,
 }
 
 #[derive(Clone, Debug, PartialEq)]

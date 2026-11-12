@@ -12,6 +12,11 @@ useBrowser({
   'styled-card': join(here, 'fixtures/styled-card.zb'),
   'styled-page': join(here, 'fixtures/styled-page.zb'),
   'styled-panel': join(here, 'fixtures/styled-panel.zb'),
+  'slotted-grid': join(here, 'fixtures/slotted-grid.zb'),
+  'slotted-grid-page': join(here, 'fixtures/slotted-grid-page.zb'),
+  'part-child': join(here, 'fixtures/part-child.zb'),
+  'part-shadow-child': join(here, 'fixtures/part-shadow-child.zb'),
+  'part-parent': join(here, 'fixtures/part-parent.zb'),
 });
 
 const color = (page, selector) => page.$eval(selector, (el) => getComputedStyle(el).color);
@@ -197,6 +202,69 @@ test('a component whose CSS a bundler put in the page adopts it only into shadow
     };
   });
   assert.deepEqual(result, { documentSheets: 0, shadowSheets: 1, colors: [RED, RED] });
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+// ::slotted() in light DOM: the compiler rewrites it to the slotted mark, so a layout component
+// can place what it's given, as in shadow DOM, without reaching into it.
+const layout = (page, selector) => page.$eval(selector, (el) => {
+  const style = getComputedStyle(el);
+  return { align: style.alignSelf, column: style.gridColumnStart, outline: style.outlineStyle };
+});
+
+test('::slotted() rules in light DOM style the slotted elements themselves, and nothing deeper', async () => {
+  const { page, messages } = await open(
+    `<style>.page-end { align-self: end }</style>
+    <zb-slotted-grid><div class="item">one</div><p class="wide">two <span class="deep">deep</span></p><div class="page-end">three</div></zb-slotted-grid>`,
+    { modules: ['slotted-grid'] },
+  );
+  await settle(page);
+  assert.deepEqual(await layout(page, '.item'), { align: 'start', column: 'auto', outline: 'solid' });
+  assert.deepEqual(await layout(page, '.wide'), { align: 'start', column: 'span 2', outline: 'solid' });
+  assert.deepEqual(await layout(page, '.own'), { align: 'auto', column: 'span 2', outline: 'none' }, "the grid's own child isn't slotted");
+  assert.equal(await color(page, '.own'), RED, 'own rules still apply to its own elements');
+  assert.equal(await color(page, '.wide'), BLACK, "...and still stop at the caller's content");
+  assert.equal((await layout(page, '.deep')).outline, 'none', '::slotted() reaches only the slotted element, not its descendants');
+  assert.equal((await layout(page, '.page-end')).align, 'end', 'page CSS beats ::slotted(), as it does across a shadow root');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('::slotted() rules apply to server-rendered markup before and after hydrating', async () => {
+  const css = compiler(join(here, 'fixtures/slotted-grid-page.zb'), '--emit', 'css');
+  const html = compiler(join(here, 'fixtures/slotted-grid-page.zb'));
+  writeFileSync(join(site, 'grid-page.css'), css);
+  const { page: plain } = await open(`<link rel="stylesheet" href="/grid-page.css">${html}`, {});
+  await plain.waitForFunction(() => document.querySelector('link').sheet?.cssRules.length > 0);
+  assert.deepEqual(await layout(plain, '.wide'), { align: 'start', column: 'span 2', outline: 'solid' });
+  await plain.close();
+
+  const { page, messages } = await open(html, { modules: ['slotted-grid-page'] });
+  await settle(page);
+  assert.deepEqual(await layout(page, '.wide'), { align: 'start', column: 'span 2', outline: 'solid' });
+  assert.deepEqual(await layout(page, '.item'), { align: 'start', column: 'auto', outline: 'solid' });
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+// ::part() on a light-DOM child: the parent's rule reaches the child's own elements with that
+// part, as it would through a shadow root, and not content slotted into the child.
+test('::part() reaches into a light-DOM child, and a shadow child keeps the real ::part()', async () => {
+  const css = compiler(join(here, 'fixtures/part-parent.zb'), '--emit', 'css');
+  const html = compiler(join(here, 'fixtures/part-parent.zb'));
+  writeFileSync(join(site, 'part-parent.css'), css);
+  const { page: plain } = await open(`<link rel="stylesheet" href="/part-parent.css">${html}`, {});
+  await plain.waitForFunction(() => document.querySelector('link').sheet?.cssRules.length > 0);
+  assert.equal(await color(plain, 'zb-part-child h3'), BLUE, 'before JavaScript');
+  await plain.close();
+
+  const { page, messages } = await open(html, { modules: ['part-parent'] });
+  await settle(page);
+  assert.equal(await color(page, 'zb-part-child h3'), BLUE, 'the part');
+  assert.equal(await color(page, 'zb-part-child span'), GREEN, 'both parts, and the more specific rule wins');
+  assert.equal(await color(page, '.given'), BLACK, "content slotted into the child isn't the child's part");
+  assert.equal(await page.$eval('zb-part-shadow-child', (el) => getComputedStyle(el.shadowRoot.querySelector('b')).color), GREEN, 'a shadow child: the real ::part()');
   assert.deepEqual(messages, []);
   await page.close();
 });

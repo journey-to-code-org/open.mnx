@@ -98,6 +98,7 @@ const GENERATED: &[&str] = &[
     "svgTemplates",
     "cloneSvg",
     "fromJson",
+    "fromEnum",
     "reads",
     "createState",
     "createComputed",
@@ -121,6 +122,8 @@ struct Prop {
     /// JavaScript source of the default (`1`, `"Quantity"`, `[]`), or `None` when required.
     default: Option<String>,
     model: bool,
+    /// An enum prop's members as the element parses them (`{ Small: 0, Large: 4 }`).
+    members: Option<String>,
 }
 
 /// Convert the custom element class in `source` (`path` names it in messages). `loader` finds
@@ -153,6 +156,7 @@ pub fn convert_element(
     let mut css: Option<String> = None;
     let mut imports: Vec<String> = Vec::new();
     let mut module_code: Vec<String> = Vec::new();
+    let mut enums: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for statement in &program.body {
         match statement {
             Statement::ImportDeclaration(import) => imports.push(converter.import(
@@ -168,6 +172,16 @@ pub fn convert_element(
                     for declarator in &declaration.declarations {
                         if binding_name(&declarator.id) == Some("tag") {
                             tag = declarator.init.as_ref().and_then(string_value);
+                        }
+                        // `export const Size = { Small: 0, "0": "Small", … }`: an `export enum`,
+                        // lowered. It goes back to being one.
+                        if let (Some(name), Some(Expression::ObjectExpression(object))) =
+                            (binding_name(&declarator.id), &declarator.init)
+                        {
+                            if let Some(members) = enum_members(object, source) {
+                                enums.push((name.to_owned(), members.clone()));
+                                module_code.push(enum_source(name, &members, source, object));
+                            }
                         }
                     }
                 }
@@ -320,6 +334,7 @@ pub fn convert_element(
                 name,
                 attribute: attribute.clone(),
                 default,
+                members: None,
             });
         }
     }
@@ -498,7 +513,12 @@ pub fn convert_element(
         script_out.push('\n');
     }
     if !script_out.trim().is_empty() {
-        out.push_str("<script>\n");
+        // An enum is TypeScript.
+        out.push_str(if enums.is_empty() {
+            "<script>\n"
+        } else {
+            "<script lang=\"ts\">\n"
+        });
         out.push_str(script_out.trim_end());
         out.push_str("\n</script>\n");
     }
@@ -531,6 +551,19 @@ pub fn convert_element(
                 out.push_str(&format!(" {name}={{{}}}", context.apply(value)));
             }
             (None, None) => out.push_str(&format!(" {name}")),
+            // An enum prop: its default as the member it is, which types the prop again.
+            (None, Some(default))
+                if prop.members.is_some()
+                    && enum_member(&enums, prop.members.as_deref(), default).is_some() =>
+            {
+                let (enum_name, member) =
+                    enum_member(&enums, prop.members.as_deref(), default).expect("checked");
+                if member.starts_with('"') {
+                    out.push_str(&format!(" {name}={{{enum_name}[{member}]}}"));
+                } else {
+                    out.push_str(&format!(" {name}={{{enum_name}.{member}}}"));
+                }
+            }
             (None, Some(default)) => match serde_json::from_str::<serde_json::Value>(default) {
                 Ok(serde_json::Value::String(text)) if !model => {
                     out.push_str(&format!(" {name}=\"{}\"", escape_attribute(&text)))
@@ -571,6 +604,119 @@ pub fn convert_element(
 
 fn extends_html_element(class: &oxc_ast::ast::Class<'_>) -> bool {
     matches!(&class.heritage, Some(heritage) if matches!(&heritage.expression, Expression::Identifier(identifier) if identifier.name == "HTMLElement"))
+}
+
+/// An object written by the enum lowering: each member `Name: value` (a string or number), and a
+/// number member's reverse mapping `"value": "Name"`. Its members, `(key as written, value
+/// as written)`, or `None` when it's any other object.
+fn enum_members(
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+    source: &str,
+) -> Option<Vec<(String, String)>> {
+    let mut members: Vec<(String, String, Option<f64>)> = Vec::new();
+    let mut reverse: Vec<(String, String)> = Vec::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.computed || property.shorthand || property.method {
+            return None;
+        }
+        let key_text =
+            source[property.key.span().start as usize..property.key.span().end as usize].to_owned();
+        let key = property_key_name(&property.key, source);
+        let value_text = source
+            [property.value.span().start as usize..property.value.span().end as usize]
+            .to_owned();
+        let number = match property.value.without_parentheses() {
+            Expression::NumericLiteral(literal) => Some(literal.value),
+            Expression::UnaryExpression(unary)
+                if unary.operator == oxc_ast::ast::UnaryOperator::UnaryNegation =>
+            {
+                match &unary.argument {
+                    Expression::NumericLiteral(literal) => Some(-literal.value),
+                    _ => return None,
+                }
+            }
+            Expression::StringLiteral(_) => None,
+            _ => return None,
+        };
+        // `"4": "Large"` is a reverse mapping when a member `Large: 4` comes before it.
+        if let (None, Some(target)) = (number, string_value(&property.value)) {
+            if members.iter().any(|(name, _, value)| {
+                *name == target && value.is_some_and(|value| crate::enums::js_number(value) == key)
+            }) {
+                reverse.push((key, target));
+                continue;
+            }
+        }
+        members.push((key_text, value_text, number));
+    }
+    // Every number member has its reverse mapping, and there's at least one member.
+    let numbers = members
+        .iter()
+        .filter(|(_, _, value)| value.is_some())
+        .count();
+    if members.is_empty() || reverse.len() != numbers {
+        return None;
+    }
+    Some(
+        members
+            .into_iter()
+            .map(|(key, value, _)| (key, value))
+            .collect(),
+    )
+}
+
+/// `export enum Size { Small = 0, … }`, laid out as the object was (a member per line, or one).
+fn enum_source(
+    name: &str,
+    members: &[(String, String)],
+    source: &str,
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+) -> String {
+    let multiline = source[object.span.start as usize..object.span.end as usize].contains('\n');
+    let entries: Vec<String> = members
+        .iter()
+        .map(|(key, value)| format!("{key} = {value}"))
+        .collect();
+    if multiline {
+        format!(
+            "export enum {name} {{\n{}\n}}",
+            entries
+                .iter()
+                .map(|entry| format!("  {entry},"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    } else {
+        format!("export enum {name} {{ {} }}", entries.join(", "))
+    }
+}
+
+/// The enum (among the module's) whose members are `members` as the element parses them, and
+/// its member whose value is `default`: `(enum, member)`.
+fn enum_member(
+    enums: &[(String, Vec<(String, String)>)],
+    members: Option<&str>,
+    default: &str,
+) -> Option<(String, String)> {
+    let members = members?;
+    enums.iter().find_map(|(name, list)| {
+        let literal = format!(
+            "{{ {} }}",
+            list.iter()
+                .map(|(key, value)| format!("{key}: {value}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        if literal != members {
+            return None;
+        }
+        list.iter()
+            .find(|(_, value)| value == default)
+            .map(|(key, _)| (name.clone(), key.clone()))
+    })
 }
 
 fn binding_name<'a>(pattern: &'a BindingPattern<'_>) -> Option<&'a str> {
@@ -734,18 +880,90 @@ fn unscope(css: &str, tag: &str) -> (Option<String>, String) {
             }
         }
     }
+    // The component's own rules; then `::slotted()` rules (a scope with no lower boundary);
+    // then real `::part()` rules, outside any scope. (See `styles.rs`.)
     let scope = format!("@scope ({tag}) to ([data-zb-slotted=\"{tag}\"]) {{");
-    let body = match rest.strip_prefix(&scope) {
-        Some(inner) if inner.trim_end().ends_with('}') => {
-            let inner = inner.trim_end();
-            inner[..inner.len() - 1].trim_matches('\n').to_owned()
-        }
-        _ => rest.to_owned(),
+    let Some((own, after)) = block(rest, &scope) else {
+        let body = rest
+            .replace(":scope:is(", ":host(")
+            .replace(":scope", ":host");
+        return (layer, format!("{prelude}{body}"));
     };
+    let mut body = unscope_parts(own.trim_matches('\n'));
+    let mut after = after.trim_start();
+    if let Some((slotted, rest)) = block(after, &format!("@scope ({tag}) {{")) {
+        let slotted = slotted.trim_matches('\n').replace(
+            &format!(":where([data-zb-slotted=\"{tag}\"]):is("),
+            "::slotted(",
+        );
+        body.push('\n');
+        body.push_str(&slotted);
+        after = rest.trim_start();
+    }
+    if !after.is_empty() {
+        let outside = after
+            .trim_end()
+            .replace(&format!(":where({tag}) "), "")
+            .replace(&format!(":where({tag})"), ":scope");
+        body.push('\n');
+        body.push_str(&outside);
+    }
     let body = body
         .replace(":scope:is(", ":host(")
         .replace(":scope", ":host");
     (layer, format!("{prelude}{body}"))
+}
+
+/// `text` starting with `header` (which ends with `{`): the block's inside, and what follows it.
+fn block<'t>(text: &'t str, header: &str) -> Option<(&'t str, &'t str)> {
+    let inner = text.strip_prefix(header)?;
+    let mut depth = 1usize;
+    for (index, character) in inner.char_indices() {
+        match character {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((&inner[..index], &inner[index + 1..]));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `@scope (child) to ([data-zb-slotted]) {\n[part~="a"][part~="b"]:hover { … }\n}` back to
+/// `child::part(a b):hover { … }` (a light-DOM child's parts, `styles.rs`).
+fn unscope_parts(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(at) = rest.find("@scope (") {
+        let header_end = rest[at..].find(") to ([data-zb-slotted]) {");
+        let Some(header_end) = header_end else {
+            break;
+        };
+        let prefix = &rest[at + "@scope (".len()..at + header_end];
+        let header = &rest[at..at + header_end + ") to ([data-zb-slotted]) {".len()];
+        let Some((inner, after)) = block(&rest[at..], header) else {
+            break;
+        };
+        let inner = inner.trim();
+        let mut names = Vec::new();
+        let mut selector = inner;
+        while let Some(name) = selector
+            .strip_prefix("[part~=\"")
+            .and_then(|tail| tail.split_once("\"]"))
+        {
+            names.push(name.0);
+            selector = name.1;
+        }
+        out.push_str(&rest[..at]);
+        out.push_str(&format!("{prefix}::part({}){selector}", names.join(" ")));
+        rest = after.strip_prefix('\n').unwrap_or(after);
+    }
+    out.push_str(rest);
+    out
 }
 
 fn escape_text(text: &str) -> String {
@@ -969,6 +1187,7 @@ impl Converter<'_> {
                     name,
                     default: None,
                     model: false,
+                    members: None,
                 };
                 if let Expression::ObjectExpression(fields) = &entry.value {
                     for field in &fields.properties {
@@ -983,6 +1202,7 @@ impl Converter<'_> {
                             }
                             "default" if value != "undefined" => prop.default = Some(value),
                             "model" => prop.model = value == "true",
+                            "enum" => prop.members = Some(value),
                             _ => {}
                         }
                     }

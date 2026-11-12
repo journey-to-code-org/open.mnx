@@ -6,7 +6,9 @@
 
 The compiler reduces TypeScript to JavaScript by **blanking out the type syntax in place**: annotations, `type` and `interface` declarations, `import type`, `as`, `satisfies`, `!`, type arguments and type parameters are replaced by spaces of the same length, with line breaks kept. Every remaining token stays at its original line and column, so an error anywhere later in the pipeline points into the TypeScript you wrote.
 
-This is the same subset Node's type stripping accepts and the same one TypeScript's `erasableSyntaxOnly` flag enforces: **syntax that would need JavaScript generated for it is not accepted.** The compiler never runs the TypeScript type checker, never resolves a type across files, and never emits code from a type.
+The one construct that needs JavaScript written for it, an **`enum`**, is lowered in place to what TypeScript itself would write, keeping its lines (see [Enums](#enums)). The compiler never runs the TypeScript type checker and never emits code from a type.
+
+**Imports used only as types go too**, as TypeScript, esbuild and Babel drop them: `import { Option } from './types'` with `Option` used only in annotations leaves the module, so the browser never asks `./types` for a name it doesn't export at runtime. A name the host or the template reads (`{Size.Large}`) is kept, and so is an import the script never mentions (the template may use it, or it's there for its side effects). Writing `import type` says it outright, and is still the clearest.
 
 What that buys: no `tsc` in the compile path, byte-identical output from the Rust CLI and the WebAssembly build, and source positions that are always right. What it costs is the list below.
 
@@ -14,14 +16,50 @@ What that buys: no `tsc` in the compile path, byte-identical output from the Rus
 
 | Refused | Why | Write instead |
 |---|---|---|
-| `enum Color { Red, Green }` | An enum is a runtime object; erasing it would leave `Color.Red` undefined. | `const Color = { Red: "red", Green: "green" } as const` and `type Color = typeof Color[keyof typeof Color]` |
 | `namespace N { … }` (unless `declare namespace`) | A namespace is a runtime object too. | An object, or a module |
 | `class A { constructor(private x: number) {} }` | A parameter property is an assignment the compiler would have to write. | Declare the field and assign it in the constructor |
 | `<T>value` | An angle-bracket assertion is ambiguous with JSX, and the parser is the same for `.zb.tsx`. | `value as T` |
 | `import x = require("…")` | CommonJS; a component script is an ES module. | `import x from "…"` |
 | `function f(this: Window) {}` | A `this` parameter is type-only, but its position isn't erasable in place. | Leave it off, or cast inside the function |
 
-Each is an error at the construct, with the replacement in its help text. Everything else TypeScript's `erasableSyntaxOnly` accepts is accepted here: annotations everywhere, generics on functions and classes, `satisfies`, non-null `!`, optional and definite fields (`x?: T`, `x!: T`), overload signatures (removed), abstract classes and `declare` fields, `import type` and `export type`.
+Each is an error at the construct, with the replacement in its help text. Everything else TypeScript's `erasableSyntaxOnly` accepts is accepted here, and enums too: annotations everywhere, generics on functions and classes, `satisfies`, non-null `!`, optional and definite fields (`x?: T`, `x!: T`), overload signatures (removed), abstract classes and `declare` fields, `import type` and `export type`.
+
+## Enums
+
+An `enum` is lowered where it's written. When every member is a constant (the usual case), it's an object literal, a numeric member with its reverse mapping as TypeScript gives it:
+
+```ts
+enum Size {            const Size = {
+  Small,                 Small: 0, "0": "Small",
+  Large = 4,             Large: 4, "4": "Large",
+}                      };
+```
+
+A member computed at runtime (`A = "abc".length`), or a second declaration of the same enum, is written as TypeScript's own statements (`Size[Size["A"] = "abc".length] = "A";`). Either way the lowering has **as many lines as the declaration**, so every line after it keeps its number; only columns inside the enum differ. Member values are worked out as TypeScript works them out: auto-increment, constant arithmetic, bitwise and string expressions, template strings without substitutions, references to earlier members by bare name or through another enum (`Other.A`). `declare enum` declares nothing at runtime. A `const enum` declared in the script is kept as an object too, since the template may read it. A test compiles each kind with both the compiler and `tsc` and checks they do the same thing.
+
+### An enum as a prop's type
+
+```html
+<script lang="ts">
+  export enum Size { Small, Medium = 4, Large }
+  declare const size: Size
+</script>
+<my-box size={Size.Medium}>…</my-box>
+```
+
+- **`export enum`** makes the enum part of the component's interface. It's the one value a component script exports: the element module exports `Size` (`export const Size = { … };`, created once for the module, so an exported enum's members must be constants), the typings declare `export declare enum Size { … }`, and the React and Vue wrappers re-export it: `import MyBox, { Size } from './my-box.zb?react'`.
+- A default of `Size.Medium` types the prop as `Size` on its own; `declare const size: Size` says it outright.
+- A prop typed with an enum the component **doesn't** export can't be given a value by name. With a string member that's an error (TypeScript accepts no string where the enum is expected); with only numbers it's a warning.
+- **Attributes take a member's value or its name.** `size="5"` and `size="Large"` both set the property to `5`; for a string enum, `tone="cool"` (and `tone="Cool"`). Anything else keeps the default, with a warning listing the members. Server rendering and `--props` read the same forms. The property itself is always the enum's value.
+- The manifest records the enum as a variable of the module, with its values, and the prop's type points at it; `--emit html-data` lists the members, so the editor offers them on the attribute.
+
+### Enums from other modules
+
+`import { Size } from './sizes'` from a relative TypeScript module (`./sizes.ts`, `./sizes.js` meaning `./sizes.ts`, `./sizes/index.ts`, re-exports followed): the compiler reads the module for the enum's values, so attributes, defaults and the manifest know them as above.
+
+A **`const enum`** needs more: TypeScript erases it, so the module that declares it may export nothing by that name at runtime, and the import would fail in the browser. The compiler inlines it instead: the import goes, and the component's module gets its own copy of the values, `const Size = { Small: 1, Large: 4 };`. If a member isn't a constant the compiler can work out, that's an **error** at the import, in every compile path and in the editor, since the output wouldn't load; the fix is a regular `enum`, or a literal value.
+
+Imports from packages aren't followed: a package's enum stays imported, which works when the package ships it at runtime.
 
 ## What the types still do
 

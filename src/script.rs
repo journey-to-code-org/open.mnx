@@ -23,11 +23,74 @@ use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{Binding, ComponentImport, Emit, Import, Script, ServerExport},
+    ast::{
+        Binding, ComponentImport, Emit, Import, ImportKind, ImportName, ModuleDeclaration, Script,
+        ServerExport,
+    },
     diagnostic::{Diagnostic, Span},
     expression,
     scanner::span_after,
 };
+
+/// Drop the imported names a TypeScript script uses only as types, as TypeScript does, unless
+/// the component reads them elsewhere (`used`: every name its host attributes and template
+/// read). An import left with no names goes entirely; one that keeps some is rewritten with
+/// those. Without this, `import { Option } from './types'` (an interface) would reach the
+/// browser, which refuses a module importing a name its source doesn't export.
+pub fn elide_type_only_imports(script: &mut Script, used: &std::collections::HashSet<String>) {
+    if script.type_only_imports.is_empty() {
+        return;
+    }
+    let elided: Vec<String> = std::mem::take(&mut script.type_only_imports)
+        .into_iter()
+        .filter(|name| !used.contains(name))
+        .collect();
+    if elided.is_empty() {
+        return;
+    }
+    remove_import_names(script, &elided);
+}
+
+/// Take `names` out of the script's imports: an import left with none goes; one that keeps some
+/// is rewritten with those (`import A, * as B, { c } from "x" with { … }`).
+pub fn remove_import_names(script: &mut Script, elided: &[String]) {
+    let mut kept_imports = Vec::new();
+    for mut import in std::mem::take(&mut script.imports) {
+        let before = import.names.len();
+        import.names.retain(|name| !elided.contains(&name.local));
+        if import.names.len() == before {
+            kept_imports.push(import);
+            continue;
+        }
+        if import.names.is_empty() {
+            continue;
+        }
+        // `import A, * as B, { c, d as e } from "x" with { … }`, from what's left.
+        let mut clauses = Vec::new();
+        let named: Vec<&str> = import
+            .names
+            .iter()
+            .filter(|name| name.kind == ImportKind::Named)
+            .map(|name| name.text.as_str())
+            .collect();
+        for name in &import.names {
+            if name.kind != ImportKind::Named {
+                clauses.push(name.text.clone());
+            }
+        }
+        if !named.is_empty() {
+            clauses.push(format!("{{ {} }}", named.join(", ")));
+        }
+        let head = format!("import {} from ", clauses.join(", "));
+        let tail = import.text[import.specifier_range.clone()].to_owned()
+            + &import.text[import.specifier_range.end..];
+        import.specifier_range = head.len()..head.len() + (import.specifier_range.len());
+        import.text = head + &tail;
+        kept_imports.push(import);
+    }
+    script.imports = kept_imports;
+    script.runtime_names.retain(|name| !elided.contains(name));
+}
 
 /// Parse `source` (the text between `<script>` and `</script>`), which begins at `start` in the
 /// component file.
@@ -55,6 +118,20 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         declared_types: types.bindings.clone(),
         type_declarations: types.declarations.clone(),
         type_imports: types.imports.clone(),
+        type_only_imports: types.type_only.clone(),
+        enums: types.enums.clone(),
+        typed_imports: types
+            .imported
+            .iter()
+            .map(
+                |(local, imported, specifier, offset)| crate::ast::TypedImport {
+                    local: local.clone(),
+                    imported: imported.clone(),
+                    specifier: specifier.clone(),
+                    span: at(*offset),
+                },
+            )
+            .collect(),
         prop_types: types
             .props
             .iter()
@@ -213,10 +290,31 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                         span: at(import.source.span.start),
                     });
                 }
+                let names = import
+                    .specifiers
+                    .iter()
+                    .flatten()
+                    .map(|specifier| ImportName {
+                        local: specifier.name().to_string(),
+                        text: source
+                            [specifier.span().start as usize..specifier.span().end as usize]
+                            .to_owned(),
+                        kind: match specifier {
+                            ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
+                                ImportKind::Default
+                            }
+                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                                ImportKind::Namespace
+                            }
+                            ImportDeclarationSpecifier::ImportSpecifier(_) => ImportKind::Named,
+                        },
+                    })
+                    .collect();
                 script.imports.push(Import {
                     text: source[range.clone()].to_owned(),
                     specifier,
                     specifier_range,
+                    names,
                 });
                 import_ranges.push(range);
                 import_locals.push(
@@ -256,6 +354,39 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                     offset: range.start,
                     span: at(function.span.start),
                 });
+                server_ranges.push(range);
+            }
+            // `export enum Size { … }`, lowered to `export const Size = { … };`: a module-level
+            // export. Its value is known at build time (an exported enum's members are
+            // constants), so it's a binding too.
+            Statement::ExportDeclaration(export)
+                if exported_enum(export, &types.enums).is_some() =>
+            {
+                let (name, init) = exported_enum(export, &types.enums).expect("checked");
+                let text = &source[init.span().start as usize..init.span().end as usize];
+                script.bindings.push(Binding {
+                    name: name.clone(),
+                    init: expression::parse(text).ok(),
+                    source: Some(text.to_owned()),
+                    mutable: false,
+                    span: at(export.span.start),
+                });
+                let range = export.span.start as usize..export.span.end as usize;
+                // At the top of the module, without the script's indentation.
+                let line_start = source[..range.start].rfind('\n').map_or(0, |at| at + 1);
+                let indent = &source[line_start..range.start];
+                let text = if indent.trim().is_empty() && !indent.is_empty() {
+                    source[range.clone()]
+                        .split('\n')
+                        .map(|line| line.strip_prefix(indent).unwrap_or(line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    source[range.clone()].to_owned()
+                };
+                script
+                    .module_declarations
+                    .push(ModuleDeclaration { name, text });
                 server_ranges.push(range);
             }
             Statement::ExportNamedDeclaration(_)
@@ -810,6 +941,26 @@ mod tests {
             .message
             .contains("default export"));
     }
+}
+
+/// `export const Size = { … }` written by the enum lowering for `export enum Size`: the name
+/// and the object.
+fn exported_enum<'e, 'a>(
+    export: &'e oxc_ast::ast::ExportDeclaration<'a>,
+    enums: &[crate::enums::EnumInfo],
+) -> Option<(String, &'e oxc_ast::ast::Expression<'a>)> {
+    let oxc_ast::ast::Declaration::VariableDeclaration(declaration) = &export.declaration else {
+        return None;
+    };
+    let [declarator] = declaration.declarations.as_slice() else {
+        return None;
+    };
+    let name = declarator.id.get_binding_identifier()?.name.to_string();
+    enums
+        .iter()
+        .any(|info| info.exported && info.name == name)
+        .then_some(())?;
+    Some((name, declarator.init.as_ref()?))
 }
 
 /// The function an `export` declares, when it's marked `'use server'`.

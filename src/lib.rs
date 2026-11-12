@@ -24,6 +24,7 @@
 
 mod ast;
 mod bundle;
+mod client;
 mod components;
 mod convert;
 mod convert_element;
@@ -31,6 +32,7 @@ mod diagnostic;
 mod emit_element;
 mod emit_interface;
 mod emit_js;
+mod enums;
 mod events;
 mod expression;
 mod format;
@@ -624,6 +626,13 @@ fn collect_stylesheets(
 
 // ---- tools ----------------------------------------------------------------------------------
 
+/// The JavaScript a `<script lang="ts">` body is reduced to: types blanked in place, enums
+/// lowered (see docs/typescript.md). `source` is the script's text alone.
+#[doc(hidden)]
+pub fn typescript_to_js(source: &str) -> Result<String, Diagnostic> {
+    typescript::strip(source, diagnostic::Span::new(1, 1)).map(|(javascript, _)| javascript)
+}
+
 /// Things that compile but may not do what was meant: a `'use …'` directive Zubra doesn't know,
 /// and a prop that shadows a built-in property of every element (`hidden` hides the host; `title`
 /// also shows a tooltip).
@@ -650,6 +659,12 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
         .unknown_directives
         .iter()
         .cloned()
+        .chain(
+            validate::enum_props(&component)
+                .into_iter()
+                .filter(|(_, error)| !error)
+                .map(|(warning, _)| warning),
+        )
         .chain(component.props.iter().filter_map(|prop| {
             let (_, effect) = BUILT_IN_PROPERTIES
                 .iter()
@@ -674,6 +689,91 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
         })
         .collect();
     warnings
+}
+
+/// [`warnings`], plus what needs the components this one imports: an attribute on a child
+/// component that is a camelCase prop's name in lowercase (`maxvalue` for `maxValue`). HTML
+/// lowercases attribute names, so that's what `maxValue` becomes in a page, and the element
+/// ignores it; the prop's attribute is `max-value`.
+pub fn warnings_with(source: &str, path: &str, loader: Loader<'_>) -> Vec<Diagnostic> {
+    let mut all = warnings(source);
+    if jsx::is_jsx(path) || jsx::looks_like_jsx(source) {
+        return all; // JSX props are lowered to their attributes already
+    }
+    if let Ok(component) = load(source, path, Some(loader)) {
+        attribute_case_warnings(&component, &component.nodes, &mut all);
+    }
+    all
+}
+
+fn attribute_case_warnings(
+    component: &ast::ComponentAst,
+    nodes: &[ast::Node],
+    out: &mut Vec<Diagnostic>,
+) {
+    use ast::Node;
+    for node in nodes {
+        match node {
+            Node::Element(element) => {
+                if let Some(child) = component.child(&element.name) {
+                    for attribute in &element.attributes {
+                        let name = &attribute.name;
+                        if !name
+                            .bytes()
+                            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+                        {
+                            continue;
+                        }
+                        if let Some(prop) = child.ast.props.iter().find(|prop| {
+                            prop.name.bytes().any(|byte| byte.is_ascii_uppercase())
+                                && prop.name.to_ascii_lowercase() == *name
+                        }) {
+                            out.push(
+                                Diagnostic::new(
+                                    attribute.span,
+                                    format!(
+                                        "`{name}` isn't a prop of <{}>, so the element ignores it: HTML lowercases attribute names, and the prop `{}` is the attribute `{}`",
+                                        child.ast.tag,
+                                        prop.name,
+                                        validate::kebab(&prop.name)
+                                    ),
+                                )
+                                .with_help(format!("write `{}`", validate::kebab(&prop.name))),
+                            );
+                        }
+                    }
+                }
+                attribute_case_warnings(component, &element.children, out);
+            }
+            Node::If {
+                consequent,
+                alternate,
+                ..
+            } => {
+                attribute_case_warnings(component, consequent, out);
+                attribute_case_warnings(component, alternate, out);
+            }
+            Node::Each { children, .. } | Node::Else { children, .. } => {
+                attribute_case_warnings(component, children, out)
+            }
+            Node::Slot { fallback, .. } => attribute_case_warnings(component, fallback, out),
+            Node::Await {
+                pending,
+                then,
+                catch,
+                ..
+            } => {
+                attribute_case_warnings(component, pending, out);
+                for branch in then.iter().chain(catch.iter()) {
+                    attribute_case_warnings(component, &branch.children, out);
+                }
+            }
+            Node::Settled { branch, .. } => {
+                attribute_case_warnings(component, &branch.children, out)
+            }
+            Node::Text(_) => {}
+        }
+    }
 }
 
 /// `HTMLElement` properties a prop would shadow, and what the attribute does on its own.
@@ -778,6 +878,40 @@ fn server_module(source: &str) -> Result<String, Diagnostic> {
         "\n};\n"
     });
     Ok(out)
+}
+
+/// Why the component needs its module in the browser (state, handlers, hooks, values computed
+/// in the browser, …, in it or in the components it uses); empty when its server HTML is
+/// complete on its own, so a page that doesn't change its props from script can leave the
+/// module out. See `client.rs`.
+pub fn client_reasons(
+    source: &str,
+    path: &str,
+    loader: Loader<'_>,
+) -> Result<Vec<String>, Diagnostic> {
+    let gaps = match server_gaps(source, path, loader) {
+        Ok(gaps) => gaps.len(),
+        Err(_) => 1,
+    };
+    front(source, Some(path), Some(loader), |text| {
+        let component = load(text, path, Some(loader))?;
+        Ok(client::reasons(&component, gaps))
+    })
+}
+
+/// [`compile_interface`] with `client`: the reasons the component needs its module in the
+/// browser ([`client_reasons`]; empty when it doesn't).
+pub fn compile_interface_with(
+    source: &str,
+    path: &str,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
+    let interface = compile_interface(source)?;
+    let reasons = client_reasons(source, path, loader)?;
+    let mut value: serde_json::Value =
+        serde_json::from_str(&interface).expect("the interface is JSON");
+    value["client"] = serde_json::json!(reasons);
+    Ok(serde_json::to_string_pretty(&value).expect("JSON serializes"))
 }
 
 /// The component's interface for servers (see [`emit_interface::server_interface`]).
