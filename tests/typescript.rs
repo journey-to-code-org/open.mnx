@@ -502,3 +502,59 @@ fn a_tsx_component_can_declare_and_export_enums_too() {
     );
     assert!(js.contains("const Inner = { A: 0, \"0\": \"A\" };"), "{js}");
 }
+
+// ---- namespaces, parameter properties and the rest of the language ---------------------------
+
+#[test]
+fn a_namespace_is_lowered_in_place_and_the_template_can_read_it() {
+    let source = "<script lang=\"ts\">\n  namespace Units {\n    export const base = 4\n    export function px(n: number): string { return n * base + 'px' }\n  }\n  const width = Units.px(2)\n</script>\n<zb-x><p>{width}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(
+        js.contains("  const Units = {}; (function (Units) {\n    Units.base = 4\n           function px(n        )         { return n * Units.base + 'px' } Units.px = px;\n  })(Units);\n  const width = Units.px(2)"),
+        "{js}"
+    );
+}
+
+#[test]
+fn parameter_properties_become_fields_assigned_in_the_constructor() {
+    let source = "<script lang=\"ts\">\n  class Point extends Object {\n    constructor(public x: number, private readonly y = 2) {\n      super()\n    }\n  }\n  const point = new Point(1)\n</script>\n<zb-x><p>{point.x}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains("class Point extends Object { x; y;"), "{js}");
+    assert!(
+        js.contains("      super(); this.x = x; this.y = y;\n"),
+        "{js}"
+    );
+}
+
+#[test]
+fn a_this_parameter_an_angle_bracket_assertion_and_an_import_alias_are_types_or_values() {
+    let source = "<script lang=\"ts\">\n  namespace Config { export const port = 8080; export type Port = number }\n  import port = Config.port\n  import Port = Config.Port\n  function f(this: Window, a: number) { return a }\n  const n = <Port>f.call(window, port)\n</script>\n<zb-x><p>{n}</p></zb-x>";
+    let js = compile_js(source, "@zubra/runtime", "x.zb").unwrap();
+    assert!(js.contains("const  port = Config.port"), "{js}");
+    assert!(!js.contains("Config.Port"), "{js}");
+    assert!(
+        js.contains("function f(              a        ) { return a }"),
+        "{js}"
+    );
+    assert!(js.contains("const n =       f.call(window, port)"), "{js}");
+}
+
+#[test]
+fn what_typescript_itself_refuses_in_an_es_module_is_refused_with_its_error_code() {
+    for (script, message) in [
+        ("import fs = require('fs')", "TS1202"),
+        ("const x = 1\n  export = x", "TS1203"),
+        (
+            "export namespace N { export const a = 1 }",
+            "can't export a namespace",
+        ),
+    ] {
+        let source = format!("<script lang=\"ts\">\n  {script}\n</script>\n<zb-x><p>x</p></zb-x>");
+        let error = compile_js(&source, "@zubra/runtime", "x.zb").unwrap_err();
+        assert!(
+            error.message.contains(message),
+            "{script}: {}",
+            error.message
+        );
+    }
+}

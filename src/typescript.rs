@@ -12,17 +12,18 @@
 //! whose default is such a binding is declared with that type), and `emit<T>("name", …)` gives
 //! the event's `detail` type.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    CallExpression, Class, ClassElement, Declaration, Expression, FormalParameter, Function,
-    FunctionType, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
-    MethodDefinitionType, PropertyDefinitionType, Statement, TSAsExpression, TSEnumDeclaration,
-    TSExternalModuleDeclaration, TSGlobalDeclaration, TSInterfaceDeclaration,
-    TSNamespaceDeclaration, TSNonNullExpression, TSSatisfiesExpression, TSTypeAliasDeclaration,
-    TSTypeAnnotation, TSTypeAssertion, TSTypeParameterDeclaration, TSTypeParameterInstantiation,
-    VariableDeclaration, VariableDeclarator,
+    BindingPattern, CallExpression, Class, ClassElement, Declaration, Expression, FormalParameter,
+    Function, FunctionType, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
+    MethodDefinitionKind, MethodDefinitionType, PropertyDefinitionType, Statement, TSAsExpression,
+    TSEnumDeclaration, TSExternalModuleDeclaration, TSGlobalDeclaration, TSImportEqualsDeclaration,
+    TSInterfaceDeclaration, TSModuleReference, TSNamespaceDeclaration, TSNamespaceDeclarationBody,
+    TSNonNullExpression, TSSatisfiesExpression, TSTypeAliasDeclaration, TSTypeAnnotation,
+    TSTypeAssertion, TSTypeParameterDeclaration, TSTypeParameterInstantiation, VariableDeclaration,
+    VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::Parser;
@@ -76,7 +77,17 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         replacements: Vec::new(),
         types: Types::default(),
         error: None,
+        depth: 0,
+        seen: Vec::new(),
+        value_aliases: HashSet::new(),
+        define_fields: true,
     };
+    if source.contains("namespace") || source.contains("module") || source.contains("import") {
+        for (span, text) in crate::namespaces::reference_rewrites(&parsed.program) {
+            stripper.replacements.push((span, text));
+        }
+        stripper.value_aliases = crate::namespaces::value_aliases(&parsed.program);
+    }
     stripper.visit_program(&parsed.program);
     stripper.types.type_only = type_only_imports(&parsed.program);
     if let Some((offset, message, help)) = stripper.error {
@@ -102,6 +113,27 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         String::from_utf8(bytes).expect("blanking ASCII-bounded ranges keeps UTF-8 valid");
     // Generated code (enums) goes in last. It keeps the lines but not the byte offsets, so the
     // offsets recorded in `types` move with it.
+    // A rewrite inside removed text (a reference in a type, in a `declare` block) or inside a
+    // construct that's generated whole (an enum) has nothing left to change.
+    let blanks = std::mem::take(&mut stripper.blanks);
+    let whole: Vec<Range> = stripper
+        .replacements
+        .iter()
+        .map(|(range, _)| *range)
+        .filter(|range| range.end > range.start)
+        .collect();
+    stripper.replacements.retain(|(range, _)| {
+        // An insertion (an empty range) is inside only strictly; a change, when it's covered.
+        let inside = |outer: &Range| {
+            if range.start == range.end {
+                outer.start < range.start && range.start < outer.end
+            } else {
+                outer.start <= range.start && range.end <= outer.end && outer != range
+            }
+        };
+        !blanks.iter().any(inside) && !whole.iter().any(inside)
+    });
+    stripper.blanks = blanks;
     stripper.replacements.sort_by_key(|(range, _)| range.start);
     let mut stripped = String::with_capacity(blanked.len());
     let mut shifts: Vec<(u32, i64)> = Vec::new();
@@ -150,6 +182,40 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         .with_help("use only erasable TypeScript syntax (as with Node's type stripping or `erasableSyntaxOnly`); docs/typescript.md has the rule"));
     }
     Ok((stripped, stripper.types))
+}
+
+/// The names a statement declares in its block (for namespaces merging into them).
+fn declared_names(statement: &Statement<'_>) -> Vec<String> {
+    let declaration = match statement {
+        Statement::ExportDeclaration(export) => &export.declaration,
+        other => match other.as_declaration() {
+            Some(declaration) => declaration,
+            None => return Vec::new(),
+        },
+    };
+    match declaration {
+        Declaration::FunctionDeclaration(function) => {
+            function.id.iter().map(|id| id.name.to_string()).collect()
+        }
+        Declaration::ClassDeclaration(class) => {
+            class.id.iter().map(|id| id.name.to_string()).collect()
+        }
+        Declaration::TSEnumDeclaration(declaration) if !declaration.declare => {
+            vec![declaration.id.name.to_string()]
+        }
+        Declaration::TSNamespaceDeclaration(namespace)
+            if crate::namespaces::instantiated(namespace) =>
+        {
+            vec![namespace.id.name.to_string()]
+        }
+        Declaration::VariableDeclaration(variables) if !variables.declare => variables
+            .declarations
+            .iter()
+            .flat_map(|declarator| declarator.id.get_binding_identifiers())
+            .map(|identifier| identifier.name.to_string())
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Imported bindings referenced only in type positions (`x: Option`, `typeof thing` in a type),
@@ -204,6 +270,10 @@ pub fn type_ranges_tsx(source: &str) -> Vec<std::ops::Range<usize>> {
         replacements: Vec::new(),
         types: Types::default(),
         error: None,
+        depth: 0,
+        seen: Vec::new(),
+        value_aliases: HashSet::new(),
+        define_fields: true,
     };
     stripper.visit_program(&parsed.program);
     stripper
@@ -220,6 +290,16 @@ struct Stripper<'s> {
     replacements: Vec<(Range, String)>,
     types: Types,
     error: Option<(u32, String, Option<String>)>,
+    /// Inside a namespace's body (its types and enums aren't the component's).
+    depth: usize,
+    /// The names each enclosing block has declared so far: a namespace with one of them merges
+    /// into it.
+    seen: Vec<HashSet<String>>,
+    /// `import X = A.B` aliases read as values (by their start): the rest are types only.
+    value_aliases: HashSet<u32>,
+    /// `useDefineForClassFields` (TypeScript's default for modern targets): a parameter property
+    /// is a class field too.
+    define_fields: bool,
 }
 
 impl Stripper<'_> {
@@ -231,13 +311,267 @@ impl Stripper<'_> {
             self.types.enums.push(info);
             return self.blank(span);
         }
-        match crate::enums::lower(self.source, it, span.start, exported, &self.types.enums) {
+        let previous = if self.depth > 0 {
+            Vec::new()
+        } else {
+            self.types.enums.clone()
+        };
+        match crate::enums::lower(self.source, it, span.start, exported, &previous) {
             Ok(lowered) => {
-                self.types.declarations.push(lowered.info.declaration());
-                self.types.enums.push(lowered.info);
+                // A namespace's enum is the namespace's, not the component's.
+                if self.depth == 0 {
+                    self.types.declarations.push(lowered.info.declaration());
+                    self.types.enums.push(lowered.info);
+                }
                 self.replacements.push((span, lowered.text));
             }
             Err((offset, message, help)) => self.fail(offset, message, help.as_deref()),
+        }
+    }
+
+    /// A namespace (`statement` is its whole statement, `export` included), lowered in place to
+    /// TypeScript's function wrapper: `const N = {}; (function (N) {` for its header, `})(N);` for
+    /// its closing brace, and each exported member assigned to `N`. `parent` is the namespace
+    /// this one is an exported member of.
+    fn namespace(
+        &mut self,
+        it: &TSNamespaceDeclaration<'_>,
+        statement: Range,
+        parent: Option<&str>,
+    ) {
+        if it.declare || !crate::namespaces::instantiated(it) {
+            // Types only: TypeScript writes nothing for it.
+            return self.blank(statement);
+        }
+        let mut chain = vec![it];
+        let block = loop {
+            match &chain[chain.len() - 1].body {
+                TSNamespaceDeclarationBody::TSNamespaceDeclaration(inner) => chain.push(inner),
+                TSNamespaceDeclarationBody::TSModuleBlock(block) => break block,
+            }
+        };
+        let first = it.id.name.as_str();
+        let merged =
+            parent.is_none() && self.seen.last().is_some_and(|names| names.contains(first));
+        let mut header = String::new();
+        for (index, namespace) in chain.iter().enumerate() {
+            let name = namespace.id.name.as_str();
+            let outer = if index == 0 {
+                parent
+            } else {
+                Some(chain[index - 1].id.name.as_str())
+            };
+            match outer {
+                Some(outer) => header.push_str(&format!(
+                    "const {name} = {outer}.{name} ?? ({outer}.{name} = {{}}); "
+                )),
+                None if merged => header.push(';'),
+                None => header.push_str(&format!("const {name} = {{}}; ")),
+            }
+            header.push_str(&format!("(function ({name}) {{"));
+        }
+        let header_range = Range::new(statement.start, block.span.start + 1);
+        header.push_str(&"\n".repeat(self.text(header_range).matches('\n').count()));
+        self.replacements.push((header_range, header));
+        let footer = chain
+            .iter()
+            .rev()
+            .map(|namespace| format!("}})({});", namespace.id.name))
+            .collect::<Vec<_>>()
+            .join(" ");
+        self.replacements
+            .push((Range::new(block.span.end - 1, block.span.end), footer));
+
+        let param = chain[chain.len() - 1].id.name.to_string();
+        self.depth += 1;
+        self.seen.push(HashSet::new());
+        for member in &block.body {
+            self.namespace_member(member, &param);
+            let names = declared_names(member);
+            if let Some(frame) = self.seen.last_mut() {
+                frame.extend(names);
+            }
+        }
+        self.seen.pop();
+        self.depth -= 1;
+    }
+
+    /// One statement in a namespace whose parameter is `param`.
+    fn namespace_member(&mut self, statement: &Statement<'_>, param: &str) {
+        let Statement::ExportDeclaration(export) = statement else {
+            return self.visit_statement(statement);
+        };
+        let declaration = &export.declaration;
+        let keyword = Range::new(export.span.start, declaration.span().start);
+        match declaration {
+            Declaration::TSTypeAliasDeclaration(_) | Declaration::TSInterfaceDeclaration(_) => {
+                self.blank(export.span)
+            }
+            Declaration::VariableDeclaration(variables) if variables.declare => {
+                self.blank(export.span)
+            }
+            // `export const x = 1, y = 2` → `N.x = 1, N.y = 2`.
+            Declaration::VariableDeclaration(variables) => {
+                let Some(first) = variables.declarations.first() else {
+                    return;
+                };
+                self.replacements.push((
+                    Range::new(export.span.start, first.id.span().start),
+                    String::new(),
+                ));
+                for declarator in &variables.declarations {
+                    match &declarator.id {
+                        BindingPattern::BindingIdentifier(identifier) => self.replacements.push((
+                            Range::new(identifier.span.start, identifier.span.start),
+                            format!("{param}."),
+                        )),
+                        other => {
+                            return self.fail(
+                                other.span().start,
+                                "a namespace can't export a destructured variable here",
+                                Some("export each name: `export const a = value.a`"),
+                            )
+                        }
+                    }
+                }
+                self.visit_variable_declaration(variables);
+            }
+            Declaration::FunctionDeclaration(function)
+                if function.declare || function.body.is_none() =>
+            {
+                self.blank(export.span)
+            }
+            Declaration::ClassDeclaration(class) if class.declare => self.blank(export.span),
+            Declaration::FunctionDeclaration(function) => {
+                self.blank(keyword);
+                if let Some(id) = &function.id {
+                    self.replacements.push((
+                        Range::new(function.span.end, function.span.end),
+                        format!(" {param}.{0} = {0};", id.name),
+                    ));
+                }
+                self.visit_declaration(declaration);
+            }
+            Declaration::ClassDeclaration(class) => {
+                self.blank(keyword);
+                if let Some(id) = &class.id {
+                    self.replacements.push((
+                        Range::new(class.span.end, class.span.end),
+                        format!(" {param}.{0} = {0};", id.name),
+                    ));
+                }
+                self.visit_declaration(declaration);
+            }
+            Declaration::TSEnumDeclaration(declaration) if declaration.declare => {
+                self.blank(export.span)
+            }
+            Declaration::TSEnumDeclaration(declaration) => {
+                self.blank(keyword);
+                self.enum_declaration(declaration, declaration.span, false);
+                self.replacements.push((
+                    Range::new(declaration.span.end, declaration.span.end),
+                    format!(" {param}.{0} = {0};", declaration.id.name),
+                ));
+            }
+            Declaration::TSNamespaceDeclaration(inner) => {
+                self.namespace(inner, export.span, Some(param))
+            }
+            // `export import X = A.B` → `N.X = A.B;`
+            Declaration::TSImportEqualsDeclaration(alias) => match &alias.module_reference {
+                TSModuleReference::ExternalModuleReference(_) => self.import_alias(alias),
+                reference => {
+                    let target = self.text(reference.span()).to_owned();
+                    let mut text = format!("{param}.{} = {target};", alias.id.name);
+                    text.push_str(&"\n".repeat(self.text(export.span).matches('\n').count()));
+                    self.replacements.push((export.span, text));
+                }
+            },
+            _ => self.visit_statement(statement),
+        }
+    }
+
+    /// `import X = A.B`: `const X = A.B` when it's read as a value, nothing when it's a type.
+    /// `import x = require("…")` is CommonJS, which TypeScript refuses in an ES module too.
+    fn import_alias(&mut self, alias: &TSImportEqualsDeclaration<'_>) {
+        match &alias.module_reference {
+            TSModuleReference::ExternalModuleReference(_) => self.fail(
+                alias.span.start,
+                "`import x = require(…)` is CommonJS, which TypeScript refuses in an ES module too (TS1202)",
+                Some("use `import x from \"…\"`"),
+            ),
+            _ if alias.import_kind.is_type() || !self.value_aliases.contains(&alias.span.start) => {
+                self.blank(alias.span)
+            }
+            _ => self
+                .replacements
+                .push((Range::new(alias.span.start, alias.span.start + 6), "const ".to_owned())),
+        }
+    }
+
+    /// `constructor(private x: number)`: TypeScript declares `x` as a field (with
+    /// `useDefineForClassFields`, its default for modern targets) and assigns it first thing in
+    /// the constructor, or right after `super(…)` in a subclass.
+    fn parameter_properties(&mut self, class: &Class<'_>) {
+        let Some(constructor) = class.body.body.iter().find_map(|element| match element {
+            ClassElement::MethodDefinition(method)
+                if method.kind == MethodDefinitionKind::Constructor =>
+            {
+                Some(method)
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        let names: Vec<String> = constructor
+            .value
+            .params
+            .items
+            .iter()
+            .filter(|param| param.accessibility.is_some() || param.readonly || param.r#override)
+            .filter_map(|param| param.pattern.get_binding_identifier())
+            .map(|identifier| identifier.name.to_string())
+            .collect();
+        let Some(body) = &constructor.value.body else {
+            return;
+        };
+        if names.is_empty() {
+            return;
+        }
+        if self.define_fields {
+            let at = class.body.span.start + 1;
+            self.replacements
+                .push((Range::new(at, at), format!(" {};", names.join("; "))));
+        }
+        let assignments = names
+            .iter()
+            .map(|name| format!("this.{name} = {name};"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        // After the `super(…)` call, in a subclass.
+        let after_super = class.heritage.as_ref().and_then(|_| {
+            body.statements
+                .iter()
+                .find_map(|statement| match statement {
+                    Statement::ExpressionStatement(expression) => match &expression.expression {
+                        Expression::CallExpression(call)
+                            if matches!(call.callee, Expression::Super(_)) =>
+                        {
+                            Some(expression.span.end)
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                })
+        });
+        match after_super {
+            Some(at) => self
+                .replacements
+                .push((Range::new(at, at), format!("; {assignments}"))),
+            None => {
+                let at = body.span.start + 1;
+                self.replacements
+                    .push((Range::new(at, at), format!(" {assignments}")));
+            }
         }
     }
 
@@ -312,6 +646,10 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_ts_type_alias_declaration(&mut self, it: &TSTypeAliasDeclaration<'a>) {
+        // A namespace's own types aren't the component's.
+        if self.depth > 0 {
+            return self.blank(it.span);
+        }
         let text = format!(
             "export {}",
             self.text(it.span)
@@ -323,6 +661,9 @@ impl<'a> Visit<'a> for Stripper<'_> {
     }
 
     fn visit_ts_interface_declaration(&mut self, it: &TSInterfaceDeclaration<'a>) {
+        if self.depth > 0 {
+            return self.blank(it.span);
+        }
         let text = format!(
             "export {}",
             self.text(it.span).trim_start_matches("declare ")
@@ -346,28 +687,30 @@ impl<'a> Visit<'a> for Stripper<'_> {
         self.blank(Range::new(it.expression.span().end, it.span.end));
     }
 
-    fn visit_ts_type_assertion(&mut self, it: &TSTypeAssertion<'a>) {
-        self.fail(
-            it.span.start,
-            "`<T>value` type assertions aren't supported",
-            Some("write `value as T`"),
-        );
-    }
-
     fn visit_ts_enum_declaration(&mut self, it: &TSEnumDeclaration<'a>) {
         self.enum_declaration(it, it.span, false);
     }
 
     fn visit_ts_namespace_declaration(&mut self, it: &TSNamespaceDeclaration<'a>) {
-        if it.declare {
-            self.blank(it.span);
-        } else {
-            self.fail(
-                it.span.start,
-                "`namespace` isn't supported in a component script",
-                Some("use an object or a module"),
-            );
+        self.namespace(it, it.span, None);
+    }
+
+    fn visit_statements(&mut self, it: &oxc_allocator::Vec<'a, Statement<'a>>) {
+        self.seen.push(HashSet::new());
+        for statement in it {
+            self.visit_statement(statement);
+            let names = declared_names(statement);
+            if let Some(frame) = self.seen.last_mut() {
+                frame.extend(names);
+            }
         }
+        self.seen.pop();
+    }
+
+    fn visit_ts_type_assertion(&mut self, it: &TSTypeAssertion<'a>) {
+        // `<T>value` (a `.ts` script, where it isn't JSX): the `<T>` goes.
+        self.blank(Range::new(it.span.start, it.expression.span().start));
+        self.visit_expression(&it.expression);
     }
 
     fn visit_ts_global_declaration(&mut self, it: &TSGlobalDeclaration<'a>) {
@@ -381,10 +724,22 @@ impl<'a> Visit<'a> for Stripper<'_> {
     fn visit_statement(&mut self, it: &Statement<'a>) {
         match it {
             Statement::TSImportEqualsDeclaration(declaration) => {
+                return self.import_alias(declaration);
+            }
+            Statement::TSExportAssignment(assignment) => {
                 return self.fail(
-                    declaration.span.start,
-                    "`import x = require(…)` isn't supported",
-                    Some("use `import x from \"…\"`"),
+                    assignment.span.start,
+                    "`export =` is CommonJS, and TypeScript refuses it in an ES module too (TS1203)",
+                    Some("a component script exports nothing: declare props on the host tag"),
+                );
+            }
+            Statement::ExportDeclaration(export)
+                if matches!(export.declaration, Declaration::TSNamespaceDeclaration(_)) =>
+            {
+                return self.fail(
+                    export.span.start,
+                    "a component script can't export a namespace: its exports are the component's interface, and only an `export enum` belongs there",
+                    Some("drop `export` (the namespace works inside the component), or move it to a module and import it"),
                 );
             }
             // `export type T = …` and `export interface I { … }` are type-only, so they're
@@ -528,23 +883,19 @@ impl<'a> Visit<'a> for Stripper<'_> {
         if it.declare || it.body.is_none() || it.r#type == FunctionType::TSDeclareFunction {
             return self.blank(it.span);
         }
+        // `function f(this: Window, a)`: a `this` parameter is a type only.
         if let Some(this) = &it.this_param {
-            return self.fail(
-                this.span.start,
-                "a `this` parameter isn't supported",
-                Some("remove it, or pass the value as a normal parameter"),
-            );
+            let end = self.following_comma(this.span.end).unwrap_or(this.span.end);
+            self.blank(Range::new(this.span.start, end));
         }
         walk::walk_function(self, it, flags);
     }
 
     fn visit_formal_parameter(&mut self, it: &FormalParameter<'a>) {
+        // A parameter property (`constructor(private x)`): the modifiers go here; the field and
+        // the assignment are written by `visit_class`.
         if it.accessibility.is_some() || it.readonly || it.r#override {
-            return self.fail(
-                it.span.start,
-                "parameter properties (`constructor(private x)`) need code generated for them",
-                Some("declare the field and assign it in the constructor"),
-            );
+            self.blank_modifiers(Range::new(it.span.start, it.pattern.span().start));
         }
         if it.optional {
             let to = it
@@ -560,6 +911,7 @@ impl<'a> Visit<'a> for Stripper<'_> {
         if it.declare {
             return self.blank(it.span);
         }
+        self.parameter_properties(it);
         if it.r#abstract {
             // `abstract class` → `class`: blank the keyword.
             let text = self.text(it.span).to_owned();

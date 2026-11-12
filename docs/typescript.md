@@ -2,27 +2,34 @@
 
 `<script lang="ts">` makes a component's script TypeScript. This page says exactly what the compiler does with the types, what it refuses and why, and what reaches the generated typings, so none of it is discovered as a compile error.
 
-## The rule: types are removed, not compiled
+## The rule: types are removed; what runs is written as TypeScript writes it
 
-The compiler reduces TypeScript to JavaScript by **blanking out the type syntax in place**: annotations, `type` and `interface` declarations, `import type`, `as`, `satisfies`, `!`, type arguments and type parameters are replaced by spaces of the same length, with line breaks kept. Every remaining token stays at its original line and column, so an error anywhere later in the pipeline points into the TypeScript you wrote.
+The compiler reduces TypeScript to JavaScript by **blanking out the type syntax in place**: annotations, `type` and `interface` declarations, `import type`, `as`, `satisfies`, `<T>value`, `!`, `this` parameters, type arguments and type parameters are replaced by spaces of the same length, with line breaks kept. Every remaining token stays at its original line and column, so an error anywhere later in the pipeline points into the TypeScript you wrote.
 
-The one construct that needs JavaScript written for it, an **`enum`**, is lowered in place to what TypeScript itself would write, keeping its lines (see [Enums](#enums)). The compiler never runs the TypeScript type checker and never emits code from a type.
+What has to run is written where it was, as TypeScript itself writes it, **with the same number of lines**, so every line after it keeps its number:
+
+- an **`enum`** becomes an object (see [Enums](#enums));
+- a **`namespace`** becomes TypeScript's function wrapper, `const N = {}; (function (N) { … })(N);`, with each exported member assigned to it, and references to an exported variable read through it (`N.x`), as `tsc` writes them. A namespace with only types writes nothing; one declared again, or after a function or class of the same name, adds to it; `namespace A.B.C` and exported nested namespaces work;
+- a **parameter property** (`constructor(private x: number)`) becomes a field and an assignment at the top of the constructor, or right after `super(…)` in a subclass;
+- **`import X = A.B`** becomes `const X = A.B` when it's read as a value, and nothing when it names a type.
+
+A plugin test compiles each of these with both the compiler and `tsc` and checks they do the same thing. The compiler never runs the TypeScript type checker and never emits code from a type.
 
 **Imports used only as types go too**, as TypeScript, esbuild and Babel drop them: `import { Option } from './types'` with `Option` used only in annotations leaves the module, so the browser never asks `./types` for a name it doesn't export at runtime. A name the host or the template reads (`{Size.Large}`) is kept, and so is an import the script never mentions (the template may use it, or it's there for its side effects). Writing `import type` says it outright, and is still the clearest.
 
-What that buys: no `tsc` in the compile path, byte-identical output from the Rust CLI and the WebAssembly build, and source positions that are always right. What it costs is the list below.
+What that buys: no `tsc` in the compile path, byte-identical output from the Rust CLI and the WebAssembly build, and source positions that are always right.
 
-## What is refused, and what to write instead
+## What is refused
+
+Only what TypeScript itself refuses in an ES module, and a component script is one:
 
 | Refused | Why | Write instead |
 |---|---|---|
-| `namespace N { … }` (unless `declare namespace`) | A namespace is a runtime object too. | An object, or a module |
-| `class A { constructor(private x: number) {} }` | A parameter property is an assignment the compiler would have to write. | Declare the field and assign it in the constructor |
-| `<T>value` | An angle-bracket assertion is ambiguous with JSX, and the parser is the same for `.zb.tsx`. | `value as T` |
-| `import x = require("…")` | CommonJS; a component script is an ES module. | `import x from "…"` |
-| `function f(this: Window) {}` | A `this` parameter is type-only, but its position isn't erasable in place. | Leave it off, or cast inside the function |
+| `import x = require("…")` | CommonJS; `tsc` refuses it in an ES module too (TS1202). | `import x from "…"` |
+| `export = value` | CommonJS (TS1203). | A component script exports nothing: props go on the host tag |
+| `export namespace N { … }` | A component's exports are its interface; only `export enum` belongs there. | Drop `export` (the namespace works inside the component), or move it to a module |
 
-Each is an error at the construct, with the replacement in its help text. Everything else TypeScript's `erasableSyntaxOnly` accepts is accepted here, and enums too: annotations everywhere, generics on functions and classes, `satisfies`, non-null `!`, optional and definite fields (`x?: T`, `x!: T`), overload signatures (removed), abstract classes and `declare` fields, `import type` and `export type`.
+Each is an error at the construct, with the replacement in its help text. In a `.zb.tsx` file, `<T>value` is refused by the parser, as `tsc` refuses it in any `.tsx` file.
 
 ## Enums
 

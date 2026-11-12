@@ -49,6 +49,49 @@ const fixtures = {
   'a const enum, read by member': `
     const enum Local { One = 1, Two = One + 1, Name = "n" }
     globalThis.result = [Local.One, Local.Two, Local.Name];`,
+  'a namespace: exported values, functions, classes, nested and merged': `
+    namespace Shapes {
+      export const sides = 4;
+      export let count = sides + 1;
+      export function area(side: number) { return side * sides + count; }
+      export class Box { constructor(public side: number) {} }
+      count = 10;
+      const hidden = 2;
+      export namespace Inner { export const twice = hidden * 2; }
+      export enum Kind { Square, Round = "round" }
+      export import Twice = Inner.twice;
+      export type Unused = number;
+      export const short = { count };
+    }
+    namespace Shapes {
+      export const again = area(1) + sides;
+    }
+    namespace Shapes.Deep.Down { export const level = 3; }
+    globalThis.result = [Shapes.sides, Shapes.count, Shapes.area(2), new Shapes.Box(5).side, Shapes.Inner.twice, Shapes.Kind.Round, Shapes.Kind[0], Shapes.Twice, Shapes.short, Shapes.again, Shapes.Deep.Down.level, Object.keys(Shapes)];`,
+  'a namespace merged into a function, and one with only types': `
+    function greet(name: string) { return greet.prefix + name; }
+    namespace greet { export const prefix = "hi "; }
+    namespace OnlyTypes { export interface A { a: number } export type B = string; }
+    globalThis.result = [greet("you"), typeof OnlyTypes];`,
+  'parameter properties, as fields, in a subclass after super()': `
+    class Base { constructor(public base: number) {} }
+    class Point extends Base {
+      label = "p";
+      constructor(public x: number, private readonly y = 2, protected override z?: number) {
+        const before = x + 1;
+        super(before);
+      }
+      sum() { return this.x + this.y + this.base; }
+    }
+    const point = new Point(3);
+    globalThis.result = [point.sum(), Object.keys(point), point.label];`,
+  'a this parameter, <T>value and an import alias': `
+    namespace Config { export const port = 8080; export namespace Types { export type T = string } }
+    import Port = Config.port;
+    import T = Config.Types.T;
+    function describe(this: { name: string }, suffix: string) { return this.name + suffix; }
+    const n = <number>(<unknown>"5");
+    globalThis.result = [describe.call({ name: "a" }, "!"), n, Port];`,
   'lines after an enum keep their numbers': `
     enum Lines {
       A,

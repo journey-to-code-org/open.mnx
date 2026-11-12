@@ -38,6 +38,7 @@ mod expression;
 mod format;
 mod ir;
 mod jsx;
+mod namespaces;
 mod parser;
 mod pure;
 mod reactive;
