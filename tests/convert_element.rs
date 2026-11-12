@@ -30,6 +30,8 @@ fn copy_dir(from: &Path, to: &Path) {
 
 /// The element without its first line (which names the source file), with runs of spaces as
 /// one: TypeScript's types are blanked to spaces in the element, and a converted file has none.
+/// The module without its header line, spaces collapsed and blank lines (which a stylesheet
+/// leaves where rules moved to another block) dropped.
 fn comparable(module: &str) -> String {
     module
         .lines()
@@ -40,6 +42,7 @@ fn comparable(module: &str) -> String {
                 .collect::<Vec<_>>()
                 .join(" ")
         })
+        .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
 }

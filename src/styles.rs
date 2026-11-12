@@ -117,10 +117,10 @@ fn wrap_with(style: &Style, tag: &str, shadow: bool, light: &[&str]) -> String {
     let (prelude, body) = hoist(&style.css);
     let body = body.trim_matches('\n');
     let scoped = if shadow {
-        let (own, _) = split_rules(body, tag, light, false);
+        let (own, _, _) = split_rules(body, tag, light, false);
         format!("{own}\n")
     } else {
-        let (own, slotted) = split_rules(&host_to_scope(body), tag, light, true);
+        let (own, slotted, outside) = split_rules(&host_to_scope(body), tag, light, true);
         let mut scoped = format!("@scope ({tag}) to ([{SLOTTED}=\"{tag}\"]) {{\n{own}\n}}\n");
         if !slotted.trim().is_empty() {
             // `::slotted()` rules reach the slotted elements themselves, which the block above
@@ -129,6 +129,12 @@ fn wrap_with(style: &Style, tag: &str, shadow: bool, light: &[&str]) -> String {
                 "@scope ({tag}) {{\n{}\n}}\n",
                 slotted.trim_matches('\n')
             ));
+        }
+        if !outside.trim().is_empty() {
+            // Real `::part()` rules (a shadow-DOM child's parts): outside `@scope`, where every
+            // engine matches them (WebKit doesn't inside it), limited to the component by
+            // `:where(tag)`, which adds no specificity, as `@scope` doesn't.
+            scoped.push_str(outside.trim_start_matches('\n'));
         }
         scoped
     };
@@ -233,14 +239,17 @@ const GROUPING: &[&str] = &[
 /// `@supports`, …) are split inside and kept around each half; nested style rules aren't.
 #[cfg(test)]
 fn split_slotted(css: &str, tag: &str) -> (String, String) {
-    split_rules(css, tag, &[], true)
+    let (own, slotted, _) = split_rules(css, tag, &[], true);
+    (own, slotted)
 }
 
 /// [`split_slotted`] when `slotted` is set, and in either mode `::part()` rules for the
 /// light-DOM children in `light` rewritten (see [`part_rule`]).
-fn split_rules(css: &str, tag: &str, light: &[&str], slotted_on: bool) -> (String, String) {
+/// With `slotted` (light DOM), real `::part()` rules come back third, to go outside `@scope`.
+fn split_rules(css: &str, tag: &str, light: &[&str], slotted_on: bool) -> (String, String, String) {
     let mut own = String::with_capacity(css.len());
     let mut slotted = String::new();
+    let mut outside = String::new();
     let mut rest = css;
     loop {
         // Whitespace and comments between rules stay with the component's own rules.
@@ -273,10 +282,14 @@ fn split_rules(css: &str, tag: &str, light: &[&str], slotted_on: bool) -> (Strin
                     && !at_rule[name.len()..]
                         .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '-')
             }) {
-                let (inner_own, inner_slotted) = split_rules(body, tag, light, slotted_on);
+                let (inner_own, inner_slotted, inner_outside) =
+                    split_rules(body, tag, light, slotted_on);
                 own.push_str(&format!("{prelude}{{{inner_own}}}"));
                 if !inner_slotted.trim().is_empty() {
                     slotted.push_str(&format!("{} {{\n{inner_slotted}}}\n", prelude.trim()));
+                }
+                if !inner_outside.trim().is_empty() {
+                    outside.push_str(&format!("{} {{\n{inner_outside}}}\n", prelude.trim()));
                 }
             } else {
                 own.push_str(&rest[..=close]);
@@ -294,24 +307,15 @@ fn split_rules(css: &str, tag: &str, light: &[&str], slotted_on: bool) -> (Strin
                     None => true,
                 })
                 .partition(|selector| slotted_on && slotted_on_its_own(selector));
-            for rule in &parts {
-                own.push_str(rule);
-            }
-            if with.is_empty() && !parts.is_empty() {
-                if !without.is_empty() {
-                    let leading = &prelude[..prelude.len() - prelude.trim_start().len()];
-                    own.push_str(&format!(
-                        "{leading}{} {{{body}}}",
-                        without
-                            .iter()
-                            .map(|s| s.trim())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ));
-                }
-            } else if with.is_empty() {
+            let (real_parts, without): (Vec<&str>, Vec<&str>) = without
+                .into_iter()
+                .partition(|selector| slotted_on && selector.contains("::part("));
+            if with.is_empty() && parts.is_empty() && real_parts.is_empty() {
                 own.push_str(&rest[..=close]);
             } else {
+                for rule in &parts {
+                    own.push_str(rule);
+                }
                 if !without.is_empty() {
                     let leading = &prelude[..prelude.len() - prelude.trim_start().len()];
                     own.push_str(&format!(
@@ -323,16 +327,25 @@ fn split_rules(css: &str, tag: &str, light: &[&str], slotted_on: bool) -> (Strin
                             .join(", ")
                     ));
                 }
-                let rewritten: Vec<String> = with
-                    .iter()
-                    .map(|selector| rewrite_slotted(selector.trim(), tag))
-                    .collect();
-                slotted.push_str(&format!("{} {{{body}}}\n", rewritten.join(", ")));
+                if !with.is_empty() {
+                    let rewritten: Vec<String> = with
+                        .iter()
+                        .map(|selector| rewrite_slotted(selector.trim(), tag))
+                        .collect();
+                    slotted.push_str(&format!("{} {{{body}}}\n", rewritten.join(", ")));
+                }
+                if !real_parts.is_empty() {
+                    let unscoped: Vec<String> = real_parts
+                        .iter()
+                        .map(|selector| outside_scope(selector.trim(), tag))
+                        .collect();
+                    outside.push_str(&format!("{} {{{body}}}\n", unscoped.join(", ")));
+                }
             }
         }
         rest = &rest[close + 1..];
     }
-    (own, slotted)
+    (own, slotted, outside)
 }
 
 /// Where a rule's head ends: the index of its `{` or, for a statement at-rule, its `;`
@@ -419,6 +432,15 @@ fn split_selector_list(list: &str) -> Vec<&str> {
     }
     selectors.push(&list[start..]);
     selectors
+}
+
+/// A selector from inside `@scope (tag)`, for outside it: `:scope` (the host, from `:host`)
+/// becomes `:where(tag)`, and anything else is a descendant of `:where(tag)`.
+fn outside_scope(selector: &str, tag: &str) -> String {
+    match selector.strip_prefix(":scope") {
+        Some(rest) => format!(":where({tag}){rest}"),
+        None => format!(":where({tag}) {selector}"),
+    }
 }
 
 /// `child-tag::part(a b):hover { … }`, where `child-tag` renders in light DOM, as
@@ -656,7 +678,7 @@ mod tests {
         let out = wrap_with(&style(css, None), "zb-app", false, &["zb-meter"]);
         assert_eq!(
             out,
-            "@scope (zb-app) to ([data-zb-slotted=\"zb-app\"]) {\n@scope (.bar > zb-meter.big) to ([data-zb-slotted]) {\n[part~=\"label\"][part~=\"value\"]:hover { color: red }\n}\nzb-other::part(x), p { color: red }\n}\n"
+            "@scope (zb-app) to ([data-zb-slotted=\"zb-app\"]) {\n@scope (.bar > zb-meter.big) to ([data-zb-slotted]) {\n[part~=\"label\"][part~=\"value\"]:hover { color: red }\n}\np { color: red }\n}\n:where(zb-app) zb-other::part(x) { color: red }\n"
         );
         // A shadow parent rewrites them too: the light child's elements are in its shadow root.
         let out = wrap_with(
@@ -678,6 +700,17 @@ mod tests {
                 &[]
             ),
             "zb-meter::part(x) { margin: 0 }\n"
+        );
+    }
+
+    #[test]
+    fn real_part_rules_go_outside_the_scope_in_light_dom() {
+        let css = ":host::part(knob) { margin: 0 }\n@media (width > 9em) { zb-shadowy::part(x) { margin: 1px } }";
+        let out = wrap_with(&style(css, None), "zb-app", false, &[]);
+        assert!(out.ends_with(":where(zb-app)::part(knob) { margin: 0 }\n@media (width > 9em) {\n:where(zb-app) zb-shadowy::part(x) { margin: 1px }\n}\n"), "{out}");
+        assert!(
+            !out[..out.find(":where").unwrap()].contains("::part"),
+            "none left in @scope: {out}"
         );
     }
 
