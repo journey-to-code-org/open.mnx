@@ -325,7 +325,18 @@ class Watcher {
       node.nextSource--;
       if (i < last) sources[i].sinkSlots[node.sourceSlots[i]] = i;
     }
-    compactPending(node);
+    // Drop what was unwatched now, however short the list: an unwatched computed (an effect's,
+    // with its closure) mustn't wait for the list to grow before it can be collected. (One
+    // unwatch removes every link to a signal, as in the reference polyfill.)
+    const pending = node.pending;
+    if (pending !== null) {
+      let kept = 0;
+      for (let i = 0; i < pending.length; i++) {
+        const entry = pending[i];
+        if (removing === null ? entry !== only : !removing.has(entry)) pending[kept++] = entry;
+      }
+      pending.length = kept;
+    }
   }
 
   // O(pending), not O(watched): the list is filled as computeds are marked, and compacted here
@@ -353,9 +364,10 @@ class Watcher {
 
 let pendingStamp = 0;
 
-// Entries go stale when a computed is read (no longer dirty) or unwatched. Stale entries are
-// dropped whenever the list outgrows the watched set (on a push, and after an unwatch), so the
-// list stays bounded and never keeps an unwatched computed (or what it closes over) alive.
+// Entries go stale when a computed is read (no longer dirty), and repeat when it's marked dirty
+// again before getPending() runs. Past 64 entries, a push that finds the list larger than twice
+// the watched set drops stale entries and repeats, leaving at most one per watched computed: the
+// list stays bounded, and pushes cost amortised O(1). unwatch() drops what it unwatched at once.
 function addPending(watcher, source) {
   const pending = (watcher.pending ??= []);
   pending.push(source);
@@ -364,18 +376,29 @@ function addPending(watcher, source) {
 function compactPending(watcher) {
   const pending = watcher.pending;
   if (pending === null || pending.length <= 2 * watcher.sources.length) return;
+  const stamp = ++pendingStamp;
   let kept = 0;
   for (let i = 0; i < pending.length; i++) {
     const entry = pending[i];
-    if (entry.dirty && watchedBy(entry, watcher)) pending[kept++] = entry;
+    if (!entry.dirty || entry.seen === stamp || !watchedBy(entry, watcher)) continue;
+    entry.seen = stamp;
+    pending[kept++] = entry;
   }
   pending.length = kept;
 }
+// How many times `watcher` watches `source`. Each link is in both the source's sinks and the
+// watcher's sources, so count in the shorter: one computed shared by many watchers, or one
+// watcher of many computeds, stays O(1) per entry.
 function watchedBy(source, watcher) {
   const sinks = source.sinks;
-  if (sinks === null) return 0;
+  const sources = watcher.sources;
+  if (sinks === null || sources === null) return 0;
   let times = 0;
-  for (let i = 0; i < sinks.length; i++) if (sinks[i] === watcher) times++;
+  if (sinks.length <= sources.length) {
+    for (let i = 0; i < sinks.length; i++) if (sinks[i] === watcher) times++;
+  } else {
+    for (let i = 0; i < sources.length; i++) if (sources[i] === source) times++;
+  }
   return times;
 }
 
