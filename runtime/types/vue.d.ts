@@ -13,6 +13,9 @@ export declare function useRouteLinks(
   options?: import('./navigation.js').RouteLinksOptions,
 ): () => void;
 
+/** Provide a Context Protocol value (or a signal) to every element inside; renders `<zb-context>`. */
+export declare const ZubraContext: DefineComponent<{ context: unknown; value: unknown }>;
+
 /**
  * A Zubra signal (or a function of signals) as a Vue ref; assigning `.value` writes a writable
  * signal. Stops with the current effect scope, or with `stop()`.

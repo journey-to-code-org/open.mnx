@@ -18,6 +18,9 @@ export declare function useRouteLinks(
   options?: import('./navigation.js').RouteLinksOptions,
 ): void;
 
+/** Provide a Context Protocol value (or a signal) to every element inside; renders `<zb-context>`. */
+export declare function ZubraContext(props: { context: unknown; value: unknown; children?: React.ReactNode }): React.ReactElement;
+
 /**
  * Read a Zubra signal (or a function of signals) in a React component, re-rendering when it
  * changes. `deep: true` re-renders on mutations inside an array or object too.

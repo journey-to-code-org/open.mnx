@@ -42,6 +42,32 @@ A component's links are plain `<a href>`, so they work without JavaScript. To ha
 
 Only links inside Zubra components are routed. New-tab and modified clicks, `target`, `download`, `rel="external"`, other origins and `#…` links on the same page are left to the browser, as is a click the component already handled.
 
+## Form libraries
+
+A `form-associated` control already submits with a native form. For a form library, `@zubra/runtime/forms` turns the library's field into the control's props, through its `value` + `valuechange` pair (`{ prop: 'open' }` for another pair):
+
+| Library | Use |
+|---|---|
+| React Hook Form | `<Seats {...registerProps(register('seats'))} />`, or `<Controller render={({ field }) => <Seats {...fieldProps(field)} />} />` |
+| TanStack Form | `<form.Field name="seats">{(field) => <Seats {...fieldProps(field)} />}</form.Field>` |
+| VeeValidate | `<Seats v-bind="vueFieldProps(useField('seats'))" />`, or `v-bind="vueFieldProps(field)"` in a `<Field v-slot="{ field }">` |
+| Felte | `<zb-seats use:felteControl={createField('seats')}>` (or `felteControl(element, createField('seats'))`) |
+| Angular forms | `zubraModel` from `@zubra/runtime/angular` (see the table above) |
+
+Each reports changes, focus leaving the control as a blur (for touched state and on-blur validation), and writes the library's `reset()` back into the control.
+
+## Context from the app
+
+Components that `inject(theme)` read it from the nearest `<zb-context>` around them, so the app can provide a theme, locale or current user once instead of passing it to every element. `value` can be a plain value or a signal.
+
+| Framework | Provide it |
+|---|---|
+| React | `<ZubraContext context={theme} value={mode}>…</ZubraContext>` from `@zubra/runtime/react` |
+| Vue | `<ZubraContext :context="theme" :value="mode">…</ZubraContext>` from `@zubra/runtime/vue` |
+| Svelte, Solid, Angular, Lit, plain HTML | `import '@zubra/runtime/context'`, then `<zb-context>` with its `context` and `value` properties: `<zb-context {context} {value}>`, `prop:context`, `[context]="theme" [value]="mode"`, `.context=${theme}`, `el.value = …` |
+
+`theme` is the key from `createContext()` that the components import. Any Context Protocol consumer is answered, Lit's `@consume` included.
+
 ## State shared with the app
 
 A signal (a module-level `state()` or `computed()`, a `@zubra/sync` field) can be read by elements and by the app's own code at once, without copying it into the framework's state and back:
@@ -59,7 +85,7 @@ A signal (a module-level `state()` or `computed()`, a `@zubra/sync` field) can b
 
 ## What crosses, and what doesn't
 
-Props, events, two-way binding, slots, form participation, refs to the host, shared signals (above) and server rendering cross the element boundary. Render props, the framework's context, Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
+Props, events, two-way binding, slots, form participation, refs to the host, shared signals (above) and server rendering cross the element boundary. Render props, the framework's own context objects (provide the value through `<zb-context>` instead, above), Suspense and transitions, and the framework's own components as children-by-name do not: for those, put the Zubra component inside a framework component rather than the other way round. https://github.com/journey-to-code-org/zubra/blob/main/docs/what-crosses-the-boundary.md has the list with the alternatives. React-only widget libraries (Radix, shadcn/ui, React Aria) don't cross either. Inside a Zubra component, use the platform, `@zubra/runtime/primitives` or Zag.js, as in the registry's `tab-list`, `dropdown-menu`, `tool-tip` and `combo-box`. https://github.com/journey-to-code-org/zubra/blob/main/docs/guide/accessible-widgets.md maps Radix to these.
 
 ## Server rendering in a framework
 
