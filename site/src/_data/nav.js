@@ -42,6 +42,7 @@ export default [
     { file: 'docs/browser-support.md', label: 'Browser support' },
     { file: 'docs/security.md', label: 'Security model' },
     { file: 'docs/framework-matrix.md', label: 'The framework matrix' },
+    { file: 'docs/performance.md', label: 'Performance' },
     { file: 'docs/convert-measured.md', label: '`zubra convert`, measured' },
     { file: 'CHANGELOG.md', slug: 'changelog', label: 'Changelog' },
   ] },
