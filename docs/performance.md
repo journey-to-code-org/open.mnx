@@ -67,7 +67,21 @@ In the benchmark, with `run.mjs --time --runs 9` (same machine, same run, before
 | append rows to large table | 91.6 | 140.7 | 123.3 |
 | clear rows | 9.0 | 23.7 | 16.9 |
 
-What's left in creating and clearing rows is mostly the DOM work each row does: two comment markers and a fragment, `importNode`, `textContent`, and an effect per binding. That's the next piece of work.
+What's left in creating and clearing rows is mostly the DOM work each row does: two comment markers and a fragment, `importNode`, `textContent`, and an effect per binding.
+
+### Rows
+
+A row `zb-each` makes in the browser is now its block's own nodes, with no comment markers and no fragment of its own; rows the server rendered keep their markers, so hydration is unchanged. A block with no custom elements is copied into the document once and each row clones that copy (a block with one still uses `importNode`, so its elements upgrade before their props are bound). A text binding on an element holding one Text node compares and writes that node's `.data`. Same run, before and after:
+
+| Operation | vanilla JS | Solid | Before | After |
+|---|---|---|---|---|
+| create rows | 82.3 | 72.2 | 105.1 | 112.3 |
+| replace all rows | 82.4 | 67.0 | 125.4 | 110.4 |
+| create many rows | 734.9 | 821.7 | 1,260.3 | 1,198.5 |
+| append rows to large table | 84.6 | 95.1 | 151.7 | 114.0 |
+| clear rows | 8.5 | 6.8 | 24.4 | 16.7 |
+
+Create rows and remove row moved within this machine's noise (about 15%). A CPU profile of creating and clearing 1,000 rows, which is steadier, puts the DOM calls Zubra makes at 20–24 ms a cycle, from 28. Its JavaScript didn't move (22–26 ms, against about 7 for hand-written JS): that's an effect per binding and finding each binding's node by its path at runtime, the next piece of work.
 
 ## Server rendering
 
