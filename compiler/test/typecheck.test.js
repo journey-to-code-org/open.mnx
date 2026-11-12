@@ -94,3 +94,16 @@ test('one component, with the components it imports, and unsaved text in place o
   const { diagnostics } = checkTypes([file], { root, texts: { [file]: unsaved }, out: join(root, '.zubra-types', 'editor') });
   assert.deepEqual(diagnostics.map(({ line, column, code }) => [line, column, code]), [[4, 28, 'TS2345']]);
 });
+
+test('the CLI: errors on .zb lines, or as JSON for tooling, and exit 1', { skip }, async () => {
+  const { spawnSync } = await import('node:child_process');
+  const root = project({ 'src/badge.zb': badge.replace('{count}', '{count.nope}') });
+  const cli = (...args) => spawnSync(process.execPath, [join(here, '../cli.js'), 'check', '--types', ...args], { cwd: root, encoding: 'utf8', env: process.env });
+  const human = cli('src');
+  assert.equal(human.status, 1);
+  assert.match(human.stderr, /^src\/badge\.zb:6:\d+ - error TS2339: Property 'nope' does not exist on type 'number'\./m);
+  const json = cli('src', '--format', 'json');
+  assert.equal(json.status, 1);
+  const [entry] = JSON.parse(json.stdout);
+  assert.deepEqual({ ...entry, file: entry.file.slice(root.length + 1), column: undefined }, { file: 'src/badge.zb', line: 6, column: undefined, severity: 'error', message: "Property 'nope' does not exist on type 'number'.", help: null, code: 'TS2339' });
+});

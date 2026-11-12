@@ -12,13 +12,13 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { request, sources } from './index.js';
 
-/** The `.zb` files in `paths` (files, or folders searched without node_modules). */
+/** The `.zb` files in `paths` (files, or folders searched without node_modules, dist, target and dot-folders, as `zubra check` searches). */
 export function components(paths) {
   const found = [];
   const walk = (path) => {
     if (statSync(path).isDirectory()) {
       for (const entry of readdirSync(path)) {
-        if (entry === 'node_modules' || entry.startsWith('.')) continue;
+        if (['node_modules', 'dist', 'target'].includes(entry) || entry.startsWith('.')) continue;
         walk(join(path, entry));
       }
     } else if (path.endsWith('.zb')) found.push(resolve(path));
