@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Signal bridges: state shared by elements and the app's own code.** `@zubra/runtime/bridge` has `subscribe(signal, callback)` and `toStore(signal)`, a store that is at once the Svelte store contract (`$cart`, and writable for `bind:value`), an RxJS-style Subscribable (Angular's `toSignal`, Solid's `from`) and an interop observable (RxJS `from`). React gets `useSignal(signal)` (on `useSyncExternalStore`, so concurrent-safe and server-safe) and Vue gets `useSignal(signal)`, a ref that writes the signal when assigned. Any `Signal.State` or `Signal.Computed` works, or a function of them; `{ deep: true }` also follows mutations inside an array or object. A browser test runs one store through an element and React 19, React 18 and Vue 3 code, each writing and each seeing the others' writes. `docs/what-crosses-the-boundary.md` and the consume skill have the table.
+
 ## 5.7.0 — 2026-11-11
 
 Sync grows up for real apps, from what CineStack, the kit and Tailgate found: a page subscribes to only what it shows, and a server can impose that scope for tenancy by key prefix; a log can keep each field's latest value instead of every change; a device whose cursor is past the end of a replaced log starts over; a returning visitor sees what the log has now rather than what their device stored last time; and a field a component doesn't declare is now a tested guarantee. The editor also stops marking every file red when it can't find the compiler.

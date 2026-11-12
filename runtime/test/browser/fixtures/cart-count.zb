@@ -1,0 +1,8 @@
+<!-- Reads a store the app shares with it: React and Vue read the same signal through useSignal. -->
+<script>
+  import { cart } from './cart-state.js'
+</script>
+<zb-cart-count>
+  <output>{cart.get().length}</output>
+  <button onclick={() => cart.get().push('element')}>Add</button>
+</zb-cart-count>
