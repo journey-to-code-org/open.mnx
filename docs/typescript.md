@@ -95,6 +95,20 @@ The types aren't thrown away. Three things in the script carry their type text i
 2. **`declare const name: Type`** types a prop whose default can't say enough, or a required prop (which otherwise is `unknown`): `declare const size: 'small' | 'large'`. A `declare const` that names no prop is an error.
 3. **`emit<Detail>("name", detail)`** types the event: the typings get `CustomEvent<Detail>` where a plain `emit("name", variable)` would get `CustomEvent<unknown>` (a literal's shape is inferred: `emit("select", { id: 1 })` is `CustomEvent<{ id: number }>`).
 
+**`interface Props`** (or `type Props = { … }`) types every prop in one place, as Vue's and Svelte's components do:
+
+```html
+<script lang="ts">
+  interface Props {
+    size: 'small' | 'large'
+    options?: Option[]
+  }
+</script>
+<my-select size="small" options={[]}>…</my-select>
+```
+
+Each member types the prop of its name (in the typings, the manifest and the type check), and the two lists must match: a member with no prop on the host tag, or a prop the interface doesn't have, is an error naming it. The host still gives the defaults; `declare const` keeps working beside it.
+
 The script's own `type` and `interface` declarations are **exported from the generated `.d.ts`**, with or without `export` written on them (`export interface`, `export type` and `export type { … }` are type-only, so the no-exports rule for component scripts doesn't apply to them), and its imports are **re-emitted as `import type`**, so a type the interface mentions resolves wherever the typings are used.
 
 ```html

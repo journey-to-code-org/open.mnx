@@ -142,6 +142,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         enums: types.enums.clone(),
         verbatim: types.verbatim,
         typescript,
+        props_interface: types
+            .props_interface
+            .as_ref()
+            .map(|(members, start)| (members.clone(), at(*start))),
         typed_imports: types
             .imported
             .iter()

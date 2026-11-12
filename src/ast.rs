@@ -172,6 +172,9 @@ pub struct Script {
     pub verbatim: bool,
     /// `<script lang="ts">` (or a `.zb.tsx` component).
     pub typescript: bool,
+    /// `interface Props { … }`: each member's name and type, and where it's declared. Checked
+    /// against the host's props, whose types they give.
+    pub props_interface: Option<(Vec<(String, String)>, Span)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

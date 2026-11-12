@@ -60,6 +60,9 @@ pub struct Types {
     /// `verbatimModuleSyntax`: imports stay as written (a type imported without `type` is an
     /// error instead of being dropped).
     pub verbatim: bool,
+    /// `interface Props { … }` (or `type Props = { … }`): each member's name and type, and where
+    /// the declaration starts. The props, typed in one place.
+    pub props_interface: Option<(Vec<(String, String)>, u32)>,
 }
 
 /// Strip the types from `source` (a `<script lang="ts">` body starting at `start`).
@@ -204,6 +207,9 @@ pub fn strip(source: &str, start: Span) -> Result<(String, Types), Diagnostic> {
         }
         for import in &mut stripper.types.imported {
             import.3 = moved(import.3);
+        }
+        if let Some((_, start)) = &mut stripper.types.props_interface {
+            *start = moved(*start);
         }
     }
     // What's left must be JavaScript; if it isn't, this is a construct the stripper missed.
@@ -931,6 +937,30 @@ impl Stripper<'_> {
         self.insert_pieces(class.span.end, vec![Piece::Text(");".to_owned())]);
     }
 
+    /// The members of `interface Props` (or `type Props = { … }`): name and type text.
+    fn props_interface(&mut self, members: &[oxc_ast::ast::TSSignature<'_>], start: u32) {
+        let mut props = Vec::new();
+        for member in members {
+            if let oxc_ast::ast::TSSignature::TSPropertySignature(property) = member {
+                let name = match &property.key {
+                    oxc_ast::ast::PropertyKey::StaticIdentifier(identifier) => {
+                        identifier.name.to_string()
+                    }
+                    oxc_ast::ast::PropertyKey::StringLiteral(literal) => {
+                        literal.value.as_str().unwrap_or_default().to_owned()
+                    }
+                    _ => continue,
+                };
+                let text = property.type_annotation.as_ref().map_or_else(
+                    || "unknown".to_owned(),
+                    |annotation| self.text(annotation.type_annotation.span()).to_owned(),
+                );
+                props.push((name, text));
+            }
+        }
+        self.types.props_interface = Some((props, start));
+    }
+
     /// Take out `range` (a decorator), keeping its line breaks.
     fn remove(&mut self, range: Range) {
         let newlines = "\n".repeat(self.text(range).matches('\n').count());
@@ -1024,6 +1054,11 @@ impl<'a> Visit<'a> for Stripper<'_> {
         if self.depth > 0 {
             return self.blank(it.span);
         }
+        if it.id.name == "Props" {
+            if let oxc_ast::ast::TSType::TSTypeLiteral(literal) = &it.type_annotation {
+                self.props_interface(&literal.members, it.span.start);
+            }
+        }
         let text = format!(
             "export {}",
             self.text(it.span)
@@ -1037,6 +1072,9 @@ impl<'a> Visit<'a> for Stripper<'_> {
     fn visit_ts_interface_declaration(&mut self, it: &TSInterfaceDeclaration<'a>) {
         if self.depth > 0 {
             return self.blank(it.span);
+        }
+        if it.id.name == "Props" {
+            self.props_interface(&it.body.body, it.span.start);
         }
         let text = format!(
             "export {}",

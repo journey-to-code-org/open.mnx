@@ -331,12 +331,18 @@ pub fn generate(
     }
 
     // The props, as the script sees them (unless the script declares one itself).
+    // (A prop typed by `interface Props` is declared here, with that type.)
+    let interface_span = component
+        .script
+        .props_interface
+        .as_ref()
+        .map(|(_, span)| *span);
     for prop in &interface.props {
         if component
             .script
             .prop_types
             .iter()
-            .any(|(name, _, _)| name == &prop.name)
+            .any(|(name, _, span)| name == &prop.name && Some(*span) != interface_span)
         {
             continue;
         }

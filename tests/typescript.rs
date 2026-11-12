@@ -728,3 +728,67 @@ fn the_type_checking_file_maps_every_copied_stretch_back_to_the_component() {
         zubra::virtual_typescript_with(&plain, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
     assert!(code.starts_with("// @ts-nocheck\n"), "{code}");
 }
+
+// ---- interface Props --------------------------------------------------------------------------
+
+#[test]
+fn interface_props_types_the_host_s_props_in_one_place() {
+    let source = "<script lang=\"ts\">\n  type Size = 'small' | 'large'\n  interface Props {\n    size: Size\n    maxCount?: number\n  }\n  const twice = maxCount * 2\n</script>\n<zb-x size=\"small\" max-count={3}><p>{twice} {size}</p></zb-x>";
+    let dts = compile_declarations(source, "x.zb").unwrap();
+    assert!(dts.contains("  size: Size;\n"), "{dts}");
+    assert!(dts.contains("  maxCount: number;\n"), "{dts}");
+    let manifest = compile_manifest(source, "x.js").unwrap();
+    assert!(manifest.contains("\"text\": \"Size\""), "{manifest}");
+    // The type-checking file declares them with those types.
+    let (code, _) =
+        zubra::virtual_typescript_with(source, "x.zb", &|_, _| Err("none".to_owned())).unwrap();
+    assert!(
+        code.contains("declare let size: Size;\ndeclare let maxCount: number;\n"),
+        "{code}"
+    );
+}
+
+#[test]
+fn interface_props_and_the_host_must_name_the_same_props() {
+    let base = "<script lang=\"ts\">\n  interface Props {\n    size: string\n  }\n</script>\n";
+    let error = compile_js(
+        &format!("{base}<zb-x size=\"s\" tone=\"warm\"><p>x</p></zb-x>"),
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(error.message, "prop `tone` isn't in `interface Props`");
+    assert_eq!(error.span.line, 6);
+    let error = compile_js(
+        &format!(
+            "{}<zb-x><p>x</p></zb-x>",
+            base.replace("size: string", "size: string\n    maxCount: number")
+        ),
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert!(
+        error.message.starts_with("`Props` has `size`"),
+        "{}",
+        error.message
+    );
+    assert_eq!(
+        error.help.as_deref(),
+        Some("add `size` to the host tag, or take `size` out of `Props`")
+    );
+    let error = compile_js(
+        &format!(
+            "{}<zb-x size=\"s\"><p>x</p></zb-x>",
+            base.replace("size: string", "size: string\n    maxCount: number")
+        ),
+        "@zubra/runtime",
+        "x.zb",
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.help.as_deref(),
+        Some("add `max-count` to the host tag, or take `maxCount` out of `Props`")
+    );
+    assert_eq!(error.span.line, 2);
+}

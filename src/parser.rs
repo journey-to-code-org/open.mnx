@@ -207,6 +207,39 @@ pub fn parse(source: &str) -> Result<ComponentAst, Diagnostic> {
     }
     let mut nodes = host.children;
     resolve_server_exports(&mut script, &host.name, &mut nodes);
+    // `interface Props`: the host's props, typed in one place. Each side names the other's.
+    if let Some((members, span)) = script.props_interface.clone() {
+        for (name, _) in &members {
+            if !props.iter().any(|prop: &PropDecl| &prop.name == name) {
+                return Err(Diagnostic::new(
+                    span,
+                    format!("`Props` has `{name}`, but the host tag has no prop `{name}`"),
+                )
+                .with_help(format!(
+                    "add `{}` to the host tag, or take `{name}` out of `Props`",
+                    kebab_attribute(name)
+                )));
+            }
+        }
+        for prop in &props {
+            let Some((_, text)) = members.iter().find(|(name, _)| name == &prop.name) else {
+                return Err(Diagnostic::new(
+                    prop.span,
+                    format!("prop `{}` isn't in `interface Props`", prop.name),
+                )
+                .with_help(format!("add `{}: <type>` to `Props`", prop.name)));
+            };
+            if !script
+                .prop_types
+                .iter()
+                .any(|(name, _, _)| name == &prop.name)
+            {
+                script
+                    .prop_types
+                    .push((prop.name.clone(), text.clone(), span));
+            }
+        }
+    }
     // Imports the script uses only as types go, unless the host or the template reads them.
     if !script.type_only_imports.is_empty() {
         let mut used = std::collections::HashSet::new();
