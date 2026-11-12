@@ -113,12 +113,14 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
                 .collect::<Vec<_>>()
         })
         .collect();
-    // Every name the script's imports bind (the body has them taken out).
+    // Every name the script's imports bind (the body has them taken out), and its module-level
+    // declarations, which are plain names in the same way.
     let imported: Vec<String> = component
         .script
         .imports
         .iter()
         .flat_map(|import| crate::reactive::imported_names(&import.text))
+        .chain(module_names(component))
         .collect();
     let script = crate::reactive::rewrite_script(
         &component.script.body,
@@ -210,6 +212,12 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             }
         }
     }
+    // `export enum`s, lowered: the module exports them for its consumers.
+    for declaration in &component.script.module_declarations {
+        out.push('\n');
+        out.push_str(declaration.text.trim_end_matches(';'));
+        out.push_str(";\n");
+    }
     out.push_str(&format!(
         "\nexport const tag = {};\n\nexport default $define(tag, {{\n  props: {{\n",
         json(&component.tag)
@@ -219,8 +227,11 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             .default
             .as_ref()
             .map_or_else(|| "undefined".to_owned(), |value| value.to_string());
+        // An enum prop's attribute takes a member's value or its name.
+        let members = validate::enum_literal(component, &prop.name)
+            .map_or_else(String::new, |members| format!(", enum: {members}"));
         out.push_str(&format!(
-            "    {}: {{ attribute: {}, default: {default}, required: {}{} }},\n",
+            "    {}: {{ attribute: {}, default: {default}, required: {}{}{members} }},\n",
             json(&prop.name),
             json(&prop.attribute),
             prop.required(),
@@ -1351,4 +1362,13 @@ fn reactive_expression(
         source: rewritten,
         names,
     })
+}
+
+/// The names a component's module declares outside its setup function (its `export enum`s).
+pub(crate) fn module_names(component: &ComponentAst) -> impl Iterator<Item = String> + '_ {
+    component
+        .script
+        .module_declarations
+        .iter()
+        .map(|declaration| declaration.name.clone())
 }

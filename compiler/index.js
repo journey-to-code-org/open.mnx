@@ -61,7 +61,35 @@ export function sources(path, files = {}) {
   for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)['"]/g)) {
     if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files);
   }
+  // A TypeScript component's relative TypeScript imports, and what they re-export: the
+  // compiler reads the enums in them (a `const enum` is inlined).
+  const typescript = /\.tsx$/.test(absolute) || /<script[^>]*\blang=["']ts["']/i.test(source);
+  if (typescript) {
+    for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      if (!/\.zb(\.[jt]sx)?$/.test(specifier)) typescriptModule(dirname(absolute), specifier, files, 0);
+    }
+  }
   return files;
+}
+
+/** A relative TypeScript module, as the compiler resolves it (src/enums.rs `resolve_module`), and its re-exports. */
+function typescriptModule(from, specifier, files, depth) {
+  if (depth > 8 || /\.(css|json|svg|png|jpe?g|html|txt|wasm)$/.test(specifier)) return;
+  const stem = specifier.replace(/\.m?js$/, '');
+  const candidates = stem !== specifier ? [`${stem}.ts`, `${stem}.mts`, `${stem}.tsx`]
+    : /\.[mc]?tsx?$/.test(specifier) ? [specifier]
+      : [`${specifier}.ts`, `${specifier}.tsx`, `${specifier}.d.ts`, `${specifier}/index.ts`];
+  for (const candidate of candidates) {
+    const absolute = resolve(from, candidate);
+    if (absolute in files) return;
+    let source;
+    try { source = readFileSync(absolute, 'utf8'); } catch { continue; }
+    files[absolute] = source;
+    for (const [, onward] of source.matchAll(/export\s+(?:\*|\{[^}]*\})\s*from\s*['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      typescriptModule(dirname(absolute), onward, files, depth + 1);
+    }
+    return;
+  }
 }
 
 /**

@@ -32,6 +32,7 @@ mod diagnostic;
 mod emit_element;
 mod emit_interface;
 mod emit_js;
+mod enums;
 mod events;
 mod expression;
 mod format;
@@ -313,7 +314,7 @@ pub fn server_gaps(
                     child.tag, child.span.line, child.span.column
                 );
             }
-            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic, ternaries, template literals, arrow functions from the script and deterministic built-ins; compute the rest before rendering and pass it as a prop";
+            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic, ternaries, template literals, arrow functions from the script and deterministic built-ins (the list: https://journey-to-code-org.github.io/zubra/docs/javascript-support/); compute the rest before rendering and pass it as a prop";
             (Diagnostic::new(span, message).with_help(help), form)
         })
         .collect();
@@ -625,6 +626,13 @@ fn collect_stylesheets(
 
 // ---- tools ----------------------------------------------------------------------------------
 
+/// The JavaScript a `<script lang="ts">` body is reduced to: types blanked in place, enums
+/// lowered (see docs/typescript.md). `source` is the script's text alone.
+#[doc(hidden)]
+pub fn typescript_to_js(source: &str) -> Result<String, Diagnostic> {
+    typescript::strip(source, diagnostic::Span::new(1, 1)).map(|(javascript, _)| javascript)
+}
+
 /// Things that compile but may not do what was meant: a `'use …'` directive Zubra doesn't know,
 /// and a prop that shadows a built-in property of every element (`hidden` hides the host; `title`
 /// also shows a tooltip).
@@ -651,6 +659,12 @@ pub fn warnings(source: &str) -> Vec<Diagnostic> {
         .unknown_directives
         .iter()
         .cloned()
+        .chain(
+            validate::enum_props(&component)
+                .into_iter()
+                .filter(|(_, error)| !error)
+                .map(|(warning, _)| warning),
+        )
         .chain(component.props.iter().filter_map(|prop| {
             let (_, effect) = BUILT_IN_PROPERTIES
                 .iter()

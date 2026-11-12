@@ -23,7 +23,10 @@ use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
-    ast::{Binding, ComponentImport, Emit, Import, ImportKind, ImportName, Script, ServerExport},
+    ast::{
+        Binding, ComponentImport, Emit, Import, ImportKind, ImportName, ModuleDeclaration, Script,
+        ServerExport,
+    },
     diagnostic::{Diagnostic, Span},
     expression,
     scanner::span_after,
@@ -45,6 +48,12 @@ pub fn elide_type_only_imports(script: &mut Script, used: &std::collections::Has
     if elided.is_empty() {
         return;
     }
+    remove_import_names(script, &elided);
+}
+
+/// Take `names` out of the script's imports: an import left with none goes; one that keeps some
+/// is rewritten with those (`import A, * as B, { c } from "x" with { … }`).
+pub fn remove_import_names(script: &mut Script, elided: &[String]) {
     let mut kept_imports = Vec::new();
     for mut import in std::mem::take(&mut script.imports) {
         let before = import.names.len();
@@ -110,6 +119,19 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         type_declarations: types.declarations.clone(),
         type_imports: types.imports.clone(),
         type_only_imports: types.type_only.clone(),
+        enums: types.enums.clone(),
+        typed_imports: types
+            .imported
+            .iter()
+            .map(
+                |(local, imported, specifier, offset)| crate::ast::TypedImport {
+                    local: local.clone(),
+                    imported: imported.clone(),
+                    specifier: specifier.clone(),
+                    span: at(*offset),
+                },
+            )
+            .collect(),
         prop_types: types
             .props
             .iter()
@@ -361,6 +383,41 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                     offset: range.start,
                     span: at(function.span.start),
                 });
+                server_ranges.push(range);
+            }
+            // `export enum Size { … }`, lowered to `export const Size = { … };`: a module-level
+            // export. Its value is known at build time (an exported enum's members are
+            // constants), so it's a binding too.
+            Statement::ExportDeclaration(export)
+                if exported_enum(export, &types.enums).is_some() =>
+            {
+                let (name, init) = exported_enum(export, &types.enums).expect("checked");
+                let text = &source[init.span().start as usize..init.span().end as usize];
+                script.bindings.push(Binding {
+                    name: name.clone(),
+                    init: expression::parse(text).ok(),
+                    source: Some(text.to_owned()),
+                    mutable: false,
+                    span: at(export.span.start),
+                    id_call: None,
+                    inject: None,
+                });
+                let range = export.span.start as usize..export.span.end as usize;
+                // At the top of the module, without the script's indentation.
+                let line_start = source[..range.start].rfind('\n').map_or(0, |at| at + 1);
+                let indent = &source[line_start..range.start];
+                let text = if indent.trim().is_empty() && !indent.is_empty() {
+                    source[range.clone()]
+                        .split('\n')
+                        .map(|line| line.strip_prefix(indent).unwrap_or(line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                } else {
+                    source[range.clone()].to_owned()
+                };
+                script
+                    .module_declarations
+                    .push(ModuleDeclaration { name, text });
                 server_ranges.push(range);
             }
             Statement::ExportNamedDeclaration(_)
@@ -971,6 +1028,26 @@ mod tests {
             .message
             .contains("default export"));
     }
+}
+
+/// `export const Size = { … }` written by the enum lowering for `export enum Size`: the name
+/// and the object.
+fn exported_enum<'e, 'a>(
+    export: &'e oxc_ast::ast::ExportDeclaration<'a>,
+    enums: &[crate::enums::EnumInfo],
+) -> Option<(String, &'e oxc_ast::ast::Expression<'a>)> {
+    let oxc_ast::ast::Declaration::VariableDeclaration(declaration) = &export.declaration else {
+        return None;
+    };
+    let [declarator] = declaration.declarations.as_slice() else {
+        return None;
+    };
+    let name = declarator.id.get_binding_identifier()?.name.to_string();
+    enums
+        .iter()
+        .any(|info| info.exported && info.name == name)
+        .then_some(())?;
+    Some((name, declarator.init.as_ref()?))
 }
 
 /// The function an `export` declares, when it's marked `'use server'`.
