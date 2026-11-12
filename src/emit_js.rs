@@ -128,6 +128,7 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         &makers,
         &imported,
         &component.script.from,
+        &component.script.resource,
         component
             .script
             .start
@@ -381,6 +382,22 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             &format!(
                 "import {{ spread as {SPREAD_BINDER} }} from {};\n",
                 json(&entry("spread"))
+            ),
+        );
+    }
+    // An async `resource()` fetcher's `tracked()` comes from `@zubra/runtime/track`, likewise.
+    if out.contains(&format!(
+        "{}(({}) => (",
+        crate::reactive::TRACKED,
+        crate::reactive::RUN
+    )) {
+        let header_end = out.find('\n').map_or(0, |at| at + 1);
+        out.insert_str(
+            header_end,
+            &format!(
+                "import {{ tracked as {} }} from {};\n",
+                crate::reactive::TRACKED,
+                json(&entry("track"))
             ),
         );
     }

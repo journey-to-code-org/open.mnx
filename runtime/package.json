@@ -30,6 +30,11 @@
       "production": "./dist/production/spread.js",
       "default": "./src/spread.js"
     },
+    "./track": {
+      "types": "./types/track.d.ts",
+      "production": "./dist/production/track.js",
+      "default": "./src/track.js"
+    },
     "./zag": {
       "types": "./types/zag.d.ts",
       "production": "./dist/production/zag.js",

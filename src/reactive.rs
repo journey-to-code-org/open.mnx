@@ -142,6 +142,10 @@ pub trait Names {
     fn is_from(&self, _name: &str) -> bool {
         false
     }
+    /// Whether `name` is `resource` from the runtime, whose async fetcher gets `track()` calls.
+    fn is_resource(&self, _name: &str) -> bool {
+        false
+    }
     /// How props and state are spelled (see [`Lowering`]).
     fn lowering(&self) -> &Lowering<'_> {
         &RUNTIME_LOWERING
@@ -314,11 +318,101 @@ pub fn rewrite_expression(
     rewriter.finish()
 }
 
+/// The name an async `resource()` fetcher's run is passed as, for its `track()` calls.
+pub const RUN: &str = "$run";
+/// The local name of `@zubra/runtime/track`'s `tracked()` in compiled modules.
+pub const TRACKED: &str = "$tracked";
+
 /// Collects the edits (see the module docs).
 pub struct Rewriter<'n, N: Names> {
     names: &'n N,
     pub edits: Vec<Edit>,
     error: Option<Diagnostic>,
+    /// Inside an async `resource()` fetcher: reads go through `$run.track(() => …)`, so the ones
+    /// after an `await` are followed too.
+    tracking: usize,
+    /// In the fetcher being rewritten: where its first `await` can resume (reads before it run
+    /// while the effect tracks them, so they stay plain), and how many functions deep in it
+    /// the walk is (a nested function's reads may run any time).
+    cutoff: u32,
+    nested: usize,
+}
+
+/// Where code in an async function can first run after an `await`: the end of the first `await`
+/// (its operand is evaluated before it waits), or a `for await`, or, when it is in a loop, the start of the outermost such loop, whose earlier
+/// statements run again after it. Nested functions are their own.
+fn await_cutoff(function: &Expression<'_>) -> u32 {
+    struct Find {
+        depth: usize,
+        loops: Vec<u32>,
+        cutoff: u32,
+    }
+    impl Find {
+        fn found(&mut self, at: u32) {
+            let at = self.loops.first().copied().unwrap_or(at);
+            self.cutoff = self.cutoff.min(at);
+        }
+        fn in_loop(&mut self, start: u32, walk: impl FnOnce(&mut Self)) {
+            self.loops.push(start);
+            walk(self);
+            self.loops.pop();
+        }
+    }
+    impl<'a> Visit<'a> for Find {
+        fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+            self.depth += 1;
+            if self.depth == 1 {
+                walk::walk_function(self, function, flags);
+            }
+            self.depth -= 1;
+        }
+        fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+            self.depth += 1;
+            if self.depth == 1 {
+                walk::walk_arrow_function_expression(self, arrow);
+            }
+            self.depth -= 1;
+        }
+        fn visit_await_expression(&mut self, expression: &oxc_ast::ast::AwaitExpression<'a>) {
+            walk::walk_await_expression(self, expression);
+            self.found(expression.span.end);
+        }
+        fn visit_for_of_statement(&mut self, statement: &oxc_ast::ast::ForOfStatement<'a>) {
+            if statement.r#await {
+                self.found(statement.span.start);
+            }
+            self.in_loop(statement.span.start, |find| {
+                walk::walk_for_of_statement(find, statement)
+            });
+        }
+        fn visit_for_in_statement(&mut self, statement: &oxc_ast::ast::ForInStatement<'a>) {
+            self.in_loop(statement.span.start, |find| {
+                walk::walk_for_in_statement(find, statement)
+            });
+        }
+        fn visit_for_statement(&mut self, statement: &oxc_ast::ast::ForStatement<'a>) {
+            self.in_loop(statement.span.start, |find| {
+                walk::walk_for_statement(find, statement)
+            });
+        }
+        fn visit_while_statement(&mut self, statement: &oxc_ast::ast::WhileStatement<'a>) {
+            self.in_loop(statement.span.start, |find| {
+                walk::walk_while_statement(find, statement)
+            });
+        }
+        fn visit_do_while_statement(&mut self, statement: &oxc_ast::ast::DoWhileStatement<'a>) {
+            self.in_loop(statement.span.start, |find| {
+                walk::walk_do_while_statement(find, statement)
+            });
+        }
+    }
+    let mut find = Find {
+        depth: 0,
+        loops: Vec::new(),
+        cutoff: u32::MAX,
+    };
+    find.visit_expression(function);
+    find.cutoff
 }
 
 impl<'n, N: Names> Rewriter<'n, N> {
@@ -327,6 +421,9 @@ impl<'n, N: Names> Rewriter<'n, N> {
             names,
             edits: Vec::new(),
             error: None,
+            tracking: 0,
+            cutoff: u32::MAX,
+            nested: 0,
         }
     }
 
@@ -392,6 +489,37 @@ impl<'n, N: Names> Rewriter<'n, N> {
                 None
             }
         }
+    }
+
+    /// A read at `at`, through the run's `track()` where it can run after the fetcher's first
+    /// `await` (or in a function nested in it).
+    fn tracked(&self, at: u32, text: String) -> String {
+        if self.tracking > 0 && (at >= self.cutoff || self.nested > 1) {
+            format!("{RUN}.track(() => {text})")
+        } else {
+            text
+        }
+    }
+
+    /// The fetcher of `resource(async …)` in script code: an async function or arrow, the first
+    /// argument. A fetcher that isn't async is left as written.
+    fn async_fetcher<'c>(&self, call: &'c CallExpression<'_>) -> Option<&'c Expression<'c>> {
+        let Expression::Identifier(callee) = &call.callee else {
+            return None;
+        };
+        if !self.names.is_resource(&callee.name)
+            || !self.names.in_script()
+            || self.names.lowering().value
+        {
+            return None;
+        }
+        let fetcher = call.arguments.first()?.as_expression()?;
+        let async_ = match fetcher.without_parentheses() {
+            Expression::ArrowFunctionExpression(arrow) => arrow.r#async,
+            Expression::FunctionExpression(function) => function.r#async,
+            _ => false,
+        };
+        async_.then_some(fetcher)
     }
 
     /// Whether `identifier` is the whole argument of `signal(…)`: the signal is passed, not read.
@@ -462,6 +590,7 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
             return;
         }
         if let Some(text) = self.read(identifier) {
+            let text = self.tracked(identifier.span.start, text);
             self.replace(identifier.span.start, identifier.span.end, text);
         }
     }
@@ -470,6 +599,7 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
         if property.shorthand {
             if let Expression::Identifier(identifier) = &property.value {
                 if let Some(text) = self.read(identifier) {
+                    let text = self.tracked(identifier.span.start, text);
                     let name = identifier.name.as_str();
                     self.replace(
                         identifier.span.start,
@@ -484,6 +614,22 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if let Some(fetcher) = self.async_fetcher(call) {
+            // `resource(async (…) => …)` → `resource($tracked(($run) => (async (…) => …)($run)))`:
+            // the fetcher is unchanged, and its reads can reach the run's `track()`.
+            let span = fetcher.span();
+            self.insert(span.start, format!("{TRACKED}(({RUN}) => ("));
+            self.visit_expression(&call.callee);
+            let outer = (self.cutoff, self.nested);
+            self.cutoff = await_cutoff(fetcher);
+            self.nested = 0;
+            self.tracking += 1;
+            self.visit_arguments(&call.arguments);
+            self.tracking -= 1;
+            (self.cutoff, self.nested) = outer;
+            self.insert(span.end, format!(")({RUN}))"));
+            return;
+        }
         if let Expression::Identifier(callee) = &call.callee {
             if let Some(Kind::Callback(event)) = self.names.kind(callee) {
                 // `onPick(a)` / `onPick?.(a)` → `emit("pick", a)`: replace up to the `(`.
@@ -499,6 +645,18 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
             }
         }
         walk::walk_call_expression(self, call);
+    }
+
+    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        self.nested += 1;
+        walk::walk_function(self, function, flags);
+        self.nested -= 1;
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        self.nested += 1;
+        walk::walk_arrow_function_expression(self, arrow);
+        self.nested -= 1;
     }
 
     fn visit_assignment_expression(&mut self, assignment: &AssignmentExpression<'a>) {
@@ -587,10 +745,14 @@ struct ScriptNames<'s> {
     kinds: std::collections::HashMap<oxc_syntax::symbol::SymbolId, Kind>,
     props: &'s [String],
     from: &'s [String],
+    resource: &'s [String],
     start: crate::diagnostic::Span,
 }
 
 impl Names for ScriptNames<'_> {
+    fn is_resource(&self, name: &str) -> bool {
+        self.resource.iter().any(|resource| resource == name)
+    }
     fn lowering(&self) -> &Lowering<'_> {
         &self.lowering
     }
@@ -637,18 +799,30 @@ pub fn rewrite_script(
     makers: &[String],
     imported: &[String],
     from: &[String],
+    resource: &[String],
     start: crate::diagnostic::Span,
 ) -> Result<ScriptCode, Diagnostic> {
-    rewrite_script_with(body, props, makers, imported, from, start, RUNTIME_LOWERING)
+    rewrite_script_with(
+        body,
+        props,
+        makers,
+        imported,
+        from,
+        resource,
+        start,
+        RUNTIME_LOWERING,
+    )
 }
 
 /// [`rewrite_script`], spelling props and state as `lowering` says.
+#[allow(clippy::too_many_arguments)] // the names the script imports from the runtime, each kind its own
 pub fn rewrite_script_with(
     body: &str,
     props: &[String],
     makers: &[String],
     imported: &[String],
     from: &[String],
+    resource: &[String],
     start: crate::diagnostic::Span,
     lowering: Lowering<'_>,
 ) -> Result<ScriptCode, Diagnostic> {
@@ -665,6 +839,7 @@ pub fn rewrite_script_with(
         kinds: std::collections::HashMap::new(),
         props,
         from,
+        resource,
         start,
     };
     // A runtime hook called but never imported (or declared) would throw in the browser.

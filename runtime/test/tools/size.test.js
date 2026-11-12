@@ -30,6 +30,9 @@ const BUDGETS = {
   'src/effect.js': { gzip: 4 * 1024 },
   // `animate`'s leave() and glide(), loaded only by components that animate.
   'src/motion.js': { gzip: 1.25 * 1024 },
+  // `tracked()`: reads after an `await` in a resource's fetcher, loaded only by components with
+  // an async fetcher.
+  'src/track.js': { gzip: 0.75 * 1024, external: ['./signal.js', './effect.js'] },
   // `{...spread}`'s binder (3.5), loaded only by components whose template spreads. (1.5 KB until
   // spread onto a Zubra component — its props as props, unset when their key goes, about 110 B.)
   'src/spread.js': { gzip: 1.75 * 1024, external: ['./element.js', './effect.js'] },

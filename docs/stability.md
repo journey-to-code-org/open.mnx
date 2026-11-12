@@ -54,6 +54,7 @@ Every npm package entry and command below has a tier; `docs/test/stability.test.
 | `@zubra/runtime/zag` | Stable | Runtime; registry | Registry `combo-box` |
 | `@zubra/runtime/primitives` | Stable | Runtime; registry | Registry menus, tabs |
 | `@zubra/runtime/motion` | Supported | Runtime (both outputs) | Zubra UI motion components |
+| `@zubra/runtime/track` | Experimental | Runtime (unit, browser) | Async `resource()` fetchers in `.zb` scripts; nothing outside its tests yet |
 | `@zubra/runtime/react` | Stable | Framework and meta-framework examples | React and Next.js examples |
 | `@zubra/runtime/vue` | Stable | Framework and meta-framework examples | Vue and Nuxt examples |
 | `@zubra/runtime/angular` | Stable | Framework examples | Angular booking |

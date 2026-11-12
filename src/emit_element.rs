@@ -279,6 +279,7 @@ pub fn emit(
         &makers,
         &imported,
         &component.script.from,
+        &component.script.resource,
         component
             .script
             .start
