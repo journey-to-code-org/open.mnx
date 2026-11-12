@@ -48,6 +48,10 @@ jobs:
         working-directory: runtime
       - run: npm test
         working-directory: runtime
+      # Explicit Resource Management (`using`, DisposableStack) is in Node 24, not 22: the disposal
+      # tests that need it are skipped above and run here.
+      - run: npx -y node@24 --test --test-reporter=spec test/effect.test.js test/resource.test.js
+        working-directory: runtime
       - run: npm run test:browser
         working-directory: runtime
       # The same suite on the production build (no hot reloading).
@@ -202,7 +206,7 @@ jobs:
           GALLERY_BASE: /zubra/
 
   frameworks:
-    name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular)
+    name: Framework examples (React, Vue, Svelte, Solid, Lit, Preact, Angular, FAST)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -659,6 +663,30 @@ jobs:
         working-directory: prettier-plugin
       - run: npm test
         working-directory: prettier-plugin
+
+  compared:
+    name: Compared with WebUI, FAST, Enhance and WebC (the measured components work)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/compared/html-first/package-lock.json
+      - run: npm ci
+        working-directory: runtime
+      - run: npm ci
+        working-directory: docs/compared/html-first
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: docs/compared/html-first
+      # Each tool's copy button works in Chromium, and the page's claims about what each server
+      # evaluates still hold; then the measurements, for the job's log.
+      - run: npm test
+        working-directory: docs/compared/html-first
+      - run: node measure.mjs --renders 1000
+        working-directory: docs/compared/html-first
+
 
   skills:
     name: Skills (examples compile, copies in sync)

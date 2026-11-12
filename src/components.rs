@@ -29,11 +29,12 @@ fn load_from(
     loader: Option<Loader<'_>>,
     stack: &mut Vec<String>,
 ) -> Result<(), Diagnostic> {
-    // Enums from the TypeScript modules it imports.
     if let Some(loader) = loader {
+        // Enums from the TypeScript modules it imports.
         if !component.script.typed_imports.is_empty() {
             crate::enums::resolve_imports(component, path, loader)?;
         }
+        resolve_contexts(component, path, loader);
     }
     for import in component.script.components.clone() {
         let Some(loader) = loader else {
@@ -224,4 +225,93 @@ mod tests {
         );
         assert_eq!(exported(&json!("./index.js"), "./x.zb"), None);
     }
+/// The contexts the script provides or injects, each with a key that's the same in every file
+/// that imports it: the module (as the loader resolves it, or else joined to `path`) and the
+/// export's name. The default comes from `export const name = createContext(value)` in the
+/// module when the loader can read it and the server can evaluate `value`.
+fn resolve_contexts(component: &mut ComponentAst, path: &str, loader: Loader<'_>) {
+    let script = &component.script;
+    let mut used: Vec<&str> = script
+        .provides
+        .iter()
+        .map(|(context, _)| context.as_str())
+        .collect();
+    used.extend(
+        script
+            .bindings
+            .iter()
+            .filter_map(|binding| binding.inject.as_deref()),
+    );
+    used.sort_unstable();
+    used.dedup();
+    let mut contexts = Vec::new();
+    for local in used {
+        let Some((_, specifier, imported)) = script
+            .named_imports
+            .iter()
+            .find(|(name, _, _)| name == local)
+        else {
+            continue; // declared in the script itself: only the browser has it
+        };
+        let (module, default) = match loader(specifier, path) {
+            Ok((resolved, source)) => (resolved, context_default(&source, imported)),
+            Err(_) => (joined(path, specifier), None),
+        };
+        contexts.push(crate::ast::ContextRef {
+            local: local.to_owned(),
+            key: format!("{module}#{imported}"),
+            default,
+        });
+    }
+    component.contexts = contexts;
+}
+
+/// `export const <name> = createContext(<value>)` in a module: `<value>`, if the server can
+/// evaluate it (and `undefined` as null when there's none).
+fn context_default(source: &str, name: &str) -> Option<serde_json::Value> {
+    let start = source.find(&format!("export const {name} = createContext("))?;
+    let rest = &source[start + format!("export const {name} = createContext(").len()..];
+    let mut depth = 1usize;
+    let mut end = None;
+    for (index, character) in rest.char_indices() {
+        match character {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(index);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let argument = rest[..end?].trim();
+    if argument.is_empty() {
+        return Some(serde_json::Value::Null);
+    }
+    crate::pure::evaluate(argument, &|_| None)
+        .ok()?
+        .into_json()
+        .ok()
+}
+
+/// `specifier` joined to the directory of `from`, with `.` and `..` resolved: the module's key
+/// when the loader can't read it (a server given only the components' sources).
+fn joined(from: &str, specifier: &str) -> String {
+    if !(specifier.starts_with("./") || specifier.starts_with("../")) {
+        return specifier.to_owned();
+    }
+    let mut parts: Vec<&str> = from.split('/').collect();
+    parts.pop();
+    for part in specifier.split('/') {
+        match part {
+            "." | "" => {}
+            ".." => {
+                parts.pop();
+            }
+            part => parts.push(part),
+        }
+    }
+    parts.join("/")
 }

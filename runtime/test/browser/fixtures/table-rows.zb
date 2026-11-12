@@ -1,0 +1,16 @@
+<zb-table rows={[]}>
+  <table>
+    <tbody>
+      <zb-each items={rows} as="row" key={row.id}>
+        <tr><td>{row.id}</td></tr>
+      </zb-each>
+    </tbody>
+  </table>
+  <ul>
+    <li class="first">first</li>
+    <zb-each items={rows} as="row" key={row.id}>
+      <li>{row.id}</li>
+    </zb-each>
+    <li class="last">last</li>
+  </ul>
+</zb-table>

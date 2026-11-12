@@ -1,0 +1,3 @@
+<template>
+  <button type="button" ?data-done="{{copied}}" @click="{copy()}"><if condition="copied">Copied!</if><if condition="!copied">{{label}}</if></button>
+</template>

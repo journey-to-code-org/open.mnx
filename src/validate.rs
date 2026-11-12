@@ -158,6 +158,51 @@ thread_local! {
 }
 
 thread_local! {
+    /// Server ids (`id()`): how many hosts of each tag this render has given a base, and the
+    /// prefix for this render (`idPrefix`, so separate renders on one page don't collide).
+    static ID_COUNTS: std::cell::RefCell<HashMap<String, usize>> = std::cell::RefCell::new(HashMap::new());
+    static ID_PREFIX: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    /// Context values the components being rendered provide, by context key, innermost last.
+    static PROVIDED: std::cell::RefCell<Vec<(String, Value)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Run `render` with `prefix` before every id base it gives a host (`r2-` makes `r2-zb-field-s1`).
+pub fn with_id_prefix<T>(prefix: &str, render: impl FnOnce() -> T) -> T {
+    let previous = ID_PREFIX.with(|current| current.replace(prefix.to_owned()));
+    let result = render();
+    ID_PREFIX.with(|current| current.replace(previous));
+    result
+}
+
+/// Run `render` with `values` (context key → value) already provided, as if a component above
+/// everything rendered provided them: a page's values (`@zubra/server`'s `page.provide()`).
+pub fn with_provided<T>(values: Vec<(String, Value)>, render: impl FnOnce() -> T) -> T {
+    let count = values.len();
+    PROVIDED.with(|provided| provided.borrow_mut().extend(values));
+    let result = render();
+    PROVIDED.with(|provided| {
+        let mut provided = provided.borrow_mut();
+        let keep = provided.len() - count;
+        provided.truncate(keep);
+    });
+    result
+}
+
+/// The next id base for a host of `tag` in this render: `<prefix><tag>-s<n>`, in document order.
+/// The `s` keeps them apart from the bases the element counts itself (`<tag>-<n>`), for
+/// elements made in the browser.
+fn next_id_base(tag: &str) -> String {
+    let n = ID_COUNTS.with(|counts| {
+        let mut counts = counts.borrow_mut();
+        let count = counts.entry(tag.to_owned()).or_insert(0);
+        *count += 1;
+        *count
+    });
+    let prefix = ID_PREFIX.with(|prefix| prefix.borrow().clone());
+    format!("{prefix}{tag}-s{n}")
+}
+
+thread_local! {
     /// Which of GAPS the latest gap was (a list row repeats the same one).
     static LAST_GAP: std::cell::Cell<usize> = const { std::cell::Cell::new(usize::MAX) };
 }
@@ -254,7 +299,9 @@ pub fn validate(
     let overrides = values
         .as_object()
         .ok_or_else(|| Diagnostic::new(Span::new(1, 1), "component props must be a JSON object"))?;
-    lower_component(&component, overrides, &Supply::Templates(slot_values))
+    // Each render numbers its hosts' id bases from 1.
+    ID_COUNTS.with(|counts| counts.borrow_mut().clear());
+    lower_component(&component, overrides, &Supply::Templates(slot_values), None)
 }
 
 /// Content supplied to a component's slots: template fragments (`--slots`), lowered in the
@@ -277,8 +324,56 @@ fn lower_component(
     component: &ast::ComponentAst,
     overrides: &serde_json::Map<String, Value>,
     supply: &Supply<'_>,
+    host_id: Option<&str>,
 ) -> Result<ir::Component, Diagnostic> {
     validate_custom_element(&component.tag, component.tag_span)?;
+    // `const inputId = id()`: the element's ids start from the host's own `id`, or a base the
+    // server gives it and writes on the host (`data-zb-id`), which the element then uses.
+    let id_base = component
+        .script
+        .server_ids
+        .then(|| host_id.map_or_else(|| next_id_base(&component.tag), str::to_owned));
+    // What the server knows that the script computes by a call: ids (`id()`) and the context
+    // values components above provide (`inject()`), or a context's default. Unknown: the browser's.
+    let mut known: HashMap<String, Option<Value>> = HashMap::new();
+    // The values that came from a provider, by the inject call's number, for the host
+    // (`data-zb-inject`): the element starts from them, so it doesn't show the default first.
+    let mut injected = serde_json::Map::new();
+    let mut inject_number = 0;
+    for binding in &component.script.bindings {
+        if let Some(k) = binding.id_call {
+            known.insert(
+                binding.name.clone(),
+                id_base
+                    .as_ref()
+                    .map(|base| Value::String(format!("{base}-{k}"))),
+            );
+        }
+        if let Some(local) = &binding.inject {
+            inject_number += 1;
+            let context = component
+                .contexts
+                .iter()
+                .find(|context| &context.local == local);
+            let provided = context.and_then(|context| {
+                PROVIDED.with(|provided| {
+                    provided
+                        .borrow()
+                        .iter()
+                        .rev()
+                        .find(|(key, _)| key == &context.key)
+                        .map(|(_, value)| value.clone())
+                })
+            });
+            if let Some(value) = &provided {
+                injected.insert(inject_number.to_string(), value.clone());
+            }
+            known.insert(
+                binding.name.clone(),
+                provided.or_else(|| context.and_then(|context| context.default.clone())),
+            );
+        }
+    }
 
     let prop_names: Vec<String> = component
         .props
@@ -286,14 +381,73 @@ fn lower_component(
         .map(|prop| prop.name.clone())
         .collect();
     // Defaults first (they can use script bindings), then the script with the props' values.
-    let defaults = evaluate_script_with(&component.script, &prop_names, None)?;
+    let defaults = evaluate_script_with(&component.script, &prop_names, None, &known)?;
     let props = evaluate_props(component, &defaults, overrides)?;
-    let locals = evaluate_script_with(&component.script, &prop_names, Some(&props))?;
+    let locals = evaluate_script_with(&component.script, &prop_names, Some(&props), &known)?;
+    // What this component provides, for the components rendered inside it (not for itself, as
+    // with the Context Protocol), when the server can evaluate the value.
+    let mut pushed = 0;
+    for (local, source) in &component.script.provides {
+        let Some(context) = component
+            .contexts
+            .iter()
+            .find(|context| &context.local == local)
+        else {
+            continue;
+        };
+        let lookup = |name: &str| match find_local(&locals, name) {
+            Some(Local::Value(value)) => Some(crate::pure::Val::Json(value.clone())),
+            Some(Local::Function(function)) => Some(function.clone()),
+            Some(Local::Runtime) => None,
+            None => props
+                .iter()
+                .find(|prop| prop.name == name && !prop.unknown)
+                .map(|prop| crate::pure::Val::Json(prop.value.clone())),
+        };
+        if let Ok(value) =
+            crate::pure::evaluate(source, &lookup).and_then(crate::pure::Val::into_json)
+        {
+            PROVIDED.with(|provided| provided.borrow_mut().push((context.key.clone(), value)));
+            pushed += 1;
+        }
+    }
+    let lowered = lower_rest(
+        component,
+        &props,
+        &locals,
+        supply,
+        id_base.as_ref(),
+        host_id,
+    );
+    PROVIDED.with(|provided| {
+        let mut provided = provided.borrow_mut();
+        let keep = provided.len() - pushed;
+        provided.truncate(keep);
+    });
+    lowered.map(|mut lowered| {
+        if !injected.is_empty() {
+            lowered.host_attributes.push((
+                "data-zb-inject".to_owned(),
+                Value::Object(injected).to_string(),
+            ));
+        }
+        lowered
+    })
+}
 
+/// The rest of [`lower_component`], once the script is evaluated (and its context provided).
+fn lower_rest(
+    component: &ast::ComponentAst,
+    props: &[Prop],
+    locals: &[(String, Local)],
+    supply: &Supply<'_>,
+    id_base: Option<&String>,
+    host_id: Option<&str>,
+) -> Result<ir::Component, Diagnostic> {
     let context = Context {
         component,
-        locals: &locals,
-        props: &props,
+        locals,
+        props,
         supply,
         shadow: component.shadow,
     };
@@ -346,11 +500,14 @@ fn lower_component(
     }
     let light_children = std::mem::take(&mut state.light);
 
-    let host_attributes = props
+    let mut host_attributes: Vec<(String, String)> = props
         .iter()
         .filter(|prop| !prop.unknown && prop.default.as_ref() != Some(&prop.value))
         .filter_map(|prop| host_attribute(prop).map(|value| (prop.attribute.clone(), value)))
         .collect();
+    if let (Some(base), None) = (id_base, host_id) {
+        host_attributes.push(("data-zb-id".to_owned(), base.clone()));
+    }
 
     Ok(ir::Component {
         tag: component.tag.clone(),
@@ -586,7 +743,7 @@ pub fn analyze(component: &ast::ComponentAst) -> Result<Interface, Diagnostic> {
         .iter()
         .map(|prop| prop.name.clone())
         .collect();
-    let locals = evaluate_script_with(&component.script, &prop_names, None)?;
+    let locals = evaluate_script_with(&component.script, &prop_names, None, &HashMap::new())?;
     let mut props = Vec::new();
     let mut runtime_defaults = HashSet::new();
     for declaration in &component.props {
@@ -697,6 +854,7 @@ fn evaluate_script_with(
     script: &ast::Script,
     prop_names: &[String],
     values: Option<&[Prop]>,
+    known: &HashMap<String, Option<Value>>,
 ) -> Result<Vec<(String, Local)>, Diagnostic> {
     let mut locals: Vec<(String, Local)> = Vec::new();
     let mut seen = HashSet::new();
@@ -721,6 +879,15 @@ fn evaluate_script_with(
                 binding.span,
                 format!("`{}` is declared more than once in <script>", binding.name),
             ));
+        }
+        // Ids and injected context: what the server knows (see `lower_component`).
+        if let Some(value) = known.get(&binding.name) {
+            let local = match value {
+                Some(value) => Local::Value(value.clone()),
+                None => Local::Runtime,
+            };
+            locals.push((binding.name.clone(), local));
+            continue;
         }
         let local = match &binding.init {
             // Outside the subset: an arrow function the server can call, or a value the server
@@ -1846,6 +2013,7 @@ impl Context<'_> {
             } else if matches!(attribute.value, AttributeValue::Expression(..))
                 && !crate::parser::is_event_attribute(&lower)
                 && !is_global_attribute(&lower)
+                && !is_host_directive(&lower)
             {
                 return Err(unknown_child_prop(&child.ast.tag, &interface, attribute));
             } else if let Some(lowered) = self.lower_attribute(attribute, state, true)? {
@@ -1962,14 +2130,39 @@ impl Context<'_> {
         }
 
         // The child's own gaps are in its file: reported at its tag here, saying where in it.
+        // A host with a written `id` bases its ids on it, as the element does.
+        let host_id = element
+            .attributes
+            .iter()
+            .find_map(|attribute| match &attribute.value {
+                AttributeValue::Text(parts) if attribute.name == "id" => parts
+                    .iter()
+                    .map(|part| match part {
+                        ast::Part::Literal(text) => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Option<String>>(),
+                _ => None,
+            });
         let recording = GAPS.with(|gaps| gaps.borrow().is_some());
         let rendered = if recording {
-            let (rendered, found) =
-                record_gaps(|| lower_component(&child.ast, &overrides, &Supply::Lowered(groups)));
+            let (rendered, found) = record_gaps(|| {
+                lower_component(
+                    &child.ast,
+                    &overrides,
+                    &Supply::Lowered(groups),
+                    host_id.as_deref(),
+                )
+            });
             gaps_in_child(element.span, &child.ast.tag, &child.path, found);
             rendered
         } else {
-            lower_component(&child.ast, &overrides, &Supply::Lowered(groups))
+            lower_component(
+                &child.ast,
+                &overrides,
+                &Supply::Lowered(groups),
+                host_id.as_deref(),
+            )
         }
         .map_err(|error| error.in_file(&child.path, &child.source))?;
         for (name, value) in rendered.host_attributes {
@@ -2957,6 +3150,13 @@ pub(crate) fn is_unknown_child_attribute(
         && matches!(attribute.value, AttributeValue::Expression(..))
         && !crate::parser::is_event_attribute(&lower)
         && !is_global_attribute(&lower)
+        && !is_host_directive(&lower)
+}
+
+/// `class:name` and `style:property` set the child's host element, as on any element: they're
+/// not props.
+pub(crate) fn is_host_directive(lower: &str) -> bool {
+    lower.starts_with("class:") || lower.starts_with("style:")
 }
 
 /// What the `{...spread}`s on a component's tag are known to give at build time.

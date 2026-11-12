@@ -1,6 +1,6 @@
 # 6. Async data
 
-`resource(fetcher)` holds data that arrives later, as signals: `value`, `error`, `status` (`"pending"`, `"ready"` or `"error"`) and `loading`, plus `refresh()`.
+`resource(fetcher)` holds data that arrives later, as signals: `value`, `error`, `status` (`"pending"`, `"ready"` or `"error"`) and `loading`, plus `refresh()`, and `dispose()` to stop it early (it stops with the element anyway).
 
 ```html
 <script>

@@ -20,7 +20,7 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'zubra-actions-edge-'));
   await buildActions({ components, out: join(dir, 'actions') });
   const { actions } = await import(pathToFileURL(join(dir, 'actions', 'index.js')).href);
-  const options = { onError() {}, context: ({ request }) => ({ who: request.headers.get('x-user') }) };
+  const options = { onError() {}, context: ({ request }) => ({ who: request.headers.get('x-user') }), maxBytes: 300 };
   node = await createNode({ components, cacheDir: join(dir, 'cache'), ...options });
   edge = createEdge({ actions, ...options });
 });
@@ -48,6 +48,8 @@ const cases = {
   'the enhanced post: JSON': post('/_zb/action/login-form/login', { headers: { accept: 'application/json' } }),
   'a function that throws, enhanced: 500 and no detail': post('/_zb/action/login-form/crash', { headers: { accept: 'application/json' } }),
   'a function that throws, plain': post('/_zb/action/login-form/crash'),
+  'a post over maxBytes, enhanced: 413': post('/_zb/action/login-form/login', { body: form({ email: 'a'.repeat(400) }), headers: { accept: 'application/json' } }),
+  'a post over maxBytes, plain: back with the error': post('/_zb/action/login-form/login', { body: form({ email: 'a'.repeat(400) }) }),
   'a redirect, enhanced: 204 with zb-location': post('/_zb/action/login-form/away', { headers: { accept: 'application/json' } }),
   'a redirect, plain: followed by the browser': post('/_zb/action/login-form/away'),
   'a cross-site post is refused': post('/_zb/action/login-form/login', { headers: { origin: 'http://evil.example' } }),
@@ -152,3 +154,9 @@ function mkdirp(path) {
   execFileSync('mkdir', ['-p', path]);
   return path;
 }
+
+test('the edge entry takes maxBytes', async () => {
+  const response = await edge.fetch(cases['a post over maxBytes, enhanced: 413']());
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: 'Too large' });
+});
