@@ -50,6 +50,11 @@
       "production": "./dist/production/bridge.js",
       "default": "./src/bridge.js"
     },
+    "./context": {
+      "types": "./types/context.d.ts",
+      "production": "./dist/production/context.js",
+      "default": "./src/context.js"
+    },
     "./react": {
       "types": "./types/react.d.ts",
       "production": "./dist/production/react.js",
