@@ -1,0 +1,7 @@
+<!-- A list, highest first when asked. -->
+<script>
+  const list = sorted ? items.toSorted((a, b) => b - a) : items
+</script>
+<sorted-list items={[]} sorted={false}>
+  <ol><zb-each items={list} as="n"><li>{n}</li></zb-each></ol>
+</sorted-list>

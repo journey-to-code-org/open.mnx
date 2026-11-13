@@ -1093,7 +1093,7 @@ pub fn client_reasons(
     };
     front(source, Some(path), Some(loader), |text| {
         let component = load(text, path, Some(loader))?;
-        Ok(client::reasons(&component, gaps))
+        Ok(client::reasons_in(&component, gaps, Some(text)))
     })
 }
 

@@ -6,6 +6,8 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ### Fixed
 
+- **`zubra check --client` no longer calls a component client-free when the server leaves part of it empty.** It looked for parts the server leaves to the browser by rendering with the default props, so a branch the defaults skip went unchecked: a `const list = sorted ? [...items].sort(…) : items` counted as complete, while the server can't run the mutating `.sort()` and a sorted chart rendered empty without its module. Now the methods it accepts are exactly those the server computes (a test runs each one through the evaluator; `sort`, `reverse`, `fill` and `toString` aren't, while `toSorted` and `toReversed` are), and method calls in the template count whichever branch they're in. In the other direction, `hasSlot()` and a spread into an array (`[...items]`) no longer count as browser work, since the server renders both. In Zubra UI that moves content-card, empty-state and hero-section to client-free, and bar-chart once its `sorted` uses `toSorted()` instead of `.sort()` (23 of 81).
+
 - **More of a fetcher's later reads are followed (experimental).** The compiler's `track()` rewrite (5.9.0) now also covers a signal's explicit `.get()` after an `await` (`const rate = state(1)` … `await auth()` … `rate.get()`), a fetcher that isn't async reading in a callback that runs later (`resource(() => load().then((rows) => rows.slice(0, page)))`), and `.zb.jsx` and `.zb.tsx` components, which didn't get the rewrite at all. A fetcher with no read that can run later is now left as written and doesn't load `@zubra/runtime/track`; before, every async fetcher did.
 
 ## 5.13.1 — 2026-11-13
