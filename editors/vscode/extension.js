@@ -6,6 +6,10 @@
 // ELECTRON_RUN_AS_NODE=1 so that it runs as Node. As a command, whether the server started at all
 // depended on the extension host's environment, and without it .zb had no formatter.
 //
+// TypeScript files see components' types through a tsserver plugin that ships in the language
+// server (package.json's typescriptServerPlugins); the `zubra.compiler` setting is passed to it
+// here, through VS Code's TypeScript extension.
+//
 // "Zubra: Extract to Component…" asks for the new component's name, then has the server do it
 // (the code action in the lightbulb menu does the same with a default name).
 const vscode = require('vscode');
@@ -27,7 +31,25 @@ function activate(context) {
   });
   context.subscriptions.push(client);
   context.subscriptions.push(vscode.commands.registerCommand('zubra.extractComponent', extractComponent));
+  configureTypeScript();
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('zubra.compiler')) configureTypeScript();
+  }));
   return client.start();
+}
+
+/** The TypeScript plugin's options: the compiler the language server is told to use. */
+async function configureTypeScript() {
+  const typescript = vscode.extensions.getExtension('vscode.typescript-language-features');
+  if (!typescript) return;
+  try {
+    await typescript.activate();
+    const api = typescript.exports?.getAPI?.(0);
+    const compiler = vscode.workspace.getConfiguration('zubra').get('compiler') || undefined;
+    api?.configurePlugin?.('@zubra/language-server/typescript-plugin', { compiler });
+  } catch {
+    // Without VS Code's TypeScript extension, there's no tsserver to configure.
+  }
 }
 
 /** The tag of a new component: lowercase words joined by hyphens. */

@@ -25,7 +25,7 @@ try {
   run('npm', ['install', '--omit=dev', '--no-audit', '--no-fund', '--no-package-lock']);
   step('checking what would go in the package (npx fetches @vscode/vsce the first time)…');
   const files = run('npx', ['--yes', '@vscode/vsce', 'ls'], { show: false });
-  for (const needed of ['node_modules/@zubra/language-server/server.js', 'node_modules/@zubra/language-server/packages.js', 'node_modules/@zubra/language-server/typecheck-worker.js', 'node_modules/@zubra/language-server/typescript.js', 'node_modules/typescript/lib/typescript.js', 'node_modules/vscode-languageclient/package.json', 'icon.png', 'README.md', 'icons/zb-light.svg', 'icons/zb-dark.svg']) {
+  for (const needed of ['node_modules/@zubra/language-server/server.js', 'node_modules/@zubra/language-server/packages.js', 'node_modules/@zubra/language-server/typecheck-worker.js', 'node_modules/@zubra/language-server/typescript.js', 'node_modules/@zubra/language-server/typescript-plugin/index.js', 'node_modules/@zubra/language-server/typescript-plugin/package.json', 'node_modules/@zubra/language-server/typings.mjs', 'node_modules/typescript/lib/typescript.js', 'node_modules/vscode-languageclient/package.json', 'icon.png', 'README.md', 'icons/zb-light.svg', 'icons/zb-dark.svg']) {
     if (!files.includes(needed)) throw new Error(`the package would be missing ${needed}`);
   }
   const vsix = `zubra-${manifest.version}.vsix`;

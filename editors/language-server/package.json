@@ -1,7 +1,7 @@
 {
   "name": "@zubra/language-server",
   "version": "5.13.1",
-  "description": "Language server for .zb components: diagnostics, completion, hover and go to definition",
+  "description": "Language server for .zb components: diagnostics, completion, hover and go to definition; and a TypeScript plugin that gives .ts files components' types",
   "license": "ISC",
   "repository": {
     "type": "git",
@@ -22,7 +22,10 @@
     "backend.js",
     "packages.js",
     "typescript.js",
-    "typecheck-worker.js"
+    "typecheck-worker.js",
+    "typings.mjs",
+    "typescript-plugin/index.js",
+    "typescript-plugin/package.json"
   ],
   "scripts": {
     "test": "node --test \"test/*.test.js\""
