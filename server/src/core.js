@@ -19,7 +19,8 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), clientModules = 'all', localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
+export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
+  if (gaps !== 'warn' && gaps !== 'ignore') throw new Error(`@zubra/server: gaps is "warn" or "ignore", not ${JSON.stringify(gaps)}`);
   if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
   const memo = new Map();
   const once = (key, make) => {
@@ -84,11 +85,20 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
   // `context`: the values the page provides (`page.provide()`), by context key.
   const render = (name, props = {}, slots = {}, pending = [], idPrefix = '', context = {}) => {
     const path = pathOf(name);
-    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(pending.length ? { pending } : {}), ...(idPrefix ? { idPrefix } : {}), ...(Object.keys(context).length ? { context } : {}) });
+    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(gaps === 'warn' ? { gaps: true } : {}), ...(pending.length ? { pending } : {}), ...(idPrefix ? { idPrefix } : {}), ...(Object.keys(context).length ? { context } : {}) });
     if (!response.ok) throw new Error(response.error);
     // A value that isn't a safe URL (a user's `javascript:` link) is left out, as the element
     // leaves it out in the browser; the page still renders, and this says what was dropped.
     for (const message of response.omitted ?? []) warn(`@zubra/server: <${name}>: ${message}`);
+    // What the server couldn't compute and left for the browser (a list derived through a loop,
+    // a formatted date): empty in the HTML, so without JavaScript, and until the module loads,
+    // that part is missing. Said once per place, as `zubra check --server` says it.
+    for (const gap of response.gaps ?? []) {
+      const message = `@zubra/server: <${name}> leaves part of its HTML for the browser (empty without JavaScript). Compute it before rendering and pass it as a prop, or pass gaps: 'ignore' if that's intended.\n${gap}`;
+      if (warned.has(message)) continue;
+      warned.add(message);
+      warn(message);
+    }
     return response.output;
   };
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));

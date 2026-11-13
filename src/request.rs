@@ -10,11 +10,12 @@
 //!   "runtime": "@zubra/runtime", "keepImports": true, "devtools": true,
 //!   "cssImport": "…", "cssImportInline": "…", "framework": "react",
 //!   "modulePath": "inbox.js", "props": {}, "slots": {}, "slotSource": "html", "partial": true,
-//!   "pending": ["reviews"] }
+//!   "pending": ["reviews"], "gaps": true }
 //! ```
 //!
 //! The response is `{ "ok", "output", "error", "warnings", "diagnostics" }` (and `omitted`, on
-//! success: attributes a render left out because their values weren't safe URLs): `output` is the
+//! success: attributes a render left out because their values weren't safe URLs; and `gaps`, when
+//! a partial HTML render is asked for them with `"gaps": true`: what it left for the browser): `output` is the
 //! compiled text, `error` and `warnings` are rendered for a terminal, and `diagnostics` has
 //! each one as `{ file, line, column, severity, message, help }` for editors. `command: "check"`
 //! runs every check without producing output, and `command: "format"` answers with the source
@@ -306,6 +307,7 @@ fn respond(request: &Map<String, Value>) -> Value {
     let runtime = text("runtime").unwrap_or("@zubra/runtime");
     let command = text("command").unwrap_or("compile");
     crate::validate::take_omitted(); // nothing left over from an earlier request
+    let mut render_gaps: Vec<String> = Vec::new();
     let result = match (command, text("emit").unwrap_or("html")) {
         ("check", _) => crate::compile_js_with(source, &path, runtime, Some(".js"), &loader)
             .map(|_| String::new()),
@@ -375,7 +377,10 @@ fn respond(request: &Map<String, Value>) -> Value {
                 Some(Value::Object(values)) => values.clone().into_iter().collect(),
                 Some(_) => return failure("`context` maps context keys to values"),
             };
-            crate::validate::with_provided(provided, || crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
+            // `gaps`: also say what this render left for the browser (as `check --server` does),
+            // so a server can warn that part of a component's HTML is empty without JavaScript.
+            let want_gaps = partial && request.get("gaps").and_then(Value::as_bool) == Some(true);
+            let render = || crate::validate::with_provided(provided, || crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
                 source,
                 &path,
                 &props,
@@ -396,7 +401,17 @@ fn respond(request: &Map<String, Value>) -> Value {
                         .unwrap_or_default(),
                 },
                 &loader,
-            )))
+            )));
+            if want_gaps {
+                let (rendered, gaps) = crate::validate::record_gaps(render);
+                render_gaps = crate::describe_gaps(gaps)
+                    .into_iter()
+                    .map(|(gap, _)| gap.render_warning(source, &path))
+                    .collect();
+                rendered
+            } else {
+                render()
+            }
         }
         ("compile", "css")
             if request
@@ -489,6 +504,9 @@ fn respond(request: &Map<String, Value>) -> Value {
                 "omitted": omitted,
                 "diagnostics": diagnostics,
             });
+            if !render_gaps.is_empty() {
+                response["gaps"] = json!(render_gaps);
+            }
             // `"client": true` on a check: why the component needs its module in the browser
             // (empty when its server HTML is complete on its own).
             if command == "check" && request.get("client").and_then(Value::as_bool) == Some(true) {
@@ -691,6 +709,42 @@ mod tests {
             json!({ "url": "/farms/1", "pic": "/logo.webp", "set": "/a.webp 1x", "rest": {} }),
         );
         assert_eq!(response["omitted"], json!([]), "{response}");
+    }
+
+    #[test]
+    fn a_partial_render_asked_for_gaps_says_what_it_left_for_the_browser() {
+        // A list derived through a function with a loop: the server can't run it, so the list
+        // is empty in the HTML. Free Times in Front Desk shipped like this without a word.
+        let source = "<script>\n  const fits = (one) => {\n    for (const at of taken) if (at === one) return false\n    return true\n  }\n  const choices = starts.map((one) => ({ time: one, free: fits(one) }))\n</script>\n<zb-times starts={['09:00']} taken={['09:00']}>\n  <zb-each items={choices} as=\"one\" key={one.time}><b>{one.time}</b></zb-each>\n  <i>{starts.length}</i>\n</zb-times>";
+        let files = json!({ "/app/times.zb": source });
+        let ask = |gaps: bool| {
+            call(
+                json!({ "path": "/app/times.zb", "files": files, "emit": "html", "partial": true, "gaps": gaps }),
+            )
+        };
+        let response = ask(true);
+        assert_eq!(response["ok"], json!(true), "{response}");
+        let gaps: Vec<&str> = response["gaps"]
+            .as_array()
+            .expect("gaps")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(gaps.len(), 1, "{gaps:?}");
+        assert!(
+            gaps[0].contains("computed in the browser, so the server's HTML leaves it empty"),
+            "{gaps:?}"
+        );
+        assert!(gaps[0].contains("/app/times.zb:9:"), "where: {gaps:?}");
+        assert!(gaps[0].contains("items={choices}"), "the line: {gaps:?}");
+        // The rest still renders; not asked, no `gaps`; nothing to say, no `gaps` either.
+        assert!(response["output"].as_str().unwrap().contains("<i>1</i>"));
+        assert!(ask(false).get("gaps").is_none());
+        let whole = json!({ "/app/times.zb": "<zb-times starts={['09:00']}><i>{starts.length}</i></zb-times>" });
+        let response = call(
+            json!({ "path": "/app/times.zb", "files": whole, "emit": "html", "partial": true, "gaps": true }),
+        );
+        assert!(response.get("gaps").is_none(), "{response}");
     }
 
     const BADGE: &str = "<zb-badge label=\"x\"><b>{label}</b></zb-badge>";
