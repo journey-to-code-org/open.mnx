@@ -35,6 +35,21 @@ test('collects a TypeScript component\'s TypeScript modules, and what they re-ex
   assert.deepEqual(Object.keys(sources(join(directory, 'plain.zb'))).map((path) => path.split('/').pop()), ['plain.zb']);
 });
 
+test('a component\'s relative imports are keyed by path when its own key is a Windows path', () => {
+  // On Windows a path key is `C:\\app\\page.zb`, not `/…`. Its relative imports must be keyed by
+  // their paths too (the compiler normalizes `\\` to `/`), not as if under a package specifier.
+  const directory = mkdtempSync(join(tmpdir(), 'zubra-windows-'));
+  mkdirSync(join(directory, 'parts'));
+  writeFileSync(join(directory, 'page.zb'), "<script>\n  import './parts/card.zb'\n</script>\n<zb-page><zb-card></zb-card></zb-page>\n");
+  writeFileSync(join(directory, 'parts/card.zb'), '<zb-card><p>card</p></zb-card>\n');
+  for (const key of ['C:\\app\\page.zb', 'c:/app/page.zb', '\\\\host\\share\\page.zb']) {
+    const files = sources(join(directory, 'page.zb'), {}, key);
+    assert.deepEqual(Object.keys(files), [key, join(directory, 'parts/card.zb')], key);
+  }
+  // A package's component is still keyed under its specifier.
+  assert.deepEqual(Object.keys(sources(join(directory, 'page.zb'), {}, '@acme/kit/page.zb')), ['@acme/kit/page.zb', '@acme/kit/parts/card.zb']);
+});
+
 test('collects the tsconfig.json a TypeScript component compiles under, and modules its paths reach', () => {
   const directory = mkdtempSync(join(tmpdir(), 'zubra-tsconfig-'));
   mkdirSync(join(directory, 'src/shared'), { recursive: true });
