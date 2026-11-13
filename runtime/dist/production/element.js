@@ -1639,6 +1639,7 @@ function defineElement(tag, definition) {
     #signals = {};
     #given = new Set(); // props set from outside (property, attribute, or before upgrade)
     #scope = null;
+    #starting = null; // the wait for remark.js, while the element hasn't rendered yet
     #hooks = null;
     #cleanups = [];
     #internals = null; // form-associated only
@@ -1700,7 +1701,10 @@ function defineElement(tag, definition) {
       if (this.#scope) this.#scope.resume();
       else if (!remarker && lostComments(shadow ? this.shadowRoot : this, componentTemplate.content)) {
         // Server markup without its comments: start once the code that puts them back is here.
-        loadRemark().then(() => { if (this.isConnected && !this.#scope) this.connectedCallback(); });
+        this.#starting ??= loadRemark().then(() => {
+          this.#starting = null;
+          if (this.isConnected && !this.#scope) this.connectedCallback();
+        });
         return;
       } else {
         if (lowercased.length) checkAttributeCase(this);
@@ -1737,9 +1741,12 @@ function defineElement(tag, definition) {
       return this.dispatchEvent(event);
     }
 
-    /** Resolves once pending prop changes have reached the DOM. */
+    /**
+     * Resolves once pending prop changes have reached the DOM: after the first render too, when
+     * that's waiting for remark.js (content that might be stripped server markup).
+     */
     get updateComplete() {
-      return tick();
+      return this.#starting ? this.#starting.then(tick) : tick();
     }
 
     // Form-associated lifecycle (only called by the browser when `formAssociated` is true).

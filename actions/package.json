@@ -1,6 +1,6 @@
 {
   "name": "@zubra/actions",
-  "version": "5.10.0",
+  "version": "5.10.1",
   "description": "Serve Zubra components' 'use server' functions over plain form posts, enhanced to fetch when JavaScript loads.",
   "type": "module",
   "main": "./src/index.js",
