@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Changed
+
+- **`@zubra/server`: an app's component wins over a package's with the same tag.** An app and a package that each carried a copy of a shared part (an `action-button` from Zubra UI) couldn't share a server: rendering by that tag threw "is defined by both". Now the app's copy is used everywhere: by tag, by the package's name, and by the package's own components, whose import of their copy is served as the app's module, so the browser defines the tag once. If the two sources differ (comments aside) the server warns once. Two of the app's components, or two packages', with one tag are still an error. Inside a package component's server HTML, a child still renders from the package's copy, so keep the copies the same.
+
 ## 5.9.2 — 2026-11-12
 
 Security fixes from the November audit's high findings: what `@zubra/server` serves, what streamed values and spread keys can write into a page, Sync clocks and field names, and the server-language clients' deferred markers. Upgrade if you use `@zubra/server`, `@zubra/sync`, or the Django, Rails or Laravel integration.

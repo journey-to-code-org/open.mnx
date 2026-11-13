@@ -90,6 +90,7 @@ export function createZubra({ components = 'components', packages = [], prefix =
   // specifier to the same route: `@acme/kit/components/cart-panel.js` →
   // `<base>/components/@acme/kit/components/cart-panel.js`.
   const packageImports = {};
+  const packageNames = [];
   for (const specifier of packages) {
     const name = specifier.replace(/\/$/, '');
     // A folder, as `exports` would give it: `./components/` matches `./components/*`.
@@ -107,6 +108,7 @@ export function createZubra({ components = 'components', packages = [], prefix =
       }
     })(dir);
     packageImports[`${name}/`] = `${base}/components/${name}/`;
+    packageNames.push(name);
   }
 
   // What <prefix>/ serves besides the components' modules: @zubra/sync and the runtime, from disk.
@@ -140,6 +142,7 @@ export function createZubra({ components = 'components', packages = [], prefix =
     },
     request: (body) => compiler.request(body),
     files,
+    fromPackage: (name) => packageNames.some((specifier) => name.startsWith(`${specifier}/`)),
     sourcesOf: (path) => compiler.sources(path),
     cache,
     devtools,

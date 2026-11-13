@@ -79,7 +79,7 @@ The CLI, `@zubra/compiler`, the Vite plugin and the language server all follow t
 const zubra = createZubra({ components: 'src/components', packages: ['@acme/kit/components'] });
 ```
 
-Each folder adds one import map entry, sending `@acme/kit/components/` to the server's component route. Two components with one tag (yours and a package's) can't both be rendered by that tag: the server says which two, and each still renders by its name (`@acme/kit/components/cart-panel`). The edge entry, `zubra build` and the manifest don't read packages yet.
+Each folder adds one import map entry, sending `@acme/kit/components/` to the server's component route. Your component and a package's with one tag (both carrying a copy of a shared part, an `action-button` say): yours wins. Rendering by the tag or by the package's name gives yours, the package's own components use yours too (in server HTML they still render the package's copy inside them, so keep the copies the same), and the browser defines the tag once. If the two sources differ, comments aside, the server warns once. Two of your components, or two packages', with one tag is an error that names both. The edge entry, `zubra build` and the manifest don't read packages yet.
 
 ## Ready-made components, and publishing your own
 
