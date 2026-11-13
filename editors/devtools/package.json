@@ -1,7 +1,7 @@
 {
   "name": "zubra-devtools",
   "private": true,
-  "version": "5.10.2",
+  "version": "5.10.3",
   "description": "The Zubra pane for Chrome, Edge and Firefox DevTools",
   "license": "ISC",
   "type": "module",
