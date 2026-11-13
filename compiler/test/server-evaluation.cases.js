@@ -16,6 +16,11 @@ export const SCRIPT = `
     return Math.round(share * 1000) / 10
   }
   const top = rows.toSorted((a, b) => b.kg - a.kg)[0]
+  const server = "https://cards.example.com/"
+  const trimmed = server.replace(/\\/+$/, "")
+  const castle = "🏰 Palace 🏰"
+  const query = "game=palace&who=Grammi Nichols"
+  const dated = "2026-11-13".replace(/(?<y>\\d+)-(?<m>\\d+)-(?<d>\\d+)/, "$<d>/$<m>/$<y> $<nope>.")
 `;
 
 // Each reads the same in the server's HTML as in V8. (Not `==` between types: templates
@@ -68,10 +73,35 @@ export const SAME = [
 ];
 
 // Left for the browser (not deterministic everywhere, not JSON, or not in the subset).
+// Regular expression literals, matched on UTF-16 code units as V8 does.
+SAME.push(
+  'trimmed', '"a-b_c".replace(/[-_]/g, " ")', '"a-b_c".replace(/[-_]/, " ")', '"aaa".replace(/a*/g, "x")', '"abc".replace(/x*/g, "-")',
+  '"John Smith".replace(/(\\w+)\\s(\\w+)/, "$2, $1")', '"abc".replace(/b/, "[$&|$`|$\'|$$|$0|$3]")', '"abc".replace(/(b)/, "$01$10$1x")',
+  'dated', '"a1b22c333".replace(/\\d+/g, (digits) => digits.length)',
+  '"x-y".replace(/(\\w)-(\\w)/, (all, a, b, at, whole) => `${b}${a}@${at}/${whole}`)', '"Ada Lovelace".replaceAll(/[aeiou]/gi, "*")',
+  '"a, b,c ,d".split(/\\s*,\\s*/).join("|")', '"a1b2c3".split(/(\\d)/).join("|")', '"a1b2c3".split(/\\d/, 2).join("|")', '"abc".split(/(?:)/).join("|")', '"".split(/x/).length', '"".split(/(?:)/).length',
+  '"Hello World".match(/o/g).join()', '"Hello".match(/z/g) === null', '"Hello World".search(/World/)', '"Hello".search(/z/)',
+  '/^p/i.test("Palace")', '/^\\d+$/.test("12a")', 'castle.replace(/./g, "x")', 'castle.replace(/./gu, "x")', 'castle.split(/\\s/).length', 'castle.search(/P/)',
+  '"ÉCOLE".replace(/é/i, "e")', '"line1\\nline2".replace(/^line/gm, "L")', '"a\\nb".replace(/a.b/s, "ok")', '"tab\\tx".replace(/\\s/, "_")',
+  '"aab".replace(/(?<=a)b/, "B")', '"price: 12".replace(/(?!price)\\d+/, "N")', '"ab".replace(/(x)?b/, "[$1]")',
+);
+// URI encoding.
+SAME.push(
+  'encodeURIComponent(query)', 'encodeURI("https://x.example/a b?c=d&e=é#f")', 'encodeURIComponent("-_.!~*\'()🏰 ")',
+  'decodeURIComponent("game%3Dpalace%20%F0%9F%8F%B0")', 'decodeURI("%3Fa%3D1%20b%23c%2F%41")', 'decodeURIComponent(encodeURIComponent(castle))',
+  '`${trimmed}/?game=${encodeURIComponent("palace & spades")}`',
+);
+
 export const LEFT = [
   'Math.random()', 'Date.now()', 'new Date().getFullYear()', 'cents.toLocaleString()',
   'new Intl.NumberFormat("en").format(cents)', 'Math.abs(1) / 0', 'Math.sqrt(-1)', 'rows.map(function (row) { return row.kg })',
   'window.innerWidth + Math.abs(0)', 'rows.sort().length', 'Object.entries(user).map(([key]) => key).join()', 'words.map((word, i, all) => all.length).join()',
   'words.with(9, "kiwi").join()', 'Object.fromEntries([["a"]]).a', 'Object.hasOwn(nothing, "a")',
   '[1, [2, [3]]].flat(Infinity).length', 'Object.fromEntries([["a"]]).a === undefined', 'Object.keys({ a: undefined, b: 1 }).join()', 'rows.flatMap((row) => row.tags, null).length + Math.random()',
+  // Stateful (lastIndex, sticky), not JSON (a non-global match's array, an unmatched split group), or
+  // what the browser throws on.
+  '/a/g.test("a")', '"aaa".replace(/a/y, "b")', '"abc".match(/b/).index', '"abc".match(/b/)[0]', '"ab".split(/(x)?b/).length',
+  '"abc".replaceAll(/b/, "x")', 'String(/a/)', '/a/', 'decodeURIComponent("%E0%A4%A")', 'decodeURIComponent("%C0%80")', 'decodeURIComponent("%")',
+  // Patterns that could take exponential time, and text too long for a pattern's repeats.
+  '"aaaa".replace(/(a+)+b/, "x")', '"aaaa".replace(/(a|a)*b/, "x")', '"abab".replace(/(ab)\\1/, "x")', '"x".repeat(5000).replace(/x*y*z*$/, "done").length',
 ];

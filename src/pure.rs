@@ -25,12 +25,13 @@ pub struct Unsupported;
 
 type Result<T> = std::result::Result<T, Unsupported>;
 
-/// A value: JSON, `undefined`, or an arrow function.
+/// A value: JSON, `undefined`, an arrow function, or a regular expression literal.
 #[derive(Clone, Debug)]
 pub enum Val {
     Undefined,
     Json(Value),
     Function(Rc<Closure>),
+    RegExp(Rc<crate::regexp::JsRegExp>),
 }
 
 /// An arrow function: its parameters, its body (an expression, as source), and the values of
@@ -53,7 +54,7 @@ impl Val {
         match self {
             Val::Undefined => Ok(Value::Null),
             Val::Json(value) => Ok(value),
-            Val::Function(_) => Err(Unsupported),
+            Val::Function(_) | Val::RegExp(_) => Err(Unsupported),
         }
     }
 }
@@ -128,6 +129,14 @@ impl Evaluator<'_> {
             Expression::BooleanLiteral(literal) => Ok(Val::json(Value::Bool(literal.value))),
             Expression::NullLiteral(_) => Ok(Val::json(Value::Null)),
             Expression::NumericLiteral(literal) => number(literal.value),
+            Expression::RegExpLiteral(literal) => {
+                // The flags are what follows the closing slash of the literal as written.
+                let written = &self.source[literal.span.start as usize..literal.span.end as usize];
+                let flags = &written[written.rfind('/').ok_or(Unsupported)? + 1..];
+                crate::regexp::compile(literal.regex.pattern.text.as_str(), flags)
+                    .map(|regexp| Val::RegExp(Rc::new(regexp)))
+                    .ok_or(Unsupported)
+            }
             Expression::StringLiteral(literal) => {
                 Ok(string(literal.value.as_str().ok_or(Unsupported)?))
             }
@@ -250,6 +259,7 @@ impl Evaluator<'_> {
                     UnaryOperator::Typeof => Ok(string(match &value {
                         Val::Undefined => "undefined",
                         Val::Function(_) => "function",
+                        Val::RegExp(_) => "object",
                         Val::Json(Value::Bool(_)) => "boolean",
                         Val::Json(Value::Number(_)) => "number",
                         Val::Json(Value::String(_)) => "string",
@@ -488,6 +498,147 @@ impl Evaluator<'_> {
         Ok(Val::json(Value::Object(js_key_order(groups))))
     }
 
+    /// A string method given a regular expression: `replace`, `replaceAll`, `split`, `match` (with
+    /// `g`) and `search`. Positions are UTF-16 code units, as in the browser.
+    fn string_regexp(
+        &mut self,
+        units: &[u16],
+        name: &str,
+        regexp: &crate::regexp::JsRegExp,
+        second: Val,
+    ) -> Result<Val> {
+        if !regexp.allows(units) {
+            return Err(Unsupported);
+        }
+        let text = |range: &[u16]| Value::String(String::from_utf16_lossy(range));
+        match name {
+            "replace" | "replaceAll" => {
+                if name == "replaceAll" && !regexp.global {
+                    return Err(Unsupported); // the browser throws a TypeError
+                }
+                let found = if regexp.global {
+                    regexp.find_all(units)
+                } else {
+                    regexp.find(units, 0).into_iter().collect()
+                };
+                let mut out: Vec<u16> = Vec::with_capacity(units.len());
+                let mut last = 0;
+                for each in &found {
+                    out.extend_from_slice(&units[last..each.start]);
+                    let replacement: Vec<u16> = match &second {
+                        Val::Function(closure) => {
+                            // (match, p1, …, pn, offset, string[, groups])
+                            let mut arguments = vec![Val::json(text(&units[each.start..each.end]))];
+                            for capture in &each.captures {
+                                arguments.push(match capture {
+                                    Some((start, end)) => Val::json(text(&units[*start..*end])),
+                                    None => Val::Undefined,
+                                });
+                            }
+                            arguments.push(int(each.start as i64));
+                            arguments.push(Val::json(text(units)));
+                            if regexp.groups.iter().any(Option::is_some) {
+                                let mut named = Map::new();
+                                for (index, group) in regexp.groups.iter().enumerate() {
+                                    if let Some(group) = group {
+                                        // `undefined` in an object isn't JSON.
+                                        let (start, end) =
+                                            each.captures[index].ok_or(Unsupported)?;
+                                        named.insert(group.clone(), text(&units[start..end]));
+                                    }
+                                }
+                                arguments.push(Val::json(Value::Object(named)));
+                            }
+                            let closure = closure.clone();
+                            js_string(&self.apply(&closure, arguments)?)?
+                                .encode_utf16()
+                                .collect()
+                        }
+                        other => {
+                            let template: Vec<u16> = js_string(other)?.encode_utf16().collect();
+                            crate::regexp::substitute(&template, units, each, &regexp.groups)
+                        }
+                    };
+                    out.extend(replacement);
+                    last = each.end;
+                }
+                out.extend_from_slice(&units[last.min(units.len())..]);
+                Ok(string(&String::from_utf16_lossy(&out)))
+            }
+            "split" => {
+                let limit = match second {
+                    Val::Undefined => u32::MAX as usize,
+                    value => {
+                        let limit = to_number(&value)?;
+                        if !limit.is_finite() || limit < 0.0 {
+                            return Err(Unsupported);
+                        }
+                        limit.trunc() as usize
+                    }
+                };
+                let mut parts: Vec<Value> = Vec::new();
+                if limit == 0 {
+                    return Ok(Val::json(Value::Array(parts)));
+                }
+                if units.is_empty() {
+                    if regexp.find(units, 0).is_none_or(|found| found.start != 0) {
+                        parts.push(text(units));
+                    }
+                    return Ok(Val::json(Value::Array(parts)));
+                }
+                // SplitMatcher at each position from `q`: the first match at or after it is where the
+                // sticky match would first succeed.
+                let (mut p, mut q) = (0, 0);
+                while q < units.len() {
+                    let Some(found) = regexp.find(units, q) else {
+                        break;
+                    };
+                    if found.start >= units.len() {
+                        break;
+                    }
+                    let end = found.end.min(units.len());
+                    if end == p {
+                        q = regexp.advance(units, found.start);
+                        continue;
+                    }
+                    parts.push(text(&units[p..found.start]));
+                    if parts.len() == limit {
+                        return Ok(Val::json(Value::Array(parts)));
+                    }
+                    p = end;
+                    for capture in &found.captures {
+                        // An unmatched group is `undefined` in the browser's array, which isn't JSON.
+                        let (start, end) = capture.ok_or(Unsupported)?;
+                        parts.push(text(&units[start..end]));
+                        if parts.len() == limit {
+                            return Ok(Val::json(Value::Array(parts)));
+                        }
+                    }
+                    q = p;
+                }
+                parts.push(text(&units[p..]));
+                Ok(Val::json(Value::Array(parts)))
+            }
+            // A non-global `match` returns an array with `index`, `input` and `groups`, not JSON.
+            "match" if regexp.global => {
+                let found = regexp.find_all(units);
+                if found.is_empty() {
+                    return Ok(Val::json(Value::Null));
+                }
+                Ok(Val::json(Value::Array(
+                    found
+                        .iter()
+                        .map(|each| text(&units[each.start..each.end]))
+                        .collect(),
+                )))
+            }
+            "search" => Ok(int(regexp
+                .find(units, 0)
+                .map_or(-1, |found| found.start as i64))),
+            _ => Err(Unsupported),
+        }
+    }
+
     fn method(&mut self, object: &Val, name: &str, arguments: Vec<Val>) -> Result<Val> {
         let arg = |index: usize| arguments.get(index).cloned().unwrap_or(Val::Undefined);
         match object {
@@ -703,6 +854,9 @@ impl Evaluator<'_> {
             Val::Json(Value::String(text)) => {
                 let units: Vec<u16> = text.encode_utf16().collect();
                 let from_units = |units: &[u16]| string(&String::from_utf16_lossy(units));
+                if let Val::RegExp(regexp) = arg(0) {
+                    return self.string_regexp(&units, name, &regexp, arg(1));
+                }
                 match name {
                     "includes" => Ok(bool(text.contains(js_string(&arg(0))?.as_str()))),
                     "startsWith" => Ok(bool(text.starts_with(js_string(&arg(0))?.as_str()))),
@@ -816,6 +970,14 @@ impl Evaluator<'_> {
                     }
                     _ => Err(Unsupported),
                 }
+            }
+            // `test` without `g`: with it, the answer depends on `lastIndex`.
+            Val::RegExp(regexp) if name == "test" && !regexp.global => {
+                let units: Vec<u16> = js_string(&arg(0))?.encode_utf16().collect();
+                if !regexp.allows(&units) {
+                    return Err(Unsupported);
+                }
+                Ok(bool(regexp.find(&units, 0).is_some()))
             }
             Val::Function(closure) if name == "call" => {
                 // `fn.call(thisArg, …)`: arrows ignore `this`.
@@ -982,6 +1144,16 @@ fn global(name: &str, arguments: &[Val]) -> Result<Val> {
             js_string(&first)?
         })),
         "Boolean" => Ok(bool(truthy(&first))),
+        "encodeURIComponent" | "encodeURI" => Ok(string(&crate::regexp::encode_uri(
+            &js_string(&first)?,
+            name == "encodeURIComponent",
+        ))),
+        // Where the browser throws a URIError, it reports it.
+        "decodeURIComponent" | "decodeURI" => {
+            crate::regexp::decode_uri(&js_string(&first)?, name == "decodeURIComponent")
+                .map(|text| string(&text))
+                .ok_or(Unsupported)
+        }
         "parseInt" if arguments.len() == 1 => {
             let text = js_string(&first)?;
             let text = text.trim_start_matches(is_js_space);
@@ -1037,7 +1209,7 @@ fn is_nullish(value: &Val) -> bool {
 pub fn truthy(value: &Val) -> bool {
     match value {
         Val::Undefined => false,
-        Val::Function(_) => true,
+        Val::Function(_) | Val::RegExp(_) => true,
         Val::Json(value) => crate::expression::is_truthy(value),
     }
 }
@@ -1430,5 +1602,17 @@ mod tests {
         assert_eq!(run("Intl.NumberFormat"), None);
         assert_eq!(run("1 / 0"), None, "Infinity isn't JSON");
         assert_eq!(run("unknownThing.x"), None);
+    }
+
+    #[test]
+    fn regular_expressions_never_make_a_build_wait() {
+        // Thirty letters against a nested repeat is about 2^30 steps for a backtracking engine: the
+        // pattern is refused before it runs, so this returns at once.
+        let started = std::time::Instant::now();
+        assert_eq!(run("'a'.repeat(30).replace(/(a+)+b/, 'x')"), None);
+        assert_eq!(run("'a'.repeat(30).replace(/(a|aa)*b/, 'x')"), None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        assert_eq!(run("'a/b/'.replace(/\\/+$/, '')"), Some("a/b".into()));
+        assert_eq!(run("encodeURIComponent('a b&c')"), Some("a%20b%26c".into()));
     }
 }

@@ -3374,6 +3374,10 @@ pub(crate) const RUNTIME_GLOBALS: &[&str] = &[
     "AbortController",
     "parseInt",
     "parseFloat",
+    "encodeURIComponent",
+    "encodeURI",
+    "decodeURIComponent",
+    "decodeURI",
 ];
 
 /// Common DOM events an element can receive, so a listener for one is never taken for a typo.

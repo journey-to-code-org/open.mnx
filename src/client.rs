@@ -259,6 +259,10 @@ const PURE_FUNCTIONS: &[&str] = &[
     "parseFloat",
     "isNaN",
     "isFinite",
+    "encodeURIComponent",
+    "encodeURI",
+    "decodeURIComponent",
+    "decodeURI",
 ];
 /// Methods of strings, numbers and arrays that return a value without side effects outside it.
 const PURE_METHODS: &[&str] = &[

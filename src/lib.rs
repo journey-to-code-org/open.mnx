@@ -43,6 +43,7 @@ mod parser;
 mod pure;
 mod reactive;
 mod refactor;
+mod regexp;
 mod render;
 mod request;
 mod runtime_expression;
