@@ -69,8 +69,18 @@ export interface ZubraOptions {
    * except in production; `ZUBRA_DEVTOOLS=1` turns it on there too).
    */
   devtools?: boolean;
-  /** Told when a render leaves out an attribute whose value isn't a safe URL (default `console.warn`). */
+  /**
+   * Told when a render leaves out an attribute whose value isn't a safe URL, or leaves part of a
+   * component's HTML for the browser (default `console.warn`).
+   */
   warn?: (message: string) => void;
+  /**
+   * `'warn'` (the default): say once, for each place, when a render leaves part of a component's
+   * HTML for the browser because the server can't compute it (a list derived through a loop, a
+   * formatted date), the same places `zubra check --server` reports. `'ignore'` when that's
+   * intended.
+   */
+  gaps?: 'warn' | 'ignore';
 }
 
 export declare function createZubra(options?: ZubraOptions): Zubra;

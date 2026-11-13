@@ -409,6 +409,12 @@ pub fn server_gaps(
         )
     });
     rendered?;
+    Ok(describe_gaps(gaps))
+}
+
+/// Each gap a partial render recorded (`validate::record_gaps`), as `(diagnostic, error)`, in
+/// source order: what `check --server` reports, and what `@zubra/server` warns about.
+pub fn describe_gaps(gaps: Vec<validate::Gap>) -> Vec<(Diagnostic, bool)> {
     let mut found: Vec<(Diagnostic, bool)> = gaps
         .into_iter()
         .map(|(span, attribute, child)| {
@@ -435,7 +441,7 @@ pub fn server_gaps(
         })
         .collect();
     found.sort_by_key(|(diagnostic, _)| (diagnostic.span.line, diagnostic.span.column));
-    Ok(found)
+    found
 }
 
 /// Static HTML, with options.

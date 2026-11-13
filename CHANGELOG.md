@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **`@zubra/server` says when a render leaves part of a component's HTML for the browser.** Anything the server can't compute (a list derived through a function with a loop, a formatted date) renders empty and is filled in once the element's module runs, so without JavaScript that part is missing. `zubra check --server` already listed these places, but with the component's defaults and only when asked; a server rendering real props said nothing. Front Desk's `free-times` shipped a list of time buttons that was empty in the server's HTML, and it was found only by a test without JavaScript. Now `@zubra/server` warns once per place, with the same words, file, line and caret as `check --server`. `createZubra({ gaps: 'ignore' })` turns it off where that's intended. The compiler's request takes `"gaps": true` on a partial HTML render and answers with `gaps`.
+
 ## 5.10.3 — 2026-11-13
 
 Text given to a component before it connects no longer waits for `remark.js`.
