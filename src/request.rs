@@ -749,9 +749,10 @@ mod tests {
 
     #[test]
     fn a_partial_render_asked_for_gaps_says_what_it_left_for_the_browser() {
-        // A list derived through a function with a loop: the server can't run it, so the list
-        // is empty in the HTML. Free Times in Front Desk shipped like this without a word.
-        let source = "<script>\n  const fits = (one) => {\n    for (const at of taken) if (at === one) return false\n    return true\n  }\n  const choices = starts.map((one) => ({ time: one, free: fits(one) }))\n</script>\n<zb-times starts={['09:00']} taken={['09:00']}>\n  <zb-each items={choices} as=\"one\" key={one.time}><b>{one.time}</b></zb-each>\n  <i>{starts.length}</i>\n</zb-times>";
+        // A list derived through a formatted time: only the browser formats times, so the list
+        // is empty in the HTML. (Front Desk's Free Times shipped like this without a word, then
+        // through a function with a loop, which the server now runs.)
+        let source = "<script>\n  const label = (at) => new Date(at).toLocaleTimeString('en-US')\n  const choices = starts.map((one) => ({ time: one, label: label(one) }))\n</script>\n<zb-times starts={[0]}>\n  <zb-each items={choices} as=\"one\" key={one.time}><b>{one.label}</b></zb-each>\n  <i>{starts.length}</i>\n</zb-times>";
         let files = json!({ "/app/times.zb": source });
         let ask = |gaps: bool| {
             call(
@@ -771,7 +772,7 @@ mod tests {
             gaps[0].contains("computed in the browser, so the server's HTML leaves it empty"),
             "{gaps:?}"
         );
-        assert!(gaps[0].contains("/app/times.zb:9:"), "where: {gaps:?}");
+        assert!(gaps[0].contains("/app/times.zb:6:"), "where: {gaps:?}");
         assert!(gaps[0].contains("items={choices}"), "the line: {gaps:?}");
         // The rest still renders; not asked, no `gaps`; nothing to say, no `gaps` either.
         assert!(response["output"].as_str().unwrap().contains("<i>1</i>"));

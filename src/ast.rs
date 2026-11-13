@@ -143,6 +143,9 @@ pub struct Script {
     /// asks about (`default` for `hasSlot()`). The server knows which slots it was given, so it
     /// renders the binding as whether that slot has content, as the element will.
     pub has_slot: Vec<(String, String)>,
+    /// `function name(…) { … }` at the top of the script: the name and the declaration as
+    /// written, so the server can call it when it's within what it evaluates (`pure.rs`).
+    pub functions: Vec<(String, String)>,
     /// Whether the script's ids are known on the server: every call to `id()` is a whole
     /// `const x = id()` binding (see `Binding::id_call`), so the calls happen in a known order.
     pub server_ids: bool,

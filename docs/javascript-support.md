@@ -18,7 +18,30 @@ The rule: only what gives the same answer on every platform, compared against V8
 
 ### Syntax
 
-Literals, arrays and objects (with spread), member and index access (with `?.`), arithmetic and `**`, comparisons (`==` and `!=` compile to strict), `!`, `&&`, `||`, `??`, `? :` with JavaScript's truthiness, `typeof`, template literals, regular expression literals (below), and arrow functions: the script's own (`const money = (cents) => …`), callbacks, and block bodies made of `const` declarations and a `return`.
+Literals, arrays and objects (with spread), member and index access (with `?.`), arithmetic and `**`, comparisons (`==` and `!=` compile to strict), `!`, `&&`, `||`, `??`, `? :` with JavaScript's truthiness, `typeof`, template literals, regular expression literals (below), and functions: the script's own arrow functions (`const money = (cents) => …`) and `function` declarations, callbacks, and function expressions.
+
+### Statements in a function
+
+A function's body can be statements, not just an expression:
+
+- `const` and `let`, scoped to their block;
+- assignment (`=`, `+=` and the other arithmetic forms, `||=`, `&&=`, `??=`) and `++`/`--` to the function's own parameters and `let`s;
+- `.push(…)` onto the function's own arrays;
+- `if`/`else`, `for`, `for…of` (over an array or a string, by code point) and `while`, with `break` and `continue`;
+- `return`.
+
+```js
+function around(current, total) {
+  const list = []
+  for (let n = 1; n <= total; n++) {
+    if (n === 1 || n === total || Math.abs(n - current) <= 1) list.push(n)
+    else if (list[list.length - 1] !== 'gap') list.push('gap')
+  }
+  return list
+}
+```
+
+A function that changes anything outside itself (the component's state, an object's property), or calls something for its effect (`list.sort()`, `console.log`), is left for the browser. So is one that doesn't finish within the step limit.
 
 ### Built-ins
 
@@ -30,7 +53,7 @@ Literals, arrays and objects (with spread), member and index access (with `?.`),
 | Number methods | `.toFixed` |
 | Math | `Math.abs`, `Math.ceil`, `Math.floor`, `Math.max`, `Math.min`, `Math.round`, `Math.sign`, `Math.sqrt`, `Math.trunc` |
 | Object | `Object.entries`, `Object.fromEntries`, `Object.groupBy`, `Object.hasOwn`, `Object.keys`, `Object.values` |
-| Others | `Array.isArray`, `Number.isInteger`, `Boolean()`, `Number()`, `String()`, `parseInt()`, `encodeURIComponent()`, `encodeURI()`, `decodeURIComponent()`, `decodeURI()` |
+| Others | `Array.from` (an array, a string by code point, or `{ length }` with a mapper), `Array.isArray`, `Number.isInteger`, `Boolean()`, `Number()`, `String()` (also as callbacks: `.map(String)`, `.filter(Boolean)`), `parseInt()`, `encodeURIComponent()`, `encodeURI()`, `decodeURIComponent()`, `decodeURI()` |
 
 Regular expression literals (`/\/+$/`, `/(?<y>\d+)-(?<m>\d+)/gi`) run on an ECMAScript regex engine that matches on UTF-16 code units, as the browser does: without the `/u` flag, `/./` takes half of an emoji, and with it the whole emoji. They work with `.replace` and `.replaceAll` (with `$&`, `` $` ``, `$'`, `$1`–`$99`, `$<name>` and `$$` in the replacement, or an arrow function), `.split` (with a limit, and capturing groups in the result), `.match` with `/g`, `.search` and `.test` without `/g`.
 
@@ -45,7 +68,7 @@ Objects keep JavaScript's key order: index-like keys first, ascending, then the 
 | `Date.now()`, `new Date()`, `Intl`, `.toLocaleString()`, `Math.random()` | Not the same answer on the server and in the browser (clock, time zone, locale, chance). Pass the value as a prop if the server should render it. |
 | `window`, `document`, `navigator` | They exist only in the browser. |
 | `.sort()`, `.splice()`, `.reverse()` and other mutating methods | A template expression shouldn't change state. `.toSorted()`, `.toSpliced()` and `.toReversed()` do the same without mutating, and render on the server. |
-| `function` expressions, destructured parameters, a callback's third argument | Outside the subset. Write `(row) => row.kg`, not `function (row) { return row.kg }`. |
+| Destructured parameters and defaults, a callback's third argument, `async` functions and generators, `this` | Outside the subset. |
 | `Map`, `Set`, iterators and iterator helpers, `BigInt`, `Map.groupBy` | The server's values are JSON, and these aren't. |
 | Infinity, NaN, `undefined` inside an object, `.flat(Infinity)` | Not JSON either. |
 | What the browser would throw on: `.with()` out of range, `Object.hasOwn(null, …)`, `decodeURIComponent("%")`, `.replaceAll()` with a regex without `/g` | The browser reports the error, where you'll see it. |

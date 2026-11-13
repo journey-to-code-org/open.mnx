@@ -437,7 +437,7 @@ pub fn describe_gaps(gaps: Vec<validate::Gap>) -> Vec<(Diagnostic, bool)> {
                     child.tag, child.span.line, child.span.column
                 );
             }
-            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic, ternaries, template literals, arrow functions from the script and deterministic built-ins (the list: https://journey-to-code-org.github.io/zubra/docs/javascript-support/); compute the rest before rendering and pass it as a prop";
+            let help = "the server renders literals, props, member access, arithmetic, comparisons, logic, ternaries, template literals, the script's functions (loops and `if` included) and deterministic built-ins (the list: https://journey-to-code-org.github.io/zubra/docs/javascript-support/); compute the rest before rendering and pass it as a prop";
             (Diagnostic::new(span, message).with_help(help), form)
         })
         .collect();

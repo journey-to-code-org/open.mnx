@@ -948,6 +948,13 @@ fn evaluate_script_with(
         }
         locals.push((name.clone(), Local::Runtime));
     }
+    // `function f(…) { … }`: one the server can call, when it's within what it evaluates
+    // (`pure.rs`: no `this`, no effects beyond its own `let`s). Otherwise it stays the browser's.
+    for (name, source) in &script.functions {
+        if let Some(function) = crate::pure::function(source) {
+            locals.push((name.clone(), Local::Function(function)));
+        }
+    }
     // Imports whose values are known (enums from TypeScript modules): values at build time.
     for binding in &script.imported_values {
         if let Some(Ok(value)) = binding.init.as_ref().map(|init| init.evaluate(&|_| None)) {

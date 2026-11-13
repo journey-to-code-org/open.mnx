@@ -598,16 +598,14 @@ test('a link out of the folder is refused even when a browser module imports it 
 test('a render that leaves part of the HTML for the browser says so, once per place', () => {
   const dir = mkdtempSync(join(tmpdir(), 'zubra-gaps-'));
   try {
-    // A list derived through a loop: the server can't run it, so it's empty in the HTML.
+    // A list derived through formatted times: only the browser formats them, so it's empty in
+    // the HTML.
     writeFileSync(
       join(dir, 'free-times.zb'),
       [
         '<script>',
-        '  const fits = (one) => {',
-        '    for (const at of taken) if (at === one) return false',
-        '    return true',
-        '  }',
-        '  const choices = starts.map((one) => ({ time: one, free: fits(one) }))',
+        "  const label = (at) => new Date(at).toLocaleTimeString('en-US')",
+        '  const choices = starts.map((one) => ({ time: one, free: !taken.includes(one), label: label(one) }))',
         '</script>',
         '<free-times starts={[]} taken={[]}>',
         '  <zb-each items={choices} as="one" key={one.time}><button disabled={!one.free}>{one.time}</button></zb-each>',
@@ -618,18 +616,18 @@ test('a render that leaves part of the HTML for the browser says so, once per pl
     );
     const warned = [];
     const zubra = createZubra({ components: dir, warn: (message) => warned.push(message) });
-    const html = zubra.page().render('free-times', { starts: ['09:00', '09:15'], taken: ['09:15'] });
+    const html = zubra.page().render('free-times', { starts: [0, 900000], taken: [900000] });
     assert.match(html, /<p>2 times<\/p>/, 'the rest renders');
     assert.doesNotMatch(html, /<button/);
     assert.equal(warned.length, 1, warned.join('\n---\n'));
     assert.match(warned[0], /^@zubra\/server: <free-times> leaves part of its HTML for the browser \(empty without JavaScript\)/);
-    assert.match(warned[0], /free-times\.zb:9:\d+/);
+    assert.match(warned[0], /free-times\.zb:6:\d+/);
     assert.match(warned[0], /items=\{choices\}/);
-    zubra.page().render('free-times', { starts: ['10:00'], taken: [] });
+    zubra.page().render('free-times', { starts: [1800000], taken: [] });
     assert.equal(warned.length, 1, 'once per place, not per render');
 
     const quiet = [];
-    createZubra({ components: dir, gaps: 'ignore', warn: (message) => quiet.push(message) }).page().render('free-times', { starts: ['09:00'], taken: [] });
+    createZubra({ components: dir, gaps: 'ignore', warn: (message) => quiet.push(message) }).page().render('free-times', { starts: [0], taken: [] });
     assert.deepEqual(quiet, []);
     assert.throws(() => createZubra({ components: dir, gaps: 'loud' }), /gaps is "warn" or "ignore"/);
   } finally {

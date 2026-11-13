@@ -277,6 +277,10 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
             Statement::FunctionDeclaration(function) => {
                 if let Some(id) = &function.id {
                     script.runtime_names.push(id.name.to_string());
+                    script.functions.push((
+                        id.name.to_string(),
+                        source[function.span.start as usize..function.span.end as usize].to_owned(),
+                    ));
                 }
             }
             Statement::ClassDeclaration(class) => {

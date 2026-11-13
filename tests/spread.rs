@@ -24,7 +24,7 @@ fn a_known_spread_renders_its_attributes_and_the_element_s_own_win() {
 #[test]
 fn a_spread_known_only_in_the_browser_is_left_for_the_element() {
     let source = r#"<script>
-  function attrs() { return { href: "/a" } }
+  function attrs() { return { href: document.baseURI } }
 </script>
 <x-link><a class="a" {...attrs()}>go</a></x-link>"#;
     let html = zubra::compile_html_with_options(
@@ -217,7 +217,7 @@ fn an_explicit_prop_wins_over_the_spread_in_either_order() {
 
 #[test]
 fn an_explicit_prop_only_known_in_the_browser_still_wins_over_a_known_spread() {
-    let source = "<script>\n  import './badge.zb'\n  const rest = { label: \"from spread\" }\n  function later() { return \"r\" }\n</script>\n<zb-page><zb-badge label={later()} {...rest}></zb-badge></zb-page>";
+    let source = "<script>\n  import './badge.zb'\n  const rest = { label: \"from spread\" }\n  function later() { return document.title }\n</script>\n<zb-page><zb-badge label={later()} {...rest}></zb-badge></zb-page>";
     let output = compile_html_with_options(
         source,
         "page.zb",
@@ -259,7 +259,7 @@ fn kebab_case_keys_name_props_too_and_null_is_the_default() {
 
 #[test]
 fn a_spread_known_only_in_the_browser_names_the_props_for_the_binder() {
-    let source = "<script>\n  import './badge.zb'\n  function rest() { return { label: \"x\" } }\n</script>\n<zb-page><zb-badge class=\"a\" {...rest()}></zb-badge></zb-page>";
+    let source = "<script>\n  import './badge.zb'\n  function rest() { return { label: document.title } }\n</script>\n<zb-page><zb-badge class=\"a\" {...rest()}></zb-badge></zb-page>";
     let output = compile_js_with(source, "page.zb", "@zubra/runtime", None, &loader).unwrap();
     assert!(
         output.contains(
