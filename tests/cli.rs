@@ -368,3 +368,104 @@ fn components_import_components_from_packages_in_node_modules() {
     );
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn one_tag_has_one_definition_across_what_a_component_imports() {
+    // A page defines a tag once, and the browser keeps whichever module loads first. Two of the
+    // app's files with one tag, or two packages', anywhere in what a component imports, is an
+    // error naming both, at the import that brings in the second. An app's component beside a
+    // package's is fine: the app's stands in for the package's (the server and the plugin do that).
+    let dir = temp_dir("one-definition");
+    let kit = dir.join("node_modules/@acme/kit/components");
+    let other = dir.join("node_modules/@other/ui");
+    fs::create_dir_all(&kit).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    fs::create_dir_all(dir.join("parts")).unwrap();
+    let button = |attribute: &str| {
+        format!("<action-button {attribute}><button>{{{attribute}}}</button></action-button>\n")
+    };
+    fs::write(kit.join("action-button.zb"), button("label")).unwrap();
+    fs::write(
+        kit.join("cart-panel.zb"),
+        "<script>\n  import './action-button.zb'\n</script>\n<cart-panel><action-button label=\"Pay\"></action-button></cart-panel>\n",
+    )
+    .unwrap();
+    fs::write(other.join("action-button.zb"), button("caption")).unwrap();
+    fs::write(dir.join("action-button.zb"), button("text")).unwrap();
+    fs::write(dir.join("parts/action-button.zb"), button("words")).unwrap();
+    fs::write(
+        dir.join("parts/toolbar.zb"),
+        "<script>\n  import './action-button.zb'\n</script>\n<tool-bar><action-button words=\"Go\"></action-button></tool-bar>\n",
+    )
+    .unwrap();
+    let page = dir.join("shop-page.zb");
+    let check = |imports: &[&str]| {
+        let lines: String = imports
+            .iter()
+            .map(|specifier| format!("  import '{specifier}'\n"))
+            .collect();
+        fs::write(
+            &page,
+            format!("<script>\n{lines}</script>\n<shop-page><p>shop</p></shop-page>\n"),
+        )
+        .unwrap();
+        zubra(&["check", page.to_str().unwrap()])
+    };
+
+    // The app's own beside the package's, either order: the app's stands in.
+    for imports in [
+        ["./action-button.zb", "@acme/kit/components/cart-panel.zb"],
+        ["@acme/kit/components/cart-panel.zb", "./action-button.zb"],
+    ] {
+        let (ok, _, stderr) = check(&imports);
+        assert!(ok, "{imports:?}: {stderr}");
+    }
+    // The package's own, imported directly and through cart-panel: one file.
+    let (ok, _, stderr) = check(&[
+        "@acme/kit/components/action-button.zb",
+        "@acme/kit/components/cart-panel.zb",
+    ]);
+    assert!(ok, "{stderr}");
+
+    // Two of the app's: named, at the second import, with the import it came through.
+    let (ok, _, stderr) = check(&["./action-button.zb", "./parts/toolbar.zb"]);
+    assert!(!ok);
+    assert!(
+        stderr.contains("<action-button> has two definitions: action-button.zb and parts/action-button.zb, through `./parts/toolbar.zb`"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("shop-page.zb:3:"),
+        "at the second import: {stderr}"
+    );
+
+    // Two packages': named, directly this time, so without "through".
+    let (ok, _, stderr) = check(&[
+        "@acme/kit/components/cart-panel.zb",
+        "@other/ui/action-button.zb",
+    ]);
+    assert!(!ok);
+    assert!(
+        stderr.contains("has two definitions: @acme/kit/components/action-button.zb and @other/ui/action-button.zb.")
+            && !stderr.contains("through"),
+        "{stderr}"
+    );
+
+    // A component of the app's with the page's own tag is a second definition too.
+    fs::write(
+        dir.join("parts/shop-page.zb"),
+        "<shop-page><p>other</p></shop-page>\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("parts/shop-wrap.zb"),
+        "<script>\n  import './shop-page.zb'\n</script>\n<shop-wrap><shop-page></shop-page></shop-wrap>\n",
+    )
+    .unwrap();
+    let (ok, _, stderr) = check(&["./parts/shop-wrap.zb"]);
+    assert!(
+        !ok && stderr.contains("<shop-page> has two definitions"),
+        "{stderr}"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
