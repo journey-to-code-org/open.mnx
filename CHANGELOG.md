@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **Components' types in `.ts` and `.tsx` files, live in the editor.** A TypeScript server plugin, `@zubra/language-server/typescript-plugin`, types an import of a component (`./badge.zb`, `?react`, `?vue`, `?element`, a `.zb.tsx` component) from the component itself: errors, hover, completion, and go to definition that opens the component. Saving a component updates every file that imports it, including saves that replace the file. Nothing has to be built first, and `allowArbitraryExtensions` isn't needed. The VS Code extension registers it with VS Code's TypeScript and passes it the `zubra.compiler` setting; other editors whose TypeScript runs tsserver add it to `tsconfig.json`. A plain import is typed for the project's framework (from `package.json`), as the build plugin compiles it. A component that doesn't compile imports as `any` until it does.
+
 ### Fixed
 
 - **`zubra check --client` no longer calls a component client-free when the server leaves part of it empty.** It looked for parts the server leaves to the browser by rendering with the default props, so a branch the defaults skip went unchecked: a `const list = sorted ? [...items].sort(…) : items` counted as complete, while the server can't run the mutating `.sort()` and a sorted chart rendered empty without its module. Now the methods it accepts are exactly those the server computes (a test runs each one through the evaluator; `sort`, `reverse`, `fill` and `toString` aren't, while `toSorted` and `toReversed` are), and method calls in the template count whichever branch they're in. In the other direction, `hasSlot()` and a spread into an array (`[...items]`) no longer count as browser work, since the server renders both. In Zubra UI that moves content-card, empty-state and hero-section to client-free, and bar-chart once its `sorted` uses `toSorted()` instead of `.sort()` (23 of 81).

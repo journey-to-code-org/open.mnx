@@ -197,6 +197,8 @@ How it works, the way Vue's and Svelte's tooling work:
 
 **In VS Code**, the extension shows the same errors in a TypeScript component when it opens and each time it's saved, beside the compiler's own diagnostics (it uses the project's `@zubra/compiler` and `typescript`, in a process of its own). In a TypeScript component it also gives **hover, completion and go to definition from TypeScript**, in the script and in every `{…}` of the template, from TypeScript 5.9's language service, which it ships with (the native TypeScript 7 has no language service API yet), over the same file. Type errors come from the project's own TypeScript, when you save.
 
+**From `.ts` and `.tsx` files**, an import of a component is typed from the component in VS Code (and any editor whose TypeScript runs tsserver plugins), with no build first and no `allowArbitraryExtensions`: see [Editor support](editor-support.md).
+
 Only `<script lang="ts">` components are checked. A JavaScript component's file is there so the components that use it get its props' and events' types, and a `.zb.tsx` component's typings are there for the same reason (its own code is TypeScript, which `tsc` checks as it is, with your `jsx` settings). A required prop with no `declare const` is `unknown` to the checker, so give it a type. `--format json` gives each error as the Rust CLI's `check --format json` does, path relative to where it ran, with a `code` (`TS2322`).
 
 Type errors in the editor are worked out when a file opens and when it's saved; while you type, the last ones stay where they were until the next save.

@@ -97,6 +97,8 @@ Next to each component the plugin writes `rating.d.zb.ts`, typed for the project
 
 `@zubra/unplugin/client` covers `.zb` imports that don't have typings yet (before the first build) and the `?element` form. The generated files can be committed or ignored (`*.d.zb.ts`).
 
+In the editor you don't need these files: the VS Code extension's TypeScript plugin types `.zb` imports from the components directly, updated each time one is saved (see [Editor support](../docs/editor-support.md)). They're for `tsc` in builds and CI.
+
 ## Development
 
 In Vite's dev server, editing a component **updates it in place**: the elements on the page get the new template, script and styles, and keep their props, state (by the order of the script's `let`s, as long as a value's kind doesn't change) and slotted content. A change to the element's interface (its props, events, `shadow` or `form-associated`) reloads the page instead. A compile error appears in Vite's overlay with the line, a code frame and the compiler's suggestion.

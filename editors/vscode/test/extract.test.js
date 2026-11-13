@@ -23,7 +23,7 @@ test('activating registers the command the manifest contributes', () => {
   assert.deepEqual(contributed, ['zubra.extractComponent']);
   assert.deepEqual([...commands.keys()], contributed);
   assert.equal(typeof commands.get('zubra.extractComponent'), 'function');
-  assert.equal(subscriptions.length, 2, 'the client and the command are disposed with the extension');
+  assert.equal(subscriptions.length, 3, 'the client, the command and the settings listener are disposed with the extension');
   // It's in the editor's context menu for .zb files with a selection.
   const [menu] = manifest.contributes.menus['editor/context'];
   assert.equal(menu.command, 'zubra.extractComponent');
@@ -73,4 +73,15 @@ test('Escape at the prompt, no selection, no editor or another language: nothing
     assert.deepEqual(other.requests, []);
     assert.equal(other.prompts.length, 0);
   }
+});
+
+test('the TypeScript plugin gets the compiler setting, and again when it changes', async () => {
+  const settings = { compiler: '/opt/zubra' };
+  const seen = activated({ settings });
+  await new Promise((done) => setTimeout(done, 10));
+  assert.deepEqual(seen.plugins, [{ name: '@zubra/language-server/typescript-plugin', options: { compiler: '/opt/zubra' } }]);
+  settings.compiler = '';
+  seen.configurationChanged({ affectsConfiguration: (key) => key === 'zubra.compiler' });
+  await new Promise((done) => setTimeout(done, 10));
+  assert.deepEqual(seen.plugins.at(-1), { name: '@zubra/language-server/typescript-plugin', options: { compiler: undefined } });
 });
