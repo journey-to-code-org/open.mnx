@@ -47,7 +47,7 @@ Content placed inside an element goes to its slots:
 ```
 
 - `<zb-slot>` is the default slot; `<zb-slot name="footer">` takes children with `slot="footer"`. A slot's own content is its fallback, shown while nothing is given.
-- `hasSlot(name)` says whether content was given, and follows it as content comes and goes. Use it to leave out markup that only makes sense around a used slot.
+- `hasSlot(name)` says whether content was given, and follows it as content comes and goes. Use it to leave out markup that only makes sense around a used slot. The server answers it from the slots it renders with, so the markup is there before JavaScript too.
 - Slotted content stays live: when React or Vue update the children they passed, the slot follows.
 
 ## Light DOM or shadow DOM

@@ -341,6 +341,8 @@ Everything a component's script creates is disposed with the element, so you rar
 </zb-card>
 ```
 
+  The server answers it too, from the slots it was given, so the footer is in the server's HTML (and works without JavaScript) when there's content for it. That holds for a whole `const x = hasSlot('name')` with the name written out; a name in a variable is the browser's to answer.
+
 ### Outlets (experimental)
 
 A slot can't be inside `zb-each`, so a list can't take one piece of content per item that way. An **outlet** asks the app to render it: `<zb-outlet name="row" item={item}>` marks the place, and the app's framework renders into it through a portal, so what it renders keeps the app's context, state and handlers. From React, a `render<Name>` prop fills the outlets of that name:

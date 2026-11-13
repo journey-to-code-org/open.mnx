@@ -356,6 +356,33 @@ impl Supply<'_> {
             Supply::Lowered(map) => map.keys().collect(),
         }
     }
+
+    /// Whether content was given for slot `name`, as the element's `hasSlot` decides: an element,
+    /// or text that isn't only whitespace. Anything computed counts as content (it usually is).
+    fn filled(&self, name: &str) -> bool {
+        fn template(nodes: &[ast::Node]) -> bool {
+            nodes.iter().any(|node| match node {
+                ast::Node::Text(parts) => parts.iter().any(|part| match part {
+                    ast::Part::Literal(text) => !text.trim().is_empty(),
+                    ast::Part::Expression { .. } => true,
+                }),
+                _ => true,
+            })
+        }
+        fn lowered(nodes: &[Node]) -> bool {
+            nodes.iter().any(|node| match node {
+                Node::Element(_) => true,
+                Node::Text(parts) => parts.iter().any(|part| match part {
+                    ir::Part::Literal(text) | ir::Part::Escaped(text) => !text.trim().is_empty(),
+                }),
+                _ => false,
+            })
+        }
+        match self {
+            Supply::Templates(map) => map.get(name).is_some_and(|nodes| template(nodes)),
+            Supply::Lowered(map) => map.get(name).is_some_and(|nodes| lowered(nodes)),
+        }
+    }
 }
 
 fn lower_component(
@@ -378,6 +405,17 @@ fn lower_component(
     // (`data-zb-inject`): the element starts from them, so it doesn't show the default first.
     let mut injected = serde_json::Map::new();
     let mut inject_number = 0;
+    // `const hasFooter = hasSlot('footer')`: whether content was given for that slot. The ones
+    // that were go on the host (`data-zb-filled`), so the element starts from the same answer
+    // and keeps the markup instead of removing it before it has seen its slotted content.
+    let mut filled: Vec<&str> = Vec::new();
+    for (binding, slot) in &component.script.has_slot {
+        let answer = supply.filled(slot);
+        if answer && !filled.contains(&slot.as_str()) {
+            filled.push(slot);
+        }
+        known.insert(binding.clone(), Some(Value::Bool(answer)));
+    }
     for binding in &component.script.bindings {
         if let Some(k) = binding.id_call {
             known.insert(
@@ -468,6 +506,11 @@ fn lower_component(
                 "data-zb-inject".to_owned(),
                 Value::Object(injected).to_string(),
             ));
+        }
+        if !filled.is_empty() {
+            lowered
+                .host_attributes
+                .push(("data-zb-filled".to_owned(), filled.join(" ")));
         }
         lowered
     })
