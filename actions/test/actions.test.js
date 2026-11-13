@@ -141,3 +141,16 @@ test("a Host header that isn't a host is a 400 from handle(), and the server kee
     server.close();
   }
 });
+
+test('going back never leaves the site, even from a path that starts with //', async () => {
+  for (const [referer, location] of [
+    ['http://localhost//evil.example/login', '/evil.example/login'],
+    ['http://localhost/\\evil.example/', '/evil.example/'],
+    ['http://localhost///evil.example?x=1', '/evil.example?x=1'],
+    ['http://localhost/orders?page=2', '/orders?page=2'],
+  ]) {
+    const response = await post(URL_LOGIN, { email: 'a@example.com' }, { referer });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), location, referer);
+  }
+});

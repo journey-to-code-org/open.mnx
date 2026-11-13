@@ -47,6 +47,28 @@ export function deviceClock(client) {
 }
 
 /**
+ * @internal Changes split into pushes of at most `count` changes and about `bytes` bytes of JSON,
+ * under the server's default limits (1000 changes, 1 MiB), keeping their order.
+ */
+export function batches(changes, { count = 500, bytes = 512 * 1024 } = {}) {
+  const out = [];
+  let batch = [];
+  let size = 0;
+  for (const change of changes) {
+    const length = JSON.stringify(change).length + 1;
+    if (batch.length && (batch.length >= count || size + length > bytes)) {
+      out.push(batch);
+      batch = [];
+      size = 0;
+    }
+    batch.push(change);
+    size += length;
+  }
+  if (batch.length) out.push(batch);
+  return out;
+}
+
+/**
  * @internal The changes waiting to be pushed. A push takes a snapshot (`take`), and when the
  * server has it, exactly those changes leave (`done`): by identity, not by count, so a change
  * added while an earlier push was out is never dropped by it. Two pushes can overlap (the debounce
@@ -140,7 +162,13 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
 
   async function flush() {
     if (!outbox.size) return;
-    const sending = outbox.take();
+    // In batches the server takes (at most 1000 changes or 1 MiB a push by default), so a device
+    // back from hours offline with a long outbox still gets it all through.
+    for (const sending of batches(outbox.take())) if (!(await send(sending))) return;
+  }
+
+  /** Push one batch. True when the server has it. */
+  async function send(sending) {
     try {
       const response = await fetch(`${base}/push`, {
         method: 'POST',
@@ -155,11 +183,13 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
           const why = await response.json().then((body) => body?.error, () => '');
           console.warn(`@zubra/sync: the server refused this page's changes${why ? `: ${why}` : ''}`);
         }
-        return;
+        return false;
       }
       outbox.done(sending);
+      return true;
     } catch {
       // Offline: the outbox stays (in localStorage too), and goes with the next flush.
+      return false;
     }
   }
 
@@ -217,10 +247,14 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   let source = null;
   let open = false;
   let retry = null;
+  // The live stream's secret for this tab's peer id (its `hello`): presence and signals sent as
+  // this peer carry it, and a reconnect presents it to keep the peer id.
+  let key = '';
   const listen = () => {
     if (!live || typeof EventSource === 'undefined' || stopped) return;
-    source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}${scoped}`);
+    source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}${key ? `&key=${key}` : ''}${scoped}`);
     source.addEventListener('open', () => (open = true));
+    source.addEventListener('hello', (event) => (key = JSON.parse(event.data).key ?? ''));
     source.addEventListener('changes', (event) => apply(JSON.parse(event.data)));
     source.addEventListener('presence', (event) => {
       const message = JSON.parse(event.data);
@@ -251,7 +285,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
             fetch(`${base}/signal`, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ room, from: peerId(), to, data }),
+              body: JSON.stringify({ room, from: peerId(), to, data, key }),
             }).catch(() => {}),
         })
       : null;
@@ -261,7 +295,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
     fetch(`${base}/presence`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(message),
+      body: JSON.stringify({ ...message, key }),
       keepalive: message.state === null, // a leave on pagehide still gets there
     }).catch(() => {});
   });

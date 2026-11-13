@@ -11,7 +11,7 @@ const url = (path, scope) => `http://shop/_zb/sync${path}${scope === undefined ?
 const push = (sync, changes, headers = {}) => sync.fetch(new Request(url('/push'), { method: 'POST', body: JSON.stringify({ changes }), headers: { 'content-type': 'application/json', ...headers } }));
 const pull = async (sync, scope, headers = {}) => (await sync.fetch(new Request(url('/pull?since=0', scope), { headers }))).json();
 const join = (sync, room, peer, headers = {}) => sync.fetch(new Request(url('/presence'), { method: 'POST', body: JSON.stringify({ room, peer, state: { here: true } }), headers: { 'content-type': 'application/json', ...headers } }));
-async function* events(response) {
+async function* events(response, keys = []) {
   const reader = response.body.getReader();
   let text = '';
   for (;;) {
@@ -20,7 +20,8 @@ async function* events(response) {
     const block = text.slice(0, end);
     text = text.slice(end + 2);
     const event = /^event: (\w+)/m.exec(block)?.[1];
-    if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
+    if (event === 'hello') keys.push(JSON.parse(/^data: (.*)$/m.exec(block)[1]).key); // the stream's key for its peer id
+    else if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
   }
 }
 const live = async (sync, peer, scope, headers = {}) => events(await sync.fetch(new Request(url(`/live?since=0&peer=${peer}`, scope), { headers })));

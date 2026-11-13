@@ -349,6 +349,36 @@ fn rejects_unsafe_literal_urls_and_leaves_out_unsafe_values() {
         "{}",
         "unsafe URL",
     );
+    // Numeric references without their `;`: browsers decode them in an attribute (audit Z5).
+    for href in [
+        "&#106avascript:alert(1)",
+        "javascript&#58alert(1)",
+        "&#0000106avascript:x",
+        "javascript&#x3A alert(1)",
+        "&#x6Aavascript:alert(1)",
+    ] {
+        assert_error(
+            &format!("<zb-link><a href=\"{href}\">Open</a></zb-link>"),
+            "{}",
+            "unsafe URL",
+        );
+    }
+    // And in slot content supplied at build time, which is checked like a template.
+    assert!(compile_with_slots(
+        "<zb-a><div><zb-slot></zb-slot></div></zb-a>",
+        "{}",
+        r#"{"default":"<a href=\"&#106avascript:alert(document.domain)\">x</a>"}"#,
+    )
+    .unwrap_err()
+    .message
+    .contains("unsafe URL"));
+    // An ordinary URL with a fragment or a query that has `&#` in it is still fine.
+    assert!(compile("<zb-link><a href=\"/faq#q&#38;a\">FAQ</a></zb-link>", "{}").is_ok());
+    assert!(compile(
+        "<zb-link><a href=\"https://example.com/?a=&#49;\">x</a></zb-link>",
+        "{}"
+    )
+    .is_ok());
     // A URL made from values (a page's users may have written them) is left out of the HTML,
     // as the element leaves it out in the browser: one bad value can't fail the page.
     let html = compile(GREETING, r#"{"name":"x","url":"data:text/html,bad"}"#).unwrap();

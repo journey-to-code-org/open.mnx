@@ -40,6 +40,11 @@
 // they're pushed, and `presence` from the other viewers (POST <mount>/presence). Subscribers are
 // this process's; several server processes need a shared log and a pub/sub between them.
 //
+// A peer id belongs to the live stream holding it. The stream's first event, `hello`, carries a
+// secret `key`; presence and signals sent as that peer must carry it, and a second stream asking
+// for a peer id that's held gets it only with the key (`&key=`, a reconnect). So nobody can speak
+// as another viewer, leave a room for them, or receive the WebRTC signals meant for them.
+//
 // On Node, `handle(req, res)` answers sync requests (streaming the live ones) and returns true.
 export const MOUNT = '/_zb/sync';
 
@@ -212,7 +217,7 @@ export const allowAnyone = () => true;
 const readsOnly = ({ write }) => !write;
 const NO_AUTHORIZE = 'This sync server takes no writes from pages until it is told who may make them: pass createSyncServer({ authorize }) (or authorize: allowAnyone, for a page anyone may edit). See docs/sync.md, "Who may write".';
 
-export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server', maxSkew = 60_000 } = {}) {
+export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server', maxSkew = 60_000, maxBytes = 1 << 20, maxChanges = 1000 } = {}) {
   if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
   if (given !== undefined && typeof given !== 'function') throw new TypeError('createSyncServer: `authorize` is a function ({ request, collection, key, field, value, write, kind }) => boolean');
   const authorize = given ?? readsOnly;
@@ -326,6 +331,14 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
   async function broadcastChanges(changes, cursor) {
     for (const listener of listeners) listener.send('changes', { changes: await visible(listener, changes), cursor });
   }
+  /** The live stream holding a peer id, if any. */
+  const holder = (peer) => [...listeners].find((listener) => listener.peer === peer);
+  /** Whether `key` is the key of the stream holding `peer`; a peer no stream holds is anyone's. */
+  const speaksAs = (peer, key) => {
+    const held = holder(peer);
+    return !held || (typeof key === 'string' && key === held.key);
+  };
+  const newKey = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
   async function broadcastPresence(message) {
     const { collection, key } = roomOf(message.room);
     for (const listener of listeners) {
@@ -342,17 +355,48 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     return !origin || origin === new URL(request.url).origin || origins.includes(origin);
   };
 
+  /**
+   * A request's JSON body, read no further than `maxBytes` (1 MiB by default, as the binary): a
+   * page's push is small, and a body of any size used to be held in memory before anyone was asked
+   * whether it could write at all. Returns `{ value }`, or `{ refused: Response }`.
+   */
+  async function readJson(request) {
+    const tooLarge = () => ({ refused: json(413, { error: `A request body is at most ${maxBytes} bytes; send changes in smaller batches` }) });
+    if (Number(request.headers.get('content-length')) > maxBytes) return tooLarge();
+    const parts = [];
+    let size = 0;
+    if (request.body) {
+      const reader = request.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) {
+          await reader.cancel().catch(() => {});
+          return tooLarge();
+        }
+        parts.push(value);
+      }
+    }
+    try {
+      const bytes = new Uint8Array(size);
+      let at = 0;
+      for (const part of parts) bytes.set(part, (at += part.byteLength) - part.byteLength);
+      return { value: JSON.parse(new TextDecoder().decode(bytes)) };
+    } catch {
+      return { refused: json(400, { error: 'Expected JSON' }) };
+    }
+  }
+
   async function fetch(request) {
     const url = new URL(request.url);
     if (url.pathname === `${base}/push` && request.method === 'POST') {
       if (!sameOrigin(request)) return json(403, { error: 'Cross-site writes are refused' });
-      let body;
-      try {
-        body = await request.json();
-      } catch {
-        return json(400, { error: 'Expected JSON' });
-      }
+      const read = await readJson(request);
+      if (read.refused) return read.refused;
+      const body = read.value;
       const changes = Array.isArray(body?.changes) ? body.changes : null;
+      if (changes && changes.length > maxChanges) return json(413, { error: `A push carries at most ${maxChanges} changes; send them in smaller batches` });
       if (!changes || !changes.every(valid)) return json(400, { error: 'Expected { changes: [{ collection, key, field, value, clock }] }; a field can\'t be named key or $clocks' });
       if (changes.some((change) => ahead(change.clock))) return json(400, { error: "A change's clock is ahead of the server's by more than maxSkew; check the device's time" });
       for (const change of changes) {
@@ -367,12 +411,9 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     }
     if (url.pathname === `${base}/presence` && request.method === 'POST') {
       if (!sameOrigin(request)) return json(403, { error: 'Cross-site writes are refused' });
-      let message;
-      try {
-        message = await request.json();
-      } catch {
-        return json(400, { error: 'Expected JSON' });
-      }
+      const read = await readJson(request);
+      if (read.refused) return read.refused;
+      const message = read.value;
       const room = typeof message?.room === 'string' ? roomOf(message.room) : null;
       const okPeer = typeof message?.peer === 'string' && /^[\w-]{1,40}$/.test(message.peer);
       const okState = message?.state === null || (typeof message?.state === 'object' && !Array.isArray(message.state));
@@ -381,6 +422,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       }
       if (!(await mayWrite(request, room.collection, room.key))) return json(403, { error: 'Not yours to join' });
       if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return refused('Not yours to join');
+      if (!speaksAs(message.peer, message.key)) return json(403, { error: "That peer id is another viewer's" });
       const clean = { room: message.room, peer: message.peer, state: message.state };
       for (const listener of listeners) if (listener.peer === clean.peer) {
         if (clean.state === null) listener.rooms.delete(clean.room);
@@ -393,12 +435,9 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       // WebRTC signaling: an offer, answer or ICE candidate for one peer in a room, delivered on
       // that peer's live stream. The server only passes it on.
       if (!sameOrigin(request)) return json(403, { error: 'Cross-site writes are refused' });
-      let message;
-      try {
-        message = await request.json();
-      } catch {
-        return json(400, { error: 'Expected JSON' });
-      }
+      const read = await readJson(request);
+      if (read.refused) return read.refused;
+      const message = read.value;
       const room = typeof message?.room === 'string' ? roomOf(message.room) : null;
       const peerOk = (peer) => typeof peer === 'string' && /^[\w-]{1,40}$/.test(peer);
       const dataOk = message?.data && typeof message.data === 'object' && !Array.isArray(message.data) && JSON.stringify(message.data).length <= 16384;
@@ -407,13 +446,23 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       }
       if (!(await mayWrite(request, room.collection, room.key))) return json(403, { error: 'Not yours to join' });
       if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return refused('Not yours to join');
+      // Only from a peer with a live stream (it must hear the answer), and only by that stream.
+      if (!holder(message.from) || !speaksAs(message.from, message.key)) return json(403, { error: "That peer id is another viewer's" });
       const clean = { room: message.room, from: message.from, to: message.to, data: message.data };
-      for (const listener of listeners) if (listener.peer === clean.to) listener.send('signal', clean);
+      // To the recipient only if its own scope lets it into the room: a peer id from another
+      // business's room gets nothing.
+      const to = holder(clean.to);
+      if (to && (await sees(to, room.collection, room.key))) to.send('signal', clean);
       return json(200, { ok: true });
     }
     if (url.pathname === `${base}/live` && request.method === 'GET') {
       const peer = url.searchParams.get('peer') ?? '';
       if (!/^[\w-]{0,40}$/.test(peer)) return json(400, { error: 'Bad peer id' });
+      // A held peer id goes to a new stream only with the old stream's key (a reconnect, which
+      // then replaces it); the key carries over, so what the page sends keeps working.
+      const previous = peer ? holder(peer) : null;
+      if (previous && url.searchParams.get('key') !== previous.key) return json(409, { error: "That peer id is another viewer's; pick another" });
+      const key = previous?.key ?? newKey();
       const scopes = await scopesOf(request, url);
       if (scopes instanceof Response) return scopes;
       const { since, reset } = await startFrom(url.searchParams.get('since') ?? '0');
@@ -435,10 +484,13 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
             for (const room of listener.rooms) broadcastPresence({ room, peer, state: null });
             try { controller.close(); } catch {}
           };
-          listener = { peer, request, scopes, rooms: new Set(), send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`), close };
+          listener = { peer, key, request, scopes, rooms: previous ? new Set(previous.rooms) : new Set(), send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`), close, closeQuietly: () => { clearInterval(timer); try { controller.close(); } catch {} } };
+          // A reconnect takes over quietly: no goodbye from the stream it replaces.
+          if (previous && listeners.delete(previous)) previous.closeQuietly();
           listeners.add(listener);
           request.signal?.addEventListener('abort', close);
           write('retry: 1000\n\n');
+          listener.send('hello', { key });
           // Read the backlog after subscribing, so nothing pushed in between is missed (a change
           // may come twice; applying one twice changes nothing).
           // Page by page: a log longer than one page is sent whole before anything live.
@@ -482,7 +534,22 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     const controller = new AbortController();
     res.on('close', () => controller.abort());
     const chunks = [];
-    if (req.method !== 'GET' && req.method !== 'HEAD') for await (const chunk of req) chunks.push(chunk);
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      // Held only up to maxBytes. A body that says it's longer is refused before it's read; one
+      // that only turns out longer is read to its end and dropped. Either way the answer is 413.
+      const tooLarge = () => {
+        res.writeHead(413, { 'content-type': 'application/json', connection: 'close' }).end(JSON.stringify({ error: `A request body is at most ${maxBytes} bytes; send changes in smaller batches` }));
+        req.resume();
+        return true;
+      };
+      if (Number(req.headers['content-length']) > maxBytes) return tooLarge();
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size <= maxBytes) chunks.push(chunk);
+      }
+      if (size > maxBytes) return tooLarge();
+    }
     const request = new Request(url, {
       method: req.method,
       headers: Object.entries(req.headers).flatMap(([name, value]) => (Array.isArray(value) ? value.map((each) => [name, each]) : [[name, value]])),
