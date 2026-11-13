@@ -24,7 +24,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-
 .label small { font-family: system-ui, sans-serif; }
 .editor { position: relative; flex: 1; min-height: 10rem; background: var(--surface); }
 .editor.short { flex: 0 0 7rem; min-height: 0; border-bottom: 1px solid var(--line); }
-.editor pre, .editor textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0.75rem 1rem; border: 0; outline: 0; resize: none; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre; overflow: auto; }
+.editor pre, .editor textarea { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0.75rem 1rem; border: 0; outline: 0; resize: none; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
 /* The coloured text sits behind; the textarea above it keeps the caret and selection and paints no text. */
 .editor pre { overflow: hidden; color: var(--ink); pointer-events: none; }
 .editor textarea { background: transparent; color: transparent; caret-color: var(--ink); }
@@ -38,8 +38,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-
 .error { margin: 0; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); color: var(--danger); background: var(--surface); font: 12.5px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
 .previews { display: grid; gap: 1px; height: 100%; background: var(--line); grid-auto-rows: minmax(9rem, 1fr); }
 .preview { display: flex; flex-direction: column; background: var(--surface); min-height: 0; }
-.preview h2 { margin: 0; padding: 0.3rem 1rem; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.preview iframe { flex: 1; width: 100%; border: 0; background: white; }
+/* A faint dot grid behind the component, so a small preview doesn't read as an empty box. */
+.preview { background-image: radial-gradient(color-mix(in srgb, var(--muted) 25%, transparent) 1px, transparent 1px); background-size: 14px 14px; }
+.preview h2 { margin: 0; padding: 0.3rem 1rem; background: var(--surface); font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.preview iframe { flex: 1; width: 100%; border: 0; background: transparent; }
 @media (max-width: 760px) {
   main { grid-template-columns: 1fr; }
   .source { border-right: 0; border-bottom: 1px solid var(--line); }

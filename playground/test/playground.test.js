@@ -317,3 +317,87 @@ test('after a compile error the tabs show it and the preview is marked old; an e
   assert.equal(await stale(), false);
   await page.close();
 });
+
+test('every example in the picker compiles and renders in every preview', async () => {
+  const { page, errors } = await openPlayground();
+  const keys = await page.$$eval('#example option', (options) => options.map((option) => option.value));
+  assert.equal(keys.length, 11, 'the picker lists every example');
+  for (const key of keys) {
+    await choose(page, key);
+    await page.waitForFunction(() => document.querySelector('#status').textContent.startsWith('Compiled'), null, { timeout: 15000 });
+    assert.equal(await page.$eval('#error', (box) => box.hidden), true, key);
+    const html = await frame(page, 'html');
+    assert.ok((await html.textContent('body')).trim().length > 0, `${key} renders in plain HTML`);
+    for (const kind of frameworks ? ['react', 'vue'] : []) {
+      const preview = await frame(page, kind);
+      assert.ok((await preview.textContent('body')).trim().length > 0, `${key} renders in ${kind}`);
+    }
+  }
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+test('the new examples: a form control validates and resets, data loads, events fire, typed props clamp', async () => {
+  const { page, errors } = await openPlayground();
+
+  // A form control: required and minimum length run with the form; reset returns it to empty.
+  await choose(page, 'forms');
+  for (const kind of ['html', ...(frameworks ? ['react', 'vue'] : [])]) {
+    const preview = await frame(page, kind);
+    const input = preview.locator('text-field input');
+    await input.waitFor();
+    await input.fill('Al');
+    await input.press('Tab');
+    await preview.waitForFunction(() => document.querySelector('text-field .error').textContent.includes('At least 3'));
+    assert.equal(await input.getAttribute('aria-invalid'), 'true', kind);
+    await preview.locator('button[type=reset]').click();
+    await preview.waitForFunction(() => document.querySelector('text-field input').value === '');
+    assert.equal((await preview.locator('text-field .error').textContent()).trim(), '', kind);
+  }
+
+  // Data that loads: the quote arrives, and "Another" loads a different one.
+  await choose(page, 'async');
+  const quotes = await frame(page, 'html');
+  await quotes.waitForSelector('quote-card blockquote');
+  const first = await quotes.locator('quote-card blockquote').textContent();
+  await quotes.locator('quote-card button').click();
+  await quotes.waitForFunction((was) => document.querySelector('quote-card blockquote')?.textContent !== was, first);
+
+  // Events: assigning the model prop fires valuechange; Clear fires clear.
+  await choose(page, 'events');
+  const rating = await frame(page, 'html');
+  await rating.locator('star-rating').nth(0).waitFor();
+  await rating.evaluate(() => {
+    window.log = [];
+    const el = document.querySelector('star-rating');
+    el.addEventListener('valuechange', (event) => window.log.push(['valuechange', event.detail]));
+    el.addEventListener('clear', (event) => window.log.push(['clear', event.detail]));
+  });
+  const readout = async () => (await rating.locator('star-rating').nth(0).locator('output').textContent()).replace(/\s+/g, ' ').trim();
+  // The first rating starts at 3, so the fourth star is the change.
+  await rating.locator('star-rating').nth(0).locator('button').nth(3).click();
+  assert.equal(await readout(), '4 of 5');
+  await rating.locator('star-rating').nth(0).locator('button.clear').click();
+  assert.equal(await readout(), '0 of 5');
+  assert.deepEqual(await rating.evaluate(() => window.log), [['valuechange', 4], ['valuechange', 0], ['clear', 0]]);
+
+  // Typed props: a null value reads as "No value"; +10 and −10 clamp to 0 and 100.
+  await choose(page, 'typescript');
+  for (const kind of ['html', ...(frameworks ? ['react', 'vue'] : [])]) {
+    const meter = await frame(page, kind);
+    assert.deepEqual((await meter.locator('meter-bar output').allTextContents()).map((text) => text.trim()), ['40%', 'No value'], kind);
+  }
+  const meter = await frame(page, 'html');
+  const second = meter.locator('meter-bar').nth(1);
+  await second.locator('button').nth(1).click();
+  assert.equal((await second.locator('output').textContent()).trim(), '10%');
+  await second.locator('button').nth(0).click();
+  assert.equal((await second.locator('output').textContent()).trim(), '0%');
+  assert.equal(await second.locator('button').nth(0).isDisabled(), true, 'clamped at zero');
+  const firstMeter = meter.locator('meter-bar').nth(0);
+  for (let i = 0; i < 6; i++) await firstMeter.locator('button').nth(1).click();
+  assert.equal((await firstMeter.locator('output').textContent()).trim(), '100%');
+  assert.equal(await firstMeter.locator('button').nth(1).isDisabled(), true, 'clamped at the maximum');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
