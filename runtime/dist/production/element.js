@@ -1130,31 +1130,22 @@ function routeChildren(host, context, slots, tag) {
 // `checked={done}` with clicks.
 const LIVE = new Set(['input.value', 'textarea.value', 'select.value', 'input.checked', 'option.selected']);
 
-/**
- * Whether someone has already changed a server-rendered control: it no longer shows the default
- * the server's HTML gave it (a box ticked, a field typed in, another option picked) before the
- * element started.
- */
-function touched(node, name) {
-  if (name === 'checked') return node.checked !== node.defaultChecked;
-  if (name === 'selected') return node.selected !== node.defaultSelected;
-  if (node.localName === 'select') return [...node.options].some((option) => option.selected !== option.defaultSelected);
-  return node.value !== node.defaultValue;
-}
+// Changed by someone before the element started: no longer the server's default.
+const touched = (n, k) => (n.options ? [...n.options].some((o) => o.selected !== o.defaultSelected) : n[k] !== n[`default${k[0].toUpperCase()}${k.slice(1)}`]);
 
 function bindAttribute(part, node, hydrating = false) {
   const name = part.attribute;
   // For live state: the last value written, so the property is written only when the bound
   // value changes (what the user typed stays until then).
   let written;
-  // Taking over server HTML: a control someone already used keeps what they did (a tick, typed
-  // text, a choice), as it keeps typing later. The bound value applies once it changes.
-  let keep = hydrating && LIVE.has(`${node.localName}.${name}`) && touched(node, name);
+  // Server HTML someone already used keeps what they did until the bound value changes.
+  const live = LIVE.has(`${node.localName}.${name}`);
+  let keep = hydrating && live && touched(node, name);
   effect(() => {
     const value = $r(part.value());
     if (keep) {
       keep = false;
-      written = part.boolean ? value : value == null ? '' : String(value);
+      written = value;
       return;
     }
     // Another library's custom element: a property when it has one (React 19's rule).
@@ -1169,14 +1160,14 @@ function bindAttribute(part, node, hydrating = false) {
       }
       // A control's live state is its property (the attribute is only the default once the
       // user has touched it).
-      if (LIVE.has(`${node.localName}.${name}`)) {
+      if (live) {
         if (value !== written) node[name] = written = value;
         return;
       }
       node.toggleAttribute(name, value);
       return;
     }
-    if (LIVE.has(`${node.localName}.${name}`)) {
+    if (live) {
       const text = value == null ? '' : String(value);
       if (text !== written) {
         // Unchanged text isn't written: that would move the caret and lose a selection.
@@ -1184,7 +1175,7 @@ function bindAttribute(part, node, hydrating = false) {
         written = text;
         // A <select>'s options may come from a list inside it that renders after this part:
         // until the option exists the value doesn't take, so set it again once they're there.
-        if (node.localName === 'select' && node.value !== text) {
+        if (node.options && node.value !== text) {
           queueMicrotask(() => {
             if (written === text && node.value !== text) node.value = text;
           });

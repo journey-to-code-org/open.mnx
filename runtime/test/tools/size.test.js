@@ -24,12 +24,14 @@ const BUDGETS = {
   // 120 B more, fits within it. The faster Signals core — getPending() in O(pending), nodes in
   // private fields, lazy arrays and children, about 420 B — took it to 15.75 KB, and rows put on
   // the page without markers, cloned from a copy already in the document, with text written in
-  // place, about 100 B, to 16 KB.)
-  'src/index.js': { gzip: 16 * 1024 },
+  // place, about 100 B, to 16 KB. Keeping what someone did to a form before the element started,
+  // about 90 B, to 16.25 KB.)
+  'src/index.js': { gzip: 16.25 * 1024 },
   // The production build (the `production` export condition): the same, without hot reloading
   // (12.5 KB until 3.2, 13 KB until 4.2, 13.5 KB until `animate`, 14 KB until the list work,
-  // 14.25 KB until the faster Signals core, 14.75 KB until rows without markers).
-  'dist/production/index.js': { gzip: 15 * 1024 },
+  // 14.25 KB until the faster Signals core, 14.75 KB until rows without markers, 15 KB until
+  // form input kept through hydration).
+  'dist/production/index.js': { gzip: 15.25 * 1024 },
   // An app that only uses Signals and effects.
   'src/effect.js': { gzip: 4 * 1024 },
   // `animate`'s leave() and glide(), loaded only by components that animate.
