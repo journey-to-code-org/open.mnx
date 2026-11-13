@@ -247,10 +247,14 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   let source = null;
   let open = false;
   let retry = null;
+  // The live stream's secret for this tab's peer id (its `hello`): presence and signals sent as
+  // this peer carry it, and a reconnect presents it to keep the peer id.
+  let key = '';
   const listen = () => {
     if (!live || typeof EventSource === 'undefined' || stopped) return;
-    source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}${scoped}`);
+    source = new EventSource(`${base}/live?since=${encodeURIComponent(cursor)}&peer=${encodeURIComponent(peerId())}${key ? `&key=${key}` : ''}${scoped}`);
     source.addEventListener('open', () => (open = true));
+    source.addEventListener('hello', (event) => (key = JSON.parse(event.data).key ?? ''));
     source.addEventListener('changes', (event) => apply(JSON.parse(event.data)));
     source.addEventListener('presence', (event) => {
       const message = JSON.parse(event.data);
@@ -281,7 +285,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
             fetch(`${base}/signal`, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ room, from: peerId(), to, data }),
+              body: JSON.stringify({ room, from: peerId(), to, data, key }),
             }).catch(() => {}),
         })
       : null;
@@ -291,7 +295,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
     fetch(`${base}/presence`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(message),
+      body: JSON.stringify({ ...message, key }),
       keepalive: message.state === null, // a leave on pagehide still gets there
     }).catch(() => {});
   });

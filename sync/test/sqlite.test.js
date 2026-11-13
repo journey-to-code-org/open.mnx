@@ -51,7 +51,7 @@ test('the live stream sends a backlog longer than one page before anything live'
   const reader = response.body.getReader();
   let text = '';
   while ((text.match(/event: changes/g) ?? []).length < 3) text += new TextDecoder().decode((await reader.read()).value);
-  const values = [...text.matchAll(/^data: (.*)$/gm)].flatMap(([, data]) => JSON.parse(data).changes.map((c) => c.value));
+  const values = [...text.matchAll(/^event: changes\ndata: (.*)$/gm)].flatMap(([, data]) => JSON.parse(data).changes.map((c) => c.value));
   assert.deepEqual(values, [0, 1, 2, 3, 4]);
   await reader.cancel();
   log.close();

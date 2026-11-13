@@ -8,7 +8,7 @@ const change = (field, value, clock, key = 'o1') => ({ collection: 'orders', key
 /** A device whose clock runs 30 s ahead of the server's: inside maxSkew, so its changes are taken. */
 const AHEAD = `${String(Date.now() + 30_000).padStart(15, '0')}-00003-fast`;
 
-async function* events(response) {
+async function* events(response, keys = []) {
   const reader = response.body.getReader();
   let text = '';
   for (;;) {
@@ -17,7 +17,8 @@ async function* events(response) {
     const block = text.slice(0, at);
     text = text.slice(at + 2);
     const event = /^event: (\w+)/m.exec(block)?.[1];
-    if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
+    if (event === 'hello') keys.push(JSON.parse(/^data: (.*)$/m.exec(block)[1]).key); // the stream's key for its peer id
+    else if (event) yield { event, data: JSON.parse(/^data: (.*)$/m.exec(block)[1]) };
     if (event === undefined && block.startsWith(':')) continue;
   }
 }
