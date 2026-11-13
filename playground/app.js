@@ -340,7 +340,13 @@ function readPage(markup, meta) {
 }
 
 const document_ = (body, script) => `<!doctype html><meta charset="utf-8">
-<style>:root { color-scheme: light dark; } body { margin: 0.75rem; font: 15px system-ui, sans-serif; background: Canvas; color: CanvasText; }</style>
+<style>
+/* Controls keep their light defaults (the examples style buttons white and leave the text colour
+   alone), so the frame stays light-scheme; the page's own colours follow the playground's theme. */
+:root { color-scheme: light; }
+body { margin: 0.75rem; font: 15px system-ui, sans-serif; background: #ffffff; color: #1c2030; }
+@media (prefers-color-scheme: dark) { body { background: #12141b; color: #e8eaf2; } }
+</style>
 <script type="importmap">${importMap()}</script>
 <body>${body}</body>
 <script type="module">
