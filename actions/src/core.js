@@ -48,12 +48,16 @@ export function createActionsCore({ routes, client = null, origins = [], onError
     return origin === new URL(request.url).origin || origins.includes(origin);
   };
 
-  /** The page to go back to: the referring page on this origin, else the site root. */
+  /**
+   * The page to go back to: the referring page on this origin, else the site root. A path that
+   * starts with `//` (from `https://site//evil.example/`, or `/\evil.example/`) is protocol-relative
+   * in a Location header, so it's written with a single leading slash: it stays on this site.
+   */
   const back = (request) => {
     const referer = request.headers.get('referer');
     try {
       const url = new URL(referer, request.url);
-      if (url.origin === new URL(request.url).origin) return url.pathname + url.search;
+      if (url.origin === new URL(request.url).origin) return '/' + (url.pathname + url.search).replace(/^\/+/, '');
     } catch {}
     return '/';
   };
