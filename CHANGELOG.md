@@ -2,7 +2,9 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.11.0 — 2026-11-13
+
+`@zubra/server` says when part of a component's server HTML is left for the browser, so a page that's empty without JavaScript doesn't go unnoticed.
 
 ### Added
 
