@@ -13,8 +13,9 @@
 # Windows (x64) and attaches the archives with a SHA256SUMS file, so servers written in anything
 # can run `zubra serve` without Node or Rust.
 #
-# Pushes that don't change the version do nothing. It can be run again from the Actions tab: npm
-# packages already published are skipped, and the release step only runs while the tag is missing.
+# Pushes that don't change the version do nothing. It can be run again from the Actions tab, on main
+# only (a run from another branch publishes nothing): npm packages already published are skipped,
+# and the release step only runs while the tag is missing.
 # Everything is built from, and tagged on, the commit that set the version, not the commit that
 # triggered the run: when a release fails partway and a later push finishes it, the packages, the
 # .vsix and the tag still all come from the release itself.
@@ -48,6 +49,10 @@ permissions: {}
 jobs:
   release:
     name: Publish and release
+    # Only from main. A manual run from another branch would otherwise publish that branch: the
+    # "commit that set the version" is looked up along whatever was checked out, and npm and the
+    # Marketplace trust this workflow file, not the branch it runs on.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write # the tag and the release
@@ -88,7 +93,9 @@ jobs:
       # Before publishing anything: a release can't go out without its notes.
       - name: Release notes
         if: steps.version.outputs.new == 'true'
-        run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" > "$RUNNER_TEMP/notes.md"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/release-notes.mjs "$VERSION" > "$RUNNER_TEMP/notes.md"
       # Still before publishing anything: the tag, the step a token can be refused. A tag already on
       # the release commit (a re-run) is fine; one on another commit stops the release.
       - name: Tag the release commit
