@@ -205,6 +205,163 @@ const EXAMPLES = {
 </newsletter-signup>
 `,
   },
+  forms: {
+    label: 'A form control (forms)',
+    page: '<form>\n  <text-field name="name" label="Name" required minlength="3"></text-field>\n  <button type="reset">Reset</button>\n</form>',
+    source: `<!--
+  A text field that is a form control. Its value is submitted under its \`name\`, it validates
+  with the form, and a reset returns it to where it started.
+  @fires valuechange - The text changed; \`detail\` is the new text.
+-->
+<script>
+  import { validity, id, onFormReset } from '@zubra/runtime'
+  const problemId = id()
+  let touched = false
+  const problem = required && value.trim() === '' ? 'Enter a name' : value.trim().length < minlength ? 'At least ' + minlength + ' letters' : ''
+  validity(() => problem)
+  onFormReset(() => (touched = false))
+</script>
+<style>
+  :host { display: grid; gap: 0.35rem; max-width: 18rem; font: 15px system-ui, sans-serif; }
+  label { display: grid; gap: 0.3rem; font-weight: 600; }
+  input { font: inherit; font-weight: 400; padding: 0.5rem 0.65rem; border: 1px solid #c9ced8; border-radius: 0.45rem; background: #ffffff; color: #1c2030; }
+  input:focus-visible { outline: 2px solid #4f5df5; outline-offset: 1px; }
+  input[aria-invalid=true] { border-color: #c62f3f; }
+  .error { min-height: 1.25em; font-size: 0.85rem; color: #c62f3f; }
+</style>
+<text-field form-associated name="name" value:model={''} required={false} minlength={0} label="Name">
+  <label>
+    {label}
+    <input value={value} aria-invalid={touched && problem ? 'true' : 'false'} aria-describedby={problemId}
+           oninput={(event) => (value = event.target.value)} onblur={() => (touched = true)}>
+  </label>
+  <span id={problemId} class="error">{touched ? problem : ''}</span>
+</text-field>
+`,
+  },
+  async: {
+    label: 'Data that loads (async)',
+    page: '<quote-card></quote-card>',
+    source: `<!--
+  Data that loads. \`resource()\` runs its function, and \`<zb-await>\` shows the pending, loaded and
+  failed states. \`keep\` leaves the last quote on screen while the next one loads.
+-->
+<script>
+  import { resource } from '@zubra/runtime'
+  const QUOTES = ['Small steps add up.', 'Ship the boring version first.', 'Measure before you optimise.']
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms))
+  let turn = 0
+  const quote = resource(async () => {
+    const index = turn
+    await wait(700)
+    return QUOTES[index % QUOTES.length]
+  })
+  function next() {
+    turn++
+    quote.refresh()
+  }
+</script>
+<style>
+  :host { display: grid; gap: 0.6rem; max-width: 22rem; font: 15px system-ui, sans-serif; }
+  blockquote { margin: 0; padding: 0.25rem 0 0.25rem 0.9rem; border-left: 3px solid #4f5df5; font-size: 1.1rem; }
+  .pending { margin: 0; color: #667085; }
+  button { justify-self: start; font: inherit; padding: 0.35rem 0.8rem; border: 1px solid #c9ced8; border-radius: 0.45rem; background: #ffffff; color: #1c2030; cursor: pointer; }
+</style>
+<quote-card>
+  <zb-await value={quote} keep>
+    <zb-pending><p class="pending">Fetching a quote…</p></zb-pending>
+    <zb-then as="text"><blockquote>{text}</blockquote></zb-then>
+    <zb-catch as="error"><p class="pending">Couldn't load it: {error.message}</p></zb-catch>
+  </zb-await>
+  <button type="button" onclick={next}>Another</button>
+</quote-card>
+`,
+  },
+  events: {
+    label: 'Events and model props (events)',
+    page: '<star-rating label="Rate" value="3"></star-rating>\n<star-rating label="Empty"></star-rating>',
+    source: `<!--
+  A star rating. Its \`value\` is a two-way model prop, so assigning it fires \`valuechange\` with the
+  new number in \`detail\`. Clicking a star or pressing the arrow keys changes it. \`Clear\` also fires
+  a \`clear\` event of its own.
+  @fires valuechange - The rating changed; \`detail\` is the new number of stars.
+  @fires clear - The rating was cleared; \`detail\` is 0.
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+  const stars = [1, 2, 3, 4, 5].slice(0, max)
+  let hovered = null
+  const shown = hovered ?? value
+  function nudge(by) {
+    value = Math.min(max, Math.max(0, value + by))
+  }
+  function clear() {
+    value = 0
+    emit('clear', 0)
+  }
+</script>
+<style>
+  :host { display: inline-flex; align-items: center; gap: 0.6rem; font: 15px system-ui, sans-serif; }
+  .stars { display: inline-flex; border-radius: 0.3rem; }
+  .stars:focus-visible { outline: 2px solid #4f5df5; outline-offset: 2px; }
+  button { font-size: 1.5rem; line-height: 1; padding: 0 0.1rem; border: 0; background: none; cursor: pointer; color: #c9ced8; }
+  button.lit { color: #e0a100; }
+  output { min-width: 4.5rem; color: #667085; font-variant-numeric: tabular-nums; }
+  .clear { font: inherit; font-size: 0.85rem; padding: 0.2rem 0.5rem; border: 1px solid #c9ced8; border-radius: 0.4rem; background: #ffffff; color: #1c2030; }
+</style>
+<star-rating value:model={0} max={5} label="Rate">
+  <div class="stars" tabindex="0" role="group" aria-label={label} onkeydown.up={() => nudge(1)} onkeydown.down={() => nudge(-1)}>
+    <zb-each items={stars} as="star" key={star}>
+      <button type="button" aria-label={star + ' of ' + max} class:lit={star <= shown}
+              onclick={() => (value = star)} onmouseenter={() => (hovered = star)} onmouseleave={() => (hovered = null)}>★</button>
+    </zb-each>
+  </div>
+  <output>{value} of {max}</output>
+  <button type="button" class="clear" onclick={clear}>Clear</button>
+</star-rating>
+`,
+  },
+  typescript: {
+    label: 'Typed props (TypeScript)',
+    page: '<meter-bar label="Upload" value="40"></meter-bar>\n<meter-bar label="Empty" size="lg"></meter-bar>',
+    source: `<!--
+  TypeScript in a component. \`declare const\` types a prop whose default doesn't say enough (\`value\`
+  is a number or null), an enum names the sizes, and the types are erased from the output.
+  @fires valuechange - The value changed; \`detail\` is the new number, or null.
+-->
+<script lang="ts">
+  export enum Size { Small = 'sm', Medium = 'md', Large = 'lg' }
+  declare const value: number | null
+  declare const size: Size
+  const MAX: number = 100
+  const heights: Record<Size, string> = { [Size.Small]: '0.4rem', [Size.Medium]: '0.75rem', [Size.Large]: '1.25rem' }
+  const percent: number = value == null ? 0 : Math.round((Math.min(value, MAX) / MAX) * 100)
+  const text: string = value == null ? 'No value' : percent + '%'
+  function bump(by: number): void {
+    value = Math.min(MAX, Math.max(0, (value ?? 0) + by))
+  }
+</script>
+<style>
+  :host { display: grid; gap: 0.4rem; width: 16rem; font: 15px system-ui, sans-serif; }
+  .track { overflow: hidden; border-radius: 999px; background: #e4e7ec; }
+  .fill { height: 100%; background: #4f5df5; transition: width 0.2s; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+  button { font: inherit; padding: 0.2rem 0.6rem; border: 1px solid #c9ced8; border-radius: 0.4rem; background: #ffffff; color: #1c2030; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  output { color: #667085; font-variant-numeric: tabular-nums; }
+</style>
+<meter-bar value:model={null} size="md" label="Progress">
+  <div class="track" role="progressbar" aria-label={label} aria-valuemin="0" aria-valuemax={MAX} aria-valuenow={percent} style:height={heights[size]}>
+    <div class="fill" style:width={percent + '%'}></div>
+  </div>
+  <div class="row">
+    <output>{text}</output>
+    <button type="button" onclick={() => bump(-10)} disabled={value == null || value <= 0}>−10</button>
+    <button type="button" onclick={() => bump(10)} disabled={value === MAX}>+10</button>
+  </div>
+</meter-bar>
+`,
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -341,11 +498,13 @@ function readPage(markup, meta) {
 
 const document_ = (body, script) => `<!doctype html><meta charset="utf-8">
 <style>
-/* Controls keep their light defaults (the examples style buttons white and leave the text colour
-   alone), so the frame stays light-scheme; the page's own colours follow the playground's theme. */
-:root { color-scheme: light; }
-body { margin: 0.75rem; font: 15px system-ui, sans-serif; background: #ffffff; color: #1c2030; }
-@media (prefers-color-scheme: dark) { body { background: #12141b; color: #e8eaf2; } }
+/* The frame follows the playground's scheme and has no background of its own, so the preview pane
+   shows through. Form controls stay light (white, dark text), as the examples style them. */
+:root { color-scheme: light dark; }
+input, button, select, textarea { color-scheme: light; }
+html, body { background: transparent; }
+body { margin: 0; padding: 1rem 1.1rem; font: 15px system-ui, sans-serif; color: #1c2030; }
+@media (prefers-color-scheme: dark) { body { color: #e8eaf2; } }
 </style>
 <script type="importmap">${importMap()}</script>
 <body>${body}</body>
@@ -517,7 +676,18 @@ function showTab(name) {
 
 async function main() {
   const select = $('#example');
-  for (const [key, example] of Object.entries(EXAMPLES)) select.add(new Option(example.label, key));
+  // The picker's groups; an example listed in none of them is left out of the picker.
+  const GROUPS = [
+    ['Start here', ['counter', 'list', 'conditions', 'slots', 'spread']],
+    ['Forms and data', ['forms', 'async', 'actions', 'sync']],
+    ['Events and types', ['events', 'typescript']],
+  ];
+  for (const [title, keys] of GROUPS) {
+    const group = document.createElement('optgroup');
+    group.label = title;
+    for (const key of keys) if (Object.hasOwn(EXAMPLES, key)) group.append(new Option(EXAMPLES[key].label, key));
+    select.append(group);
+  }
 
   let initial = EXAMPLES.counter;
   // #example=<name> opens one of the examples (the guide links to them this way).
