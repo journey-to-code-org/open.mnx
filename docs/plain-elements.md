@@ -60,9 +60,9 @@ Each module holds only what its component uses, so plain output is small:
 | a small element (toggle-switch, quantity-stepper) | about 2.2 KB |
 | with lists, a ref and a form value (tag-input) | about 3.7 KB |
 | with slots (accordion-panel) | about 3.5 KB |
-| `@zubra/runtime`, shared by every component on the page | about 13 KB, plus 1–2 KB per component |
+| `@zubra/runtime`, shared by every component on the page | about 15 KB, plus 1–2 KB per component |
 
-(Minified with esbuild, then `gzip -9`.) Each plain element carries its own copy of the helpers it uses. For a handful of components, plain output is smaller; past that, the shared runtime is. Use plain output to read what a component does, to hand someone one file, to add a component to a page you don't build, or to publish a component with no dependencies. Use `--emit js` for an app, and for server-rendered pages.
+(Minified with esbuild, then `gzip -9`. The runtime's figure is its production build in a bundle, which `runtime/test/tools/size.test.js` holds to 15.25 KB; served file by file by `@zubra/server`, with no bundler, it is about 18 KB.) Each plain element carries its own copy of the helpers it uses. For a handful of components, plain output is smaller; past that, the shared runtime is. Use plain output to read what a component does, to hand someone one file, to add a component to a page you don't build, or to publish a component with no dependencies. Use `--emit js` for an app, and for server-rendered pages.
 
 A component written as JSX (`.zb.jsx`, `.zb.tsx`) reads the same way: its script is written out as `zubra convert --as zubra` would write it, with props as `element.name` and state as `name.value`, and its text keeps JSX's whitespace rule.
 

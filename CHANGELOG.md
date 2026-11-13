@@ -2,6 +2,21 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **`@zubra/server` runs under a Content-Security-Policy without `'unsafe-inline'`** (#216). `page.finish()` wrote an inline `<style>`, an import map and an inline module script, and such a policy refuses all three. Two ways, for two kinds of site:
+  - `zubra.page({ nonce })`, where each response has a nonce: it goes on every inline `<style>` and `<script>` the page writes, a streamed prop's scripts included. `zubra.head(names, { nonce })`, `zubra.scripts(names, { nonce })` and `zubra.importMap({ nonce })` take it too. A value that isn't base64 is refused.
+  - `createZubra({ inline: false })`, for a static site: a `<link rel="stylesheet">` per component (`/_zubra/components/<name>.css`, served by `handle()`/`fetch()` and written by `writeAssets()`), each module a `<script type="module" src>`, and no import map. The modules are served and written with their imports of `@zubra/runtime`, `@zubra/sync` and `imports` resolved to what the map would have said, a component's plain `.js` modules and the runtime's and Sync's own files included. A prop given as a promise still needs the nonce. `@zubra/server/edge` takes both options.
+  - Not covered: what a component's own markup has inline. A shadow-DOM component's declarative shadow root carries its `<style>`, so under `style-src 'self'` it is styled once its element starts, not before; `style:` bindings are inline styles.
+
+### Fixed
+
+- **`--runtime` (the `runtime` compile option) moves the script's own `@zubra/runtime` imports too** (#217). Only the compiler's imports were rewritten, so a component with `import { hydrated } from '@zubra/runtime'` still had a bare specifier in its output and needed an import map anyway. Now `@zubra/runtime` becomes the given module, and `@zubra/runtime/primitives` the file beside it (`/assets/zubra/runtime/primitives.js`) or the entry under it. The default leaves the script's imports as written.
+- **A `class` on the host tag is warned about** (#218). `<welding-estimator class="welding-tool">` declares a prop named `class` whose default is the class, so no element got it: not in the server's HTML, not in the browser, and the script can't read a prop named `class` either. `zubra check`, the compile and the editor now say so, and what to do: style the element by its tag (or `:host`), and leave `class` to the page that uses it. Nothing about what compiles changes.
+- **The docs' runtime size is the current one** (#219): about 15 KB bundled (the size test's budget is 15.25 KB), where `docs/plain-elements.md`, the README and an example still said 13 KB; and what `@zubra/server` serves with no bundler, about 18 KB since 5.14.0 minified it.
+
 ## 5.14.0 — 2026-11-13
 
 The runtime a server sends is half the size, components' types reach `.ts` files in the editor, and the security audit's findings are fixed.
