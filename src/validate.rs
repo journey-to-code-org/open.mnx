@@ -133,6 +133,44 @@ fn omit_unsafe(attribute: &str, value: &str) {
     });
 }
 
+/// Note a spread key left out of the HTML because it can't be an attribute (or CSS property)
+/// name: it's a value's key, maybe a user's, and written raw it would be markup.
+fn omit_name(what: &str, key: &str) {
+    let start: String = key.chars().take(24).collect();
+    let more = if key.chars().count() > 24 { "…" } else { "" };
+    OMITTED.with(|omitted| {
+        omitted.borrow_mut().push(format!(
+            "left the spread's key `{start}{more}` out of the HTML: it isn't {what}"
+        ));
+    });
+}
+
+/// An attribute name a spread may write: a letter, `_` or `:` first, then letters, digits and
+/// `_ . : -` (XML's names, which every HTML attribute fits).
+fn is_attribute_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_' || first == ':')
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
+}
+
+/// A CSS property name a spread's `style` may write: a custom property (`--x`) or letters and
+/// hyphens after a letter.
+fn is_css_property_name(name: &str) -> bool {
+    if let Some(custom) = name.strip_prefix("--") {
+        return !custom.is_empty()
+            && custom
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    }
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
 /// What renders since the last call left out (see `omit_unsafe`), emptying the list.
 pub fn take_omitted() -> Vec<String> {
     OMITTED.with(|omitted| std::mem::take(&mut *omitted.borrow_mut()))
@@ -2372,6 +2410,10 @@ impl Context<'_> {
                 _ if lower.starts_with("aria-") || lower.starts_with("data-") => key.clone(),
                 _ => lower.clone(),
             };
+            if !is_attribute_name(&name) {
+                omit_name("an attribute name", &key);
+                continue;
+            }
             if name == "style" {
                 let Value::Object(properties) = value else {
                     if value.is_null() || value == Value::Bool(false) {
@@ -2392,6 +2434,10 @@ impl Context<'_> {
                     } else {
                         kebab_case(&property)
                     };
+                    if !is_css_property_name(&css) {
+                        omit_name("a CSS property name", &property);
+                        continue;
+                    }
                     if own.contains(&format!("style:{css}")) {
                         continue;
                     }

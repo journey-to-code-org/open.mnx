@@ -402,3 +402,40 @@ fn of_two_spreads_the_later_one_wins_as_in_the_browser() {
     let html = compile_html_with(&source, "page.zb", "{}", "{}", &tag_loader).unwrap();
     assert!(html.contains("<b>own</b>"), "{html}");
 }
+
+#[test]
+fn a_spread_key_that_isn_t_a_name_is_left_out_not_written_as_markup() {
+    // Security audit Z3: keys come from a value (maybe a user's), and were written raw.
+    let source = r#"<x-link attrs={{}}><a {...attrs}>go</a></x-link>"#;
+    let props = r#"{ "attrs": {
+        "title": "kept",
+        "x onmouseover=alert(1) y": "1",
+        "a\"><script>alert(2)</script>": "1",
+        "data-ok": "yes",
+        "style": { "color": "blue", "color:red;background:url(//evil)": "1", "--brand": "green", "--x;y": "1" }
+    } }"#;
+    let html = compile(source, props).unwrap();
+    // The host carries its props as escaped JSON; the element the spread writes is what matters.
+    let link = &html[html.find("<a ").expect("the link")..];
+    assert!(!link.contains("onmouseover"), "{link}");
+    assert!(!link.contains("<script>"), "{link}");
+    assert!(!link.contains("evil"), "{link}");
+    assert!(!link.contains("--x"), "{link}");
+    assert!(
+        html.contains(r#"<a title="kept" data-ok="yes" style="color: blue; --brand: green">go</a>"#),
+        "{html}"
+    );
+}
+
+#[test]
+fn every_html_attribute_name_a_spread_writes_still_passes() {
+    let source = r#"<script>
+  const attrs = { "aria-label": "a", "data-x.y_z": "b", "xml:lang": "en", "_private": "c", tabindex: 0 }
+</script>
+<x-link><a {...attrs}>go</a></x-link>"#;
+    let html = compile(source, "{}").unwrap();
+    assert!(
+        html.contains(r#"aria-label="a" data-x.y_z="b" xml:lang="en" _private="c" tabindex="0""#),
+        "{html}"
+    );
+}
