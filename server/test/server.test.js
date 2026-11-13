@@ -528,3 +528,69 @@ test("a 'use collection' component without @zubra/sync installed says what to in
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('only the plain modules a browser module imports are served, never what a server function imports (audit Z1)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-z1-'));
+  const outside = mkdtempSync(join(tmpdir(), 'zubra-z1-outside-'));
+  try {
+    writeFileSync(join(dir, 'secret.js'), "export const SECRET = 'sk_live_123';\n");
+    writeFileSync(join(dir, 'theme.js'), "import { shade } from './colors/shade.js';\nexport const theme = shade('dark');\n");
+    mkdirSync(join(dir, 'colors'));
+    writeFileSync(join(dir, 'colors', 'shade.js'), 'export const shade = (name) => `${name}!`;\n');
+    writeFileSync(join(dir, 'later.js'), 'export const later = 1;\n');
+    writeFileSync(join(dir, 'unused.js'), 'export const unused = 1;\n');
+    mkdirSync(join(dir, '.private'));
+    writeFileSync(join(dir, '.private', 'keys.js'), "export const key = 'k';\n");
+    writeFileSync(join(outside, 'passwd.js'), "export const root = 'x';\n");
+    symlinkSync(join(outside, 'passwd.js'), join(dir, 'linked.js'));
+    writeFileSync(join(dir, 'order-form.zb'), `<script>
+  import { SECRET } from './secret.js'
+  import { theme } from './theme.js'
+  const load = () => import('./later.js')
+  export async function place(form) {
+    'use server'
+    return { ok: SECRET.length > 0 }
+  }
+</script>
+<order-form>
+  <form action={place}><button onclick={load}>Order {theme}</button></form>
+</order-form>
+`);
+    const zubra = createZubra({ components: dir });
+    // null: not the server's to answer (the app's own 404).
+    const status = async (path) => (await zubra.fetch(new Request(`http://x/_zubra/components/${path}`)))?.status ?? 404;
+    const component = await (await zubra.fetch(new Request('http://x/_zubra/components/order-form.js'))).text();
+    assert.doesNotMatch(component, /secret\.js|sk_live/, "the browser module doesn't import it");
+    assert.equal(await status('secret.js'), 404, "what only a 'use server' function imports stays on the server");
+    assert.equal(await status('theme.js'), 200, 'a module the browser imports');
+    assert.equal(await status('colors/shade.js'), 200, 'and what that imports');
+    assert.equal(await status('later.js'), 200, 'and a dynamic import()');
+    assert.equal(await status('unused.js'), 404, 'nothing imports it');
+    assert.equal(await status('.private/keys.js'), 404, 'a hidden folder');
+    assert.equal(await status('linked.js'), 404, 'a link out of the folder');
+    assert.equal(await status('%2e%2e/x.js'), 404);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('a link out of the folder is refused even when a browser module imports it (audit Z1)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-z1-'));
+  const outside = mkdtempSync(join(tmpdir(), 'zubra-z1-outside-'));
+  try {
+    writeFileSync(join(outside, 'elsewhere.js'), 'export const x = 1;\n');
+    symlinkSync(join(outside, 'elsewhere.js'), join(dir, 'linked.js'));
+    writeFileSync(join(dir, 'link-user.zb'), `<script>
+  import { x } from './linked.js'
+</script>
+<link-user><p>{x}</p></link-user>
+`);
+    const zubra = createZubra({ components: dir });
+    assert.match(await (await zubra.fetch(new Request('http://x/_zubra/components/link-user.js'))).text(), /linked\.js/);
+    assert.equal((await zubra.fetch(new Request('http://x/_zubra/components/linked.js'))).status, 404);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});

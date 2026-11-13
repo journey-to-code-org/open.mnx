@@ -65,6 +65,37 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return response.output;
   };
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
+  /**
+   * The plain `.js` modules in the components folder that the browser imports: those a
+   * component's browser module imports by relative path, and those they import in turn. Paths
+   * relative to the folder. A module only a `'use server'` function imports isn't among them.
+   */
+  const browserModules = () => once('browser-modules', () => {
+    const found = new Set();
+    const queue = [];
+    const add = (from, specifier) => {
+      const path = joinPath(from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '', specifier);
+      if (path.endsWith('.js') && !found.has(path)) {
+        found.add(path);
+        queue.push(path);
+      }
+    };
+    for (const name of files.keys()) {
+      let code;
+      try {
+        code = js(name);
+      } catch {
+        continue; // a component that doesn't compile imports nothing
+      }
+      for (const specifier of relativeImports(code)) add(name, specifier);
+    }
+    while (queue.length) {
+      const path = queue.shift();
+      const module = localModule(path);
+      if (module) for (const specifier of relativeImports(String(module.body))) add(path, specifier);
+    }
+    return found;
+  });
   const js = (name) => once(`js:${name}`, () => {
     const path = pathOf(name);
     const response = request({ emit: 'js', runtime: '@zubra/runtime', devtools, path, files: sourcesOf(path) });
@@ -98,7 +129,12 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
       const name = rest.slice('components/'.length, -3);
       // A plain module a component imports (`./theme.js`): the host serves it from the
       // components folder, as it is.
-      if (!files.has(name)) return localModule(rest.slice('components/'.length)) ?? { status: 404, type: 'text/plain', body: 'Not found' };
+      // Only one a browser module imports, though: the folder also holds what `'use server'`
+      // functions import (keys, database code), and those stay on the server.
+      if (!files.has(name)) {
+        const path = rest.slice('components/'.length);
+        return (browserModules().has(path) && localModule(path)) || { status: 404, type: 'text/plain', body: 'Not found' };
+      }
       return { status: 200, type: TYPES['.js'], body: js(name) };
     }
     // The runtime and @zubra/sync are the host's to serve (from disk on Node, from static assets elsewhere).
@@ -577,6 +613,14 @@ function fallbackInput(attributeText, info, props) {
   if (value == null || value === false || value === '') return '';
   const text = value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value);
   return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-zb-fallback>`;
+}
+
+/** The relative specifiers (`./x.js`, `../x.js`) a module imports, statically or with `import()`. */
+export function relativeImports(code) {
+  const found = [];
+  const pattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.\.?\/[^'"\n]+)\1/g;
+  for (const match of code.matchAll(pattern)) found.push(match[2]);
+  return found;
 }
 
 /** `module` (`./x.js`, `../x.js`) joined to the folder `base`, with `.` and `..` resolved, as the
