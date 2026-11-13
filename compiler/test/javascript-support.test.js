@@ -21,7 +21,7 @@ const listed = new Set([...section('Built-ins').matchAll(/`((?:\.|[A-Z][A-Za-z]*
 // The same spellings, as the cases call them: `x.map(`, `Math.round(`, `Number(`, `parseInt(`.
 const called = new Set(SAME.flatMap((expression) => [
   ...[...expression.matchAll(/\b(Math|Object|Number|Array|String)\.([A-Za-z]+)\(/g)].map((m) => `${m[1]}.${m[2]}`),
-  ...[...expression.matchAll(/(?<![\w.])(Number|String|Boolean|parseInt)\(/g)].map((m) => m[1]),
+  ...[...expression.matchAll(/(?<![\w.])(Number|String|Boolean|parseInt|encodeURIComponent|encodeURI|decodeURIComponent|decodeURI)\(/g)].map((m) => m[1]),
   ...[...expression.replace(/\b(Math|Object|Number|Array|String)\.[A-Za-z]+\(/g, '')
     .matchAll(/[\w\])'"`]\.([a-z][A-Za-z]*)\(/g)].map((m) => `.${m[1]}`),
 ]));

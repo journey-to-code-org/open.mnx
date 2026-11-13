@@ -23,10 +23,12 @@ oxc_allocator = "0.157"
 oxc_ast = "0.157"
 oxc_ast_visit = "0.157"
 oxc_parser = "0.157"
+oxc_regular_expression = "0.157"
 oxc_semantic = "0.157"
 oxc_span = "0.157"
 oxc_str = "0.157"
 oxc_syntax = "0.157"
+regress = { version = "0.12", features = ["utf16"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 
 [workspace]

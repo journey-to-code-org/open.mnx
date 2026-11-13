@@ -18,18 +18,23 @@ The rule: only what gives the same answer on every platform, compared against V8
 
 ### Syntax
 
-Literals, arrays and objects (with spread), member and index access (with `?.`), arithmetic and `**`, comparisons (`==` and `!=` compile to strict), `!`, `&&`, `||`, `??`, `? :` with JavaScript's truthiness, `typeof`, template literals, and arrow functions: the script's own (`const money = (cents) => …`), callbacks, and block bodies made of `const` declarations and a `return`.
+Literals, arrays and objects (with spread), member and index access (with `?.`), arithmetic and `**`, comparisons (`==` and `!=` compile to strict), `!`, `&&`, `||`, `??`, `? :` with JavaScript's truthiness, `typeof`, template literals, regular expression literals (below), and arrow functions: the script's own (`const money = (cents) => …`), callbacks, and block bodies made of `const` declarations and a `return`.
 
 ### Built-ins
 
 | Kind | Evaluated on the server |
 |---|---|
 | Array methods | `.at`, `.concat`, `.every`, `.filter`, `.find`, `.findIndex`, `.findLast`, `.findLastIndex`, `.flat`, `.flatMap`, `.includes`, `.indexOf`, `.join`, `.lastIndexOf`, `.map`, `.reduce`, `.slice`, `.some`, `.toReversed`, `.toSorted`, `.toSpliced`, `.with` |
-| String methods | `.at`, `.charAt`, `.endsWith`, `.includes`, `.indexOf`, `.padEnd`, `.padStart`, `.repeat`, `.replace`, `.replaceAll`, `.slice`, `.split`, `.startsWith`, `.substring`, `.toLowerCase`, `.toUpperCase`, `.trim`, `.trimEnd`, `.trimStart` |
+| String methods | `.at`, `.charAt`, `.endsWith`, `.includes`, `.indexOf`, `.match`, `.padEnd`, `.padStart`, `.repeat`, `.replace`, `.replaceAll`, `.search`, `.slice`, `.split`, `.startsWith`, `.substring`, `.toLowerCase`, `.toUpperCase`, `.trim`, `.trimEnd`, `.trimStart` |
+| Regular expressions | `.test` |
 | Number methods | `.toFixed` |
 | Math | `Math.abs`, `Math.ceil`, `Math.floor`, `Math.max`, `Math.min`, `Math.round`, `Math.sign`, `Math.sqrt`, `Math.trunc` |
 | Object | `Object.entries`, `Object.fromEntries`, `Object.groupBy`, `Object.hasOwn`, `Object.keys`, `Object.values` |
-| Others | `Array.isArray`, `Number.isInteger`, `Boolean()`, `Number()`, `String()`, `parseInt()` |
+| Others | `Array.isArray`, `Number.isInteger`, `Boolean()`, `Number()`, `String()`, `parseInt()`, `encodeURIComponent()`, `encodeURI()`, `decodeURIComponent()`, `decodeURI()` |
+
+Regular expression literals (`/\/+$/`, `/(?<y>\d+)-(?<m>\d+)/gi`) run on an ECMAScript regex engine that matches on UTF-16 code units, as the browser does: without the `/u` flag, `/./` takes half of an emoji, and with it the whole emoji. They work with `.replace` and `.replaceAll` (with `$&`, `` $` ``, `$'`, `$1`–`$99`, `$<name>` and `$$` in the replacement, or an arrow function), `.split` (with a limit, and capturing groups in the result), `.match` with `/g`, `.search` and `.test` without `/g`.
+
+A backtracking regex engine can take exponential time on some patterns, and a build must never hang on a component. So the server reads a pattern before running it: a repeated part that holds another repeat or a `|` (the shape of `(a+)+` or `(a|b)*`) and backreferences are left for the browser, and the text a pattern searches is limited by how many repeats it has (10,000 characters for one, a few hundred for two, fewer for more).
 
 Objects keep JavaScript's key order: index-like keys first, ascending, then the rest as written, so `Object.keys({ b: 1, 2: 2 })` is `2,b` on the server as in the browser.
 
@@ -43,7 +48,9 @@ Objects keep JavaScript's key order: index-like keys first, ascending, then the 
 | `function` expressions, destructured parameters, a callback's third argument | Outside the subset. Write `(row) => row.kg`, not `function (row) { return row.kg }`. |
 | `Map`, `Set`, iterators and iterator helpers, `BigInt`, `Map.groupBy` | The server's values are JSON, and these aren't. |
 | Infinity, NaN, `undefined` inside an object, `.flat(Infinity)` | Not JSON either. |
-| What the browser would throw on: `.with()` out of range, `Object.hasOwn(null, …)` | The browser reports the error, where you'll see it. |
+| What the browser would throw on: `.with()` out of range, `Object.hasOwn(null, …)`, `decodeURIComponent("%")`, `.replaceAll()` with a regex without `/g` | The browser reports the error, where you'll see it. |
+| Regex state and regex objects: `lastIndex`, the `/y` flag, `.test` with `/g`, a `.match` without `/g` (its array carries `index` and `groups`), `.exec`, `.matchAll`, `new RegExp()`, printing a regex | Their answers depend on state, or aren't JSON. |
+| Regex patterns that could take exponential time (`(a+)+`, `(a|b)*`, backreferences), and text longer than a pattern's limit | So a build never waits on a pattern. The browser runs them as it always would. |
 
 `zubra check --server` lists every place a component leaves for the browser. It's an error when the place is `checked`, `selected`, `value` or `disabled`, because without JavaScript the form would show and submit the wrong thing. [Server rendering, honestly](server-rendering.md) explains what renders where.
 

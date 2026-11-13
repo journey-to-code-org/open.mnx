@@ -90,7 +90,7 @@ A `.zb.jsx` / `.zb.tsx` file default-exports a function; same element, same rule
 
 ## What the server can't render
 
-The server evaluates the deterministic subset (props, arithmetic, ternaries, template literals, arrow functions defined in the script (not `function` declarations), string and array methods, `Math` except `random`, `Object.keys/values/entries`). `Date`, `Intl`, `Math.random`, `toLocaleString`, `window`, `document` and `navigator` are browser-only: put them in `onMount`, in a handler, or in a `let` set from an effect, and show a server-safe fallback. `hydrated()` is `false` on the server and `true` once the element has started, for markup that only works with JavaScript.
+The server evaluates the deterministic subset (props, arithmetic, ternaries, template literals, arrow functions defined in the script (not `function` declarations), string and array methods (with regex literals in `replace`, `split`, `match` with `/g`, `search` and `test`), `encodeURIComponent` and friends, `Math` except `random`, `Object.keys/values/entries`). `Date`, `Intl`, `Math.random`, `toLocaleString`, `window`, `document` and `navigator` are browser-only: put them in `onMount`, in a handler, or in a `let` set from an effect, and show a server-safe fallback. `hydrated()` is `false` on the server and `true` once the element has started, for markup that only works with JavaScript.
 
 ## Reference
 
