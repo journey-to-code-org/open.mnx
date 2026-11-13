@@ -59,10 +59,16 @@ test('bootstrap-devday: Bootstrap\'s classes, Sass theme and validation work wit
 
   // Registering: the picker's value comes with the form; Bootstrap's Modal shows the summary.
   await page.fill('#email', 'ines@example.com');
+  await page.evaluate(() => {
+    window.modalShown = new Promise((done) => document.querySelector('#done').addEventListener('shown.bs.modal', done, { once: true }));
+  });
   await page.click('button[type=submit]');
   await page.waitForSelector('#done.show');
   assert.equal(await page.textContent('#done-body'),
     'Inês Costa: a Supporter ticket (€249), with Modern CSS layout and Web components in any framework. Details are on their way to ines@example.com.');
+  // Bootstrap's Modal ignores hide() while it is still opening, so a click that lands during the
+  // transition leaves it open: wait for its shown event first.
+  await page.evaluate(() => window.modalShown);
   await page.click('#done .modal-footer button');
   await page.waitForSelector('#done', { state: 'hidden' });
 
