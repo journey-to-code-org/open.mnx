@@ -2,7 +2,9 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.12.0 — 2026-11-13
+
+The server answers `hasSlot`, so markup a component wraps around a used slot is in the server's HTML and works without JavaScript.
 
 ### Changed
 
