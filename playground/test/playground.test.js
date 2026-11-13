@@ -73,12 +73,13 @@ test('compiles in the page and runs the component in every preview', async () =>
 
   const kinds = await page.$$eval('[data-preview]', (els) => els.map((el) => el.dataset.preview));
   assert.deepEqual(kinds, frameworks ? ['html', 'react', 'vue'] : ['html']);
+  // The page's two elements, with their attributes as props, in every framework.
   for (const kind of kinds.slice(1)) {
     const preview = await frame(page, kind);
     await preview.waitForSelector('hello-counter output');
-    assert.equal(await preview.textContent('hello-counter output'), 'Clicks: 0', kind);
-    await preview.click('hello-counter button.more');
-    await preview.waitForFunction(() => document.querySelector('hello-counter output').textContent === 'Clicks: 1');
+    assert.deepEqual(await preview.$$eval('hello-counter output', (els) => els.map((el) => el.textContent)), ['Apples: 0', 'Clicks: 5'], kind);
+    await preview.click('hello-counter >> nth=0 >> button.more');
+    await preview.waitForFunction(() => document.querySelector('hello-counter output').textContent === 'Apples: 1');
   }
 
   // Every output, in its tab.
