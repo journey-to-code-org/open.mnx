@@ -429,6 +429,32 @@ test('stream(): the shell first, then the resolved region, hydrated in place; a 
   await page.done();
 });
 
+test('stream(): a streamed value can\'t close the script it travels in (audit Z2)', async () => {
+  const zubra = createZubra({ components });
+  const hostile = '</script><script>window.pwned = 1</script><!--';
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const failing = req.url.includes('fail');
+    const body = page.render('review-list', { heading: 'Reviews', reviews: failing ? Promise.reject(new Error(hostile)) : Promise.resolve([{ id: 1, name: hostile, stars: 5 }]) });
+    res.writeHead(200, { 'content-type': 'text/html' });
+    page.stream(layout(body)).pipe(res);
+  });
+  const text = await (await fetch(url)).text();
+  assert.doesNotMatch(text, /<script>window\.pwned/, 'the value is not markup');
+  assert.match(text, /\\u003c\/script>\\u003cscript>window\.pwned/, 'it travels escaped');
+  for (const query of ['', '?fail']) {
+    const page = await open(`${url}/${query}`);
+    await page.waitForFunction((failing) => document.querySelector(failing ? 'review-list .error' : 'review-list li'), Boolean(query));
+    assert.equal(await page.evaluate(() => window.pwned), undefined, `no script ran ${query}`);
+    const shown = await page.textContent(query ? 'review-list .error' : 'review-list li');
+    assert.ok(shown.includes('</script><script>window.pwned = 1</script>'), `shown as text ${query}: ${shown}`);
+    // A rejection is logged (its message is the error); a value isn't.
+    assert.deepEqual(page.errors, query ? [hostile] : []);
+    await page.done();
+  }
+});
+
 test('stream(): the script puts regions in place where the browser doesn\'t (a shadow root, or no out-of-order streaming)', async () => {
   const zubra = createZubra({ components });
   const url = await listen((req, res) => {

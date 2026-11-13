@@ -72,7 +72,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return needs(name, response.output);
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, '@zubra/runtime/track': `${base}/runtime/track.js`, ...syncImports, ...imports } })}</script>`;
+  const importMap = () => `<script type="importmap">${scriptJson({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, '@zubra/runtime/track': `${base}/runtime/track.js`, ...syncImports, ...imports } })}</script>`;
   const head = (names) => {
     // A component that needs a package that isn't installed fails here, while the page is built,
     // with the reason, rather than later in the browser as an unresolved import.
@@ -160,7 +160,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
         pendingRenders.push(entry);
         // Until the values arrive, the element (should it start first) holds a promise for
         // each, set before it upgrades, so its `zb-await` shows the pending content.
-        return `${named(shell, entry.names)}<script>(${HOLD_IN_BROWSER})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
+        return `${named(shell, entry.names)}<script>(${HOLD_IN_BROWSER})(${scriptJson(id)},${scriptJson(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
       get pending() {
@@ -470,10 +470,19 @@ function named(html, names) {
   return out;
 }
 
+/**
+ * JSON for inside an inline `<script>`: `<` is written `\u003c`, so no value can close the script
+ * (`</script>`) or open a comment (`<!--`), and U+2028/U+2029 are escaped for older parsers.
+ * The script reads the same values.
+ */
+export function scriptJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
 /** The chunk for one settled promise: each resolved region in a `<template for>`, and the script. */
 function swapScript(id, regions, values) {
   const templates = (regions ?? []).map((region) => `<template for="${region.name}">${region.html}</template>`).join('');
-  const script = `<script>(${SWAP_IN_BROWSER})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
+  const script = `<script>(${SWAP_IN_BROWSER})(${scriptJson(id)},${scriptJson(values)})</script>`;
   return `${templates}${script}\n`;
 }
 
