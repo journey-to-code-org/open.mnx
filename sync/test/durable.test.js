@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSyncServer } from '../src/server.js';
+import { createSyncServer, allowAnyone } from '../src/server.js';
 import { durableObjectLog } from '../src/durable-log.js';
 import { durableStorage } from './durable-storage.js';
 
@@ -8,12 +8,12 @@ const change = (field, value, clock) => ({ collection: 'tasks', key: 't1', field
 
 test('an object that restarts finds its log: same changes, same cursor, and the documents rebuilt', async () => {
   const storage = durableStorage();
-  const before = createSyncServer({ log: durableObjectLog(storage) });
+  const before = createSyncServer({ authorize: allowAnyone, log: durableObjectLog(storage) });
   await before.write('tasks', 't1', { title: 'Buy milk', done: false });
   await before.write('tasks', 't1', { done: true });
 
   // A Durable Object evicted from memory comes back with only its storage.
-  const after = createSyncServer({ log: durableObjectLog(storage) });
+  const after = createSyncServer({ authorize: allowAnyone, log: durableObjectLog(storage) });
   assert.deepEqual((await after.documents()).get('tasks', 't1'), { title: 'Buy milk', done: true });
   const pulled = await (await after.fetch(new Request('http://localhost/_zb/sync/pull?since=0'))).json();
   assert.equal(pulled.cursor, 3);

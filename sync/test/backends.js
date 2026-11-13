@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createSyncServer } from '../src/server.js';
+import { createSyncServer, allowAnyone } from '../src/server.js';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 export const binaryPath = [process.env.ZUBRA_SYNC, join(root, 'target/release/zubra-sync'), join(root, 'target/debug/zubra-sync')]
@@ -39,12 +39,12 @@ export async function startBinary(extra = []) {
 }
 
 export const backends = [
-  { name: 'JavaScript', start: async () => ({ ...createSyncServer(), close: () => {} }) },
+  { name: 'JavaScript', start: async () => ({ ...createSyncServer({ authorize: allowAnyone }), close: () => {} }) },
   ...(binaryPath
     ? [{
         name: 'binary',
         start: async () => {
-          const { base, close } = await startBinary(['--keep-alive', '200']);
+          const { base, close } = await startBinary(['--keep-alive', '200', '--open']);
           // The same fetch(request) shape, over the network.
           const fetchIt = async (request) => {
             const url = new URL(request.url);

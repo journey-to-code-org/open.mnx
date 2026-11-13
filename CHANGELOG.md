@@ -4,6 +4,17 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+## 5.9.1 — 2026-11-12
+
+A security fix for `@zubra/sync`, and faster lists and Signals. Sync used to take any change from any page: a server without `authorize` now serves reads and refuses writes from pages until it's told who may make them (`authorize`, or `allowAnyone` for a page everyone may edit), and `authorize` is told the field and value a change sets.
+
+**One behaviour change, on purpose:** an app that relied on Sync accepting every page's writes without an `authorize` now gets 403s, with a message saying what to pass. `authorize: allowAnyone` restores the old behaviour; the `zubra-sync` binary needs `--open`.
+
+### Security
+
+- **Sync takes no writes from pages until it's told who may make them.** `createSyncServer()` used to default `authorize` to allowing everything, so any visitor could push any change: in an app with prices, stock or payments in its log, that meant setting a price, marking an order paid or taking every seat. Now, without `authorize`, pages may still read, but every push, presence and signal from a page is refused with a 403 that says what to do, and the page says so once in its console. The server's own `write()` is unchanged. **To keep the old behaviour for a page everyone may edit, pass `authorize: allowAnyone`** (new export). A Durable Object (`SyncObject`) without an `authorize()` method takes reads only, and the `zubra-sync` binary takes writes only when started with `--open`.
+- **`authorize` is told what a change sets.** A `kind: 'change'` call now has `field` and `value`, so an app can keep fields, or whole collections, for the server: a page may move a card but not change its price. `authorize` must be a function (anything else throws at `createSyncServer`).
+
 ### Changed
 
 - **Lists put rows on the page with less work.** A row `zb-each` makes in the browser has no comment markers of its own: it's its block's nodes, first to last (rows the server rendered keep theirs, so hydration is unchanged). A block with no custom elements is copied into the document once and cloned for each row; one with a custom element still uses `importNode`, so the element upgrades before its props are bound. A text binding on an element holding one Text node writes that node's `.data` instead of replacing it through `textContent`, which also no longer reads the subtree to compare. In js-framework-benchmark, clear rows went from 24 to 17 ms, append rows from 152 to 114 ms and replace all rows from 125 to 110 ms (`docs/performance.md`). The size budgets went up 0.25 KB, to 16 KB and 15 KB gzipped (about 100 B).

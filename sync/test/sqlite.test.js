@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSyncServer } from '../src/server.js';
+import { createSyncServer, allowAnyone } from '../src/server.js';
 import { sqliteLog } from '../src/sqlite.js';
 
 const change = (field, value, clock) => ({ collection: 'tasks', key: 't1', field, value, clock });
@@ -16,12 +16,12 @@ test('the log survives a restart: same changes, same cursors, JSON values intact
   const path = join(dir, 'sync.db');
   try {
     const first = await sqliteLog(path);
-    const before = createSyncServer({ log: first });
+    const before = createSyncServer({ authorize: allowAnyone, log: first });
     await push(before, [change('title', 'Buy milk', '000000000000001-00000-a'), change('tags', ['x', { y: 1 }], '000000000000001-00001-a')]);
     await push(before, [change('done', true, '000000000000002-00000-b')]);
     first.close();
 
-    const after = createSyncServer({ log: await sqliteLog(path) });
+    const after = createSyncServer({ authorize: allowAnyone, log: await sqliteLog(path) });
     const all = await pull(after);
     assert.deepEqual(all.changes.map((c) => c.value), ['Buy milk', ['x', { y: 1 }], true]);
     assert.equal(all.cursor, 3);
@@ -46,7 +46,7 @@ test('the live stream sends a backlog longer than one page before anything live'
   const log = await sqliteLog();
   const paged = { append: (c) => log.append(c), after: (cursor) => log.after(cursor, 2) };
   await log.append(Array.from({ length: 5 }, (_, i) => change('n', i, `00000000000000${i}-00000-a`)));
-  const sync = createSyncServer({ log: paged });
+  const sync = createSyncServer({ authorize: allowAnyone, log: paged });
   const response = await sync.fetch(new Request('http://localhost/_zb/sync/live?since=0&peer=p1'));
   const reader = response.body.getReader();
   let text = '';
@@ -66,7 +66,7 @@ test('the binary reads and extends the same SQLite file as sqliteLog()', { skip:
     const log = await sqliteLog(path);
     await log.append([change('title', 'From Node', '000000000000001-00000-a'), change('tags', ['x', { y: 1 }], '000000000000001-00001-a')]);
     log.close();
-    const binary = await startBinary(['--db', path]);
+    const binary = await startBinary(['--db', path, '--open']);
     try {
       const pulled = await (await fetch(`${binary.base}/_zb/sync/pull?since=0`)).json();
       assert.deepEqual(pulled.changes.map((c) => c.value), ['From Node', ['x', { y: 1 }]]);

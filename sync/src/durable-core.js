@@ -7,7 +7,8 @@ import { durableObjectLog } from './durable-log.js';
 export { MOUNT };
 
 /**
- * `owner` is the object: its `authorize(…)`, if it has one, decides as `createSyncServer`'s does.
+ * `owner` is the object: its `authorize(…)`, if it has one, decides as `createSyncServer`'s does;
+ * without one, pages may read and not write.
  * `heartbeat` is shorter than on Node (2 s, not 15): a Durable Object isn't told when a page's
  * connection is cut, only that a keep-alive couldn't be written, which on workerd is the third
  * after the cut. So a crashed page's presence lingers about three keep-alives (6 s). A page that
@@ -20,7 +21,8 @@ export function syncObject(ctx, owner, { mount = MOUNT, heartbeat = 2_000, devic
     heartbeat,
     device,
     origins,
-    authorize: (asked) => (typeof owner.authorize === 'function' ? owner.authorize(asked) : true),
+    // Without an authorize of its own, the object takes reads only, as createSyncServer does.
+    authorize: typeof owner.authorize === 'function' ? (asked) => owner.authorize(asked) : undefined,
   });
   return {
     async fetch(request) {

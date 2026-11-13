@@ -117,6 +117,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
   });
 
   let timer = null;
+  let warned = false;
   const schedule = () => {
     clearTimeout(timer);
     timer = setTimeout(flush, 30);
@@ -131,7 +132,16 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ changes: sending }),
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        // A refused write is kept (it may be allowed later), but say why once: a server with no
+        // `authorize` refuses every write from pages, and a silent outbox looks like a bug.
+        if (response.status === 403 && !warned) {
+          warned = true;
+          const why = await response.json().then((body) => body?.error, () => '');
+          console.warn(`@zubra/sync: the server refused this page's changes${why ? `: ${why}` : ''}`);
+        }
+        return;
+      }
       outbox.done(sending);
     } catch {
       // Offline: the outbox stays (in localStorage too), and goes with the next flush.

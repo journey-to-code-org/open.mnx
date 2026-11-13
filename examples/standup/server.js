@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createZubra } from '@zubra/server';
-import { createSyncServer } from '@zubra/sync/server';
+import { createSyncServer, allowAnyone } from '@zubra/sync/server';
 import { sqliteLog } from '@zubra/sync/sqlite';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +20,9 @@ export const team = [
 
 export async function createApp({ db = join(here, 'standup.db'), cache = true } = {}) {
   const log = await sqliteLog(db);
-  const sync = createSyncServer({ log });
+  // Everyone who can open the board may edit any card: the team's own board on a trusted network.
+  // An app on the open internet says who may change what instead (authorize, docs/sync.md).
+  const sync = createSyncServer({ log, authorize: allowAnyone });
   // The cards start with 'use collection', so they import @zubra/sync: @zubra/server finds it in
   // node_modules, serves it, and puts it in the page's import map.
   const zubra = createZubra({ components: join(here, 'components'), cache });

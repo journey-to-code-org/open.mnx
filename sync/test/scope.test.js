@@ -1,7 +1,7 @@
 // Scope: a page asks only for what it shows, and the server can impose one (tenancy).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSyncServer, inScope, parseScope } from '../src/server.js';
+import { createSyncServer, inScope, parseScope, allowAnyone } from '../src/server.js';
 import { backends } from './backends.js';
 
 let n = 0;
@@ -89,7 +89,7 @@ for (const backend of backends) {
 
 test("the server's scope: two businesses on one log, each seeing and writing only its own", { timeout: 5000 }, async () => {
   const business = (request) => request.headers.get('x-business');
-  const sync = createSyncServer({ scope: ({ request }) => ({ seats: `${business(request)}/`, brands: [`${business(request)}`] }) });
+  const sync = createSyncServer({ authorize: allowAnyone, scope: ({ request }) => ({ seats: `${business(request)}/`, brands: [`${business(request)}`] }) });
   const garrett = { 'x-business': 'garrett-8' };
   const cumberland = { 'x-business': 'cumberland' };
   assert.equal((await push(sync, [change('seats', 'garrett-8/s12/A1', 'g')], garrett)).status, 200);

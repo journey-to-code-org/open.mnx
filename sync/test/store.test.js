@@ -2,7 +2,7 @@
 // Object. What a library of server-side rules needs: reads with no await, and a write that's in
 // the documents before it returns.
 import { test } from 'node:test';
-import { createSyncServer, memoryLog } from '../src/server.js';
+import { createSyncServer, memoryLog, allowAnyone } from '../src/server.js';
 import { sqliteLog } from '../src/sqlite.js';
 import { syncStub } from '../src/durable-stub.js';
 import { namespace } from './durable-harness.js';
@@ -25,7 +25,7 @@ for (const [name, make] of Object.entries(logs)) {
   test(`${name}: documents() and write() keep a synchronous store's contract`, async () => {
     const { log, done } = await make();
     try {
-      const sync = createSyncServer({ log });
+      const sync = createSyncServer({ authorize: allowAnyone, log });
       const store = storeOver(await sync.documents(), sync.write);
       await checkStore(store);
       await oneWinner(store);

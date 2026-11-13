@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { findCompiler } from '@zubra/server';
 import { request as forward } from 'node:http';
-import { createSyncServer } from '../src/server.js';
+import { createSyncServer, allowAnyone } from '../src/server.js';
 import { startBinary } from './backends.js';
 
 // ZUBRA_SYNC_BACKEND=binary serves /_zb/sync from the zubra-sync binary instead, behind this
@@ -40,9 +40,11 @@ const page = (body, connected = false, component = 'task-item') => `<!doctype ht
 let server;
 let browser;
 let base;
-const sync = createSyncServer();
+const sync = createSyncServer({ authorize: allowAnyone });
+// A server that was never told who may write (security audit K2): pages read, writes are refused.
+const closed = createSyncServer({ mount: '/_zb/closed' });
 before(async () => {
-  if (viaBinary) binary = await startBinary(['--keep-alive', '200']);
+  if (viaBinary) binary = await startBinary(['--keep-alive', '200', '--open']);
   server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     if (req.url.startsWith('/_zb/sync/presence')) presencePosts += 1;
@@ -68,6 +70,7 @@ before(async () => {
       upstream.on('error', () => res.destroy());
       return req.pipe(upstream);
     }
+    if (await closed.handle(req, res)) return;
     if (await sync.handle(req, res)) return;
     const js = (text) => { res.setHeader('content-type', 'text/javascript'); res.end(text); };
     const file = (dir, rest) => {
@@ -92,6 +95,7 @@ before(async () => {
     // once but finishes window.slowNextSet ms later (a change from elsewhere is that long in
     // being stored before it's shown). window.dropSets: nothing is stored (a tab closing mid-write).
     if (url.pathname === '/connected-slow') return res.end(page(`<script type="module">import { configure, indexedDBStore } from '/sync/index.js'; const store = indexedDBStore(); window.slowNext = 0; window.slowNextSet = 0; window.slowedSets = 0; const later = (ms) => new Promise((done) => setTimeout(done, ms)); configure({ store: { get: (c, k) => { const wait = window.slowNext; window.slowNext = 0; return later(wait).then(() => store.get(c, k)); }, set: (c, k, f) => { if (window.dropSets) return Promise.resolve(); const wait = window.slowNextSet; window.slowNextSet = 0; if (wait) window.slowedSets++; return store.set(c, k, f).then((r) => later(wait).then(() => r)); } } });</script><task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
+    if (url.pathname === '/closed') return res.end(page(`<task-item doc="${doc}"></task-item>`, { url: '/_zb/closed', interval: 100, live: false }));
     if (url.pathname === '/connected') return res.end(page(`<task-item doc="${url.searchParams.get('doc').replace(/\W/g, '')}"></task-item>`, true));
     if (url.pathname === '/same') return res.end(page('<task-item doc="a" class="first"></task-item><task-item doc="a" class="second"></task-item>'));
     // Connected with a scope (?scope= is the JSON connect() gets), live, polling once a minute.
@@ -704,3 +708,22 @@ test('an edit made while the document is still loading is kept, and saved', asyn
   await context.close();
 });
 
+
+test('a server with no authorize: the page still works, its edits stay here, and it says why once', { skip: viaBinary && 'the JavaScript server only' }, async () => {
+  await closed.write('tasks', 'shut1', { title: 'From the server' });
+  const context = await browser.newContext();
+  const tab = await context.newPage();
+  const warnings = [];
+  tab.on('console', (message) => message.type() === 'warning' && warnings.push(message.text()));
+  await tab.goto(`${base}/closed?doc=shut1`);
+  await ready(tab);
+  await title(tab, 'From the server');
+  await tab.fill('.title', 'Edited here');
+  await tab.waitForTimeout(700); // several flushes
+  assert.equal(await tab.inputValue('.title'), 'Edited here', 'the edit stays on this device');
+  assert.deepEqual((await (await closed.fetch(new Request('http://x/_zb/closed/pull?since=0'))).json()).changes.map((c) => c.value), ['From the server'], 'nothing from the page reached the log');
+  const refused = warnings.filter((text) => text.includes("refused this page's changes"));
+  assert.equal(refused.length, 1, `said once: ${JSON.stringify(warnings)}`);
+  assert.match(refused[0], /pass createSyncServer\(\{ authorize \}\)/);
+  await context.close();
+});
