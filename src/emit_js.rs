@@ -658,7 +658,9 @@ pub(crate) struct ChildInfo {
 /// or a region may hold content it can't name (a slot, an `zb-await`, a text-only branch).
 fn region_roots(nodes: &[ast::Node]) -> Option<Vec<String>> {
     let blank = |parts: &[ast::Part]| {
-        parts.iter().all(|part| matches!(part, ast::Part::Literal(text) if text.trim().is_empty()))
+        parts
+            .iter()
+            .all(|part| matches!(part, ast::Part::Literal(text) if text.trim().is_empty()))
     };
     let mut roots = std::collections::BTreeSet::new();
     let mut regions = false;
@@ -689,9 +691,11 @@ fn branch_roots(nodes: &[ast::Node], roots: &mut std::collections::BTreeSet<Stri
                 roots.insert(element.name.to_ascii_lowercase());
                 true
             }
-            ast::Node::If { consequent, alternate, .. } => {
-                branch_roots(consequent, roots) && branch_roots(alternate, roots)
-            }
+            ast::Node::If {
+                consequent,
+                alternate,
+                ..
+            } => branch_roots(consequent, roots) && branch_roots(alternate, roots),
             ast::Node::Each { children, .. } => branch_roots(children, roots),
             _ => false,
         };
