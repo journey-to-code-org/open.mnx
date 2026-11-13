@@ -2,6 +2,14 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.10.1 — 2026-11-13
+
+`updateComplete` waits for an element's first render when that render is itself waiting.
+
+### Fixed
+
+- **`updateComplete` resolves after the first render, also when that's delayed.** An element whose template starts with a condition (a button that's a link with `href`) and is given text before it's connected, as React and Svelte do, first checks whether that content is server markup whose markers were stripped. The check loads `remark.js` on demand, so the element renders a moment later, and `updateComplete` resolved before it had: a test that awaited it right after mounting found the element empty (Zubra UI's `action-button` and `shimmer-button`, in its React and Svelte snippet tests). It now waits for that render. The render itself still comes after the import, for the first such elements on a page.
+
 ## 5.10.0 — 2026-11-13
 
 An app and a package can each carry a copy of the same part. When an app's component and a package's share a tag (both have Zubra UI's `action-button`, say), the app's is used everywhere, instead of the server refusing both. Also: the playground's React and Vue previews render the page.

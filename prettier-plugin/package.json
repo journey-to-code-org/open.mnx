@@ -1,6 +1,6 @@
 {
   "name": "prettier-plugin-zubra",
-  "version": "5.10.0",
+  "version": "5.10.1",
   "description": "Prettier for .zb components: <script> and <style> bodies by Prettier, the template by zubra fmt",
   "license": "ISC",
   "repository": {
