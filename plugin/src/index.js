@@ -23,7 +23,7 @@
 // framework.
 import { createUnplugin } from 'unplugin';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { addProps, zubraImports } from './props.js';
 import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
@@ -212,6 +212,51 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     return value;
   }
 
+  // A package's component whose tag the app also defines (both carrying a copy of a shared part,
+  // say) is the app's: a page defines a tag once, and otherwise whichever module loaded first
+  // would win, the package's as likely as the app's. As @zubra/server does: the app's stands in
+  // for the package's everywhere, the package's own imports of it included, and if the two copies
+  // differ (comments aside) the build says so once.
+  let root = options.root ?? null;
+  let appByTag = null; // the app's components by tag, found on first need
+  const inPackage = (path) => path.split(/[\\/]/).includes('node_modules');
+  function appComponents() {
+    if (appByTag) return appByTag;
+    appByTag = new Map();
+    const walk = (dir) => {
+      let entries;
+      try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist') continue;
+        const path = resolve(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (entry.name.endsWith('.zb')) {
+          try {
+            const { tag } = interfaceOf(path);
+            if (!appByTag.has(tag)) appByTag.set(tag, path); // two of the app's: the compiler says so
+          } catch { /* a component that doesn't compile is reported where it's imported */ }
+        }
+      }
+    };
+    walk(root ?? process.cwd());
+    return appByTag;
+  }
+  const ownSource = (path) => readFileSync(path, 'utf8').replace(/<!--[\s\S]*?-->/g, '').trim();
+  const warnedStandIns = new Set();
+  /** The app's component to use in place of a package's `path`, or null. */
+  function standIn(context, path) {
+    if (!inPackage(path) || !path.endsWith('.zb')) return null;
+    let tag;
+    try { ({ tag } = interfaceOf(path)); } catch { return null; }
+    const app = appComponents().get(tag);
+    if (!app || app === path) return null;
+    if (!warnedStandIns.has(path) && ownSource(app) !== ownSource(path)) {
+      warnedStandIns.add(path);
+      context?.warn?.(`<${tag}> is the app's ${relativePath(app)}, in place of ${relativePath(path)}, which differs from it: the package's components get the app's`);
+    }
+    return app;
+  }
+
   function writeTypings(path) {
     const framework = ['react', 'vue', 'svelte', 'solid'].includes(project) ? project : 'none';
     const target = resolve(dirname(path), `${basename(path, '.zb')}.d.zb.ts`);
@@ -247,12 +292,19 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         if (!resolved) return null;
         path = split(resolved.id)[0];
       }
+      path = standIn(this, path) ?? path;
       // A component's stylesheet keeps its whole query: Vite (and Tailwind) recognize CSS by its
       // `&lang.css` suffix, and inline CSS by `&inline`.
       if (new URLSearchParams(query).get('zubra') === 'style') return `${path}?${query}`;
       // A variant already chosen (a wrapper's import of its element, a dev server URL) stays.
       const variant = new URLSearchParams(query).get('zubra') ?? variantFor(query, importer, project ?? 'element');
       return `${path}${QUERY}${variant}`;
+    },
+
+    // A component added, removed, renamed or retagged changes which tags the app defines. Found
+    // again on next need; each component's tag is cached while its file is unchanged.
+    watchChange(id) {
+      if (id.endsWith('.zb')) appByTag = null;
     },
 
     loadInclude(id) {
@@ -345,6 +397,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         return { resolve: { dedupe: ['react', 'react-dom', 'vue', '@angular/core', '@angular/common', '@angular/forms'] } };
       },
       configResolved(config) {
+        root ??= config.root;
         const names = config.plugins.map((plugin) => plugin.name);
         // Frameworks that hydrate the server's HTML around elements (Solid doesn't mind).
         ssrFramework = names.includes('react-router') ? 'React Router'

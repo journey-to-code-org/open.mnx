@@ -66,3 +66,74 @@ test("a Vite build compiles a package's components, and they run", async () => {
   assert.deepEqual(errors, []);
   await page.close();
 });
+
+/** Build an app beside the kit, and load it: returns the page, its errors and the build's warnings. */
+async function buildApp(name, files) {
+  const dir = join(work, name);
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), text);
+  }
+  const warnings = [];
+  await build({
+    root: dir, configFile: false, logLevel: 'silent', plugins: [zubra()],
+    build: { outDir: join(dir, 'dist'), rollupOptions: { onwarn: (warning) => warnings.push(warning.message) } },
+  });
+  const dist = join(dir, 'dist');
+  const site = createServer((request, response) => {
+    let file = join(dist, new URL(request.url, 'http://x').pathname);
+    if (!extname(file)) file = join(file, 'index.html');
+    if (!existsSync(file)) return response.writeHead(404).end();
+    response.writeHead(200, { 'content-type': { '.html': 'text/html', '.js': 'text/javascript' }[extname(file)] ?? 'text/plain' }).end(readFileSync(file));
+  });
+  await new Promise((done) => site.listen(0, '127.0.0.1', done));
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => ['error', 'warning'].includes(message.type()) && errors.push(message.text()));
+  await page.goto(`http://127.0.0.1:${site.address().port}/`);
+  return { page, errors, warnings, close: async () => { await page.close(); site.close(); } };
+}
+
+const shopPage = "<script>\n  import './parts/kit-count.zb'\n  import '@acme/kit/components/cart-panel.zb'\n</script>\n<shop-page>\n  <kit-count count={5}></kit-count>\n  <cart-panel title=\"Your cart\"></cart-panel>\n</shop-page>\n";
+const entry = { 'main.js': "import './shop-page.zb';\n", 'index.html': '<!doctype html><html><body><shop-page></shop-page><script type="module" src="./main.js"></script></body></html>\n' };
+
+test("the app's own copy of a package's part stands in for it, and a different one is warned about", async () => {
+  // The app's kit-count counts in tens and says so; the kit's cart-panel imports its own copy.
+  const { page, errors, warnings, close } = await buildApp('app-different', {
+    ...entry,
+    'shop-page.zb': shopPage,
+    'parts/kit-count.zb': '<kit-count count:model={1}>\n  <output class="mine">{count}</output>\n  <button type="button" onclick={() => (count = count + 10)}>+10</button>\n</kit-count>\n',
+  });
+  try {
+    await page.waitForSelector('cart-panel h2:has-text("Your cart")');
+    // Inside the kit's cart too, the counter is the app's.
+    assert.equal(await page.textContent('cart-panel kit-count button'), '+10');
+    await page.click('cart-panel kit-count button');
+    await page.waitForSelector('cart-panel kit-count output.mine:has-text("12")');
+    assert.deepEqual(errors, [], 'one definition: no "already defined" warning in the browser');
+    const standIns = warnings.filter((message) => message.includes('<kit-count> is the app\'s'));
+    assert.equal(standIns.length, 1, warnings.join('\n'));
+    assert.match(standIns[0], /parts\/kit-count\.zb, in place of .*node_modules\/@acme\/kit\/components\/kit-count\.zb, which differs from it/);
+  } finally {
+    await close();
+  }
+});
+
+test("an app's copy that matches the package's (comments aside) is used quietly", async () => {
+  const kits = readFileSync(join(work, 'node_modules/@acme/kit/components/kit-count.zb'), 'utf8');
+  const { page, errors, warnings, close } = await buildApp('app-same', {
+    ...entry,
+    'shop-page.zb': shopPage,
+    'parts/kit-count.zb': `<!-- installed from the kit -->\n${kits}`,
+  });
+  try {
+    await page.waitForSelector('cart-panel kit-count output:has-text("2")');
+    await page.click('cart-panel kit-count button');
+    await page.waitForSelector('cart-panel kit-count output:has-text("3")');
+    assert.deepEqual(errors, []);
+    assert.deepEqual(warnings.filter((message) => message.includes('kit-count')), []);
+  } finally {
+    await close();
+  }
+});

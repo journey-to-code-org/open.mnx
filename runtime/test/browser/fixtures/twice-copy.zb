@@ -1,0 +1,2 @@
+<!-- A copy of twice-first.zb, as a package and an app might each carry (see define-twice.test.js). -->
+<zb-twice><p class="first">first</p></zb-twice>

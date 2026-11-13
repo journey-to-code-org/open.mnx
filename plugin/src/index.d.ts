@@ -16,6 +16,11 @@ export interface ZubraOptions {
   compilerModule?: string;
   /** Compile for the Zubra DevTools in builds too, not only in Vite's dev server. Default: `$ZUBRA_DEVTOOLS === '1'`. */
   devtools?: boolean;
+  /**
+   * Where the app's own components are, to find which of a package's components it has its own
+   * copy of (the app's stands in for the package's). Default: Vite's root, or the current folder.
+   */
+  root?: string;
 }
 
 export declare const unplugin: UnpluginInstance<ZubraOptions | undefined, false>;

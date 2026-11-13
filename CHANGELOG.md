@@ -7,6 +7,7 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 ### Added
 
 - **`npm create zubra -- --typescript`.** It asks, or takes the flag: the app's component is `<script lang="ts">` with an `interface Props`, a `tsconfig.json` is added (Angular keeps its own), TypeScript is a dev dependency, and `npm run check` runs `zubra check --types src`, for CI. The README and `AGENTS.md` say so. `--js` skips the question the other way.
+- **One tag, one definition, in bundlers as on the server.** An app's component and a package's with the same tag (both carrying a copy of a shared part): the Vite plugin (and its Rollup, webpack and esbuild forms) now gives the package's components the app's, as `@zubra/server` does, and warns once if the two copies differ, comments aside. Before, whichever module loaded first defined the tag, the package's as likely as the app's. The plugin finds the app's components from Vite's root or the current folder; `root` sets it. The compiler (so `zubra check`, the bundlers and the editor) refuses two of the app's components, or two packages', with one tag anywhere in what a component imports, naming both files and the import they came through. And in development the runtime warns once when a page ends up with two different definitions of a tag anyway (its own scripts importing both); two copies of the same component stay quiet.
 
 ### Fixed
 

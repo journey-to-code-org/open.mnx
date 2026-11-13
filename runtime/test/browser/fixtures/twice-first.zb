@@ -1,0 +1,2 @@
+<!-- Two components with one tag (see define-twice.test.js): this one loads first. -->
+<zb-twice><p class="first">first</p></zb-twice>
