@@ -305,8 +305,42 @@ const importMap = () => JSON.stringify({
 /** The compiled module as an inline script (its default export kept as `Component`). */
 const inline = (code) => code.replace(/^export default /m, 'const Component = ').replace(/<\/script/gi, '<\\/script');
 
+// Read the page's markup (the `page` box) as the framework previews render it. Runs inside the
+// preview frame, where the compiled component is, so it's serialised into the frame's script.
+// The host tags (`meta.tag`) become `{ host, props, children }`, with each attribute converted to
+// the prop it names the way the element converts it (by the prop's default: number, boolean,
+// JSON, else text); other elements become `{ tag, attrs, children }`; text is kept as text.
+// Whitespace between tags is dropped.
+function readPage(markup, meta) {
+  const byAttribute = new Map(Object.entries(meta.props).map(([name, spec]) => [spec.attribute, { name, spec }]));
+  const coerce = (spec, raw) => {
+    const fallback = spec.default;
+    if (typeof fallback === 'boolean') return fallback ? raw !== 'false' : true;
+    if (typeof fallback === 'number') return Number(raw);
+    if (typeof fallback === 'string') return raw;
+    try { return JSON.parse(raw); } catch { return raw; }
+  };
+  const walk = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent.trim() ? node.textContent : null;
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const children = [...node.childNodes].map(walk).filter((child) => child !== null);
+    if (node.localName !== meta.tag) {
+      return { tag: node.localName, attrs: Object.fromEntries([...node.attributes].map((attr) => [attr.name, attr.value])), children };
+    }
+    const props = {};
+    for (const attr of node.attributes) {
+      const hit = byAttribute.get(attr.name);
+      if (hit) props[hit.name] = coerce(hit.spec, attr.value);
+    }
+    return { host: true, props, children };
+  };
+  return [...new DOMParser().parseFromString(markup, 'text/html').body.childNodes]
+    .map(walk)
+    .filter((node) => node !== null);
+}
+
 const document_ = (body, script) => `<!doctype html><meta charset="utf-8">
-<style>body { margin: 0.75rem; font: 15px system-ui, sans-serif; color: #1c2030; }</style>
+<style>:root { color-scheme: light dark; } body { margin: 0.75rem; font: 15px system-ui, sans-serif; background: Canvas; color: CanvasText; }</style>
 <script type="importmap">${importMap()}</script>
 <body>${body}</body>
 <script type="module">
@@ -331,24 +365,59 @@ ${script}
 window.previewReady = true;
 </script>`;
 
+// The page's markup as a JSON string literal for a module script.
+const embed = (markup) => JSON.stringify(markup).replace(/<\/script/gi, '<\\/script');
+
 const PREVIEWS = {
   html: { label: 'Plain HTML', doc: (code, markup) => document_(markup, inline(code)) },
   react: {
     label: 'React',
-    doc: (code) => document_('<div id="root"></div>', `${inline(code)}
-import { createElement } from 'react';
+    doc: (code, markup) => document_('<div id="root"></div>', `${inline(code)}
+${readPage.toString()}
+import { createElement, Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 import { wrap } from '@zubra/runtime/react';
 const Wrapped = wrap(Component);
-createRoot(document.getElementById('root')).render(createElement(Wrapped));`),
+// Plain elements are created as React elements; a host gets its props and its children.
+const toReact = (node) => {
+  if (typeof node === 'string') return node;
+  if (node.host) return createElement(Wrapped, node.props, ...node.children.map(toReact));
+  const { class: className, ...attrs } = node.attrs;
+  if (className !== undefined) attrs.className = className;
+  return createElement(node.tag, attrs, ...node.children.map(toReact));
+};
+const page = ${embed(markup)};
+createRoot(document.getElementById('root')).render(createElement(Fragment, null, ...readPage(page, Component.zubra).map(toReact)));`),
   },
   vue: {
     label: 'Vue',
-    doc: (code) => document_('<div id="root"></div>', `${inline(code)}
+    doc: (code, markup) => document_('<div id="root"></div>', `${inline(code)}
+${readPage.toString()}
 import { createApp, h } from 'vue';
 import { wrap } from '@zubra/runtime/vue';
 const Wrapped = wrap(Component);
-createApp({ render: () => h(Wrapped) }).mount('#root');`),
+// Children with a \`slot\` attribute go to that named slot (the wrapper gives them the attribute).
+const slotted = (children) => {
+  const groups = { default: [] };
+  for (const child of children) {
+    const name = typeof child === 'object' && !child.host && child.attrs.slot;
+    if (name) {
+      const { slot, ...attrs } = child.attrs;
+      (groups[slot] ??= []).push({ ...child, attrs });
+    } else {
+      groups.default.push(child);
+    }
+  }
+  const filled = Object.entries(groups).filter(([, nodes]) => nodes.length);
+  return filled.length ? Object.fromEntries(filled.map(([name, nodes]) => [name, () => nodes.map(toVue)])) : undefined;
+};
+const toVue = (node) => {
+  if (typeof node === 'string') return node;
+  if (node.host) return h(Wrapped, node.props, slotted(node.children));
+  return h(node.tag, node.attrs, node.children.map(toVue));
+};
+const page = ${embed(markup)};
+createApp({ render: () => readPage(page, Component.zubra).map(toVue) }).mount('#root');`),
   },
 };
 

@@ -73,12 +73,13 @@ test('compiles in the page and runs the component in every preview', async () =>
 
   const kinds = await page.$$eval('[data-preview]', (els) => els.map((el) => el.dataset.preview));
   assert.deepEqual(kinds, frameworks ? ['html', 'react', 'vue'] : ['html']);
+  // The page's two elements, with their attributes as props, in every framework.
   for (const kind of kinds.slice(1)) {
     const preview = await frame(page, kind);
     await preview.waitForSelector('hello-counter output');
-    assert.equal(await preview.textContent('hello-counter output'), 'Clicks: 0', kind);
-    await preview.click('hello-counter button.more');
-    await preview.waitForFunction(() => document.querySelector('hello-counter output').textContent === 'Clicks: 1');
+    assert.deepEqual(await preview.$$eval('hello-counter output', (els) => els.map((el) => el.textContent)), ['Apples: 0', 'Clicks: 5'], kind);
+    await preview.click('hello-counter >> nth=0 >> button.more');
+    await preview.waitForFunction(() => document.querySelector('hello-counter output').textContent === 'Apples: 1');
   }
 
   // Every output, in its tab.
@@ -130,6 +131,13 @@ test('the examples: slots with hasSlot, a list with directives, a spread, and co
   await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('info-card'));
   const cards = await frame(page, 'html');
   assert.deepEqual(await cards.$$eval('info-card', (els) => els.map((el) => !!el.querySelector('footer'))), [true, false]);
+  // The same slots in React and Vue: the footer goes to the named slot, the body to the default one.
+  for (const kind of frameworks ? ['react', 'vue'] : []) {
+    const preview = await frame(page, kind);
+    await preview.waitForSelector('info-card');
+    assert.deepEqual(await preview.$$eval('info-card', (els) => els.map((el) => !!el.querySelector('footer'))), [true, false], kind);
+    assert.deepEqual(await preview.$$eval('info-card', (els) => els.map((el) => el.querySelector('p')?.textContent)), ['Body text.', 'No footer here.'], kind);
+  }
 
   await page.selectOption('#example', 'list');
   await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('todo-list'));
