@@ -2,6 +2,14 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Added
+
+- **The server runs functions with statements in them.** A `function` declaration, or an arrow with a block body, can now have `let`s that change, `if`/`else`, `for`, `for…of`, `while`, `break`/`continue`, `push` onto its own arrays, and `return`. Before, the server ran only an expression or a run of `const`s and a `return`, so a list built by a loop (Zubra UI's `page-nav`, Front Desk's free times) was empty in the server's HTML. It changes only the function's own names. A function that changes the component's state or anything else, or calls something for its effect, is still the browser's, as is one that runs past the step limit.
+- **`Array.from`** on the server: an array, a string (by code point), or `{ length: n }` with a mapper. **`String`, `Number` and `Boolean` as callbacks** (`.map(String)`, `.filter(Boolean)`).
+- With these, Zubra UI's `star-rating`, `skeleton-block`, `code-input`, `page-nav`, `typing-text`, `word-rotate` and `data-table` render whole on the server; all ten checked hydrate without a warning and read the same before and after JavaScript.
+
 ## 5.12.0 — 2026-11-13
 
 The server answers `hasSlot`, so markup a component wraps around a used slot is in the server's HTML and works without JavaScript.

@@ -11,12 +11,15 @@ use std::rc::Rc;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, ArrayExpressionElement, ArrowFunctionBody, BindingPattern, ChainElement, Expression,
-    ObjectPropertyKind, Statement,
+    Argument, ArrayExpressionElement, ArrowFunctionBody, AssignmentTarget, BindingPattern,
+    ChainElement, Expression, ForStatementInit, ForStatementLeft, FormalParameters,
+    ObjectPropertyKind, SimpleAssignmentTarget, Statement, VariableDeclaration,
 };
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
-use oxc_syntax::operator::{BinaryOperator, LogicalOperator, UnaryOperator};
+use oxc_syntax::operator::{
+    AssignmentOperator, BinaryOperator, LogicalOperator, UnaryOperator, UpdateOperator,
+};
 use serde_json::{Map, Value};
 
 /// Outside the subset (or an error the browser should report): leave it for the browser.
@@ -43,6 +46,9 @@ pub struct Closure {
     locals: Vec<(String, String)>,
     body: String,
     captured: Vec<(String, Val)>,
+    /// `body` is the whole function (`function f(a) { … }` or `(a) => { … }`), whose statements
+    /// run one by one (`run_block`): loops, `if`, local `let`s and `push`.
+    block: bool,
 }
 
 impl Val {
@@ -59,7 +65,8 @@ impl Val {
     }
 }
 
-/// The arrow function in `source` (`(a, b) => …`), as a value; `None` if it isn't one.
+/// The arrow function in `source` (`(a, b) => …`), or the function (`function f(a) { … }`), as
+/// a value; `None` if it isn't one.
 pub fn function(source: &str) -> Option<Val> {
     let allocator = Allocator::default();
     let expression = Parser::new(&allocator, source, SourceType::mjs())
@@ -70,6 +77,7 @@ pub fn function(source: &str) -> Option<Val> {
         lookup: &|_| None,
         frames: Vec::new(),
         steps: 0,
+        fixed: 0,
     };
     match evaluator.eval(&expression) {
         Ok(value @ Val::Function(_)) => Some(value),
@@ -88,6 +96,7 @@ pub fn evaluate(source: &str, lookup: &dyn Fn(&str) -> Option<Val>) -> Result<Va
         lookup,
         frames: Vec::new(),
         steps: 0,
+        fixed: 0,
     };
     evaluator.eval(&expression)
 }
@@ -102,6 +111,17 @@ struct Evaluator<'a> {
     /// Arrow parameters in scope, innermost last.
     frames: Vec<Vec<(String, Val)>>,
     steps: usize,
+    /// In a statement body, the frames below this one are what the function closed over: read
+    /// only. Its own parameters and `let`s, in the frames above, are what it may assign.
+    fixed: usize,
+}
+
+/// How a statement ended.
+enum Flow {
+    Normal,
+    Return(Val),
+    Break,
+    Continue,
 }
 
 impl Evaluator<'_> {
@@ -158,7 +178,22 @@ impl Evaluator<'_> {
                 }
                 Ok(string(&text))
             }
-            Expression::Identifier(identifier) => self.name(identifier.name.as_str()),
+            Expression::Identifier(identifier) => {
+                let name = identifier.name.as_str();
+                match self.name(name) {
+                    // `words.map(String)`, `.filter(Boolean)`: the conversion, as a function.
+                    Err(_) if matches!(name, "String" | "Number" | "Boolean") => {
+                        Ok(Val::Function(Rc::new(Closure {
+                            params: vec!["value".to_owned()],
+                            locals: Vec::new(),
+                            body: format!("{name}(value)"),
+                            captured: Vec::new(),
+                            block: false,
+                        })))
+                    }
+                    found => found,
+                }
+            }
             Expression::ParenthesizedExpression(inner) => self.eval(&inner.expression),
             Expression::ArrayExpression(array) => {
                 let mut items = Vec::new();
@@ -312,39 +347,68 @@ impl Evaluator<'_> {
                     self.source[span.start as usize..span.end as usize].to_owned()
                 };
                 let mut locals = Vec::new();
-                let body = match &arrow.body {
-                    ArrowFunctionBody::FunctionBody(block) => {
-                        let Some((Statement::ReturnStatement(last), rest)) =
-                            block.statements.split_last()
-                        else {
-                            return Err(Unsupported);
-                        };
-                        if !block.directives.is_empty() {
-                            return Err(Unsupported);
-                        }
-                        for statement in rest {
-                            let Statement::VariableDeclaration(declaration) = statement else {
+                // `const`s and a `return`: evaluated as expressions. Anything else in a block
+                // (a loop, an `if`, a `let` that changes) runs statement by statement.
+                let simple = |locals: &mut Vec<(String, String)>| -> Result<oxc_span::Span> {
+                    match &arrow.body {
+                        ArrowFunctionBody::FunctionBody(block) => {
+                            let Some((Statement::ReturnStatement(last), rest)) =
+                                block.statements.split_last()
+                            else {
                                 return Err(Unsupported);
                             };
-                            if declaration.kind.is_var() || declaration.kind.is_using() {
+                            if !block.directives.is_empty() {
                                 return Err(Unsupported);
                             }
-                            for declarator in &declaration.declarations {
-                                let name = simple_name(&declarator.id)?;
-                                let init = declarator.init.as_ref().ok_or(Unsupported)?;
-                                locals.push((name, text(init.span())));
+                            for statement in rest {
+                                let Statement::VariableDeclaration(declaration) = statement else {
+                                    return Err(Unsupported);
+                                };
+                                if !declaration.kind.is_const() {
+                                    return Err(Unsupported);
+                                }
+                                for declarator in &declaration.declarations {
+                                    let name = simple_name(&declarator.id)?;
+                                    let init = declarator.init.as_ref().ok_or(Unsupported)?;
+                                    locals.push((name, text(init.span())));
+                                }
                             }
+                            Ok(last.argument.as_ref().ok_or(Unsupported)?.span())
                         }
-                        last.argument.as_ref().ok_or(Unsupported)?.span()
+                        body => Ok(body.as_expression().ok_or(Unsupported)?.span()),
                     }
-                    body => body.as_expression().ok_or(Unsupported)?.span(),
                 };
                 let captured = self.frames.iter().flatten().cloned().collect();
+                let (body, block) = match simple(&mut locals) {
+                    Ok(body) => (text(body), false),
+                    Err(_) if matches!(arrow.body, ArrowFunctionBody::FunctionBody(_)) => {
+                        locals.clear();
+                        (text(arrow.span), true)
+                    }
+                    Err(error) => return Err(error),
+                };
                 Ok(Val::Function(Rc::new(Closure {
                     params,
                     locals,
-                    body: text(body),
+                    body,
                     captured,
+                    block,
+                })))
+            }
+            Expression::FunctionExpression(function) => {
+                if function.r#async || function.generator || function.this_param.is_some() {
+                    return Err(Unsupported);
+                }
+                function.body.as_ref().ok_or(Unsupported)?;
+                let params = simple_params(&function.params)?;
+                let captured = self.frames.iter().flatten().cloned().collect();
+                Ok(Val::Function(Rc::new(Closure {
+                    params,
+                    locals: Vec::new(),
+                    body: self.source[function.span.start as usize..function.span.end as usize]
+                        .to_owned(),
+                    captured,
+                    block: true,
                 })))
             }
             Expression::CallExpression(call) => self.call(call),
@@ -388,6 +452,9 @@ impl Evaluator<'_> {
                         if namespace == "Object" && member.property.name == "groupBy" {
                             return self.group_by(&arguments);
                         }
+                        if namespace == "Array" && member.property.name == "from" {
+                            return self.array_from(&arguments);
+                        }
                         return builtin(namespace, member.property.name.as_str(), &arguments);
                     }
                 }
@@ -424,6 +491,9 @@ impl Evaluator<'_> {
     }
 
     fn apply(&mut self, closure: &Closure, arguments: Vec<Val>) -> Result<Val> {
+        if closure.block {
+            return self.run_block(closure, arguments);
+        }
         let mut frame = closure.captured.clone();
         for (index, param) in closure.params.iter().enumerate() {
             frame.push((
@@ -458,6 +528,7 @@ impl Evaluator<'_> {
             lookup: self.lookup,
             frames: std::mem::take(&mut self.frames),
             steps: self.steps,
+            fixed: self.fixed,
         };
         let result = inner.eval(&expression);
         self.frames = inner.frames;
@@ -474,6 +545,366 @@ impl Evaluator<'_> {
             closure,
             vec![Val::json(item.clone()), Val::json(Value::from(position))],
         )
+    }
+
+    /// `Array.from(items)`, `Array.from(text)` (its characters, by code point) and
+    /// `Array.from({ length: n }, (_, i) => …)`, each with an optional `(item, index)` mapper.
+    fn array_from(&mut self, arguments: &[Val]) -> Result<Val> {
+        let items: Vec<Option<Value>> = match arguments.first() {
+            Some(Val::Json(Value::Array(items))) => items.iter().cloned().map(Some).collect(),
+            Some(Val::Json(Value::String(text))) => text
+                .chars()
+                .map(|character| Some(Value::String(character.to_string())))
+                .collect(),
+            Some(Val::Json(Value::Object(object))) => {
+                let length = to_integer(&Val::Json(
+                    object.get("length").cloned().ok_or(Unsupported)?,
+                ))?;
+                if !(0..=100_000).contains(&length) {
+                    return Err(Unsupported);
+                }
+                // Holes: `undefined` items, which only a mapper can turn into values.
+                vec![None; length as usize]
+            }
+            _ => return Err(Unsupported),
+        };
+        let mut out = Vec::with_capacity(items.len());
+        match arguments.get(1) {
+            None | Some(Val::Undefined) => {
+                for item in items {
+                    out.push(item.ok_or(Unsupported)?);
+                }
+            }
+            Some(Val::Function(closure)) => {
+                for (position, item) in items.into_iter().enumerate() {
+                    let item = item.map_or(Val::Undefined, Val::Json);
+                    out.push(
+                        self.apply(closure, vec![item, Val::json(Value::from(position))])?
+                            .into_json()?,
+                    );
+                }
+            }
+            Some(_) => return Err(Unsupported),
+        }
+        Ok(Val::json(Value::Array(out)))
+    }
+
+    // ---- statement bodies ----------------------------------------------------------------------
+
+    /// Call a function whose body is statements: its parameters and `let`s live in frames of their
+    /// own above what it closed over, and only those may change.
+    fn run_block(&mut self, closure: &Closure, arguments: Vec<Val>) -> Result<Val> {
+        let wrapped = format!("({})", closure.body);
+        let allocator = Allocator::default();
+        let expression = Parser::new(&allocator, &wrapped, SourceType::mjs())
+            .parse_expression()
+            .map_err(|_| Unsupported)?;
+        let expression = match &expression {
+            Expression::ParenthesizedExpression(inner) => &inner.expression,
+            other => other,
+        };
+        let statements = match expression {
+            Expression::ArrowFunctionExpression(arrow) => match &arrow.body {
+                ArrowFunctionBody::FunctionBody(block) => &block.statements,
+                _ => return Err(Unsupported),
+            },
+            Expression::FunctionExpression(function) => {
+                &function.body.as_ref().ok_or(Unsupported)?.statements
+            }
+            _ => return Err(Unsupported),
+        };
+        let params = closure
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, param)| {
+                (
+                    param.clone(),
+                    arguments.get(index).cloned().unwrap_or(Val::Undefined),
+                )
+            })
+            .collect();
+        let mut inner = Evaluator {
+            source: &wrapped,
+            lookup: self.lookup,
+            frames: vec![closure.captured.clone(), params],
+            steps: self.steps,
+            fixed: 1,
+        };
+        if inner.frames.len() + self.frames.len() > DEPTH_LIMIT {
+            return Err(Unsupported);
+        }
+        let flow = inner.exec_all(statements);
+        self.steps = inner.steps;
+        match flow? {
+            Flow::Return(value) => Ok(value),
+            Flow::Normal => Ok(Val::Undefined),
+            Flow::Break | Flow::Continue => Err(Unsupported),
+        }
+    }
+
+    fn exec_all(&mut self, statements: &[Statement<'_>]) -> Result<Flow> {
+        for statement in statements {
+            match self.exec(statement)? {
+                Flow::Normal => {}
+                flow => return Ok(flow),
+            }
+        }
+        Ok(Flow::Normal)
+    }
+
+    /// Run statements in a frame of their own (a block, a loop's body).
+    fn scoped(&mut self, run: impl FnOnce(&mut Self) -> Result<Flow>) -> Result<Flow> {
+        self.frames.push(Vec::new());
+        let flow = run(self);
+        self.frames.pop();
+        flow
+    }
+
+    fn exec(&mut self, statement: &Statement<'_>) -> Result<Flow> {
+        self.steps += 1;
+        if self.steps > STEP_LIMIT {
+            return Err(Unsupported);
+        }
+        match statement {
+            Statement::EmptyStatement(_) => Ok(Flow::Normal),
+            Statement::VariableDeclaration(declaration) => {
+                self.declare(declaration)?;
+                Ok(Flow::Normal)
+            }
+            Statement::ExpressionStatement(statement) => {
+                self.effect(&statement.expression)?;
+                Ok(Flow::Normal)
+            }
+            Statement::ReturnStatement(statement) => Ok(Flow::Return(match &statement.argument {
+                Some(argument) => self.eval(argument)?,
+                None => Val::Undefined,
+            })),
+            Statement::BlockStatement(block) => self.scoped(|inner| inner.exec_all(&block.body)),
+            Statement::IfStatement(statement) => {
+                if truthy(&self.eval(&statement.test)?) {
+                    self.scoped(|inner| inner.exec(&statement.consequent))
+                } else if let Some(alternate) = &statement.alternate {
+                    self.scoped(|inner| inner.exec(alternate))
+                } else {
+                    Ok(Flow::Normal)
+                }
+            }
+            Statement::BreakStatement(statement) if statement.label.is_none() => Ok(Flow::Break),
+            Statement::ContinueStatement(statement) if statement.label.is_none() => {
+                Ok(Flow::Continue)
+            }
+            Statement::WhileStatement(statement) => self.scoped(|inner| loop {
+                if !truthy(&inner.eval(&statement.test)?) {
+                    return Ok(Flow::Normal);
+                }
+                match inner.scoped(|body| body.exec(&statement.body))? {
+                    Flow::Break => return Ok(Flow::Normal),
+                    Flow::Return(value) => return Ok(Flow::Return(value)),
+                    Flow::Normal | Flow::Continue => {}
+                }
+            }),
+            Statement::ForStatement(statement) => self.scoped(|inner| {
+                match &statement.init {
+                    None => {}
+                    Some(ForStatementInit::VariableDeclaration(declaration)) => {
+                        inner.declare(declaration)?
+                    }
+                    Some(init) => inner.effect(init.as_expression().ok_or(Unsupported)?)?,
+                }
+                loop {
+                    if let Some(test) = &statement.test {
+                        if !truthy(&inner.eval(test)?) {
+                            return Ok(Flow::Normal);
+                        }
+                    }
+                    match inner.scoped(|body| body.exec(&statement.body))? {
+                        Flow::Break => return Ok(Flow::Normal),
+                        Flow::Return(value) => return Ok(Flow::Return(value)),
+                        Flow::Normal | Flow::Continue => {}
+                    }
+                    if let Some(update) = &statement.update {
+                        inner.effect(update)?;
+                    }
+                }
+            }),
+            Statement::ForOfStatement(statement) => {
+                if statement.r#await {
+                    return Err(Unsupported);
+                }
+                let ForStatementLeft::VariableDeclaration(declaration) = &statement.left else {
+                    return Err(Unsupported);
+                };
+                let [declarator] = declaration.declarations.as_slice() else {
+                    return Err(Unsupported);
+                };
+                if declaration.kind.is_var() || declaration.kind.is_using() {
+                    return Err(Unsupported);
+                }
+                let name = simple_name(&declarator.id)?;
+                let items: Vec<Value> = match self.eval(&statement.right)? {
+                    Val::Json(Value::Array(items)) => items,
+                    Val::Json(Value::String(text)) => text
+                        .chars()
+                        .map(|character| Value::String(character.to_string()))
+                        .collect(),
+                    _ => return Err(Unsupported),
+                };
+                for item in items {
+                    let flow = self.scoped(|inner| {
+                        inner
+                            .frames
+                            .last_mut()
+                            .expect("the loop's frame")
+                            .push((name.clone(), Val::Json(item)));
+                        inner.exec(&statement.body)
+                    })?;
+                    match flow {
+                        Flow::Break => break,
+                        Flow::Return(value) => return Ok(Flow::Return(value)),
+                        Flow::Normal | Flow::Continue => {}
+                    }
+                }
+                Ok(Flow::Normal)
+            }
+            _ => Err(Unsupported),
+        }
+    }
+
+    /// `const`/`let` declarations, into the innermost frame.
+    fn declare(&mut self, declaration: &VariableDeclaration<'_>) -> Result<()> {
+        if declaration.kind.is_var() || declaration.kind.is_using() {
+            return Err(Unsupported);
+        }
+        for declarator in &declaration.declarations {
+            let name = simple_name(&declarator.id)?;
+            let value = match &declarator.init {
+                Some(init) => self.eval(init)?,
+                None if !declaration.kind.is_const() => Val::Undefined,
+                None => return Err(Unsupported),
+            };
+            self.frames
+                .last_mut()
+                .expect("a statement runs in a frame")
+                .push((name, value));
+        }
+        Ok(())
+    }
+
+    /// An expression statement: an assignment or `++`/`--` to one of the function's own names, a
+    /// `push` onto one of its own arrays, or anything else that changes nothing.
+    fn effect(&mut self, expression: &Expression<'_>) -> Result<()> {
+        match expression {
+            Expression::ParenthesizedExpression(inner) => self.effect(&inner.expression),
+            Expression::SequenceExpression(sequence) => {
+                for expression in &sequence.expressions {
+                    self.effect(expression)?;
+                }
+                Ok(())
+            }
+            Expression::AssignmentExpression(assignment) => {
+                let AssignmentTarget::AssignmentTargetIdentifier(target) = &assignment.left else {
+                    return Err(Unsupported);
+                };
+                let name = target.name.as_str();
+                let old = self.own(name)?;
+                let value = match assignment.operator {
+                    AssignmentOperator::Assign => self.eval(&assignment.right)?,
+                    AssignmentOperator::LogicalOr => {
+                        if truthy(&old) {
+                            old
+                        } else {
+                            self.eval(&assignment.right)?
+                        }
+                    }
+                    AssignmentOperator::LogicalAnd => {
+                        if truthy(&old) {
+                            self.eval(&assignment.right)?
+                        } else {
+                            old
+                        }
+                    }
+                    AssignmentOperator::LogicalNullish => {
+                        if is_nullish(&old) {
+                            self.eval(&assignment.right)?
+                        } else {
+                            old
+                        }
+                    }
+                    operator => {
+                        let right = self.eval(&assignment.right)?;
+                        binary_op(
+                            operator.to_binary_operator().ok_or(Unsupported)?,
+                            &old,
+                            &right,
+                        )?
+                    }
+                };
+                self.set(name, value)
+            }
+            Expression::UpdateExpression(update) => {
+                let SimpleAssignmentTarget::AssignmentTargetIdentifier(target) = &update.argument
+                else {
+                    return Err(Unsupported);
+                };
+                let name = target.name.as_str();
+                let old = to_number(&self.own(name)?)?;
+                let step = if update.operator == UpdateOperator::Increment {
+                    1.0
+                } else {
+                    -1.0
+                };
+                let value = number(old + step)?;
+                self.set(name, value)
+            }
+            Expression::CallExpression(call) => {
+                // `list.push(…)` on the function's own array changes it; any other call statement
+                // would be for its effect, which the server doesn't have.
+                let Expression::StaticMemberExpression(member) = &call.callee else {
+                    return Err(Unsupported);
+                };
+                let Expression::Identifier(object) = &member.object else {
+                    return Err(Unsupported);
+                };
+                if member.property.name != "push" || call.optional || member.optional {
+                    return Err(Unsupported);
+                }
+                let name = object.name.as_str();
+                let Val::Json(Value::Array(mut items)) = self.own(name)? else {
+                    return Err(Unsupported);
+                };
+                for value in self.arguments(&call.arguments)? {
+                    items.push(value.into_json()?);
+                }
+                self.set(name, Val::Json(Value::Array(items)))
+            }
+            _ => Err(Unsupported),
+        }
+    }
+
+    /// The value of one of the function's own names (a parameter, a `let`); `Unsupported` for a
+    /// name it closed over, which it can't change on the server.
+    fn own(&self, name: &str) -> Result<Val> {
+        for frame in self.frames[self.fixed.min(self.frames.len())..]
+            .iter()
+            .rev()
+        {
+            if let Some((_, value)) = frame.iter().rev().find(|(local, _)| local == name) {
+                return Ok(value.clone());
+            }
+        }
+        Err(Unsupported)
+    }
+
+    fn set(&mut self, name: &str, value: Val) -> Result<()> {
+        let fixed = self.fixed.min(self.frames.len());
+        for frame in self.frames[fixed..].iter_mut().rev() {
+            if let Some(slot) = frame.iter_mut().rev().find(|(local, _)| local == name) {
+                slot.1 = value;
+                return Ok(());
+            }
+        }
+        Err(Unsupported)
     }
 
     /// `Object.groupBy(items, callback)`: the callback's result, as a property key, names the
@@ -987,6 +1418,23 @@ impl Evaluator<'_> {
             _ => Err(Unsupported),
         }
     }
+}
+
+/// Plain parameter names (no defaults, destructuring or rest), or `Unsupported`.
+fn simple_params(params: &FormalParameters<'_>) -> Result<Vec<String>> {
+    if params.rest.is_some() {
+        return Err(Unsupported);
+    }
+    params
+        .items
+        .iter()
+        .map(|param| {
+            if param.initializer.is_some() {
+                return Err(Unsupported);
+            }
+            simple_name(&param.pattern)
+        })
+        .collect()
 }
 
 fn simple_name(pattern: &BindingPattern<'_>) -> Result<String> {
@@ -1614,5 +2062,159 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(1));
         assert_eq!(run("'a/b/'.replace(/\\/+$/, '')"), Some("a/b".into()));
         assert_eq!(run("encodeURIComponent('a b&c')"), Some("a%20b%26c".into()));
+    }
+
+    /// Run `body` as the statements of `function f(a, b) { … }`, called with `a` and `b`.
+    fn call_block(body: &str, a: Value, b: Value) -> Option<Value> {
+        let lookup = |name: &str| match name {
+            "f" => function(&format!("function f(a, b) {{ {body} }}")),
+            "a" => Some(Val::json(a.clone())),
+            "b" => Some(Val::json(b.clone())),
+            "outer" => Some(Val::json(serde_json::json!(10))),
+            _ => None,
+        };
+        evaluate("f(a, b)", &lookup)
+            .ok()
+            .map(|value| value.into_json().unwrap())
+    }
+
+    #[test]
+    fn statement_bodies() {
+        use serde_json::json;
+        // page-nav's `around`: a counting loop, if / else if, and push.
+        let around = "const list = []
+          for (let n = 1; n <= Math.max(1, b); n++) {
+            if (n === 1 || n === b || Math.abs(n - a) <= 1) list.push(n)
+            else if (list[list.length - 1] !== 'gap') list.push('gap')
+          }
+          return list";
+        assert_eq!(
+            call_block(around, json!(5), json!(12)),
+            Some(json!([1, "gap", 4, 5, 6, "gap", 12]))
+        );
+        // for…of, continue and break; let reassigned; compound and logical assignment.
+        let walk = "let total = 0
+          let seen = null
+          for (const n of a) {
+            if (n < 0) continue
+            if (n > 100) break
+            total += n
+            seen ??= n
+          }
+          return [total, seen]";
+        assert_eq!(
+            call_block(walk, json!([3, -1, 4, 500, 9]), json!(0)),
+            Some(json!([7, 3]))
+        );
+        // while, and a parameter changed inside.
+        assert_eq!(
+            call_block("while (a > 1) { a = a / 2 } return a", json!(40), json!(0)),
+            Some(json!(0.625))
+        );
+        // A block's `let` is its own: the outer one is unchanged after it.
+        assert_eq!(
+            call_block("let x = 1; { let x = 2; x++ } return x", json!(0), json!(0)),
+            Some(json!(1))
+        );
+        // for…of over a string: by code point.
+        assert_eq!(
+            call_block(
+                "const out = []; for (const c of a) out.push(c); return out.length",
+                json!("añ👋"),
+                json!(0)
+            ),
+            Some(json!(3))
+        );
+        // No return: undefined (null as JSON).
+        assert_eq!(
+            call_block("let x = a", json!(1), json!(0)),
+            Some(Value::Null)
+        );
+        // An arrow with a block that isn't just consts and a return.
+        let arrow = |source: &str| {
+            let lookup = |name: &str| (name == "g").then(|| function(source)).flatten();
+            evaluate("g(4)", &lookup)
+                .ok()
+                .map(|value| value.into_json().unwrap())
+        };
+        assert_eq!(
+            arrow("(n) => { let s = 0; for (let i = 0; i < n; i++) s += i; return s }"),
+            Some(json!(6))
+        );
+
+        // What it refuses, leaving it for the browser:
+        // a name it closed over (the component's state), which it can't change on the server;
+        assert_eq!(
+            call_block("outer = 1; return outer", json!(0), json!(0)),
+            None
+        );
+        assert_eq!(
+            call_block("outer++; return outer", json!(0), json!(0)),
+            None
+        );
+        // a call for its effect, other than push onto its own array (`a.sort()` sorts in place);
+        assert_eq!(
+            call_block("a.sort(); return a", json!([2, 1]), json!(0)),
+            None
+        );
+        assert_eq!(
+            call_block("console.log(a); return a", json!(1), json!(0)),
+            None
+        );
+        // a member assignment, `var`, a label, `this`;
+        assert_eq!(
+            call_block("const o = {}; o.x = 1; return o", json!(0), json!(0)),
+            None
+        );
+        assert_eq!(call_block("var x = 1; return x", json!(0), json!(0)), None);
+        assert_eq!(call_block("return this", json!(0), json!(0)), None);
+        // a loop that doesn't end, within the step limit and quickly.
+        let started = std::time::Instant::now();
+        assert_eq!(
+            call_block("while (true) {} return 1", json!(0), json!(0)),
+            None
+        );
+        assert_eq!(
+            call_block("for (;;) { a++ } return a", json!(0), json!(0)),
+            None
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        // async functions and generators.
+        assert!(function("async function f() { return 1 }").is_none());
+        assert!(function("function* f() { yield 1 }").is_none());
+    }
+
+    #[test]
+    fn array_from_and_conversions_as_callbacks() {
+        use serde_json::json;
+        assert_eq!(
+            run("Array.from({ length: 3 }, (_, i) => i + 1)"),
+            Some(json!([1, 2, 3]))
+        );
+        assert_eq!(
+            run("Array.from({ length: 0 }, (_, i) => i)"),
+            Some(json!([]))
+        );
+        assert_eq!(
+            run("Array.from({ length: 2 })"),
+            None,
+            "holes are undefined, not JSON"
+        );
+        assert_eq!(
+            run("Array.from({ length: 1000000 }, (_, i) => i)"),
+            None,
+            "too long"
+        );
+        assert_eq!(run("Array.from('a👋b')"), Some(json!(["a", "👋", "b"])));
+        assert_eq!(
+            run("Array.from(value, (item, i) => `${i}:${item}`)"),
+            Some(json!(["0:kale"]))
+        );
+        assert_eq!(run("[1, 'b', 0].map(String)"), Some(json!(["1", "b", "0"])));
+        assert_eq!(
+            run("['', 'a', 0, 2].filter(Boolean)"),
+            Some(json!(["a", 2]))
+        );
+        assert_eq!(run("['1', '2.5'].map(Number)"), Some(json!([1, 2.5])));
     }
 }

@@ -90,7 +90,7 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
     // A value that isn't a safe URL (a user's `javascript:` link) is left out, as the element
     // leaves it out in the browser; the page still renders, and this says what was dropped.
     for (const message of response.omitted ?? []) warn(`@zubra/server: <${name}>: ${message}`);
-    // What the server couldn't compute and left for the browser (a list derived through a loop,
+    // What the server couldn't compute and left for the browser (a list derived through `Intl`,
     // a formatted date): empty in the HTML, so without JavaScript, and until the module loads,
     // that part is missing. Said once per place, as `zubra check --server` says it.
     for (const gap of response.gaps ?? []) {

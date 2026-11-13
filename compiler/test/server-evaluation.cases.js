@@ -21,6 +21,26 @@ export const SCRIPT = `
   const castle = "🏰 Palace 🏰"
   const query = "game=palace&who=Grammi Nichols"
   const dated = "2026-11-13".replace(/(?<y>\\d+)-(?<m>\\d+)-(?<d>\\d+)/, "$<d>/$<m>/$<y> $<nope>.")
+  function around(current, count) {
+    const list = []
+    for (let n = 1; n <= count; n++) {
+      if (n === 1 || n === count || Math.abs(n - current) <= 1) list.push(n)
+      else if (list[list.length - 1] !== "gap") list.push("gap")
+    }
+    return list
+  }
+  const heaviest = (list) => {
+    let best = null
+    for (const row of list) {
+      if (!best || row.kg > best.kg) best = row
+    }
+    return best
+  }
+  let clicks = 0
+  function bump() {
+    clicks += 1
+    return clicks
+  }
 `;
 
 // Each reads the same in the server's HTML as in V8. (Not `==` between types: templates
@@ -45,6 +65,12 @@ export const SAME = [
   'Number("42") + 1', 'Number("") + 1', 'Number(true)', 'String(null) + String(false)', 'parseInt("12px")',
   '"5" === 5', 'null == undefined', 'typeof money', 'typeof nothing', 'typeof rows', '!empty.length',
   'Object.keys(user).join()', 'Object.entries({ a: 1, b: 2 }).map((entry) => entry[0] + entry[1]).join()',
+  // Functions with statements: loops, if / else, push, a let that changes.
+  'around(5, 12).join()', 'around(1, 1).join()', 'heaviest(rows).label', 'rows.map(function (row) { return row.kg }).join()',
+  '(() => { let sum = 0; for (const row of rows) { if (row.kg < 3) continue; sum += row.kg } return sum })()',
+  '(() => { let n = 100; while (n > 3) n = Math.floor(n / 2); return n })()',
+  'Array.from({ length: 4 }, (_, i) => i * i).join()', 'Array.from("a🏰b").length', 'Array.from(words, (word) => word[0]).join("")',
+  '[1, "b", 0].map(String).join()', '["", "a", 0, 2].filter(Boolean).join()', '["1", "2.5"].map(Number).join("+")',
   'Array.isArray(rows)', 'Number.isInteger(4.0)', '[...words, "kiwi"].length', '({ ...user, name: "Grace" }).name',
   'rows.reduce((best, row) => (row.kg > best.kg ? row : best)).label', 'empty.join("-") === ""',
   '((x) => (y) => x + y)(2)(3)', '[3, 1, 2].toSorted((a, b) => a - b).join()', '"b" < "a"', '10 < 9',
@@ -93,8 +119,11 @@ SAME.push(
 );
 
 export const LEFT = [
+  // A function that changes what it closed over (the component's state), or calls something for its
+  // effect, or doesn't finish within the step limit.
+  'bump()', '(() => { rows.sort(); return 1 })()', '(() => { let n = 0; while (true) n++; return n })()',
   'Math.random()', 'Date.now()', 'new Date().getFullYear()', 'cents.toLocaleString()',
-  'new Intl.NumberFormat("en").format(cents)', 'Math.abs(1) / 0', 'Math.sqrt(-1)', 'rows.map(function (row) { return row.kg })',
+  'new Intl.NumberFormat("en").format(cents)', 'Math.abs(1) / 0', 'Math.sqrt(-1)',
   'window.innerWidth + Math.abs(0)', 'rows.sort().length', 'Object.entries(user).map(([key]) => key).join()', 'words.map((word, i, all) => all.length).join()',
   'words.with(9, "kiwi").join()', 'Object.fromEntries([["a"]]).a', 'Object.hasOwn(nothing, "a")',
   '[1, [2, [3]]].flat(Infinity).length', 'Object.fromEntries([["a"]]).a === undefined', 'Object.keys({ a: undefined, b: 1 }).join()', 'rows.flatMap((row) => row.tags, null).length + Math.random()',
