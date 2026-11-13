@@ -145,6 +145,34 @@ test('page.provide(): every component the page renders gets the value, on the se
   await page.done();
 });
 
+test("clientModules: 'needed': a card with an optional slot and a sorted list are complete without their modules", async () => {
+  const zubra = createZubra({ components: join(here, 'static-components'), clientModules: 'needed' });
+  assert.deepEqual([zubra.describe('media-card').client, zubra.describe('sorted-list').client], [[], []]);
+  // A mutating .sort() is the browser's, whichever branch the default props take.
+  const { request } = await import('@zubra/compiler');
+  const mutating = readFileSync(join(here, 'static-components/sorted-list.zb'), 'utf8').replace('items.toSorted(', '[...items].sort(');
+  const checked = request({ command: 'check', path: '/s/sorted-list.zb', files: { '/s/sorted-list.zb': mutating }, client: true });
+  assert.deepEqual(checked.client, ['`list` is computed in the browser']);
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const body = page.render('media-card', { heading: 'With' }, { media: '<img alt="photo">', default: '<p>Text</p>' })
+      + page.render('media-card', { heading: 'Without' }, { default: '<p>Text</p>' })
+      + page.render('sorted-list', { items: [2, 9, 4], sorted: true });
+    res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+  });
+  const html = await (await fetch(url)).text();
+  assert.doesNotMatch(html, /components\/(media-card|sorted-list)\.js/, 'no modules');
+  const page = await open(url);
+  await page.waitForLoadState('networkidle');
+  assert.deepEqual(await page.$$eval('media-card', (cards) => cards.map((card) => [card.querySelector('h3').textContent, !!card.querySelector('.media img')])), [['With', true], ['Without', false]], 'the section only where there is a picture');
+  assert.equal(await page.$eval('media-card .media', (media) => getComputedStyle(media).borderTopStyle), 'solid', 'styled from the page head');
+  assert.deepEqual(await page.$$eval('sorted-list li', (items) => items.map((item) => item.textContent)), ['9', '4', '2']);
+  assert.equal(await page.evaluate(() => customElements.get('media-card') ?? customElements.get('sorted-list')), undefined);
+  assert.deepEqual(page.errors, []);
+  await page.done();
+});
+
 test("clientModules: 'needed' leaves out the modules of components whose server HTML is complete", async () => {
   assert.throws(() => createZubra({ components, clientModules: 'some' }), /clientModules is "all" or "needed"/);
   const zubra = createZubra({ components, clientModules: 'needed' });

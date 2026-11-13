@@ -18,9 +18,20 @@ use crate::ast::{Attribute, ComponentAst, Node};
 
 /// Why the component needs its module in the browser; empty when it doesn't. `gaps` are the
 /// parts the server's HTML leaves for the browser (from [`crate::server_gaps`]).
+#[cfg(test)]
 pub fn reasons(component: &ComponentAst, gaps: usize) -> Vec<String> {
+    reasons_in(component, gaps, None)
+}
+
+/// [`reasons`], with the component's source: method calls in its template that the server can't
+/// compute are reasons too, whichever branch the props choose (the gaps only cover the branches the
+/// default props take).
+pub fn reasons_in(component: &ComponentAst, gaps: usize, source: Option<&str>) -> Vec<String> {
     let mut found = Vec::new();
     own(component, &mut found);
+    if let Some(source) = source {
+        template_calls(source, &mut found);
+    }
     if gaps > 0 {
         found.push(format!(
             "{gaps} part{} computed in the browser",
@@ -29,7 +40,8 @@ pub fn reasons(component: &ComponentAst, gaps: usize) -> Vec<String> {
     }
     for child in &component.children {
         // Its gaps are already in `gaps` (the server renders the children with the parent).
-        for reason in reasons(&child.ast, 0) {
+        let child_source = std::fs::read_to_string(&child.path).ok();
+        for reason in reasons_in(&child.ast, 0, child_source.as_deref()) {
             found.push(format!("<{}>: {reason}", child.ast.tag));
         }
     }
@@ -64,7 +76,17 @@ fn own(component: &ComponentAst, found: &mut Vec<String>) {
         .filter(|binding| binding.id_call.is_some() && script.server_ids)
         .map(|binding| binding.name.as_str())
         .collect();
-    statements(&script.body, &server_ids, found);
+    // `const media = hasSlot('media')`: rendered by the server, nothing else happens.
+    let rendered: Vec<&str> = script
+        .imports
+        .iter()
+        .filter(|import| import.specifier == "@zubra/runtime")
+        .filter_map(imported_names)
+        .flatten()
+        .filter(|(exported, _)| *exported == "hasSlot")
+        .map(|(_, local)| local)
+        .collect();
+    statements(&script.body, &server_ids, &rendered, found);
     if !script.server_exports.is_empty() {
         found.push("server functions (actions)".into());
     }
@@ -146,7 +168,7 @@ fn attribute_reason(attribute: &Attribute) -> Option<String> {
 /// The script's top-level statements that run in the browser when the element starts: a
 /// `const` computed by a call, destructuring, or a statement that isn't a declaration.
 /// Definitions (functions, classes, arrow functions, values the server can compute) don't.
-fn statements(body: &str, server_ids: &[&str], found: &mut Vec<String>) {
+fn statements(body: &str, server_ids: &[&str], rendered: &[&str], found: &mut Vec<String>) {
     if body.trim().is_empty() {
         return;
     }
@@ -187,6 +209,7 @@ fn statements(body: &str, server_ids: &[&str], found: &mut Vec<String>) {
                         if let Some(init) = &declarator.init {
                             if !(Pure {
                                 arrows: &arrows,
+                                rendered,
                                 depth: 0,
                             })
                             .expression(init)
@@ -264,64 +287,58 @@ const PURE_FUNCTIONS: &[&str] = &[
     "decodeURIComponent",
     "decodeURI",
 ];
-/// Methods of strings, numbers and arrays that return a value without side effects outside it.
+/// Methods of strings, numbers and arrays that return a value without side effects, and that the
+/// server's evaluator (`pure.rs`) computes: no more, or a component could count as complete on the
+/// server when the server leaves part of it empty. `the_method_list_is_what_the_server_evaluates`
+/// holds the two together. (Mutating ones, `sort` and `reverse`, aren't: `toSorted`, `toReversed`.
+/// Nor is `toString`: the server computes it on numbers, not arrays, and this can't tell which.)
 const PURE_METHODS: &[&str] = &[
-    "map",
+    "at",
+    "charAt",
+    "concat",
+    "endsWith",
+    "every",
     "filter",
-    "reduce",
-    "reduceRight",
-    "slice",
-    "join",
-    "includes",
-    "indexOf",
-    "lastIndexOf",
     "find",
     "findIndex",
     "findLast",
     "findLastIndex",
-    "some",
-    "every",
-    "concat",
     "flat",
     "flatMap",
-    "at",
-    "keys",
-    "values",
-    "entries",
-    "toSorted",
-    "toReversed",
-    "toSpliced",
-    "with",
-    "toFixed",
-    "toPrecision",
-    "toUpperCase",
-    "toLowerCase",
-    "trim",
-    "trimStart",
-    "trimEnd",
-    "split",
+    "includes",
+    "indexOf",
+    "join",
+    "lastIndexOf",
+    "map",
+    "padEnd",
+    "padStart",
+    "reduce",
+    "repeat",
     "replace",
     "replaceAll",
-    "padStart",
-    "padEnd",
+    "slice",
+    "some",
+    "split",
     "startsWith",
-    "endsWith",
-    "repeat",
-    "charAt",
-    "charCodeAt",
-    "codePointAt",
     "substring",
-    "toString",
-    "fill",
-    "sort",
-    "reverse",
-    "length",
+    "toFixed",
+    "toLowerCase",
+    "toReversed",
+    "toSorted",
+    "toSpliced",
+    "toUpperCase",
+    "trim",
+    "trimEnd",
+    "trimStart",
+    "with",
 ];
 
 /// Whether an initializer only computes a value: literals, names, operators, arrow functions,
 /// and calls that can't reach the browser (see the lists above).
 struct Pure<'a, 'b> {
     arrows: &'a [(&'b str, &'b Expression<'b>)],
+    /// Local names of runtime functions the server renders (`hasSlot`).
+    rendered: &'a [&'a str],
     depth: usize,
 }
 
@@ -339,15 +356,15 @@ impl Pure<'_, '_> {
             // A definition runs nothing; a call to it is checked where it's called.
             E::ArrowFunctionExpression(_) | E::FunctionExpression(_) => true,
             E::TemplateLiteral(template) => template.expressions.iter().all(|e| self.expression(e)),
-            E::ArrayExpression(array) => {
-                array
-                    .elements
-                    .iter()
-                    .all(|element| match element.as_expression() {
-                        Some(expression) => self.expression(expression),
-                        None => matches!(element, oxc_ast::ast::ArrayExpressionElement::Elision(_)),
-                    })
-            }
+            E::ArrayExpression(array) => array.elements.iter().all(|element| match element {
+                oxc_ast::ast::ArrayExpressionElement::SpreadElement(spread) => {
+                    self.expression(&spread.argument)
+                }
+                oxc_ast::ast::ArrayExpressionElement::Elision(_) => true,
+                element => element
+                    .as_expression()
+                    .is_some_and(|expression| self.expression(expression)),
+            }),
             E::ObjectExpression(object) => {
                 object.properties.iter().all(|property| match property {
                     oxc_ast::ast::ObjectPropertyKind::ObjectProperty(property) => {
@@ -403,7 +420,7 @@ impl Pure<'_, '_> {
         match callee {
             Expression::Identifier(identifier) => {
                 let name = identifier.name.as_str();
-                if PURE_FUNCTIONS.contains(&name) {
+                if PURE_FUNCTIONS.contains(&name) || self.rendered.contains(&name) {
                     return true;
                 }
                 // An arrow from the script: its body, once (recursion is the browser's).
@@ -414,6 +431,7 @@ impl Pure<'_, '_> {
                                 Expression::ArrowFunctionExpression(function) => {
                                     let inner = Pure {
                                         arrows: self.arrows,
+                                        rendered: self.rendered,
                                         depth: self.depth + 1,
                                     };
                                     match &function.body {
@@ -465,30 +483,116 @@ impl Pure<'_, '_> {
     }
 }
 
-/// An import of only `id` from `@zubra/runtime`, whose calls the server renders (`server_ids`).
-fn server_safe(import: &crate::ast::Import, script: &crate::ast::Script) -> bool {
-    if import.specifier != "@zubra/runtime" || !script.server_ids {
-        return false;
+/// `.name(` calls inside the template's `{…}` (outside `<script>` and `<style>`) whose method the
+/// server doesn't compute. A call on a name the script defines (`{format(x)}`) isn't a method.
+fn template_calls(source: &str, found: &mut Vec<String>) {
+    let mut template = source.to_owned();
+    for tag in ["script", "style"] {
+        while let Some(start) = template.find(&format!("<{tag}")) {
+            let end = template[start..]
+                .find(&format!("</{tag}>"))
+                .map_or(template.len(), |end| start + end + tag.len() + 3);
+            template.replace_range(start..end, "");
+        }
     }
-    let Some(names) = import
-        .text
-        .split_once('{')
-        .and_then(|(before, rest)| {
-            before
-                .trim_start()
-                .strip_prefix("import")
-                .filter(|b| b.trim().is_empty())
-                .and(rest.split_once('}'))
-        })
-        .map(|(names, _)| names)
-    else {
-        return false;
-    };
+    let mut depth = 0usize;
+    let mut expression = String::new();
+    let mut seen: Vec<String> = Vec::new();
+    for character in template.chars() {
+        match character {
+            '{' => depth += 1,
+            '}' if depth > 0 => {
+                depth -= 1;
+                if depth == 0 {
+                    for name in called_methods(&expression) {
+                        if !PURE_METHODS.contains(&name) && !seen.iter().any(|seen| seen == name) {
+                            seen.push(name.to_owned());
+                            found.push(format!(
+                                "`.{name}()` in the template is computed in the browser"
+                            ));
+                        }
+                    }
+                    expression.clear();
+                }
+            }
+            character if depth > 0 => expression.push(character),
+            _ => {}
+        }
+    }
+}
+
+/// The methods called in an expression: the name after a `.` (or `?.`) and before a `(`.
+fn called_methods(expression: &str) -> Vec<&str> {
+    let bytes = expression.as_bytes();
+    let mut names = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'.' {
+            let start = index + 1;
+            let mut end = start;
+            while end < bytes.len()
+                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_' || bytes[end] == b'$')
+            {
+                end += 1;
+            }
+            // `Math.max(…)`, `Object.keys(…)`: a static the script's rules allow, not a method.
+            let receiver = expression[..index]
+                .rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+                .next()
+                .unwrap_or_default();
+            let name = &expression[start..end];
+            let pure_static =
+                PURE_STATICS.contains(&receiver) && !(receiver == "Math" && name == "random");
+            if end > start
+                && expression[end..].trim_start().starts_with('(')
+                && !bytes[start].is_ascii_digit()
+                && !pure_static
+            {
+                names.push(name);
+            }
+            index = end.max(index + 1);
+        } else {
+            index += 1;
+        }
+    }
     names
-        .split(',')
-        .map(|name| name.split(" as ").next().unwrap_or_default().trim())
-        .filter(|name| !name.is_empty())
-        .all(|name| name == "id")
+}
+
+/// The runtime functions the server renders, which do nothing else: `hasSlot()` (whether a slot
+/// has content), and `id()` when the script's ids are numbered on the server (`server_ids`).
+fn server_rendered(name: &str, script: &crate::ast::Script) -> bool {
+    name == "hasSlot" || (name == "id" && script.server_ids)
+}
+
+/// The names an `import { a, b as c } from '...'` brings in: (exported, local).
+fn imported_names(import: &crate::ast::Import) -> Option<Vec<(&str, &str)>> {
+    let (before, rest) = import.text.split_once('{')?;
+    before
+        .trim_start()
+        .strip_prefix("import")
+        .filter(|b| b.trim().is_empty())?;
+    let (names, _) = rest.split_once('}')?;
+    Some(
+        names
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(|name| match name.split_once(" as ") {
+                Some((exported, local)) => (exported.trim(), local.trim()),
+                None => (name, name),
+            })
+            .collect(),
+    )
+}
+
+/// An import of only functions the server renders from `@zubra/runtime` (see `server_rendered`).
+fn server_safe(import: &crate::ast::Import, script: &crate::ast::Script) -> bool {
+    import.specifier == "@zubra/runtime"
+        && imported_names(import).is_some_and(|names| {
+            names
+                .iter()
+                .all(|(exported, _)| server_rendered(exported, script))
+        })
 }
 
 #[cfg(test)]
@@ -505,6 +609,68 @@ mod tests {
             reasons(script),
             Vec::<String>::new(),
             "computed on the server"
+        );
+    }
+
+    #[test]
+    fn the_method_list_is_what_the_server_evaluates() {
+        for method in super::PURE_METHODS {
+            let call = match *method {
+                "toFixed" => "(1.5).toFixed(1)".to_owned(),
+                "charAt" => "'ab'.charAt(0)".to_owned(),
+                "substring" => "'ab'.substring(1)".to_owned(),
+                "endsWith" | "padEnd" | "padStart" | "repeat" | "replace" | "replaceAll"
+                | "split" | "startsWith" | "toLowerCase" | "toUpperCase" | "trim" | "trimEnd"
+                | "trimStart" => match *method {
+                    "replace" | "replaceAll" => format!("'ab'.{method}('a', 'c')"),
+                    "padEnd" | "padStart" | "repeat" => format!("'ab'.{method}(3)"),
+                    _ => format!("'ab'.{method}('a')"),
+                },
+                "flat" | "toSorted" | "toReversed" | "join" => {
+                    format!("[2, 1].{method}()")
+                }
+                "concat" | "includes" | "indexOf" | "lastIndexOf" | "at" | "slice" => {
+                    format!("[2, 1].{method}(1)")
+                }
+                "with" | "toSpliced" => format!("[2, 1].{method}(0, 3)"),
+                "reduce" => "[2, 1].reduce((a, b) => a + b, 0)".to_owned(),
+                _ => format!("[2, 1].{method}((x) => x > 1)"),
+            };
+            assert!(
+                crate::pure::evaluate(&call, &|_| None).is_ok(),
+                "the server doesn't compute {call}"
+            );
+        }
+    }
+
+    #[test]
+    fn template_calls_the_server_cant_compute_are_reasons_whatever_the_props() {
+        let source = "<zb-x items={[]} sorted={false}>\n  <p>{sorted ? items.sort().join(', ') : items.toSorted().join(', ')}</p><b>{format(Math.max(1, 2))} {Math.random()}</b>\n</zb-x>";
+        let mut found = Vec::new();
+        super::template_calls(source, &mut found);
+        assert_eq!(
+            found,
+            vec![
+                "`.sort()` in the template is computed in the browser".to_owned(),
+                "`.random()` in the template is computed in the browser".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn has_slot_and_array_copies_are_rendered_by_the_server() {
+        let script = "<script>\n  import { hasSlot as has } from '@zubra/runtime'\n  const media = has('media')\n  const list = sorted ? [...items].toSorted((a, b) => b - a) : items\n</script>\n<zb-x items={[]} sorted={false}><div zb-if={media}><zb-slot name=\"media\"></zb-slot></div><zb-each items={list} as=\"i\"><b>{i}</b></zb-each></zb-x>";
+        assert_eq!(reasons(script), Vec::<String>::new());
+        // With another runtime import, or a spread of something the browser computes, it isn't.
+        let with_hook = "<script>\n  import { hasSlot, onMount } from '@zubra/runtime'\n  const media = hasSlot('media')\n</script>\n<zb-x><p>x</p></zb-x>";
+        assert_eq!(
+            reasons(with_hook),
+            vec!["imports `@zubra/runtime`".to_owned()]
+        );
+        let browser = "<script>\n  const all = [...document.querySelectorAll('p')]\n</script>\n<zb-x><p>x</p></zb-x>";
+        assert_eq!(
+            reasons(browser),
+            vec!["`all` is computed in the browser".to_owned()]
         );
     }
 
