@@ -37,7 +37,7 @@ function normalize(path) {
  * `cache`, `devtools` (off by default here: the DevTools need the runtime's development build,
  * which you would have to serve yourself) and `imports`.
  */
-export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : null, components = {}, prefix = '/_zubra', cache = true, devtools = false, imports = {}, warn, gaps, clientModules } = {}) {
+export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : null, components = {}, prefix = '/_zubra', cache = true, devtools = false, imports = {}, warn, gaps, clientModules, inline } = {}) {
   if (!compiler) throw new Error("@zubra/server/edge: createZubra() needs the compiler's WebAssembly module (`wasm`), or a `compiler` from createCompiler()");
   const sources = new Map(); // path → source
   const files = new Map(); // name → path
@@ -76,6 +76,7 @@ export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : nul
     warn,
     gaps,
     clientModules,
+    inline,
     request: (body) => compiler.request(body),
     files,
     sourcesOf: (path) => sourcesOf(path),

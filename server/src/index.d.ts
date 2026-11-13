@@ -1,6 +1,15 @@
 export interface PropInfo { name: string; attribute: string; type: string; default: unknown; model: boolean; required: boolean }
 export interface ComponentInfo { tag: string; shadow: boolean; form: boolean; props: PropInfo[]; events: string[] }
 
+export interface PageOptions {
+  /**
+   * The nonce of this response's Content-Security-Policy (`script-src 'nonce-…'`,
+   * `style-src 'nonce-…'`): put on every inline `<style>` and `<script>` the page writes (the
+   * components' CSS, the import map, the module script, and a streamed prop's scripts).
+   */
+  nonce?: string;
+}
+
 export interface Page {
   /** The components this page rendered, in order. */
   readonly used: string[];
@@ -33,14 +42,15 @@ export interface Zubra {
   describe(name: string): ComponentInfo;
   render(name: string, props?: Record<string, unknown>, slots?: Record<string, string>): string;
   /** One page's renders, CSS and scripts. */
-  page(): Page;
+  page(options?: PageOptions): Page;
   /** Node's http: serves the browser modules and runtime under the prefix; true when it answered. */
   handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): boolean;
   /** Fetch-style servers: a Response for the prefix's paths, or null. */
   fetch(request: Request): Promise<Response | null>;
-  importMap(): string;
-  head(names?: string[]): string;
-  scripts(names?: string[]): string;
+  /** The import map (empty with `inline: false`, where the modules need none). */
+  importMap(options?: PageOptions): string;
+  head(names?: string[], options?: PageOptions): string;
+  scripts(names?: string[], options?: PageOptions): string;
   /**
    * A framework's HTML with each shadow-DOM component's server-rendered template as a declarative
    * shadow root, and a hidden input for form-associated ones with a `name` (`forms: false` leaves
@@ -51,7 +61,10 @@ export interface Zubra {
   injectShadowRootsStream(options?: { forms?: boolean; lightDom?: boolean }): import('node:stream').Transform;
   /** A component's browser module (JavaScript). */
   module(name: string): string;
-  /** Static sites: write the browser modules and @zubra/runtime under `dir` (at `<dir>/_zubra/…`). */
+  /**
+   * Static sites: write the browser modules and @zubra/runtime under `dir` (at `<dir>/_zubra/…`),
+   * and with `inline: false` each component's stylesheet.
+   */
   writeAssets(dir: string): void;
 }
 
@@ -81,6 +94,16 @@ export interface ZubraOptions {
    * intended.
    */
   gaps?: 'warn' | 'ignore';
+  /**
+   * `false`: a page's head and scripts have no inline `<style>` or `<script>`, for a
+   * Content-Security-Policy without `'unsafe-inline'` on a site that can't give each response a
+   * nonce (a static site). The components' CSS is linked (`<prefix>/components/<name>.css`), each
+   * module is a `<script type="module" src>`, and there is no import map: the modules are served
+   * (and written by `writeAssets()`) with their imports of `@zubra/runtime`, `@zubra/sync` and
+   * `imports` already resolved. A prop given as a promise still needs `page({ nonce })`.
+   * Default `true`.
+   */
+  inline?: boolean;
 }
 
 export declare function createZubra(options?: ZubraOptions): Zubra;
