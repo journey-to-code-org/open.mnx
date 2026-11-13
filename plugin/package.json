@@ -10,14 +10,35 @@
   },
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
-    "./vite": "./src/vite.js",
-    "./rollup": "./src/rollup.js",
-    "./webpack": "./src/webpack.js",
-    "./esbuild": "./src/esbuild.js",
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./vite": {
+      "types": "./src/vite.d.ts",
+      "default": "./src/vite.js"
+    },
+    "./rollup": {
+      "types": "./src/rollup.d.ts",
+      "default": "./src/rollup.js"
+    },
+    "./webpack": {
+      "types": "./src/webpack.d.ts",
+      "default": "./src/webpack.js"
+    },
+    "./esbuild": {
+      "types": "./src/esbuild.d.ts",
+      "default": "./src/esbuild.js"
+    },
     "./loader": "./src/loader.cjs",
-    "./rspack": "./src/rspack.js",
-    "./astro": "./src/astro.js",
+    "./rspack": {
+      "types": "./src/rspack.d.ts",
+      "default": "./src/rspack.js"
+    },
+    "./astro": {
+      "types": "./src/astro.d.ts",
+      "default": "./src/astro.js"
+    },
     "./astro/server": "./src/astro-server.js",
     "./astro/client": "./src/astro-client.js",
     "./client": {
