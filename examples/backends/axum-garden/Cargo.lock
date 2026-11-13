@@ -1515,7 +1515,7 @@ checksum = "458b3e7a977f14499066b6bdb63d69da30ce337d6c160f077e6c575c82a44db9"
 
 [[package]]
 name = "zubra"
-version = "5.9.1"
+version = "5.9.2"
 dependencies = [
  "html-escape",
  "oxc_allocator",

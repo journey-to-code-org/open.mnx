@@ -2,7 +2,11 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.9.2 — 2026-11-12
+
+Security fixes from the November audit's high findings: what `@zubra/server` serves, what streamed values and spread keys can write into a page, Sync clocks and field names, and the server-language clients' deferred markers. Upgrade if you use `@zubra/server`, `@zubra/sync`, or the Django, Rails or Laravel integration.
+
+**Changes to note:** `@zubra/server` now answers 404 for a plain `.js` module no component's browser code imports; Sync refuses a push stamped more than 60 s ahead (`maxSkew`) and a field named `key`; code that wrote the Django, Rails or Laravel markers by hand needs the request's token (below).
 
 ### Security
 
