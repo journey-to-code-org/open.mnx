@@ -327,3 +327,45 @@ test("handle(): a Host header that isn't a host is a 400, and the server keeps a
     server.close();
   }
 });
+
+test('a push is at most maxBytes and maxChanges, refused before anyone is asked', async () => {
+  let asked = 0;
+  const sync = createSyncServer({ log: memoryLog(), authorize: () => (asked++, true), maxBytes: 4096, maxChanges: 3 });
+  const body = (text) => sync.fetch(new Request('http://localhost/_zb/sync/push', { method: 'POST', headers: { 'content-type': 'application/json' }, body: text })).then((r) => r.status);
+  assert.equal(await body(JSON.stringify({ changes: [change('title', 'x'.repeat(5000))] })), 413, 'declared length over');
+  const stream = new ReadableStream({ start(controller) { for (let i = 0; i < 10; i++) controller.enqueue(new TextEncoder().encode('x'.repeat(1000))); controller.close(); } });
+  assert.equal((await sync.fetch(new Request('http://localhost/_zb/sync/push', { method: 'POST', body: stream, duplex: 'half' }))).status, 413, 'streamed past the limit');
+  const four = Array.from({ length: 4 }, (_, i) => change('title', String(i), `00000000000000${i + 1}-00000-dev1`));
+  assert.equal(await body(JSON.stringify({ changes: four })), 413, 'too many changes');
+  assert.equal(asked, 0, 'authorize never asked');
+  assert.equal(await body(JSON.stringify({ changes: four.slice(0, 3) })), 200);
+  const presence = await sync.fetch(new Request('http://localhost/_zb/sync/presence', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ room: 'tasks/t1', peer: 'abcdefgh', state: { x: 'y'.repeat(5000) } }) }));
+  assert.equal(presence.status, 413, 'presence too');
+});
+
+test('handle(): a body that says it is past maxBytes is refused before it is read', { timeout: 20_000 }, async () => {
+  const sync = createSyncServer({ log: memoryLog(), authorize: allowAnyone, maxBytes: 1 << 20 });
+  const server = createServer(async (req, res) => {
+    if (await sync.handle(req, res)) return;
+    res.end('page');
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  server.unref();
+  const { port } = server.address();
+  try {
+    // Says 100 MB, sends ten bytes and waits: the answer can't depend on reading the rest.
+    const answer = await new Promise((done) => {
+      let out = '';
+      const socket = connect(port, '127.0.0.1', () => socket.write('POST /_zb/sync/push HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 100000000\r\n\r\n{"changes"'));
+      socket.setTimeout(3000, () => socket.destroy());
+      socket.on('data', (chunk) => { out += chunk; socket.destroy(); });
+      socket.on('close', () => done(out));
+    });
+    assert.match(answer, /^HTTP\/1\.1 413/);
+    const chunked = new ReadableStream({ start(controller) { for (let i = 0; i < 3; i++) controller.enqueue(new TextEncoder().encode('x'.repeat(1 << 19))); controller.close(); } });
+    assert.equal((await fetch(`http://127.0.0.1:${port}/_zb/sync/push`, { method: 'POST', body: chunked, duplex: 'half' })).status, 413, 'and one that turns out longer');
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}/`)).text(), 'page');
+  } finally {
+    server.close();
+  }
+});
