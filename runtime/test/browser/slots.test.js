@@ -358,8 +358,7 @@ test('text alone given to an element whose template starts with a condition is s
     return `${inner.localName}:${inner.innerHTML.replace(/<!--.*?-->|<\\?zb.*?>/g, '')}`;
   }));
   // Content shaped like the template is checked for stripped server markup first (remark.js, a
-  // dynamic import), so those elements render a moment later: wait until all of them have.
-  await page.waitForFunction(() => [...document.querySelectorAll('zb-either')].every((el) => el.querySelector('.either')));
+  // dynamic import), so those elements render a moment later: updateComplete waits for that.
   await page.evaluate(() => Promise.all([...document.querySelectorAll('zb-either')].map((el) => el.updateComplete)));
   assert.deepEqual(await read(), ['button:Save <b>now</b>', 'a:Go', 'button:Fallback', 'a:<b>Bold</b>', 'button:Plain'], 'text alone is content too, not server markup');
   await page.evaluate(async () => {
@@ -372,6 +371,22 @@ test('text alone given to an element whose template starts with a condition is s
   });
   assert.deepEqual(await read(), ['a:Save <b>now</b>', 'button:Go', 'button:Fallback', 'a:<b>Bold</b>', 'button:Plain']);
   assert.equal(await page.evaluate(() => document.querySelector('zb-either a b') === window.bold), true, 'the same nodes, moved');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('updateComplete waits for a first render that is waiting on the check for stripped server markup', async () => {
+  // Asked for as soon as the element is defined, before remark.js (a dynamic import) can be here:
+  // what a framework's test does after mounting <zb-either>Save</zb-either>.
+  const { page, messages } = await open('<zb-either>Save</zb-either>', {
+    modules: ['either'],
+    beforeModules: `window.rendered = customElements.whenDefined('zb-either').then(async () => {
+      const el = document.querySelector('zb-either');
+      await el.updateComplete;
+      return el.querySelector('.either')?.textContent ?? null;
+    });`,
+  });
+  assert.equal(await page.evaluate(() => window.rendered), 'Save');
   assert.deepEqual(messages, []);
   await page.close();
 });
