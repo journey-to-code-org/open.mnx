@@ -2,6 +2,18 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.10.0 — 2026-11-13
+
+An app and a package can each carry a copy of the same part. When an app's component and a package's share a tag (both have Zubra UI's `action-button`, say), the app's is used everywhere, instead of the server refusing both. Also: the playground's React and Vue previews render the page.
+
+### Changed
+
+- **`@zubra/server`: an app's component wins over a package's with the same tag.** An app and a package that each carried a copy of a shared part (an `action-button` from Zubra UI) couldn't share a server: rendering by that tag threw "is defined by both". Now the app's copy is used everywhere: by tag, by the package's name, and by the package's own components, whose import of their copy is served as the app's module, so the browser defines the tag once. If the two sources differ (comments aside) the server warns once. Two of the app's components, or two packages', with one tag are still an error. Inside a package component's server HTML, a child still renders from the package's copy, so keep the copies the same.
+
+### Fixed
+
+- **The playground's React and Vue previews render the page.** They ignored the page box and always rendered one default component. Now they read the markup as the plain HTML preview does: a host tag's attributes become typed props, its child elements become children and named slots, and other elements render as written. The preview controls stay readable in dark mode.
+
 ## 5.9.2 — 2026-11-12
 
 Security fixes from the November audit's high findings: what `@zubra/server` serves, what streamed values and spread keys can write into a page, Sync clocks and field names, and the server-language clients' deferred markers. Upgrade if you use `@zubra/server`, `@zubra/sync`, or the Django, Rails or Laravel integration.

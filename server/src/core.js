@@ -19,7 +19,7 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), clientModules = 'all', localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
+export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), clientModules = 'all', localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
   if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
   const memo = new Map();
   const once = (key, make) => {
@@ -40,18 +40,45 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
 
   /** Each component's interface: `{ tag, shadow, form, props: [{ name, attribute, type, default, model }] }`. */
   const describe = (name) => once(`interface:${name}`, () => JSON.parse(call(pathOf(name), { emit: 'interface' })));
-  const byTag = () =>
+  /** A component's own source, without its comments: two copies of one component compare equal. */
+  const ownSource = (name) => {
+    const path = pathOf(name);
+    const sources = sourcesOf(path);
+    return String(sources[path] ?? Object.values(sources)[0] ?? '').replace(/<!--[\s\S]*?-->/g, '').trim();
+  };
+  /**
+   * Which component each tag is, and which package components the app's own stand in for. An
+   * app's component and a package's with one tag (both carrying a copy of a shared part, say):
+   * the app's wins everywhere, the package's own imports of it included, and if the two copies
+   * differ the server says so. Two of the app's, or two packages', with one tag is an error.
+   */
+  const warned = new Set();
+  const owners = () =>
     once('tags', () => {
       const tags = new Map();
+      const shadows = new Map();
+      // `files` lists the app's components before any package's, so the app's copy is kept.
       for (const name of files.keys()) {
         const { tag } = describe(name);
-        // Two components with one tag (an app's and a package's, say) can't share a page.
-        if (tags.has(tag)) throw new Error(`@zubra/server: <${tag}> is defined by both ${tags.get(tag)} and ${name}`);
-        tags.set(tag, name);
+        const kept = tags.get(tag);
+        if (kept === undefined) {
+          tags.set(tag, name);
+          continue;
+        }
+        if (fromPackage(kept) || !fromPackage(name)) throw new Error(`@zubra/server: <${tag}> is defined by both ${kept} and ${name}`);
+        shadows.set(name, kept);
+        // Once per server, even with `cache: false` (which works this out again for each render).
+        const message = `@zubra/server: <${tag}> is the app's ${kept}, in place of ${name}, which differs from it: the package's components get the app's`;
+        if (!warned.has(message) && ownSource(name) !== ownSource(kept)) {
+          warned.add(message);
+          warn(message);
+        }
       }
-      return tags;
+      return { tags, shadows };
     });
-  const nameOf = (nameOrTag) => (files.has(nameOrTag) ? nameOrTag : byTag().get(nameOrTag));
+  const byTag = () => owners().tags;
+  /** A component name or tag as the component that answers for it (the app's, for a shadowed package one). */
+  const nameOf = (nameOrTag) => (files.has(nameOrTag) ? (fromPackage(nameOrTag) ? owners().shadows.get(nameOrTag) ?? nameOrTag : nameOrTag) : byTag().get(nameOrTag));
 
   // `idPrefix`: renders that end up in one page number their hosts' ids apart (`id()`).
   // `context`: the values the page provides (`page.provide()`), by context key.
@@ -134,6 +161,13 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
       if (!files.has(name)) {
         const path = rest.slice('components/'.length);
         return (browserModules().has(path) && localModule(path)) || { status: 404, type: 'text/plain', body: 'Not found' };
+      }
+      // A package's copy of a tag the app has too: the module is the app's, so the browser
+      // defines the tag once, however the package's components import it.
+      const app = fromPackage(name) ? owners().shadows.get(name) : undefined;
+      if (app !== undefined) {
+        const url = JSON.stringify(`${base}/components/${app}.js`);
+        return { status: 200, type: TYPES['.js'], body: `export * from ${url};\nexport { default } from ${url};\n` };
       }
       return { status: 200, type: TYPES['.js'], body: js(name) };
     }
