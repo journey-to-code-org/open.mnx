@@ -135,9 +135,19 @@ const clock = {
   },
 };
 
+/**
+ * Field names a change can't have: `$clocks` is where a document keeps its fields' clocks, and
+ * `key` is the document's own key wherever documents are listed (`{ key, ...fields }`), so a
+ * field by that name would pass one document off as another.
+ */
+const RESERVED = new Set(['$clocks', 'key']);
+
 const valid = (change) =>
   change && typeof change.collection === 'string' && typeof change.key === 'string' && typeof change.field === 'string' &&
-  clock.parse(change.clock) !== null && change.field !== '$clocks';
+  clock.parse(change.clock) !== null && !RESERVED.has(change.field);
+
+/** The largest counter a clock can carry; past it, the clock moves on a millisecond. */
+const MAX_COUNTER = 99_999;
 
 /**
  * How documents are read, wherever they're kept: `find(collection, key)` → fields or undefined,
@@ -158,7 +168,8 @@ export function documentsView({ find, list, names }) {
     all: (collection, prefix = '') =>
       list(collection)
         .filter(({ key }) => key.startsWith(prefix))
-        .map(({ key, fields }) => ({ key, ...structuredClone(fields) })),
+        // The key last: nothing in the fields can stand in for it.
+        .map(({ key, fields }) => ({ ...structuredClone(fields), key })),
     /** The collections that have documents, in the order they were first written to. */
     collections: () => names(),
   };
@@ -201,7 +212,7 @@ export const allowAnyone = () => true;
 const readsOnly = ({ write }) => !write;
 const NO_AUTHORIZE = 'This sync server takes no writes from pages until it is told who may make them: pass createSyncServer({ authorize }) (or authorize: allowAnyone, for a page anyone may edit). See docs/sync.md, "Who may write".';
 
-export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
+export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server', maxSkew = 60_000 } = {}) {
   if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
   if (given !== undefined && typeof given !== 'function') throw new TypeError('createSyncServer: `authorize` is a function ({ request, collection, key, field, value, write, kind }) => boolean');
   const authorize = given ?? readsOnly;
@@ -215,13 +226,23 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
   let lastTime = 0;
   let counter = 0;
   const tick = () => {
-    const now = Math.max(Date.now(), lastTime);
+    let now = Math.max(Date.now(), lastTime);
     counter = now === lastTime ? counter + 1 : 0;
+    // A counter can't outgrow its five digits (the clock would stop comparing as a string).
+    if (counter > MAX_COUNTER) {
+      now += 1;
+      counter = 0;
+    }
     lastTime = now;
     return clock.format(now, counter, device);
   };
+  /** Whether a clock is further ahead of this server's than `maxSkew`: a device can't push one. */
+  const ahead = (stamp) => clock.parse(stamp).time > Date.now() + maxSkew;
   const see = (change) => {
     const { time, counter: seen } = clock.parse(change.clock);
+    // One already in the log from before this check (or a log written elsewhere) doesn't drag
+    // this server's clock into the future with it.
+    if (time > Date.now() + maxSkew) return;
     if (time > lastTime) {
       lastTime = time;
       counter = seen;
@@ -332,7 +353,8 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
         return json(400, { error: 'Expected JSON' });
       }
       const changes = Array.isArray(body?.changes) ? body.changes : null;
-      if (!changes || !changes.every(valid)) return json(400, { error: 'Expected { changes: [{ collection, key, field, value, clock }] }' });
+      if (!changes || !changes.every(valid)) return json(400, { error: 'Expected { changes: [{ collection, key, field, value, clock }] }; a field can\'t be named key or $clocks' });
+      if (changes.some((change) => ahead(change.clock))) return json(400, { error: "A change's clock is ahead of the server's by more than maxSkew; check the device's time" });
       for (const change of changes) {
         if (!(await mayWrite(request, change.collection, change.key))) return json(403, { error: 'Not yours to change' });
         if (!(await authorize({ request, collection: change.collection, key: change.key, field: change.field, value: change.value, write: true, kind: 'change' }))) return refused('Not yours to change');
@@ -490,7 +512,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
     if (typeof collection !== 'string' || typeof key !== 'string' || !fields || typeof fields !== 'object' || Array.isArray(fields)) {
       throw new TypeError('sync.write(collection, key, { field: value, … })');
     }
-    if ('$clocks' in fields) throw new TypeError('sync.write: `$clocks` is not a field');
+    for (const name of RESERVED) if (name in fields) throw new TypeError(`sync.write: \`${name}\` can't be a field name`);
     // A server that hasn't read its log yet (it just started, or a Durable Object was evicted)
     // hasn't seen the clocks in it: read it first, so this write comes after all of them. Once
     // the documents exist this doesn't wait, so a check and a write with no await between stay

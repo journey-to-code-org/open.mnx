@@ -4,6 +4,11 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Security
+
+- **Sync refuses clocks far in the future.** A page could push a change stamped `999999999999999-99999`: it won that field's merge for ever, and every server `write()` after it threw (the next counter outgrew its five digits), surviving a restart. Now a push whose clock is more than `maxSkew` ahead of the server's (`createSyncServer({ maxSkew })`, default 60 s; 60 s in the `zubra-sync` binary) is refused with a 400. A device a little fast still works. A far-future clock already in a log doesn't drag the server's clock with it, devices don't follow one they hear, and clock counters carry into the next millisecond instead of overflowing.
+- **A field can't be named `key`.** `documents().all()` lists documents as `{ key, ...fields }`, so a field named `key` replaced the document's key: server code acting on the listed record acted on another one (another tenant's, under a shared log). The key is now listed last, and a push with a field named `key` is refused (400) in both servers, as `$clocks` already was; `write()` throws for it.
+
 ## 5.9.1 — 2026-11-12
 
 A security fix for `@zubra/sync`, and faster lists and Signals. Sync used to take any change from any page: a server without `authorize` now serves reads and refuses writes from pages until it's told who may make them (`authorize`, or `allowAnyone` for a page everyone may edit), and `authorize` is told the field and value a change sets.

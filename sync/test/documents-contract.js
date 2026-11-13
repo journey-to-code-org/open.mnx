@@ -5,6 +5,8 @@
 import assert from 'node:assert/strict';
 
 const change = (field, value, clock, key = 'o1') => ({ collection: 'orders', key, field, value, clock });
+/** A device whose clock runs 30 s ahead of the server's: inside maxSkew, so its changes are taken. */
+const AHEAD = `${String(Date.now() + 30_000).padStart(15, '0')}-00003-fast`;
 
 async function* events(response) {
   const reader = response.body.getReader();
@@ -41,11 +43,11 @@ export const documentsContract = [
     assert.equal(docs.all('seats', '').length, 3);
   }],
   ["the server's write comes after a device clock that runs ahead, reaches a live page, and is logged", async (h) => {
-    await h.push([change('status', 'placed', '999999999999999-00003-fast')]);
+    await h.push([change('status', 'placed', AHEAD)]);
     const stream = events(await h.live('p1'));
     await stream.next(); // the backlog
     const written = await h.write('orders', 'o1', { status: 'claimed', driver: 'jules' });
-    assert.ok(written.every((c) => c.clock > '999999999999999-00003-fast'), written[0].clock);
+    assert.ok(written.every((c) => c.clock > AHEAD), written[0].clock);
     const next = (await stream.next()).value;
     assert.deepEqual(next.data.changes.map((c) => [c.field, c.value]), [['status', 'claimed'], ['driver', 'jules']]);
     await stream.return();
@@ -54,7 +56,8 @@ export const documentsContract = [
     assert.deepEqual((await h.pull()).changes.map((c) => c.value), h.latest ? ['claimed', 'jules'] : ['placed', 'claimed', 'jules']);
   }],
   ['write refuses what isn’t fields', async (h) => {
-    await assert.rejects(() => h.write('orders', 'o1', { $clocks: {} }), /not a field/);
+    await assert.rejects(() => h.write('orders', 'o1', { $clocks: {} }), /can't be a field name/);
+    await assert.rejects(() => h.write('orders', 'o1', { key: 'o2' }), /`key` can't be a field name/);
     await assert.rejects(() => h.write('orders', 'o1', null), /sync\.write/);
   }],
   ['documents are built from a log that already has changes', async (h) => {
@@ -62,11 +65,11 @@ export const documentsContract = [
     assert.equal((await h.documents()).get('orders', 'o1').n, 6);
   }],
   ['after a restart, the documents come back and a write comes after every clock in the log', async (h) => {
-    await h.push([change('status', 'placed', '999999999999999-00003-fast')]);
+    await h.push([change('status', 'placed', AHEAD)]);
     await h.write('orders', 'o2', { status: 'placed' });
     await h.restart();
     const [written] = await h.write('orders', 'o1', { status: 'claimed' }); // before any documents()
-    assert.ok(written.clock > '999999999999999-00003-fast', written.clock);
+    assert.ok(written.clock > AHEAD, written.clock);
     assert.deepEqual((await h.documents()).get('orders', 'o1'), { status: 'claimed' });
     assert.deepEqual((await h.documents()).get('orders', 'o2'), { status: 'placed' });
   }],

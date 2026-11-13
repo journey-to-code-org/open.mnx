@@ -56,6 +56,11 @@ export function createSyncServer(options?: {
    * Without it, pages may read but every write from a page is refused (403, saying why). Pass
    * `allowAnyone` for a page everyone may edit. The server's own `write()` is never asked.
    */
+  /**
+   * How far ahead of the server's clock a pushed change's clock may be, in ms (default 60 000).
+   * Further ahead is refused (400): a clock far in the future would win every merge for ever.
+   */
+  maxSkew?: number;
   authorize?: (from: { request: Request; collection: string; key: string; field?: string; value?: unknown; write: boolean; kind: 'change' | 'presence' | 'read' }) => boolean | Promise<boolean>;
   /** Other origins allowed to push. */
   /**
