@@ -14,7 +14,7 @@
     "@microsoft/fast-element": "3.1.4",
     "@microsoft/webui": "3.1.1",
     "@microsoft/webui-framework": "3.1.1",
-    "@zubra/compiler": "5.7.0",
+    "@zubra/compiler": "5.13.0",
     "@zubra/runtime": "file:../../../runtime",
     "esbuild": "0.28.2",
     "playwright": "1.63.0"

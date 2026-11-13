@@ -184,5 +184,6 @@ The adapters are tested against these, in the framework and meta-framework examp
 | React Router | 8 |
 | Astro | 7 (the `npm create zubra` template) |
 | Eleventy | 3 |
+| FAST Element | 3 (`examples/frameworks/fast-orders`) |
 
 Exact versions are in each example's `package.json` and lockfile; `docs/framework-matrix.md` has what each adapter does.

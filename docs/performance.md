@@ -85,4 +85,4 @@ Create rows and remove row moved within this machine's noise (about 15%). A CPU 
 
 ## Server rendering
 
-The comparison with WebUI, FAST, Enhance and WebC (`docs/compared-with-html-first.md`) measures server rendering against those four. The short version: Zubra's server parses each component again on every render, which makes it about 20 times slower than WebUI's on the same page.
+The comparison with WebUI, FAST, Enhance and WebC (`docs/compared-with-html-first.md`) measures server rendering against those four. The short version: on a page of ten components, WebUI's server is about 15 times faster. Since 5.9.0 Zubra parses a component once, but each component on a page is still its own request to the compiler, with about 30 µs of fixed cost in WebAssembly.
