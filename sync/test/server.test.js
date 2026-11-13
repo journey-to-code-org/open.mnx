@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { connect } from 'node:net';
 import { createSyncServer, memoryLog, allowAnyone } from '../src/server.js';
 import { backends } from './backends.js';
 
@@ -300,4 +302,28 @@ test("what the log refuses isn't in the documents: a failed push, and a failed w
   assert.equal(docs.get('stock', 'beans'), undefined, 'a new document taken back entirely');
   await sync.write('stock', 'eggs', { qty: 2 });
   assert.equal(docs.get('stock', 'eggs').qty, 2);
+});
+
+test("handle(): a Host header that isn't a host is a 400, and the server keeps answering", { timeout: 10_000 }, async () => {
+  const sync = createSyncServer({ log: memoryLog() });
+  const server = createServer(async (req, res) => {
+    if (await sync.handle(req, res)) return;
+    res.end('page');
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  server.unref(); // a crash mustn't leave the test run waiting on this server
+  const { port } = server.address();
+  try {
+    const answer = await new Promise((done) => {
+      let out = '';
+      const socket = connect(port, '127.0.0.1', () => socket.write('GET /_zb/sync/pull HTTP/1.1\r\nHost: a:99999\r\nConnection: close\r\n\r\n'));
+      socket.setTimeout(3000, () => socket.destroy());
+      socket.on('data', (chunk) => (out += chunk));
+      socket.on('close', () => done(out));
+    });
+    assert.match(answer, /^HTTP\/1\.1 400/);
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}/`)).text(), 'page');
+  } finally {
+    server.close();
+  }
 });

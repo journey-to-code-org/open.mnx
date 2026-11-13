@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { connect } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { createActions } from '../src/index.js';
 
@@ -116,4 +117,27 @@ test('the server halves are not in the browser modules', async () => {
   const js = compiler.request({ emit: 'js', path, files: compiler.sources(path), runtime: '@zubra/runtime' });
   assert.ok(js.ok, js.error);
   assert.doesNotMatch(js.output, /users\.js|secret detail|Invalid login/);
+});
+
+test("a Host header that isn't a host is a 400 from handle(), and the server keeps answering", { timeout: 10_000 }, async () => {
+  const server = createServer(async (req, res) => {
+    if (await actions.handle(req, res)) return;
+    res.end('page');
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  server.unref(); // a crash mustn't leave the test run waiting on this server
+  const { port } = server.address();
+  try {
+    const answer = await new Promise((done) => {
+      let out = '';
+      const socket = connect(port, '127.0.0.1', () => socket.write('POST /_zb/action/login-form/login HTTP/1.1\r\nHost: [::1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'));
+      socket.setTimeout(3000, () => socket.destroy());
+      socket.on('data', (chunk) => (out += chunk));
+      socket.on('close', () => done(out));
+    });
+    assert.match(answer, /^HTTP\/1\.1 400/);
+    assert.equal(await (await fetch(`http://127.0.0.1:${port}/`)).text(), 'page');
+  } finally {
+    server.close();
+  }
 });
