@@ -1656,6 +1656,15 @@ const shape = ({ props = {}, shadow = false, form = false, events = [], styled =
 const HOT = Symbol('zubra.hot');
 // @hot-end
 
+// @dev
+const warnedTwice = new Set(); // tags already warned about being defined twice
+// What each tag's definition compiled to: two copies of one component (an app's and a package's,
+// both carrying a shared part) compile the same, comments aside, and needn't be warned about.
+const definedAs = new Map();
+const compiledAs = ({ template = '', styles = null, props = {}, shadow = false, form = false, events = [], slots = [], styled = false, setup }) =>
+  JSON.stringify([template, styles, props, shadow, form, events, slots, styled, String(setup ?? '')]);
+// @dev-end
+
 function defineElement(tag, definition) {
   const { props = {}, shadow = false, form = false, events = [], styled = false, inPage = false } = definition;
   let { roots, template = '', slots = [], styles = null, setup } = definition;
@@ -1669,8 +1678,21 @@ function defineElement(tag, definition) {
     // @hot (left out of the production build: scripts/build-production.js)
     // The same tag again: in development (with hot module replacement), a new version of the
     // component, swapped into the live elements; otherwise the first definition stands.
-    if (globalThis.__ZUBRA_HOT__ && existing[HOT]) existing.hotReloaded = existing[HOT](definition);
+    if (globalThis.__ZUBRA_HOT__ && existing[HOT]) {
+      existing.hotReloaded = existing[HOT](definition);
+      return existing;
+    }
     // @hot-end
+    // @dev (left out of the production build)
+    // Two different components with one tag on a page: the browser keeps the first, and the
+    // other never runs. The compiler refuses two of the app's (or two packages') within what one
+    // component imports, and the bundler plugin and @zubra/server give a package's components the
+    // app's copy of a part; what's left shows here. A second copy of the same component is quiet.
+    if (definedAs.get(tag) !== compiledAs(definition) && !warnedTwice.has(tag)) {
+      warnedTwice.add(tag);
+      console.warn(`zubra: <${tag}> is already defined, so another, different definition of it is ignored: a page defines a tag once, and whichever loads first wins. Two components share the tag (an app's own and a package's, say): rename one, or import the same file everywhere${see('writing-a-component')}`);
+    }
+    // @dev-end
     return existing;
   }
   const componentTemplate = { content: blueprint({ template }) };
@@ -2046,6 +2068,9 @@ function defineElement(tag, definition) {
     }
   }
 
+  // @dev
+  definedAs.set(tag, compiledAs(definition));
+  // @dev-end
   customElements.define(tag, ZubraElement);
   return ZubraElement;
 }

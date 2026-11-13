@@ -1623,6 +1623,7 @@ export function $define(tag, definition) {
 }
 
 
+
 function defineElement(tag, definition) {
   const { props = {}, shadow = false, form = false, events = [], styled = false, inPage = false } = definition;
   let { roots, template = '', slots = [], styles = null, setup } = definition;

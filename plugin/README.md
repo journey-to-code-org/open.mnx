@@ -84,6 +84,8 @@ zubra({
   dts: true,                   // write typings next to each component
   runtime: '@zubra/runtime',     // the runtime module compiled code imports
   ssr: true,                   // server builds register a renderer (needs @zubra/compiler at run time)
+  root: process.cwd(),         // where your own components are (default: Vite's root, or the current folder):
+                               // a package's component with one of their tags gets yours (docs/guide/04-composition.md)
 })
 ```
 
