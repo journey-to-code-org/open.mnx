@@ -104,6 +104,22 @@ pub fn evaluate(source: &str, lookup: &dyn Fn(&str) -> Option<Val>) -> Result<Va
 /// Enough for a few thousand rows of list work; more than that belongs in the browser.
 const STEP_LIMIT: usize = 1_000_000;
 const DEPTH_LIMIT: usize = 64;
+/// The longest string an expression may build, checked before it's allocated. Past it, the
+/// expression is the browser's: a padded id or a repeated star is never this long, and a prop
+/// asking for more (`padStart(1e9)`) mustn't take the server's memory with it.
+const STRING_LIMIT: usize = 1 << 20;
+/// Every string built also spends steps, one per this many bytes, so all the strings one render
+/// builds together stay within about STEP_LIMIT × BYTES_PER_STEP (64 MB), loops included.
+const BYTES_PER_STEP: usize = 64;
+
+/// Unsupported when a string of `length` would be longer than [`STRING_LIMIT`].
+fn within(length: usize) -> Result<()> {
+    if length > STRING_LIMIT {
+        Err(Unsupported)
+    } else {
+        Ok(())
+    }
+}
 
 struct Evaluator<'a> {
     source: &'a str,
@@ -138,6 +154,17 @@ impl Evaluator<'_> {
             "undefined" => Ok(Val::Undefined),
             _ => Err(Unsupported),
         }
+    }
+
+    /// Spend steps for a string just built (see [`BYTES_PER_STEP`]).
+    fn charge(&mut self, value: &Val) -> Result<()> {
+        if let Val::Json(Value::String(text)) = value {
+            self.steps += text.len() / BYTES_PER_STEP;
+            if self.steps > STEP_LIMIT {
+                return Err(Unsupported);
+            }
+        }
+        Ok(())
     }
 
     fn eval(&mut self, expression: &Expression<'_>) -> Result<Val> {
@@ -319,7 +346,9 @@ impl Evaluator<'_> {
             Expression::BinaryExpression(binary) => {
                 let left = self.eval(&binary.left)?;
                 let right = self.eval(&binary.right)?;
-                binary_op(binary.operator, &left, &right)
+                let value = binary_op(binary.operator, &left, &right)?;
+                self.charge(&value)?;
+                Ok(value)
             }
             Expression::ConditionalExpression(conditional) => {
                 if truthy(&self.eval(&conditional.test)?) {
@@ -833,11 +862,13 @@ impl Evaluator<'_> {
                     }
                     operator => {
                         let right = self.eval(&assignment.right)?;
-                        binary_op(
+                        let value = binary_op(
                             operator.to_binary_operator().ok_or(Unsupported)?,
                             &old,
                             &right,
-                        )?
+                        )?;
+                        self.charge(&value)?;
+                        value
                     }
                 };
                 self.set(name, value)
@@ -956,6 +987,7 @@ impl Evaluator<'_> {
                 let mut last = 0;
                 for each in &found {
                     out.extend_from_slice(&units[last..each.start]);
+                    within(out.len())?;
                     let replacement: Vec<u16> = match &second {
                         Val::Function(closure) => {
                             // (match, p1, …, pn, offset, string[, groups])
@@ -1071,6 +1103,12 @@ impl Evaluator<'_> {
     }
 
     fn method(&mut self, object: &Val, name: &str, arguments: Vec<Val>) -> Result<Val> {
+        let value = self.method_inner(object, name, arguments)?;
+        self.charge(&value)?;
+        Ok(value)
+    }
+
+    fn method_inner(&mut self, object: &Val, name: &str, arguments: Vec<Val>) -> Result<Val> {
         let arg = |index: usize| arguments.get(index).cloned().unwrap_or(Val::Undefined);
         match object {
             Val::Json(Value::Array(items)) => match name {
@@ -1100,7 +1138,12 @@ impl Evaluator<'_> {
                             }
                         })
                         .collect();
-                    Ok(string(&parts?.join(&separator)))
+                    let parts = parts?;
+                    within(
+                        parts.iter().map(String::len).sum::<usize>()
+                            + separator.len().saturating_mul(parts.len()),
+                    )?;
+                    Ok(string(&parts.join(&separator)))
                 }
                 "slice" => {
                     let (start, end) = range(items.len(), &arg(0), &arg(1))?;
@@ -1330,6 +1373,7 @@ impl Evaluator<'_> {
                     "toLowerCase" if text.is_ascii() => Ok(string(&text.to_ascii_lowercase())),
                     "padStart" | "padEnd" => {
                         let length = to_integer(&arg(0))?.max(0) as usize;
+                        within(length)?;
                         let fill: Vec<u16> = match arg(1) {
                             Val::Undefined => vec![b' ' as u16],
                             value => js_string(&value)?.encode_utf16().collect(),
@@ -1355,6 +1399,7 @@ impl Evaluator<'_> {
                         if !(0..=10_000).contains(&count) {
                             return Err(Unsupported);
                         }
+                        within(text.len().saturating_mul(count as usize))?;
                         Ok(string(&text.repeat(count as usize)))
                     }
                     "split" => match arg(0) {
@@ -1371,6 +1416,12 @@ impl Evaluator<'_> {
                         (Val::Json(Value::String(from)), Val::Json(Value::String(to)))
                             if !from.is_empty() && !to.contains('$') =>
                         {
+                            let found = if name == "replace" {
+                                1
+                            } else {
+                                text.matches(from.as_str()).count()
+                            };
+                            within(text.len() + found.saturating_mul(to.len()))?;
                             Ok(string(&if name == "replace" {
                                 text.replacen(from.as_str(), &to, 1)
                             } else {
@@ -1941,7 +1992,9 @@ fn binary_op(operator: BinaryOperator, left: &Val, right: &Val) -> Result<Val> {
                 {
                     return Err(Unsupported); // "[object Object]": almost certainly a mistake
                 }
-                Ok(string(&(js_string(left)? + &js_string(right)?)))
+                let (left, right) = (js_string(left)?, js_string(right)?);
+                within(left.len() + right.len())?;
+                Ok(string(&(left + &right)))
             }
             (
                 Val::Json(Value::Number(_) | Value::Bool(_) | Value::Null),
@@ -2006,6 +2059,34 @@ mod tests {
         evaluate(source, &lookup)
             .ok()
             .map(|value| value.into_json().unwrap())
+    }
+
+    #[test]
+    fn strings_past_the_limit_are_left_for_the_browser() {
+        // One prop could ask for a billion characters (audit Z6): the server leaves it.
+        assert_eq!(run("'7'.padStart(1000000000, '0')"), None);
+        assert_eq!(run("'7'.padEnd(100000000000)"), None);
+        assert_eq!(run("'abc'.repeat(10000).repeat(10000)"), None);
+        assert_eq!(
+            run("'ab'.repeat(10000).replaceAll('a', 'x'.repeat(200))"),
+            None
+        );
+        assert_eq!(run("(() => { let s = 'x'; for (let i = 0; i < 64; i++) s = s + s; return s.length; })()"), None);
+        assert_eq!(
+            run("Array.from({ length: 2000 }, () => 'y'.repeat(1000)).join('-').length"),
+            None
+        );
+        // Many strings, each under the limit, still spend the step budget together.
+        assert_eq!(run("(() => { let n = 0; for (let i = 0; i < 10000; i++) n += 'x'.repeat(10000).length; return n; })()"), None);
+        assert_eq!(run("(() => { const s = 'y'.repeat(10000); let n = 0; for (let i = 0; i < 4000; i++) n += (s + s).length; return n; })()"), None);
+        assert_eq!(run("(() => { let n = 0; for (let i = 0; i < 100; i++) n += 'x'.repeat(1000).length; return n; })()"), Some(Value::from(100000)));
+        // Ordinary sizes still render.
+        assert_eq!(
+            run("'7'.padStart(3, '0')"),
+            Some(Value::String("007".into()))
+        );
+        assert_eq!(run("'ab'.repeat(3)"), Some(Value::String("ababab".into())));
+        assert_eq!(run("(() => { let s = 'x'; for (let i = 0; i < 10; i++) s = s + s; return s.length; })()"), Some(Value::from(1024)));
     }
 
     #[test]
