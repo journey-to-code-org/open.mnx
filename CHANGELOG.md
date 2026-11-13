@@ -4,6 +4,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Fixed
+
+- **`zubra check --client` no longer calls a component client-free when the server leaves part of it empty.** It looked for parts the server leaves to the browser by rendering with the default props, so a branch the defaults skip went unchecked: a `const list = sorted ? [...items].sort(…) : items` counted as complete, while the server can't run the mutating `.sort()` and a sorted chart rendered empty without its module. Now the methods it accepts are exactly those the server computes (a test runs each one through the evaluator; `sort`, `reverse`, `fill` and `toString` aren't, while `toSorted` and `toReversed` are), and method calls in the template count whichever branch they're in. In the other direction, `hasSlot()` and a spread into an array (`[...items]`) no longer count as browser work, since the server renders both. In Zubra UI that moves content-card, empty-state and hero-section to client-free, and bar-chart once its `sorted` uses `toSorted()` instead of `.sort()` (23 of 81).
+
 ### Security
 
 - **One malformed request no longer stops a Node server.** Three handlers threw on input only a client controls, and the documented wiring (`if (zubra.handle(req, res)) return;`, `if (await actions.handle(req, res)) return;`, `if (await sync.handle(req, res)) return;`) let that end the process. Each now answers 400 and the server keeps serving. From the 2026-11-12 security audit (Z7, Z8, S3).
