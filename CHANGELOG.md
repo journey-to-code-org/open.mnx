@@ -19,6 +19,10 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
   - `@zubra/actions`: a post whose `Host` header isn't a host (`[::1`) couldn't make a URL.
   - `@zubra/sync`: the same for any sync request, now refused before the body is read.
 
+### Changed
+
+- **The runtime's production build is minified: about half the bytes a server sends.** `dist/production` (the `production` export condition, and what `@zubra/server` serves in production) used to keep every comment, so a page served without a bundler loaded 38.4 KB of runtime, gzipped. `scripts/build-production.js` now minifies each file after leaving out the development code, with the pinned esbuild: still one module per file, imported the same way, under a header pointing back to `src/`, which stays the runtime to read. The runtime as served is 17.9 KB. Measured on Tailgate in production: 777 KB → 491 KB of JavaScript over 14 page views (37% less), and 41.9 → 21.8 KB on its form page. Apps that bundle (Vite, Next…) minified it already, so they don't change. The size test now also budgets what's served, file by file.
+
 ## 5.13.1 — 2026-11-13
 
 A box ticked or a field typed in before a component starts stays ticked or typed.
