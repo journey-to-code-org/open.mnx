@@ -39,6 +39,6 @@ There are no effects to write and no dependency arrays: the props and state the 
 </script>
 ```
 
-Here `org` and `page` are read after the first `await`. The Signals API only notices reads while it is running the fetcher, which ends at that `await`, so the compiler writes those two reads as `$run.track(() => …)` (read the output to see it). A value read in another module after an `await`, a store's getter for instance, isn't followed unless it goes through `track()` too. This part is experimental (`@zubra/runtime/track`).
+Here `org` and `page` are read after the first `await`. The Signals API only notices reads while it is running the fetcher, which ends at that `await`, so the compiler writes those two reads as `$run.track(() => …)` (read the output to see it). The same goes for a signal's `.get()` after an `await`, and for reads in a callback that runs later, such as `load().then((rows) => rows.slice(0, page))` in a fetcher that isn't async. A value read in another module after an `await`, a store's getter for instance, isn't followed unless it goes through `track()` too. This part is experimental (`@zubra/runtime/track`).
 
 **Next:** [Server rendering](07-server-rendering.md)

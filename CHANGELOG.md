@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Fixed
+
+- **More of a fetcher's later reads are followed (experimental).** The compiler's `track()` rewrite (5.9.0) now also covers a signal's explicit `.get()` after an `await` (`const rate = state(1)` … `await auth()` … `rate.get()`), a fetcher that isn't async reading in a callback that runs later (`resource(() => load().then((rows) => rows.slice(0, page)))`), and `.zb.jsx` and `.zb.tsx` components, which didn't get the rewrite at all. A fetcher with no read that can run later is now left as written and doesn't load `@zubra/runtime/track`; before, every async fetcher did.
+
 ## 5.13.1 — 2026-11-13
 
 A box ticked or a field typed in before a component starts stays ticked or typed.
