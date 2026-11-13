@@ -635,19 +635,26 @@ const loadRemark = () => (remarking ??= import('./remark.js').then(
   (module) => (remarker = module),
   () => (remarker = { remark: () => false }),
 ));
-/** Whether `root`'s server markup lost the comments `template` has (its top-level elements are there). */
-function lostComments(root, template) {
+/**
+ * Whether `root`'s server markup lost the comments `template` has (its top-level elements are
+ * there). A template that is only regions has none of its own: `roots`, from the compiler, names
+ * the elements its regions' blocks start with, and markup with none of them is the page's own
+ * content (text a framework gave it, say), which needs no check, so the element renders now.
+ */
+function lostComments(root, template, roots) {
   if (!root || !hasContent(root) || !hasComment(template) || hasComment(root)) return false;
   // The page's own children for a slot aren't server markup: the template's top-level elements
   // must be there, in order.
   const children = [...root.children];
   let at = 0;
+  let elements = 0;
   for (const node of positions(template.firstChild, null)) {
     if (node.nodeType !== 1) continue;
     while (at < children.length && children[at].localName !== node.localName) at++;
     if (at++ >= children.length) return false;
+    elements++;
   }
-  return true;
+  return elements || !roots ? true : children.some((child) => roots.includes(child.localName));
 }
 
 /** A range's shape: its top-level positions as tag names and region markers. */
@@ -1602,7 +1609,7 @@ export function $define(tag, definition) {
 
 function defineElement(tag, definition) {
   const { props = {}, shadow = false, form = false, events = [], styled = false, inPage = false } = definition;
-  let { template = '', slots = [], styles = null, setup } = definition;
+  let { roots, template = '', slots = [], styles = null, setup } = definition;
   // On a server (no DOM), a stand-in with the same `zubra` description, so a module that imports a
   // component loads there: adapters render the host tag, and `@zubra/runtime/server` renders it.
   if (typeof HTMLElement === 'undefined') return serverElement(tag, { props, shadow, form, slots, events, styled });
@@ -1699,7 +1706,7 @@ function defineElement(tag, definition) {
         if (root.adoptedStyleSheets && !(inPage && root === document)) adopt(root, ownSheets());
       }
       if (this.#scope) this.#scope.resume();
-      else if (!remarker && lostComments(shadow ? this.shadowRoot : this, componentTemplate.content)) {
+      else if (!remarker && lostComments(shadow ? this.shadowRoot : this, componentTemplate.content, roots)) {
         // Server markup without its comments: start once the code that puts them back is here.
         this.#starting ??= loadRemark().then(() => {
           this.#starting = null;

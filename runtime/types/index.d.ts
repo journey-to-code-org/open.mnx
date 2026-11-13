@@ -184,6 +184,8 @@ export interface Definition {
   form?: boolean;
   slots?: string[];
   events?: string[];
+  /** For a template that is only regions: the elements their blocks start with (server markup's top level). */
+  roots?: string[];
   /** The component has a `<style>`. */
   styled?: boolean;
   /** Its stylesheet, when the module carries it (otherwise the bundler adds it to the page). */

@@ -1,6 +1,6 @@
 {
   "name": "@zubra/sync",
-  "version": "5.10.2",
+  "version": "5.10.3",
   "description": "Local-first state for Zubra components: 'use collection' keeps a component's state in IndexedDB, across reloads, offline, and in step across tabs.",
   "type": "module",
   "main": "./src/index.js",
