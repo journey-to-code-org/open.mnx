@@ -1,0 +1,14 @@
+<!-- Form controls bound to state, for input made before the element starts (hydration-input.test.js). -->
+<zb-early ticked={false} note="" size="m">
+  <form id="f">
+    <input type="checkbox" name="pool" value="a" checked={ticked}>
+    <input type="checkbox" name="pool" value="b" checked={ticked}>
+    <input name="note" value={note}>
+    <select name="size" value={size}>
+      <option value="s">S</option>
+      <option value="m">M</option>
+      <option value="l">L</option>
+    </select>
+    <textarea name="said" value={note}></textarea>
+  </form>
+</zb-early>

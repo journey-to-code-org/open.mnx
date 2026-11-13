@@ -821,7 +821,7 @@ function bind(part, node, hydrating, context) {
       node[part.property] = $r(part.value());
     });
   } else if (part.attribute) {
-    bindAttribute(part, node);
+    bindAttribute(part, node, hydrating);
   } else if (part.when) {
     bindWhen(part, node, hydrating, context);
   } else if (part.await) {
@@ -1130,13 +1130,24 @@ function routeChildren(host, context, slots, tag) {
 // `checked={done}` with clicks.
 const LIVE = new Set(['input.value', 'textarea.value', 'select.value', 'input.checked', 'option.selected']);
 
-function bindAttribute(part, node) {
+// Changed by someone before the element started: no longer the server's default.
+const touched = (n, k) => (n.options ? [...n.options].some((o) => o.selected !== o.defaultSelected) : n[k] !== n[`default${k[0].toUpperCase()}${k.slice(1)}`]);
+
+function bindAttribute(part, node, hydrating = false) {
   const name = part.attribute;
   // For live state: the last value written, so the property is written only when the bound
   // value changes (what the user typed stays until then).
   let written;
+  // Server HTML someone already used keeps what they did until the bound value changes.
+  const live = LIVE.has(`${node.localName}.${name}`);
+  let keep = hydrating && live && touched(node, name);
   effect(() => {
     const value = $r(part.value());
+    if (keep) {
+      keep = false;
+      written = value;
+      return;
+    }
     // Another library's custom element: a property when it has one (React 19's rule).
     if (part.prop && part.prop in node) {
       node[part.prop] = value;
@@ -1149,14 +1160,14 @@ function bindAttribute(part, node) {
       }
       // A control's live state is its property (the attribute is only the default once the
       // user has touched it).
-      if (LIVE.has(`${node.localName}.${name}`)) {
+      if (live) {
         if (value !== written) node[name] = written = value;
         return;
       }
       node.toggleAttribute(name, value);
       return;
     }
-    if (LIVE.has(`${node.localName}.${name}`)) {
+    if (live) {
       const text = value == null ? '' : String(value);
       if (text !== written) {
         // Unchanged text isn't written: that would move the caret and lose a selection.
@@ -1164,7 +1175,7 @@ function bindAttribute(part, node) {
         written = text;
         // A <select>'s options may come from a list inside it that renders after this part:
         // until the option exists the value doesn't take, so set it again once they're there.
-        if (node.localName === 'select' && node.value !== text) {
+        if (node.options && node.value !== text) {
           queueMicrotask(() => {
             if (written === text && node.value !== text) node.value = text;
           });
