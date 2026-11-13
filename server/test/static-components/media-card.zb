@@ -1,0 +1,11 @@
+<!-- A card whose picture section shows only when it's given one. -->
+<script>
+  import { hasSlot } from '@zubra/runtime'
+  const media = hasSlot('media')
+</script>
+<style>
+  .media { border: 1px solid; }
+</style>
+<media-card heading="Card">
+  <article><div zb-if={media} class="media"><zb-slot name="media"></zb-slot></div><h3>{heading}</h3><zb-slot></zb-slot></article>
+</media-card>
