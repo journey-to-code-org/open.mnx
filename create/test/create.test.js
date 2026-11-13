@@ -33,6 +33,35 @@ for (const framework of Object.keys(FRAMEWORKS)) {
   });
 }
 
+for (const framework of ['react', 'angular']) {
+  test(`${framework} with --typescript: the component in TypeScript, a tsconfig.json, and \`npm run check\``, () => {
+    const dir = join(work(), 'app');
+    const files = create(dir, framework, { typescript: true });
+    assert.ok(files.includes('tsconfig.json'));
+    assert.match(readFileSync(join(dir, 'src/components/hello-counter.zb'), 'utf8'), /<script lang="ts">\n {2}interface Props \{/);
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    assert.equal(pkg.scripts.check, 'zubra check --types src');
+    assert.ok(pkg.devDependencies.typescript);
+    assert.ok(pkg.devDependencies['@zubra/compiler'], 'the `zubra` command');
+    const tsconfig = readFileSync(join(dir, 'tsconfig.json'), 'utf8');
+    // Angular keeps its own (its compiler needs it); the others get one.
+    if (framework === 'angular') assert.match(tsconfig, /angularCompilerOptions/);
+    else assert.match(tsconfig, /"include": \["src"\]/);
+    assert.match(readFileSync(join(dir, 'README.md'), 'utf8'), /npm run check {3}# type-checks the components/);
+    assert.match(readFileSync(join(dir, 'AGENTS.md'), 'utf8'), /`npm run check` type-checks every component/);
+  });
+}
+
+test('without --typescript, nothing about TypeScript changes', () => {
+  const dir = join(work(), 'app');
+  const files = create(dir, 'vue');
+  assert.ok(!files.includes('tsconfig.json'));
+  assert.doesNotMatch(readFileSync(join(dir, 'src/components/hello-counter.zb'), 'utf8'), /lang="ts"/);
+  const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+  assert.equal(pkg.scripts.check, undefined);
+  assert.equal(pkg.devDependencies.typescript, undefined);
+});
+
 test('refuses a directory with files in it, and an unknown framework', () => {
   const dir = work();
   writeFileSync(join(dir, 'keep.txt'), '');
@@ -43,8 +72,11 @@ test('refuses a directory with files in it, and an unknown framework', () => {
 });
 
 test('command line: arguments, and a run without a terminal', () => {
-  assert.deepEqual(parse(['app', '--framework', 'vue']), { dir: 'app', framework: 'vue', yes: false, help: false });
-  assert.deepEqual(parse(['--template=react', '-y']), { dir: null, framework: 'react', yes: true, help: false });
+  assert.deepEqual(parse(['app', '--framework', 'vue']), { dir: 'app', framework: 'vue', typescript: null, yes: false, help: false });
+  assert.deepEqual(parse(['--template=react', '-y']), { dir: null, framework: 'react', typescript: null, yes: true, help: false });
+  assert.equal(parse(['--typescript']).typescript, true);
+  assert.equal(parse(['--ts']).typescript, true);
+  assert.equal(parse(['--js']).typescript, false);
   assert.throws(() => parse(['a', 'b']), /unexpected argument b/);
   const cwd = work();
   const out = execFileSync(process.execPath, [new URL('../index.js', import.meta.url).pathname, 'site', '--framework', 'svelte'], { cwd, encoding: 'utf8' });
@@ -54,4 +86,8 @@ test('command line: arguments, and a run without a terminal', () => {
   // No terminal and no framework: plain HTML, in zb-app.
   execFileSync(process.execPath, [new URL('../index.js', import.meta.url).pathname], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   assert.match(readFileSync(join(cwd, 'zb-app/index.html'), 'utf8'), /<hello-counter/);
+  // --typescript says how to check.
+  const typed = execFileSync(process.execPath, [new URL('../index.js', import.meta.url).pathname, 'typed', '--framework', 'vanilla', '--typescript'], { cwd, encoding: 'utf8' });
+  assert.match(typed, /A Zubra app \(No framework \(plain HTML and JavaScript\), TypeScript\) is in typed/);
+  assert.match(typed, /npm run check {3}type-checks the components/);
 });

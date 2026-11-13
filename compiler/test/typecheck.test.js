@@ -2,7 +2,7 @@
 // each error placed back on the `.zb` line it came from.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -215,4 +215,23 @@ test('files stay inside the generated folder, and an editor\'s stopped check is 
   assert.equal(existsSync(join(root, 'shared/b.zb.ts')), false);
   assert.equal(existsSync(join(app, '.zubra-types/shared')), false, 'beside the folder, not in it');
   assert.equal(existsSync(join(app, '.zubra-types/editor-999999')), false);
+});
+
+test('an app from `npm create zubra --typescript` checks clean, and catches a mistake', { skip }, async () => {
+  const { create } = await import('../../create/index.js');
+  for (const framework of ['vanilla', 'react', 'angular']) {
+    const root = join(mkdtempSync(join(tmpdir(), 'zubra-create-')), 'app');
+    create(root, framework, { typescript: true });
+    // What `npm install` would put there for the check: the runtime, the plugin's client types,
+    // TypeScript.
+    mkdirSync(join(root, 'node_modules/@zubra'), { recursive: true });
+    symlinkSync(join(repo, 'runtime'), join(root, 'node_modules/@zubra/runtime'), 'dir');
+    symlinkSync(join(repo, 'plugin'), join(root, 'node_modules/@zubra/unplugin'), 'dir');
+    symlinkSync(join(repo, 'compiler/node_modules/typescript'), join(root, 'node_modules/typescript'), 'dir');
+    // `npm run check` is `zubra check --types src`.
+    assert.deepEqual(checkTypes([join(root, 'src')]).diagnostics, [], framework);
+    const component = join(root, 'src/components/hello-counter.zb');
+    writeFileSync(component, readFileSync(component, 'utf8').replace('{label}: {count}', '{label.toFixedd(1)}: {count}'));
+    assert.deepEqual(checkTypes([join(root, 'src')]).diagnostics.map(({ code }) => code), ['TS2339'], framework);
+  }
 });
