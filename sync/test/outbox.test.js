@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { outboxOf } from '../src/connect.js';
+import { outboxOf, batches } from '../src/connect.js';
 
 test('a push that was already out never takes a change added since', () => {
   const saved = [];
@@ -58,4 +58,15 @@ test('an outbox saved before this kept every change: it loads as one per field',
   const field = (value) => ({ collection: 'tasks', key: 't1', field: 'title', value });
   const outbox = outboxOf([field('a'), field('ab'), { collection: 'tasks', key: 't1', field: 'done', value: true }, field('abc')]);
   assert.deepEqual(outbox.pending().map((c) => c.value), [true, 'abc']);
+});
+
+test('a long outbox goes in batches under the server\'s limits, in order', () => {
+  const changes = Array.from({ length: 1234 }, (_, i) => ({ collection: 'notes', key: `n${i}`, field: 'text', value: 'x'.repeat(i % 7), clock: `${String(i).padStart(15, '0')}-00000-dev1` }));
+  const sent = batches(changes);
+  assert.deepEqual(sent.map((batch) => batch.length), [500, 500, 234]);
+  assert.deepEqual(sent.flat(), changes);
+  const big = Array.from({ length: 10 }, (_, i) => ({ collection: 'notes', key: `b${i}`, field: 'text', value: 'y'.repeat(200_000), clock: '000000000000001-00000-dev1' }));
+  const sized = batches(big);
+  assert.ok(sized.every((batch) => JSON.stringify({ changes: batch }).length < 1 << 20), 'each push under 1 MiB');
+  assert.deepEqual(sized.flat(), big);
 });

@@ -22,6 +22,9 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
   - `@zubra/server`: a `/_zubra/` path with a malformed `%` escape (`/_zubra/%E0%A4%A`) threw `URIError`.
   - `@zubra/actions`: a post whose `Host` header isn't a host (`[::1`) couldn't make a URL.
   - `@zubra/sync`: the same for any sync request, now refused before the body is read.
+- **The server evaluator limits how long a string can get** (audit Z6). `padStart`, `padEnd`, `repeat`, `replace`/`replaceAll`, `join` and `+` leave an expression for the browser when its string would pass 1 MiB, checked before anything is allocated; before, a prop like `width` in `padStart(width, '0')` could ask for a billion characters and abort `zubra serve` (and every server using it) or stall `@zubra/server`. Every string built also spends the step budget (one step per 64 bytes), so a loop can't build many large strings either. Ordinary output is unchanged.
+- **`@zubra/sync` limits request bodies** (audit S4). Push, presence and signal bodies are at most `maxBytes` (default 1 MiB, matching the binary) and a push at most `maxChanges` (default 1000); over either is a 413, before `authorize` is asked. Before, a body of any size was held in memory, unauthenticated: 200 MB took the process past 1 GB. `connect()` now sends its outbox in batches under both limits.
+- **A no-JavaScript action post can't redirect off the site** (audit Z9). The page to go back to came from the Referer's path, and a path starting with `//` (`https://site//evil.example/`) is protocol-relative in a `Location` header. It's now written with one leading slash, so it stays on the site.
 
 ### Changed
 
