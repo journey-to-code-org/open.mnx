@@ -138,8 +138,9 @@ check('the middleware fills in the head and scripts after the body rendered', fu
     };
     $result = (new Middleware($page))->handle($request, function ($request) use ($page, $response) {
         same(true, $request->attributes->get('zubra.deferred'), 'the request is marked');
+        $token = $request->attributes->get('zubra.marker');
         $body = $page->render('status-pill', ['status' => 'taken', 'waiting' => 2]);
-        $response->setContent('<html><head>' . Deferred::HEAD . "</head><body>$body" . Deferred::scripts('/components/') . '</body></html>');
+        $response->setContent('<html><head>' . Deferred::head($token) . "</head><body>$body" . Deferred::scripts($token, '/components/') . '</body></html>');
         return $response;
     });
     $html = $result->getContent();
@@ -147,6 +148,23 @@ check('the middleware fills in the head and scripts after the body rendered', fu
     contains("import '/components/status-pill.js';", $html);
     if (str_contains($html, '<!--zubra:')) {
         throw new Exception('a marker is left');
+    }
+});
+
+check('a marker in the page\'s own text is left alone (audit Z4)', function () use ($zubra) {
+    $hostile = '<!--zubra:scripts:x--><!--zubra:head--><!--zubra:scripts:/evil/-->';
+    $page = $zubra->page();
+    $token = Deferred::token();
+    $body = $page->render('status-pill', ['status' => 'open']);
+    $html = $page->fill('<html><head>' . Deferred::head($token) . "</head><body>$body<article>$hostile</article>" . Deferred::scripts($token, '/components/') . '</body></html>', $token);
+    contains("<article>$hostile</article>", $html);
+    if (str_contains(str_replace($hostile, '', $html), '/evil/')) {
+        throw new Exception('a script from the visitor\'s base');
+    }
+    same(1, substr_count($html, '<script type="module">'), 'one script: the layout\'s');
+    same(1, substr_count($html, '<style data-zb-components>'), 'the head once');
+    if (Deferred::token() === Deferred::token()) {
+        throw new Exception('tokens repeat');
     }
 });
 

@@ -46,14 +46,18 @@ class Page
         return "<script type=\"module\">\n$imports  </script>";
     }
 
-    /** Put this page's CSS and modules where the head and scripts markers are (see Deferred). */
-    public function fill(string $html): string
+    /** Put this page's CSS and modules where the head and scripts markers with `$token` are (see Deferred). */
+    public function fill(string $html, string $token): string
     {
-        $html = str_replace(Deferred::HEAD, $this->head(), $html);
-        while (($start = strpos($html, Deferred::SCRIPTS)) !== false) {
+        $html = str_replace(Deferred::head($token), $this->head(), $html);
+        $prefix = Deferred::scriptsPrefix($token);
+        $at = 0;
+        while (($start = strpos($html, $prefix, $at)) !== false) {
             $end = strpos($html, '-->', $start);
-            $base = substr($html, $start + strlen(Deferred::SCRIPTS), $end - $start - strlen(Deferred::SCRIPTS));
-            $html = substr($html, 0, $start) . $this->scripts($base) . substr($html, $end + 3);
+            $base = substr($html, $start + strlen($prefix), $end - $start - strlen($prefix));
+            $filled = $this->scripts($base);
+            $html = substr($html, 0, $start) . $filled . substr($html, $end + 3);
+            $at = $start + strlen($filled);
         }
         return $html;
     }

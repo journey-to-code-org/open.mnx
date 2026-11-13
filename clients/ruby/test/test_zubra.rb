@@ -124,6 +124,31 @@ class ZubraRailsTest < Minitest::Test
     assert_equal html.bytesize.to_s, headers["content-length"]
   end
 
+  HOSTILE = "<!--zubra:scripts:x--><!--zubra:head--><!--zubra:scripts:/evil/-->"
+
+  def test_a_marker_in_the_page_s_own_text_is_left_alone
+    # Security audit Z4: only the markers the helpers wrote, with the request's token, are filled.
+    app = Zubra::Rails::Middleware.new(lambda do |env|
+      view = View.new(env)
+      html = "<html><head>#{view.zubra_head}</head><body>#{view.zubra('status-pill', status: 'open')}<article>#{HOSTILE}</article>#{view.zubra_scripts}</body></html>"
+      [200, { "content-type" => "text/html" }, [html]]
+    end)
+    html = app.call({})[2].join
+    assert_includes html, "<article>#{HOSTILE}</article>", "the visitor's text is as they wrote it"
+    refute_includes html.sub(HOSTILE, ""), "/evil/"
+    assert_equal 1, html.scan('<script type="module">').length, "one script: the layout's"
+    assert_equal 1, html.scan("<style data-zb-components>").length
+  end
+
+  def test_fill_puts_the_head_in_as_it_is
+    # The block form of sub: a backslash sequence in the CSS isn't read as a back-reference.
+    page = Struct.new(:head, :scripts_for) do
+      def scripts(_base) = ""
+    end.new('<style>.a::before { content: "\\0 \\1 \\&"; }</style>', nil)
+    html = Zubra::Rails.fill("<head>#{Zubra::Rails.head_marker('t')}</head>", page, "t")
+    assert_equal '<head><style>.a::before { content: "\\0 \\1 \\&"; }</style></head>', html
+  end
+
   def test_each_request_has_its_own_page
     seen = []
     app = Zubra::Rails::Middleware.new(->(env) { seen << env["zubra.page"]; [200, { "content-type" => "text/plain" }, ["x"]] })

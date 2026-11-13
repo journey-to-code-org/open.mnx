@@ -17,11 +17,14 @@
 # is filled in once the response is rendered, so the layout's <head> gets the CSS of components
 # the view renders later. Without it they render what the page has used so far.
 require "zubra"
+require "securerandom"
 
 class Zubra
   module Rails
-    HEAD = "<!--zubra:head-->"
-    SCRIPTS = "<!--zubra:scripts:"
+    # The markers carry the request's own random token, so text in the page (a user's comment
+    # containing a marker) is never taken for one and filled with a script.
+    def self.head_marker(token) = "<!--zubra:head:#{token}-->"
+    def self.scripts_marker(token) = "<!--zubra:scripts:#{token}:"
 
     class << self
       # The app's Zubra (one compiler process for the server).
@@ -37,13 +40,18 @@ class Zubra
         instance or raise Zubra::Error, "zubra: no components folder configured (config.zubra.components, or Zubra::Rails.instance = Zubra.new(...))"
       end
 
-      # Put the page's CSS and modules where the markers are.
-      def fill(html, page)
-        html = html.sub(HEAD, page.head)
-        while (start = html.index(SCRIPTS))
+      # Put the page's CSS and modules where this request's markers are. The block form of `sub`:
+      # a replacement string would read `\\0` or `\\1` in the CSS as back-references.
+      def fill(html, page, token)
+        html = html.sub(Zubra::Rails.head_marker(token)) { page.head }
+        prefix = Zubra::Rails.scripts_marker(token)
+        at = 0
+        while (start = html.index(prefix, at))
           finish = html.index("-->", start)
-          base = html[(start + SCRIPTS.length)...finish]
-          html = html[0...start] + page.scripts(base) + html[(finish + 3)..]
+          base = html[(start + prefix.length)...finish]
+          filled = page.scripts(base)
+          html = html[0...start] + filled + html[(finish + 3)..]
+          at = start + filled.length
         end
         html
       end
@@ -56,11 +64,11 @@ class Zubra
       end
 
       def zubra_head
-        safe(zubra_deferred? ? HEAD : zubra_page.head)
+        safe(zubra_deferred? ? Zubra::Rails.head_marker(zubra_marker) : zubra_page.head)
       end
 
       def zubra_scripts(base = Zubra::Rails.scripts_base)
-        safe(zubra_deferred? ? "#{SCRIPTS}#{base.gsub('--', '')}-->" : zubra_page.scripts(base))
+        safe(zubra_deferred? ? "#{Zubra::Rails.scripts_marker(zubra_marker)}#{base.gsub('--', '')}-->" : zubra_page.scripts(base))
       end
 
       def zubra_page
@@ -71,6 +79,10 @@ class Zubra
 
       def zubra_deferred?
         request.env["zubra.deferred"] == true
+      end
+
+      def zubra_marker
+        request.env["zubra.marker"]
       end
 
       def safe(html)
@@ -88,6 +100,7 @@ class Zubra
       def call(env)
         page = env["zubra.page"] = (@zubra || Zubra::Rails.zubra).page
         env["zubra.deferred"] = true
+        token = env["zubra.marker"] = SecureRandom.hex(12)
         status, headers, body = @app.call(env)
         type = header(headers, "content-type")
         return [status, headers, body] unless type&.include?("html")
@@ -95,7 +108,7 @@ class Zubra
         html = +""
         body.each { |chunk| html << chunk }
         body.close if body.respond_to?(:close)
-        html = Zubra::Rails.fill(html, page)
+        html = Zubra::Rails.fill(html, page, token)
         set(headers, "content-length", html.bytesize.to_s) if header(headers, "content-length")
         [status, headers, [html]]
       end

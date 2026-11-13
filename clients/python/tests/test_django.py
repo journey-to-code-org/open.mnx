@@ -41,6 +41,11 @@ TEMPLATES = {
         '{% extends "layout.html" %}{% load zubra %}'
         '{% block body %}{% for plot in plots %}{% zubra "status-pill" status=plot.status waiting=plot.waiting %}{% endfor %}{% endblock %}'
     ),
+    # A page that shows stored HTML (a post body, sanitised elsewhere) a visitor wrote.
+    "comment.html": (
+        '{% extends "layout.html" %}{% load zubra %}'
+        '{% block body %}{% zubra "status-pill" status="open" %}<article>{{ comment|safe }}</article>{% endblock %}'
+    ),
     "bare.html": '{% load zubra %}{% zubra "status-pill" status="taken" %}{% zubra_head %}{% zubra_scripts "/static/c/" %}',
 }
 
@@ -94,6 +99,18 @@ class DjangoTest(unittest.TestCase):
         self.assertIn("import '/components/status-pill.js';", body)
         self.assertNotIn("<!--zubra:", body)
 
+    def test_a_marker_in_the_page_s_own_text_is_left_alone(self):
+        """Security audit Z4: only the markers the tags wrote, with the request's token, are filled."""
+        from django.test import Client
+
+        body = Client().get("/comment").content.decode()
+        article = body[body.index("<article>"):body.index("</article>")]
+        self.assertEqual(article, "<article>" + HOSTILE, "the visitor's text is as they wrote it")
+        self.assertNotIn("/evil/", body.replace(HOSTILE, ""), "no script from their base")
+        self.assertEqual(body.count("<script type=\"module\">"), 1, "one script: the layout's")
+        self.assertIn("import '/components/status-pill.js';", body)
+        self.assertEqual(body.count("<style data-zb-components>"), 1, "the head once, where the layout put it")
+
     def test_each_request_has_its_own_page(self):
         from django.test import Client
 
@@ -135,6 +152,15 @@ def _plots(request):
     return render(request, "plots.html", {"plots": [{"status": "open", "waiting": 0}, {"status": "taken", "waiting": 2}]})
 
 
+HOSTILE = '<!--zubra:scripts:x--><!--zubra:head--><!--zubra:scripts:/evil/-->'
+
+
+def _comment(request):
+    from django.shortcuts import render
+
+    return render(request, "comment.html", {"comment": HOSTILE})
+
+
 def _empty(request):
     from django.shortcuts import render
 
@@ -146,7 +172,7 @@ if django is not None:
 
     from zubra.django import zubra_module
 
-    urlpatterns = [path("plots", _plots), path("empty", _empty), path("components/<str:name>.js", zubra_module)]
+    urlpatterns = [path("plots", _plots), path("comment", _comment), path("empty", _empty), path("components/<str:name>.js", zubra_module)]
 
 
 if __name__ == "__main__":
