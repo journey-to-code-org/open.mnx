@@ -31,6 +31,9 @@ struct Options {
     port: u16,
     origins: Vec<String>,
     keep_alive: Duration,
+    /// Take writes (push, presence, signal) from pages. Off by default: the binary can't tell
+    /// who is asking, so it serves reads only until it's put behind the app's sign-in.
+    open: bool,
 }
 
 fn options() -> Result<Options, String> {
@@ -40,6 +43,7 @@ fn options() -> Result<Options, String> {
         port: 4000,
         origins: Vec::new(),
         keep_alive: Duration::from_secs(15),
+        open: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -53,6 +57,7 @@ fn options() -> Result<Options, String> {
                     .map_err(|_| "--port takes a number".to_string())?
             }
             "--origin" => options.origins.push(value("--origin")?),
+            "--open" => options.open = true,
             "--keep-alive" => {
                 options.keep_alive = Duration::from_millis(
                     value("--keep-alive")?
@@ -61,7 +66,7 @@ fn options() -> Result<Options, String> {
                 )
             }
             "-h" | "--help" => {
-                println!("usage: zubra-sync [--db sync.db] [--host 127.0.0.1] [--port 4000] [--origin https://app.example]... [--keep-alive 15000]");
+                println!("usage: zubra-sync [--db sync.db] [--host 127.0.0.1] [--port 4000] [--origin https://app.example]... [--keep-alive 15000] [--open]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument {other} (try --help)")),
@@ -86,7 +91,11 @@ struct State {
     next: Mutex<u64>,
     origins: Vec<String>,
     keep_alive: Duration,
+    open: bool,
 }
+
+/// What a page is told when the binary wasn't started with --open.
+const NOT_OPEN: &str = "This sync server takes no writes from pages until it is told who may make them: start zubra-sync with --open, behind your app's own sign-in (see its README).";
 
 fn main() {
     let options = match options() {
@@ -128,6 +137,7 @@ fn main() {
         next: Mutex::new(0),
         origins: options.origins,
         keep_alive: options.keep_alive,
+        open: options.open,
     });
     for request in server.incoming_requests() {
         let state = Arc::clone(&state);
@@ -311,6 +321,9 @@ fn handle(state: &State, mut request: Request) {
                     json!({ "error": "Cross-site writes are refused" }),
                 );
             }
+            if !state.open {
+                return respond_json(request, extra, 403, json!({ "error": NOT_OPEN }));
+            }
             let Some(changes) = read_json(&mut request)
                 .and_then(|body| body.get("changes").cloned())
                 .and_then(|changes| changes.as_array().cloned())
@@ -377,6 +390,9 @@ fn handle(state: &State, mut request: Request) {
                     json!({ "error": "Cross-site writes are refused" }),
                 );
             }
+            if !state.open {
+                return respond_json(request, extra, 403, json!({ "error": NOT_OPEN }));
+            }
             let Some(message) = read_json(&mut request).filter(valid_presence) else {
                 return respond_json(
                     request,
@@ -413,6 +429,9 @@ fn handle(state: &State, mut request: Request) {
                     403,
                     json!({ "error": "Cross-site writes are refused" }),
                 );
+            }
+            if !state.open {
+                return respond_json(request, extra, 403, json!({ "error": NOT_OPEN }));
             }
             let Some(message) = read_json(&mut request).filter(valid_signal) else {
                 return respond_json(

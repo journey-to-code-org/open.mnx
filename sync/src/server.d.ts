@@ -40,6 +40,9 @@ export function parseScope(text: string | null | undefined): Scope | null;
 /** Whether a document is in a scope (null is everything). */
 export function inScope(scope: Scope | null, collection: string, key: string): boolean;
 
+/** For `createSyncServer({ authorize: allowAnyone })`: every page may read and write everything. */
+export const allowAnyone: () => true;
+
 export function createSyncServer(options?: {
   log?: Log;
   /** Default `/_zb/sync`. */
@@ -47,9 +50,13 @@ export function createSyncServer(options?: {
   /**
    * Refuse a write, or hide a change from a reader, by returning false. `kind` is what's asked:
    * 'change' (a push), 'presence' (joining or signaling in a document's room; nothing is stored)
-   * or 'read' (a change about to be sent to this request). `write` is true for the first two.
+   * or 'read' (a change about to be sent to this request). `write` is true for the first two. A
+   * 'change' has the `field` and `value` it sets.
+   *
+   * Without it, pages may read but every write from a page is refused (403, saying why). Pass
+   * `allowAnyone` for a page everyone may edit. The server's own `write()` is never asked.
    */
-  authorize?: (from: { request: Request; collection: string; key: string; write: boolean; kind: 'change' | 'presence' | 'read' }) => boolean | Promise<boolean>;
+  authorize?: (from: { request: Request; collection: string; key: string; field?: string; value?: unknown; write: boolean; kind: 'change' | 'presence' | 'read' }) => boolean | Promise<boolean>;
   /** Other origins allowed to push. */
   /**
    * The scope a request may see and write (tenancy: a business's keys under its own prefix), or

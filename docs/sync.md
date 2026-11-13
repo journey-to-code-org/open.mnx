@@ -71,9 +71,29 @@ connect({ url: '/_zb/sync' });
 ```js
 // on the server (a fetch handler: Node through a small adapter, Bun, Deno, workers)
 import { createSyncServer } from '@zubra/sync/server';
-const sync = createSyncServer({ authorize: ({ request, collection, key, kind }) => true });
+const sync = createSyncServer({ authorize: ({ request, collection, key, field, kind }) => kind === 'read' || isSignedIn(request) });
 const response = await sync.fetch(request); // null if it isn't a sync request
 ```
+
+### Who may write
+
+**Without `authorize`, pages may read but not write.** Every push, presence and signal from a page is refused with a 403 that says why, and the page says so once in its console. The server's own `write()` is never asked. This is deliberate: a log that takes any change from anyone lets a visitor set a price, mark an order paid or take every seat.
+
+So say who may change what:
+
+```js
+createSyncServer({
+  authorize: ({ request, collection, field, kind }) => {
+    if (kind === 'read') return true;                       // or check, for private documents
+    if (collection === 'payments' || field === 'price') return false;   // the server's alone
+    return isSignedIn(request);
+  },
+});
+```
+
+`field` and `value` let an app keep fields, or whole collections, for the server: a page may move a card but not change what it costs. A push is all or nothing, so one refused change refuses the push.
+
+For a page everyone may edit (a shared board on a trusted network, a demo), say so: `createSyncServer({ authorize: allowAnyone })`. A Durable Object takes reads only unless its class has an `authorize()`, and the `zubra-sync` binary unless it's started with `--open`.
 
 Components don't change. The protocol is plain HTTP, so any server can keep the log:
 
@@ -85,7 +105,7 @@ Components don't change. The protocol is plain HTTP, so any server can keep the 
 
 - **The device is the source of truth.** A write lands in the local store first. The connection stamps each changed field with a hybrid logical clock (`<ms>-<counter>-<device>`), queues it (in `localStorage`, so a reload or a closed tab doesn't lose it) and pushes it when it can. Offline, it waits, for hours if need be: the queue keeps one change per field (a newer one replaces what's waiting, since this device's later write wins anyway), so a long session of typing waits as one change per field edited, not one per keystroke. Whatever another device wrote later still wins field by field when it gets through. And what this device wrote later always wins on this device: an older change that arrives while an edit is still being stored, or after the tab closed with writes queued, doesn't replace it.
 - **The server keeps a log, in order, and doesn't merge.** Every device applies the same rule to the same changes: for each field, the change with the later clock wins. So they converge, whichever order the changes arrive in. The clock of each field's winning write is stored beside the document (`$clocks`).
-- **`authorize`** decides who may write a document and who sees its changes. It's told what's asked: `kind` is `'change'` (a push), `'presence'` (joining a document's room; nothing is stored) or `'read'` (a change about to be sent to this request), and `write` is true for the first two.
+- **`authorize`** decides who may write a document and who sees its changes. It's told what's asked: `kind` is `'change'` (a push), `'presence'` (joining a document's room; nothing is stored) or `'read'` (a change about to be sent to this request), and `write` is true for the first two. A `'change'` also has the `field` and `value` it sets. See [Who may write](#who-may-write).
 - **The log** is in memory by default. `sqliteLog(path)` from `@zubra/sync/sqlite` keeps it in a SQLite file through the runtime's own SQLite (`node:sqlite` on Node 22.5+, `bun:sqlite` on Bun), so it survives a restart with nothing to install. Any `{ append(changes), after(cursor, limit) }` works too.
 - **A log that doesn't grow with every change:** `sqliteLog(path, { keep: 'latest' })` (and `memoryLog`, `durableObjectLog`, with the same option) keeps each field's latest value only. A change with a newer clock replaces the field's row and takes the next cursor; one with an older clock is dropped. A new device reads what's there now, not the evening's history of every seat held and released. Devices merge the same either way: what's dropped would have lost to the newer write on every device anyway. Opening a file that has the full log as `keep: 'latest'` carries each field's latest value across, numbered after the old cursors, so devices that had read the old log miss nothing. The `zubra-sync` binary keeps every change.
 - Cross-site pushes are refused, like actions.
@@ -178,7 +198,7 @@ export default {
 
 ### Without Node: the `zubra-sync` binary
 
-`sync-server/` in the repository builds `zubra-sync`, the same protocol as one binary with SQLite built in: `zubra-sync --db sync.db --port 4000`. It reads and writes the same table as `sqliteLog()`, so a log can move between them. It has no notion of users, so put it behind your app at `/_zb/sync` (a reverse proxy after the app's sign-in), or allow a page's origin with `--origin` on a trusted network. The same protocol and browser tests run against it.
+`sync-server/` in the repository builds `zubra-sync`, the same protocol as one binary with SQLite built in: `zubra-sync --db sync.db --port 4000 --open`. It reads and writes the same table as `sqliteLog()`, so a log can move between them. It has no notion of users, so without `--open` it takes reads only; with it, put it behind your app at `/_zb/sync` (a reverse proxy after the app's sign-in), or allow a page's origin with `--origin` on a trusted network. The same protocol and browser tests run against it.
 
 ## Presence: who else is here
 

@@ -24,7 +24,7 @@ export class SyncObject<Env = unknown> {
   protected ctx: any;
   protected env: Env;
   /** Refuse a write or hide a change; as `createSyncServer`'s. Allows everything if not defined. */
-  authorize?(asked: { request: Request; collection: string; key: string; write: boolean; kind: 'change' | 'presence' | 'read' }): boolean | Promise<boolean>;
+  authorize?(asked: { request: Request; collection: string; key: string; field?: string; value?: unknown; write: boolean; kind: 'change' | 'presence' | 'read' }): boolean | Promise<boolean>;
   fetch(request: Request): Promise<Response>;
   documents(): Promise<Documents>;
   write(collection: string, key: string, fields: Record<string, unknown>): Promise<Change[]>;

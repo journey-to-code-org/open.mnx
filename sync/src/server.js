@@ -10,7 +10,13 @@
 // `authorize({ request, collection, key, write, kind })` may refuse a change or hide one (return
 // false). `kind` says what's asked: 'read' (a change being sent to this request), 'change' (one
 // it pushed) or 'presence' (joining a document's room, or signaling in it: nothing is stored).
-// `write` is true for the last two.
+// `write` is true for the last two. A 'change' also has the `field` and `value` it sets, so an
+// app can keep fields (or whole collections) for the server alone.
+//
+// Without `authorize`, pages may read but not write: every push, presence and signal is refused
+// with a 403 saying so. Say who may change what, or, for a page everyone may edit (a shared
+// board on a trusted network), `createSyncServer({ authorize: allowAnyone })`. The server's own
+// `write()` is never asked.
 //
 // The server can take part too. `await sync.documents()` is every document as the devices see
 // it (last writer wins, per field), kept current; `sync.write(collection, key, fields)` writes as
@@ -188,8 +194,19 @@ function documentsOf() {
   };
 }
 
-export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize = () => true, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
+/** For `createSyncServer({ authorize: allowAnyone })`: every page may read and write everything. */
+export const allowAnyone = () => true;
+
+/** The default: pages may read; writes from pages need an `authorize` that says who may make them. */
+const readsOnly = ({ write }) => !write;
+const NO_AUTHORIZE = 'This sync server takes no writes from pages until it is told who may make them: pass createSyncServer({ authorize }) (or authorize: allowAnyone, for a page anyone may edit). See docs/sync.md, "Who may write".';
+
+export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: given, scope: serverScope = () => null, origins = [], heartbeat = 15_000, device = 'server' } = {}) {
   if (!/^[\w-]{1,40}$/.test(device)) throw new Error('createSyncServer: `device` names the server in its clocks: letters, digits, - and _');
+  if (given !== undefined && typeof given !== 'function') throw new TypeError('createSyncServer: `authorize` is a function ({ request, collection, key, field, value, write, kind }) => boolean');
+  const authorize = given ?? readsOnly;
+  /** What a refused write says: why, when no authorize was given; the app's own refusal otherwise. */
+  const refused = (fallback) => json(403, { error: given ? fallback : NO_AUTHORIZE });
   const base = mount.replace(/\/$/, '');
   // Appends, one after another, so the log's order is the order they were made in.
   let appending = Promise.resolve();
@@ -318,7 +335,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!changes || !changes.every(valid)) return json(400, { error: 'Expected { changes: [{ collection, key, field, value, clock }] }' });
       for (const change of changes) {
         if (!(await mayWrite(request, change.collection, change.key))) return json(403, { error: 'Not yours to change' });
-        if (!(await authorize({ request, collection: change.collection, key: change.key, write: true, kind: 'change' }))) return json(403, { error: 'Not yours to change' });
+        if (!(await authorize({ request, collection: change.collection, key: change.key, field: change.field, value: change.value, write: true, kind: 'change' }))) return refused('Not yours to change');
       }
       const appended = changes.map(({ collection, key, field, value, clock }) => ({ collection, key, field, value, clock }));
       const cursor = await append(appended);
@@ -340,7 +357,8 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!room || !okPeer || !okState || JSON.stringify(message.state).length > 4096) {
         return json(400, { error: 'Expected { room: "<collection>/<key>", peer, state: {…} | null }' });
       }
-      if (!(await mayWrite(request, room.collection, room.key)) || !(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
+      if (!(await mayWrite(request, room.collection, room.key))) return json(403, { error: 'Not yours to join' });
+      if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return refused('Not yours to join');
       const clean = { room: message.room, peer: message.peer, state: message.state };
       for (const listener of listeners) if (listener.peer === clean.peer) {
         if (clean.state === null) listener.rooms.delete(clean.room);
@@ -365,7 +383,8 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize =
       if (!room || !peerOk(message.from) || !peerOk(message.to) || !dataOk) {
         return json(400, { error: 'Expected { room, from, to, data: {…} }' });
       }
-      if (!(await mayWrite(request, room.collection, room.key)) || !(await authorize({ request, ...room, write: true, kind: 'presence' }))) return json(403, { error: 'Not yours to join' });
+      if (!(await mayWrite(request, room.collection, room.key))) return json(403, { error: 'Not yours to join' });
+      if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return refused('Not yours to join');
       const clean = { room: message.room, from: message.from, to: message.to, data: message.data };
       for (const listener of listeners) if (listener.peer === clean.to) listener.send('signal', clean);
       return json(200, { ok: true });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSyncServer, memoryLog } from '../src/server.js';
+import { createSyncServer, memoryLog, allowAnyone } from '../src/server.js';
 import { backends } from './backends.js';
 
 const change = (field, value, clock = '000000000000001-00000-dev1') => ({ collection: 'tasks', key: 't1', field, value, clock });
@@ -32,7 +32,7 @@ test(`${backend.name}: malformed changes, cross-site writes and other paths are 
 }
 
 test('requests outside the mount are not the JavaScript server\'s', async () => {
-  assert.equal(await createSyncServer().fetch(new Request('http://localhost/elsewhere')), null);
+  assert.equal(await createSyncServer({ authorize: allowAnyone }).fetch(new Request('http://localhost/elsewhere')), null);
 });
 
 test('authorize() decides who writes and who sees what', async () => {
@@ -170,7 +170,7 @@ test('authorize() is told what kind of request it is, at every place it is asked
 });
 
 test('documents(): every document as the devices merge it, from the log and kept current', async () => {
-  const sync = createSyncServer();
+  const sync = createSyncServer({ authorize: allowAnyone });
   await push(sync, [change('title', 'first'), change('done', false)]);
   await push(sync, [change('title', 'stale', '000000000000000-00000-old')]); // earlier clock: loses
   const docs = await sync.documents();
@@ -185,7 +185,7 @@ test('documents(): every document as the devices merge it, from the log and kept
 });
 
 test('write(): the server writes to the log and to every live page, and wins over what came before', { timeout: 5000 }, async () => {
-  const sync = createSyncServer();
+  const sync = createSyncServer({ authorize: allowAnyone });
   // A device whose clock runs ahead: the server's next write still comes after it.
   await push(sync, [{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
   const stream = events(await live(sync, 'p1'));
@@ -204,7 +204,7 @@ test('write(): the server writes to the log and to every live page, and wins ove
 });
 
 test('documents() and write(): a check and a write with no await between can\'t be interleaved', async () => {
-  const sync = createSyncServer();
+  const sync = createSyncServer({ authorize: allowAnyone });
   await sync.write('stock', 'squash', { qty: 1 });
   const docs = await sync.documents();
   // Two requests for the last one, at once: each checks, then writes.
@@ -221,7 +221,7 @@ test('documents() and write(): a check and a write with no await between can\'t 
 });
 
 test('documents() is built from a log that already has changes, once, however many ask', async () => {
-  const sync = createSyncServer();
+  const sync = createSyncServer({ authorize: allowAnyone });
   for (let i = 0; i < 7; i++) await push(sync, [change('n', i, `00000000000001${i}-00000-dev1`)]);
   const [a, b] = await Promise.all([sync.documents(), sync.documents()]);
   assert.equal(a, b);
@@ -229,7 +229,7 @@ test('documents() is built from a log that already has changes, once, however ma
 });
 
 test('the server\'s device name is checked', () => {
-  assert.throws(() => createSyncServer({ device: 'has space' }), /device/);
+  assert.throws(() => createSyncServer({ authorize: allowAnyone, device: 'has space' }), /device/);
 });
 
 test('a change that comes in while documents() is first reading the log is in them', async () => {
@@ -244,7 +244,7 @@ test('a change that comes in while documents() is first reading the log is in th
   };
   const waitFor = async (n) => { while (held.length < n) await new Promise((r) => setTimeout(r, 1)); };
   await log.append([change('title', 'before')]);
-  const sync = createSyncServer({ log: gated });
+  const sync = createSyncServer({ authorize: allowAnyone, log: gated });
   const building = sync.documents();
   await waitFor(1);
   held.shift()(); // the build's first page: 'before'
@@ -263,7 +263,7 @@ test("a server that starts on a log writes after every clock in it, without docu
   const log = memoryLog();
   await log.append([{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
   // A restart (or an evicted Durable Object): a new server on the same log.
-  const sync = createSyncServer({ log });
+  const sync = createSyncServer({ authorize: allowAnyone, log });
   const [written] = await sync.write('orders', 'o1', { status: 'claimed' });
   assert.ok(written.clock > '999999999999999-00003-fast', written.clock);
   assert.deepEqual((await sync.documents()).get('orders', 'o1'), { status: 'claimed' });
@@ -273,7 +273,7 @@ test('one append that fails fails only its own push; the next ones are logged', 
   const log = memoryLog();
   let fail = true;
   const flaky = { append: async (changes) => { if (fail) { fail = false; throw new Error('disk full'); } return log.append(changes); }, after: (...args) => log.after(...args) };
-  const sync = createSyncServer({ log: flaky });
+  const sync = createSyncServer({ authorize: allowAnyone, log: flaky });
   await assert.rejects(push(sync, [change('title', 'lost')]), /disk full/);
   assert.equal((await push(sync, [change('title', 'kept', '000000000000002-00000-dev1')])).status, 200);
   await sync.write('tasks', 't9', { title: 'also kept' });
@@ -284,7 +284,7 @@ test("what the log refuses isn't in the documents: a failed push, and a failed w
   const log = memoryLog();
   let fail = 0;
   const flaky = { append: async (changes) => { if (fail) { fail--; throw new Error('disk full'); } return log.append(changes); }, after: (...args) => log.after(...args) };
-  const sync = createSyncServer({ log: flaky });
+  const sync = createSyncServer({ authorize: allowAnyone, log: flaky });
   await sync.write('stock', 'eggs', { qty: 3, price: 450 });
   const docs = await sync.documents();
   fail = 1;
