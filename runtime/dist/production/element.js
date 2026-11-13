@@ -848,7 +848,12 @@ function filledSignal(filled, name) {
  *   <zb-if test={hasFooter}><footer><zb-slot name="footer"></zb-slot></footer></zb-if>
  */
 export function hasSlot(name = 'default') {
-  return filledSignal(hooks('hasSlot').filled, name);
+  const component = hooks('hasSlot');
+  const filled = filledSignal(component.filled, name);
+  // The server rendered with this slot filled (`data-zb-filled`): start from that, so hydrating
+  // keeps the markup it wrapped around the slot. The slot's own content takes over once bound.
+  if (component.host?.getAttribute('data-zb-filled')?.split(' ').includes(name)) filled.set(true);
+  return filled;
 }
 
 /**

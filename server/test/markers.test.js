@@ -25,7 +25,9 @@ const count = (html) => (html.match(MARKER) ?? []).length;
 
 // Components whose server HTML carries markers of every kind: regions (`[`/`]`), browser-only
 // regions (`[?`), slot content (`[!`) and text anchors.
-const components = [['tag-input', false], ['accordion-panel', true], ['kanban-column', true], ['modal-dialog', true]].map(([name, slotted]) => ({
+// (`chat-message` formats times, which only the browser does: the browser-only regions. Since 5.12
+// the server answers `hasSlot`, so `kanban-column` has none.)
+const components = [['tag-input', false], ['accordion-panel', true], ['kanban-column', true], ['modal-dialog', true], ['chat-message', false]].map(([name, slotted]) => ({
   name,
   html: renderToString(join(registry, `${name}.zb`), { partial: true, slots: slotted ? { default: '<p>Slot content</p>' } : {} }),
 }));

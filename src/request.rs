@@ -712,6 +712,42 @@ mod tests {
     }
 
     #[test]
+    fn has_slot_is_answered_on_the_server_from_the_slots_given() {
+        let source = "<script>\n  import { hasSlot as given } from '@zubra/runtime'\n  const footer = given(\"footer\")\n  const body = given()\n  const which = 'aside'\n  const aside = given(which)\n</script>\n<zb-card>\n  <main zb-if={body}><zb-slot></zb-slot></main>\n  <footer zb-if={footer}><zb-slot name=\"footer\"></zb-slot></footer>\n  <aside zb-if={aside}><zb-slot name=\"aside\"></zb-slot></aside>\n</zb-card>";
+        let files = json!({ "/app/card.zb": source });
+        let render = |slots: Value| {
+            call(
+                json!({ "path": "/app/card.zb", "files": files, "emit": "html", "partial": true, "gaps": true, "slots": slots, "slotSource": "html" }),
+            )
+        };
+        let response = render(json!({ "footer": "<b>Thanks</b>", "default": "  " }));
+        let html = response["output"].as_str().expect("html");
+        assert!(html.contains("<footer><?zb [!?><b>Thanks</b>"), "{html}");
+        assert!(!html.contains("<main"), "whitespace isn't content: {html}");
+        assert!(html.contains("data-zb-filled=\"footer\""), "{html}");
+        // A slot named by a variable is the browser's to answer: the one gap.
+        let gaps = response["gaps"].as_array().expect("gaps");
+        assert_eq!(gaps.len(), 1, "{gaps:?}");
+        assert!(
+            gaps[0].as_str().unwrap().contains("zb-if={aside}"),
+            "{gaps:?}"
+        );
+        let response = render(json!({ "default": "Hi" }));
+        let html = response["output"].as_str().expect("html");
+        assert!(
+            html.contains("<main>") && !html.contains("<footer"),
+            "{html}"
+        );
+        assert!(html.contains("data-zb-filled=\"default\""), "{html}");
+        // Nothing filled: no attribute.
+        let html = render(json!({}))["output"]
+            .as_str()
+            .expect("html")
+            .to_owned();
+        assert!(!html.contains("data-zb-filled"), "{html}");
+    }
+
+    #[test]
     fn a_partial_render_asked_for_gaps_says_what_it_left_for_the_browser() {
         // A list derived through a function with a loop: the server can't run it, so the list
         // is empty in the HTML. Free Times in Front Desk shipped like this without a word.

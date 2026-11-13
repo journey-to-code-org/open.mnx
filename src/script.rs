@@ -177,6 +177,7 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
     // `hydrated` imported from @zubra/runtime (its local names), and bindings initialized with a
     // call, by their initializer's text: `const live = hydrated()` is `false` on the server.
     let mut hydrated_names: Vec<String> = Vec::new();
+    let mut has_slot_names: Vec<String> = Vec::new();
     // `id` imported from @zubra/runtime (its local names).
     let mut id_names: Vec<String> = Vec::new();
     // `inject` and `provide` imported from @zubra/runtime (their local names).
@@ -308,6 +309,11 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
                             && named.imported.name().as_str() == "hydrated"
                         {
                             hydrated_names.push(named.local.name.to_string());
+                        }
+                        if import.source.value.as_str() == Some(RUNTIME)
+                            && named.imported.name().as_str() == "hasSlot"
+                        {
+                            has_slot_names.push(named.local.name.to_string());
                         }
                         if import.source.value.as_str() == Some(RUNTIME)
                             && named.imported.name().as_str() == "id"
@@ -609,6 +615,27 @@ pub fn parse(source: &str, start: Span, typescript: bool) -> Result<Script, Diag
         {
             script.bindings[index].init = Some(expression::Expression::Boolean(false));
         }
+    }
+    // `const hasFooter = hasSlot('footer')`: the server answers it from the slots it was given.
+    for (index, text) in &calls {
+        let call = text.split_whitespace().collect::<String>();
+        let Some(name) = has_slot_names.iter().find_map(|name| {
+            let rest = call
+                .strip_prefix(name.as_str())?
+                .strip_prefix('(')?
+                .strip_suffix(')')?;
+            if rest.is_empty() {
+                return Some("default".to_owned());
+            }
+            let quote = rest.chars().next().filter(|c| matches!(c, '\'' | '"'))?;
+            let inner = rest.strip_prefix(quote)?.strip_suffix(quote)?;
+            (!inner.contains(['\'', '"', '\\'])).then(|| inner.to_owned())
+        }) else {
+            continue;
+        };
+        script
+            .has_slot
+            .push((script.bindings[*index].name.clone(), name));
     }
     // `let editing = ephemeral(false)` is state that isn't stored; on the server it's its value.
     for (index, callee, argument, _, _) in &linked {

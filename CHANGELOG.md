@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Changed
+
+- **The server answers `hasSlot`.** `const hasFooter = hasSlot('footer')` was left for the browser, so whatever a component wrapped around a used slot (a footer, an actions row) was missing from the server's HTML and without JavaScript. The server knows which slots it was given, so it now renders the binding as the element will decide it: an element, or text that isn't only whitespace, counts as content. The slots it found filled go on the host as `data-zb-filled`, and the element starts from them, so it keeps that markup instead of removing it before it has seen its slotted content. This covers `hasSlot()` (the default slot) and a name written as a string; a name in a variable is still the browser's. Found by 5.11.0's new warning: six of Tailgate's eleven gaps were Zubra UI parts asking `hasSlot('actions')`. The markers test now takes its browser-only region from `chat-message`, since `kanban-column` no longer has one.
+
 ## 5.11.0 — 2026-11-13
 
 `@zubra/server` says when part of a component's server HTML is left for the browser, so a page that's empty without JavaScript doesn't go unnoticed.

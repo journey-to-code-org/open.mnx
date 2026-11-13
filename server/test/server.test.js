@@ -3,7 +3,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -632,6 +632,74 @@ test('a render that leaves part of the HTML for the browser says so, once per pl
     createZubra({ components: dir, gaps: 'ignore', warn: (message) => quiet.push(message) }).page().render('free-times', { starts: ['09:00'], taken: [] });
     assert.deepEqual(quiet, []);
     assert.throws(() => createZubra({ components: dir, gaps: 'loud' }), /gaps is "warn" or "ignore"/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hasSlot is answered on the server from the slots it was given, and the element keeps that markup', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-has-slot-'));
+  try {
+    writeFileSync(
+      join(dir, 'note-card.zb'),
+      [
+        '<script>',
+        "  import { hasSlot } from '@zubra/runtime'",
+        "  const actions = hasSlot('actions')",
+        '</script>',
+        '<note-card text="">',
+        '  <p>{text}</p>',
+        '  <div zb-if={actions} class="actions"><zb-slot name="actions"></zb-slot></div>',
+        '</note-card>',
+        '',
+      ].join('\n'),
+    );
+    const warned = [];
+    const zubra = createZubra({ components: dir, warn: (message) => warned.push(message) });
+    const url = await listen((req, res) => {
+      if (zubra.handle(req, res)) return;
+      const page = zubra.page();
+      const body = [
+        page.render('note-card', { text: 'With' }, { actions: '<a href="#retry">Retry</a>' }),
+        page.render('note-card', { text: 'Without' }),
+        page.render('note-card', { text: 'Blank' }, { actions: '  ' }),
+        // Before the modules run: the server's link, to check the element keeps it.
+        '<script>window.serverLink = document.querySelector(\'a[href="#retry"]\')</script>',
+      ].join('\n');
+      res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+    });
+    const html = await (await fetch(url)).text();
+    assert.equal(warned.length, 0, warned.join('\n'));
+    assert.equal(html.match(/class="actions"/g)?.length, 1, 'the wrapper only where the slot has content');
+    assert.match(html, /<div class="actions">[^]*<a href="#retry"[^>]*>Retry<\/a>/);
+
+    const plain = await open(url, { javascript: false });
+    assert.equal(await plain.locator('.actions a').count(), 1, 'there without JavaScript');
+    await plain.done();
+
+    const page = await open(url);
+    await page.waitForFunction(() => customElements.get('note-card'));
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('note-card .actions').count(), 1);
+    assert.equal(await page.evaluate(() => document.querySelector('note-card .actions a') === window.serverLink), true, 'the same link: hydrated, not rebuilt');
+    assert.deepEqual(page.errors, []);
+    await page.done();
+
+    // A shadow component: the same, through its declarative shadow root.
+    writeFileSync(join(dir, 'note-card.zb'), readFileSync(join(dir, 'note-card.zb'), 'utf8').replace('<note-card text="">', '<note-card shadow text="">'));
+    const shadowed = createZubra({ components: dir });
+    const shadowUrl = await listen((req, res) => {
+      if (shadowed.handle(req, res)) return;
+      const page = shadowed.page();
+      const body = [page.render('note-card', { text: 'With' }, { actions: '<a href="#retry" slot="actions">Retry</a>' }), page.render('note-card', { text: 'Without' })].join('\n');
+      res.writeHead(200, { 'content-type': 'text/html' }).end(page.finish(layout(body)));
+    });
+    const shadow = await open(shadowUrl);
+    await shadow.waitForFunction(() => customElements.get('note-card'));
+    await shadow.waitForTimeout(100);
+    assert.deepEqual(await shadow.evaluate(() => [...document.querySelectorAll('note-card')].map((card) => card.shadowRoot.querySelectorAll('.actions').length)), [1, 0]);
+    assert.deepEqual(shadow.errors, []);
+    await shadow.done();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

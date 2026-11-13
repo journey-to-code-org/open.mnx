@@ -139,6 +139,10 @@ pub struct Script {
     /// The local names `hydrated` is imported as from `@zubra/runtime`: a call is `false` on
     /// the server, in the script (`const live = hydrated()`) and in the template alike.
     pub hydrated: Vec<String>,
+    /// `const hasFooter = hasSlot('footer')` (from `@zubra/runtime`): the binding and the slot it
+    /// asks about (`default` for `hasSlot()`). The server knows which slots it was given, so it
+    /// renders the binding as whether that slot has content, as the element will.
+    pub has_slot: Vec<(String, String)>,
     /// Whether the script's ids are known on the server: every call to `id()` is a whole
     /// `const x = id()` binding (see `Binding::id_call`), so the calls happen in a known order.
     pub server_ids: bool,
