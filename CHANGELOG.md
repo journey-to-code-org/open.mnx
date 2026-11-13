@@ -8,6 +8,14 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 - **`@zubra/server` says when a render leaves part of a component's HTML for the browser.** Anything the server can't compute (a list derived through a function with a loop, a formatted date) renders empty and is filled in once the element's module runs, so without JavaScript that part is missing. `zubra check --server` already listed these places, but with the component's defaults and only when asked; a server rendering real props said nothing. Front Desk's `free-times` shipped a list of time buttons that was empty in the server's HTML, and it was found only by a test without JavaScript. Now `@zubra/server` warns once per place, with the same words, file, line and caret as `check --server`. `createZubra({ gaps: 'ignore' })` turns it off where that's intended. The compiler's request takes `"gaps": true` on a partial HTML render and answers with `gaps`.
 
+## 5.10.3 — 2026-11-13
+
+Text given to a component before it connects no longer waits for `remark.js`.
+
+### Fixed
+
+- **A template that is only regions renders at once when the page gives its host text.** Zubra UI's `action-button` and `shimmer-button` are an `<a>` or a `<button>` behind `zb-if`/`zb-else`, so their template has no elements of its own, and any text a framework put in the host first (React and Svelte do, then connect it) looked like server markup that lost its comments. The element loaded `remark.js`, a dynamic import, before rendering: a moment of bare text, and (until 5.10.1) an `updateComplete` that resolved too early. The compiler now emits `roots` for such a template, the elements its regions' blocks start with (`roots: ["a", "button"]`), and the runtime waits only when the host holds one of them. Server markup that lost its comments still does, and is put back as before. A template with elements of its own, or a block the compiler can't name (a slot at its top, text on its own, an `zb-await`), has no `roots` and is checked as before. Older compiled output has none and behaves as before.
+
 ## 5.10.2 — 2026-11-13
 
 Components that import other components by relative path render on Windows.
