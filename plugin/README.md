@@ -84,6 +84,8 @@ zubra({
   dts: true,                   // write typings next to each component
   runtime: '@zubra/runtime',     // the runtime module compiled code imports
   ssr: true,                   // server builds register a renderer (needs @zubra/compiler at run time)
+  root: process.cwd(),         // where your own components are (default: Vite's root, or the current folder):
+                               // a package's component with one of their tags gets yours (docs/guide/04-composition.md)
 })
 ```
 
@@ -96,6 +98,8 @@ Next to each component the plugin writes `rating.d.zb.ts`, typed for the project
 ```
 
 `@zubra/unplugin/client` covers `.zb` imports that don't have typings yet (before the first build) and the `?element` form. The generated files can be committed or ignored (`*.d.zb.ts`).
+
+In the editor you don't need these files: the VS Code extension's TypeScript plugin types `.zb` imports from the components directly, updated each time one is saved (see [Editor support](../docs/editor-support.md)). They're for `tsc` in builds and CI.
 
 ## Development
 

@@ -721,28 +721,32 @@ jobs:
     name: Skills (an agent uses them; non-blocking)
     runs-on: ubuntu-latest
     continue-on-error: true
+    # Only whether there is a key is job-wide; the key itself reaches the one step that calls the
+    # model, not `npm ci`, cargo or anything else that runs the PR's code and its dependencies.
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
-      - if: env.ANTHROPIC_API_KEY == ''
+      - if: env.HAS_KEY != 'true'
         run: echo "ANTHROPIC_API_KEY is not set; skipping" && exit 0
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.97"
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         uses: Swatinem/rust-cache@v2
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         run: cargo build --release --locked
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         run: npm ci && bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
         working-directory: runtime
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
         run: npm install -g @anthropic-ai/claude-code
-      - if: env.ANTHROPIC_API_KEY != ''
+      - if: env.HAS_KEY == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: ZUBRA_AGENT="claude -p" node --test skills/test/agent.test.js

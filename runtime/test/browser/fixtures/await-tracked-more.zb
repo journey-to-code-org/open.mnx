@@ -1,0 +1,22 @@
+<!-- Reads that run later without being a prop or state read after an `await`: a signal's
+     explicit `.get()` after one, and a fetcher that isn't async, reading in its `.then`. -->
+<script>
+  import { resource, state } from '@zubra/runtime'
+  const rate = state(1)
+  let page = 1
+  const priced = resource(async ({ signal }) => {
+    const token = await window.auth(signal)
+    window.calls.push(`priced ${rate.get()}`)
+    return `${rate.get()}:${token}`
+  })
+  const listed = resource(({ signal }) => window.auth(signal).then((token) => {
+    window.calls.push(`listed ${page}`)
+    return `${page}:${token}`
+  }))
+</script>
+<zb-await-tracked-more>
+  <p class="priced">{priced.value}</p>
+  <p class="listed">{listed.value}</p>
+  <button class="rate" onclick={() => rate.set(rate.get() + 1)}>rate</button>
+  <button class="page" onclick={() => page++}>page</button>
+</zb-await-tracked-more>

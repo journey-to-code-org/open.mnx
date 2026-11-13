@@ -9,6 +9,7 @@ Install **Zubra** from the [Marketplace](https://marketplace.visualstudio.com/it
 - **Syntax highlighting** for `.zb` files: HTML, `{…}` as JavaScript, `<script>` and `<script lang="ts">` as JavaScript and TypeScript, `<style>` and `<style lang="scss">` as CSS and SCSS, and the directives and event attributes.
 - **Diagnostics as you type**: the compiler's own errors and warnings, with their suggestions.
 - **Completion** of directives, imported components, their props and events, and of props inside `{…}`.
+- **Components' types in `.ts` and `.tsx` files**: an import of a component (`./badge.zb`, `./badge.zb?react`, `?vue`, `?element`, or a `.zb.tsx` component) is typed from the component itself, for VS Code's own TypeScript: errors, hover, completion and go to definition (which opens the component). Saving the component updates the files that import it. Nothing has to be built first, and `allowArbitraryExtensions` isn't needed. A plain import is typed for the project's framework, as the build plugin compiles it (React or Vue when `package.json` has them). It runs in VS Code's TypeScript server (the default); the native TypeScript 7 preview doesn't load plugins yet.
 - **Hover** documentation for imported components: description, props with types and defaults, events and slots.
 - **Go to definition** for imported components.
 - **Formatting**: Format Document (Shift+Alt+F), or on save with `"editor.formatOnSave": true`. It's `zubra fmt` with your editor's indentation: the template re-indented, tags tidied, and a tag too wide for its line split one attribute per line (`zubra.format.printWidth`, default 100). It never changes what the component compiles to, and leaves expressions, comments, `<script>`, `<style>`, `<pre>` and `<textarea>` as written (see [Formatting](../README.md#formatting)). The extension is the default formatter for `.zb`. To have `<script>` and `<style>` formatted too, use Prettier with [`prettier-plugin-zubra`](../prettier-plugin/README.md). Needs Zubra 5.4 or later; with an older compiler it says so once and changes nothing.
@@ -30,6 +31,14 @@ A pane in the Elements panel of Chrome, Edge and Firefox. Select a node: it show
 ## Other editors
 
 The extension is a thin client for `@zubra/language-server`. Run it with `zubra-language-server --stdio` from Neovim, Helix, Zed, Sublime LSP or any other editor that speaks LSP. It uses the compiler named in `initializationOptions.compiler` if there is one; otherwise `@zubra/compiler` when it's installed, then the command in the `ZUBRA_COMPILER` environment variable, then `zubra` on the `PATH`.
+
+In other editors whose TypeScript support runs tsserver (Neovim's `ts_ls`, Sublime's LSP-typescript, WebStorm), the same TypeScript plugin gives `.ts` files components' types. Install `@zubra/language-server` in the project and add it to `tsconfig.json`:
+
+```json
+{ "compilerOptions": { "plugins": [{ "name": "@zubra/language-server/typescript-plugin" }] } }
+```
+
+It finds the compiler the way the language server does; `"compiler": "/path/to/zubra"` in that entry names one. `tsc` itself doesn't run plugins: for builds and CI, the typings the build plugin writes (`rating.d.zb.ts`) and `npx zubra check --types` cover it.
 
 ## `.html` files that use Zubra elements
 

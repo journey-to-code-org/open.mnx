@@ -12,12 +12,24 @@ const require = createRequire(import.meta.url);
  * `editor`: what `vscode.window.activeTextEditor` is. `input`: what the name prompt answers (a
  * string, or undefined for Escape), or a function given the prompt's options.
  */
-export function activated({ editor, input } = {}) {
+export function activated({ editor, input, settings = {} } = {}) {
   const Module = require('node:module');
-  const seen = { commands: new Map(), requests: [], messages: [], prompts: [], subscriptions: [] };
+  const seen = { commands: new Map(), requests: [], messages: [], prompts: [], subscriptions: [], plugins: [] };
   const stubs = {
     vscode: {
-      workspace: { getConfiguration: () => ({ get: () => undefined }) },
+      workspace: {
+        getConfiguration: () => ({ get: (key) => settings[key] }),
+        onDidChangeConfiguration(listener) {
+          seen.configurationChanged = listener;
+          return { dispose() {} };
+        },
+      },
+      extensions: {
+        getExtension: (id) => (id === 'vscode.typescript-language-features' ? {
+          activate: async () => {},
+          exports: { getAPI: () => ({ configurePlugin: (name, options) => seen.plugins.push({ name, options }) }) },
+        } : undefined),
+      },
       commands: {
         registerCommand(name, handler) {
           seen.commands.set(name, handler);

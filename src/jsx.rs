@@ -363,6 +363,7 @@ fn lower_uncached(
     let mut function = None;
     let mut export_start = 0;
     let mut from_names: Vec<String> = Vec::new(); // `from` from the runtime, by local name
+    let mut resource_names: Vec<String> = Vec::new(); // and `resource`
     for statement in &program.body {
         let span = statement.span();
         match statement {
@@ -373,6 +374,9 @@ fn lower_uncached(
                         if let ImportDeclarationSpecifier::ImportSpecifier(named) = item {
                             if named.imported.name().as_str() == "from" {
                                 from_names.push(named.local.name.to_string());
+                            }
+                            if named.imported.name().as_str() == "resource" {
+                                resource_names.push(named.local.name.to_string());
                             }
                             if named.imported.name().as_str() == "emit" {
                                 return Err(error_at(
@@ -527,6 +531,7 @@ fn lower_uncached(
         tags: HashMap::new(),
         props: Vec::new(),
         from: from_names,
+        resource: resource_names,
         readable,
         keep_text,
         type_ranges: if path.ends_with(".tsx") {
@@ -809,6 +814,8 @@ struct Lowering<'s, 'l> {
     props: Vec<PropOut>,
     /// The local names of the runtime's `from` (`let left = from(seconds)`).
     from: Vec<String>,
+    /// The local names of the runtime's `resource`, whose fetcher's later reads are tracked.
+    resource: Vec<String>,
     /// `lower_readable`: keep the script as written, apart from `on…` calls, and the template's
     /// whitespace.
     readable: bool,
@@ -1513,5 +1520,11 @@ impl reactive::Names for JsxNames<'_, '_, '_> {
     }
     fn is_from(&self, name: &str) -> bool {
         self.lowering.from.iter().any(|from| from == name)
+    }
+    fn is_resource(&self, name: &str) -> bool {
+        self.lowering
+            .resource
+            .iter()
+            .any(|resource| resource == name)
     }
 }

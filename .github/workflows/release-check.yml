@@ -6,6 +6,10 @@ name: Release check
 # - the token release.yml tags with (RELEASE_TOKEN, or the workflow's own) can make a tag here: this
 #   makes a throwaway tag on the PR's head commit and removes it. 5.8.0 found that out only after
 #   its npm packages were public.
+#
+# Two jobs, so the PR's own code never runs beside a token that can write: `notes` checks out and
+# runs the PR (scripts/release-notes.mjs) with a read-only token and no stored credentials; `tag`
+# holds the write token and checks out nothing.
 
 on:
   pull_request:
@@ -15,15 +19,18 @@ on:
 permissions: {}
 
 jobs:
-  check:
-    name: The release can be tagged and has notes
+  notes:
+    name: The release has notes
     runs-on: ubuntu-latest
     permissions:
-      contents: write # the throwaway tag
+      contents: read
+    outputs:
+      release: ${{ steps.version.outputs.release }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Is the version changing?
         id: version
         env:
@@ -31,6 +38,7 @@ jobs:
         run: |
           version=$(node -p "require('./runtime/package.json').version")
           before=$(git show "$BASE:runtime/package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          # The version comes from the PR: it is only ever passed on through env, never into a script.
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$version" = "$before" ]; then
             echo "The version stays $version: not a release PR."
@@ -41,9 +49,19 @@ jobs:
           fi
       - name: Release notes
         if: steps.version.outputs.release == 'true'
-        run: node scripts/release-notes.mjs "${{ steps.version.outputs.version }}" > /dev/null
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/release-notes.mjs "$VERSION" > /dev/null
+
+  tag:
+    name: The release can be tagged
+    needs: notes
+    if: needs.notes.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the throwaway tag
+    steps:
       - name: Make and remove a throwaway tag
-        if: steps.version.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}

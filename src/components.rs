@@ -20,7 +20,78 @@ pub fn load(
     path: &str,
     loader: Option<Loader<'_>>,
 ) -> Result<(), Diagnostic> {
-    load_from(component, path, loader, &mut vec![path.to_owned()])
+    load_from(component, path, loader, &mut vec![path.to_owned()])?;
+    one_definition_per_tag(component, path)
+}
+
+/// Whether a component file is a package's rather than the app's own: under node_modules (as the
+/// CLI and the bundler plugin find it), or named by its package specifier (`@acme/kit/…`, as
+/// `@zubra/server` names a package's components), not by an absolute or relative path.
+fn in_package(path: &str) -> bool {
+    let bare = !path.starts_with(['/', '\\', '.'])
+        && !path.chars().nth(1).is_some_and(|second| second == ':')
+        && path.contains('/');
+    bare || path.split(['/', '\\']).any(|part| part == "node_modules")
+}
+
+/// Two files as paths from the folder they share: `action-button.zb` and
+/// `node_modules/@acme/kit/components/action-button.zb`, not two absolute paths.
+fn beside(a: &str, b: &str) -> (String, String) {
+    let a_parts: Vec<&str> = a.split(['/', '\\']).collect();
+    let b_parts: Vec<&str> = b.split(['/', '\\']).collect();
+    let shared = a_parts
+        .iter()
+        .zip(&b_parts)
+        .take(a_parts.len().min(b_parts.len()) - 1)
+        .take_while(|(x, y)| x == y)
+        .count();
+    (a_parts[shared..].join("/"), b_parts[shared..].join("/"))
+}
+
+/// One tag, one definition. A page can define a tag once: the browser keeps whichever module
+/// loads first, and the other component never runs. So two of the app's files with the same tag,
+/// or two packages', anywhere in what a component imports, is an error naming both, at the import
+/// that brings in the second. The same file reached twice is fine, and so is an app's component
+/// beside a package's with its tag (both carrying a copy of a shared part, say): the app's stands
+/// in for the package's, as `@zubra/server` and the bundler plugin arrange.
+fn one_definition_per_tag(component: &ComponentAst, path: &str) -> Result<(), Diagnostic> {
+    let mut seen: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    seen.insert(&component.tag, path);
+    for (import, child) in component.script.components.iter().zip(&component.children) {
+        let mut todo = vec![child];
+        while let Some(next) = todo.pop() {
+            match seen.get(next.ast.tag.as_str()) {
+                Some(first)
+                    if *first != next.path && in_package(first) == in_package(&next.path) =>
+                {
+                    let shared = beside(first, &next.path);
+                    let through = if std::ptr::eq(next, child) {
+                        String::new()
+                    } else {
+                        format!(", through `{}`", import.specifier)
+                    };
+                    return Err(Diagnostic::new(
+                        import.span,
+                        format!(
+                            "<{tag}> has two definitions: {first} and {second}{through}. A page \
+                             defines a tag once, and the browser keeps whichever loads first; \
+                             rename one, or use the same one everywhere (an app's own component \
+                             may stand in for a package's, but not for another of the app's)",
+                            tag = next.ast.tag,
+                            first = shared.0,
+                            second = shared.1,
+                        ),
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    seen.insert(&next.ast.tag, &next.path);
+                }
+            }
+            todo.extend(&next.ast.children);
+        }
+    }
+    Ok(())
 }
 
 fn load_from(
@@ -303,6 +374,28 @@ fn joined(from: &str, specifier: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_package_component_is_named_from_node_modules_or_by_its_specifier() {
+        for path in [
+            "/app/node_modules/@acme/kit/components/a.zb",
+            "C:\\app\\node_modules\\kit\\a.zb",
+            "@acme/kit/components/a.zb",
+            "kit/components/a.zb",
+        ] {
+            assert!(super::in_package(path), "{path}");
+        }
+        for path in [
+            "/app/src/a.zb",
+            "C:\\app\\src\\a.zb",
+            "C:/app/src/a.zb",
+            "./a.zb",
+            "../parts/a.zb",
+            "a.zb",
+        ] {
+            assert!(!super::in_package(path), "{path}");
+        }
+    }
+
     use super::exported;
     use serde_json::json;
 

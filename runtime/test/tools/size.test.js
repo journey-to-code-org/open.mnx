@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync, brotliCompressSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -72,3 +73,24 @@ for (const [entry, budget] of Object.entries(BUDGETS)) {
     assert.ok(gzip <= budget.gzip, `${gzip} B gzip > ${budget.gzip} B`);
   });
 }
+
+// What a server without a bundler sends (`@zubra/server` in production): `dist/production` as it
+// is, each module its own file, compressed one by one. 38.4 KB before the production build was
+// minified (5.14); 17.9 KB after.
+const SERVED = 18.5 * 1024;
+
+test('dist/production as served fits its budget', (t) => {
+  const dir = join(here, '../../dist/production');
+  const sizes = new Map();
+  const queue = ['index.js'];
+  while (queue.length) {
+    const file = queue.pop();
+    if (sizes.has(file)) continue;
+    const code = readFileSync(join(dir, file), 'utf8');
+    sizes.set(file, gzipSync(code).length);
+    for (const match of code.matchAll(/(?:from|import)\s*["']\.\/([^"']+)["']/g)) queue.push(match[1]);
+  }
+  const total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
+  t.diagnostic(`dist/production/index.js and its ${sizes.size - 1} imports: ${total} B gzip, file by file`);
+  assert.ok(total <= SERVED, `${total} B gzip > ${SERVED} B`);
+});
