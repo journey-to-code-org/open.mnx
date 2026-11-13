@@ -2,6 +2,14 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## 5.10.2 — 2026-11-13
+
+Components that import other components by relative path render on Windows.
+
+### Fixed
+
+- **Relative component imports on Windows.** `@zubra/compiler`'s `sources()` keyed a component by its path and decided whether its imports were relative to a path or to a package specifier by checking for a leading `/`. A Windows path (`C:\app\page.zb`) has none, so `./parts/card.zb` was keyed as `parts/card.zb`, and rendering the page in `@zubra/server` failed with "not among the request's files". It now tells a path from a specifier on any platform (drive letters and `\\host\share` paths included). Found by CineStack on Windows, which had patched the compiler (normalizing the keys to `/`); the patch can go.
+
 ## 5.10.1 — 2026-11-13
 
 `updateComplete` waits for an element's first render when that render is itself waiting.
