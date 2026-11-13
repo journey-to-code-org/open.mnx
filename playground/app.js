@@ -362,7 +362,7 @@ document.addEventListener('submit', (event) => {
   if (!note) {
     note = document.createElement('p');
     note.className = 'zb-playground-post';
-    note.style.cssText = 'margin: 0.5rem; padding: 0.5rem 0.75rem; border-left: 3px solid #36c; background: #f3f5fb; font: 13px ui-monospace, monospace';
+    note.style.cssText = 'margin: 0.5rem; padding: 0.5rem 0.75rem; border-left: 3px solid #36c; background: #f3f5fb; color: #1c2030; font: 13px ui-monospace, monospace';
     form.after(note);
   }
   note.textContent = \`POST \${action} (\${fields || 'no fields'}). With @zubra/actions on a server, the function runs there, and its result comes back as the form's "action" event.\`;
