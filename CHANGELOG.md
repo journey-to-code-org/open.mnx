@@ -2,7 +2,9 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.13.1 — 2026-11-13
+
+A box ticked or a field typed in before a component starts stays ticked or typed.
 
 ### Fixed
 
