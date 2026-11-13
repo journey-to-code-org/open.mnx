@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Fixed
+
+- **`zubra check --client` no longer calls a component client-free when the server leaves part of it empty.** It looked for parts the server leaves to the browser by rendering with the default props, so a branch the defaults skip went unchecked: a `const list = sorted ? [...items].sort(…) : items` counted as complete, while the server can't run the mutating `.sort()` and a sorted chart rendered empty without its module. Now the methods it accepts are exactly those the server computes (a test runs each one through the evaluator; `sort`, `reverse`, `fill` and `toString` aren't, while `toSorted` and `toReversed` are), and method calls in the template count whichever branch they're in. In the other direction, `hasSlot()` and a spread into an array (`[...items]`) no longer count as browser work, since the server renders both. In Zubra UI that moves content-card, empty-state and hero-section to client-free, and bar-chart once its `sorted` uses `toSorted()` instead of `.sort()` (23 of 81).
+
 ## 5.13.1 — 2026-11-13
 
 A box ticked or a field typed in before a component starts stays ticked or typed.
