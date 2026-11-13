@@ -864,6 +864,26 @@ fn warnings_of(source: &str) -> Vec<Diagnostic> {
                 .map(|(warning, _)| warning),
         )
         .chain(component.props.iter().filter_map(|prop| {
+            if prop.name == "class" {
+                // `class` on the host tag declares a prop like any other attribute there, but the
+                // script can't read it (`class` is a reserved word), and a class written as its
+                // default is on no element: not in the server's HTML, not in the browser.
+                let tag = &component.tag;
+                let written = matches!(prop.default, ast::PropDefault::Text(_));
+                return Some(
+                    Diagnostic::new(
+                        prop.span,
+                        if written {
+                            format!("`class` on the host tag declares a prop named `class`, and its value is that prop's default: <{tag}> is rendered without the class")
+                        } else {
+                            "`class` on the host tag declares a prop named `class`, which the script can't read (`class` is a reserved word), and it is also every element's class".to_owned()
+                        },
+                    )
+                    .with_help(format!(
+                        "style the element by its tag (`{tag} {{ … }}`, or `:host` in the component's <style>), and leave `class` to the page that uses it"
+                    )),
+                );
+            }
             let (_, effect) = BUILT_IN_PROPERTIES
                 .iter()
                 .find(|(name, _)| *name == prop.name)?;

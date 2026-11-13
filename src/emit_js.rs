@@ -157,8 +157,31 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
         options.source_name,
         json(options.runtime)
     ));
+    // `@zubra/runtime` → `@zubra/runtime/<entry>`; a file (`/vendor/zubra/index.js`) → its sibling.
+    let entry = |name: &str| match options.runtime.rsplit_once('/') {
+        Some((directory, file)) if file.ends_with(".js") || file.ends_with(".mjs") => {
+            format!("{directory}/{name}.js")
+        }
+        _ => format!("{}/{name}", options.runtime.trim_end_matches('/')),
+    };
     for import in &component.script.imports {
         let mut text = import.text.clone();
+        // The script's own runtime imports come from where the module's do (`runtime`): one
+        // copy of the runtime, and no bare specifier left for an import map to resolve.
+        if options.runtime != RUNTIME {
+            let rewritten = if import.specifier == RUNTIME {
+                Some(options.runtime.to_owned())
+            } else {
+                import
+                    .specifier
+                    .strip_prefix(RUNTIME)
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .map(entry)
+            };
+            if let Some(rewritten) = rewritten {
+                text.replace_range(import.specifier_range.clone(), &json(&rewritten));
+            }
+        }
         // A component import loads the compiled module, which defines the element.
         if let (Some(extension), Some(component)) = (
             options.component_extension,
@@ -372,13 +395,6 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
             ),
         );
     }
-    // `@zubra/runtime` → `@zubra/runtime/<entry>`; a file (`/vendor/zubra/index.js`) → its sibling.
-    let entry = |name: &str| match options.runtime.rsplit_once('/') {
-        Some((directory, file)) if file.ends_with(".js") || file.ends_with(".mjs") => {
-            format!("{directory}/{name}.js")
-        }
-        _ => format!("{}/{name}", options.runtime.trim_end_matches('/')),
-    };
     // A spread's binder comes from `@zubra/runtime/spread`, imported only when the template uses one.
     if out.contains(&format!("bind: {SPREAD_BINDER}")) {
         let header_end = out.find('\n').map_or(0, |at| at + 1);
@@ -422,6 +438,9 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     }
     Ok(out)
 }
+
+/// The runtime's package name: what a script imports it as, and the default for `runtime`.
+const RUNTIME: &str = "@zubra/runtime";
 
 /// The local name of `@zubra/runtime/motion` in compiled modules, and how a part that animates says so.
 const MOTION: &str = "$motion";
