@@ -112,7 +112,7 @@ async function timed(render) {
 }
 
 const tools = [
-  { name: `Zubra \`--emit element\` (${versions['@zubra/compiler']})`, script: zubraElement, own: zubraElement, page: zubraPage, render: zubraPage, renderName: `Zubra (${versions['@zubra/compiler']})`, how: 'The Rust compiler as WebAssembly, in process (`@zubra/compiler`); each component is parsed again on every render' },
+  { name: `Zubra \`--emit element\` (${versions['@zubra/compiler']})`, script: zubraElement, own: zubraElement, page: zubraPage, render: zubraPage, renderName: `Zubra (${versions['@zubra/compiler']})`, how: 'The Rust compiler as WebAssembly, in process (`@zubra/compiler`); one request per component, parsing reused' },
   { name: 'Zubra `--emit js` + `@zubra/runtime` (production)', script: zubraModule, own: zubraModuleOwn, page: zubraPage },
   { name: `WebUI (${versions['@microsoft/webui']})`, script: webuiScript, own: webuiOwn, page: webuiPage, render: webuiPage, how: 'A native Rust addon, in process; templates compiled to its protocol once, at build time' },
   { name: `FAST Element (${versions['@microsoft/fast-element']})`, script: fastScript, own: fastOwn, page: fastPage },

@@ -31,14 +31,14 @@ What Zubra does that they don't is narrower:
 
 ## Measured
 
-The README's copy button, written in each tool's own documented style ([`compared/html-first/components/`](compared/html-first/components)). Node.js 22 on Linux x64, measured 2026-11-12.
+The README's copy button, written in each tool's own documented style ([`compared/html-first/components/`](compared/html-first/components)). Node.js 22 on Linux x64, measured 2026-11-13 with Zubra 5.13.0.
 
 What the browser is sent. JavaScript is bundled and minified with esbuild, then compressed with gzip level 9. "Each more component" is a component's own code with its runtime left out, so ten components are the first with its runtime plus nine more. The page is ten copy buttons, as each server renders it.
 
 | | JS, one component | Each more component | JS, ten components | HTML, page of ten buttons |
 |---|---|---|---|---|
-| Zubra `--emit element` (5.7.0) | 1.6 KB | 1.6 KB | 15.6 KB | 0.3 KB |
-| Zubra `--emit js` + `@zubra/runtime` (production) | 13.0 KB | 0.5 KB | 17.8 KB | 0.3 KB |
+| Zubra `--emit element` (5.13.0) | 1.6 KB | 1.6 KB | 15.6 KB | 0.3 KB |
+| Zubra `--emit js` + `@zubra/runtime` (production) | 14.2 KB | 0.5 KB | 19.0 KB | 0.3 KB |
 | WebUI (3.1.1) | 30.2 KB | 0.4 KB | 33.9 KB | 0.8 KB |
 | FAST Element (3.1.4) | 15.3 KB | 0.5 KB | 20.0 KB | 0.2 KB, rendered in the browser |
 | Enhance (`@enhance/ssr` 4.0.3, `@enhance/custom-element` 1.2.4) | 2.1 KB | 0.5 KB | 6.6 KB | 0.3 KB |
@@ -48,14 +48,14 @@ How long each server takes to render that page, in one Node.js process (3,000 re
 
 | Server | Render of the page of ten buttons | How it runs |
 |---|---|---|
-| WebUI (3.1.1) | 17 µs | A native Rust addon, in process. Templates are compiled to its protocol once, at build time |
-| Enhance (`@enhance/ssr` 4.0.3) | 107 µs | JavaScript |
-| Zubra (5.7.0) | 399 µs | The Rust compiler as WebAssembly, in process (`@zubra/compiler`). Each component is parsed again on every render |
-| WebC (0.11.4) | 675 µs | JavaScript. A build-time tool, so the whole page is compiled each time |
+| WebUI (3.1.1) | 25 µs | A native Rust addon, in process. Templates are compiled to its protocol once, at build time |
+| Enhance (`@enhance/ssr` 4.0.3) | 121 µs | JavaScript |
+| Zubra (5.13.0) | 389 µs | The Rust compiler as WebAssembly, in process (`@zubra/compiler`). A parsed component is reused (since 5.9.0); each render still makes one request per component |
+| WebC (0.11.4) | 917 µs | JavaScript. A build-time tool, so the whole page is compiled each time |
 
 What the numbers say:
 
-- **WebUI's server is about 20 times faster than Zubra's here.** WebUI compiles once and renders many times; Zubra's `@zubra/server` asks the compiler for each component on each request, and most of the time is parsing the same file again. That's the clearest thing this page found to fix (below).
+- **WebUI's server is about 15 times faster than Zubra's here.** WebUI compiles once and renders many times. Zubra's `@zubra/server` asks the compiler for each component on each request. Since 5.9.0 the compiler keeps what it parsed, but each request still costs about 30 µs in WebAssembly before any rendering (a request for just the component's CSS takes that long), and the server evaluator has grown since. That fixed cost per request is the next thing to fix (below).
 - **For a few components, the smallest browser code is hand-written** (WebC, Enhance) or Zubra's `--emit element`. For many, a shared runtime wins: Zubra's `--emit js` passes `--emit element` at about ten components.
 - **Zubra's shared runtime is less than half of WebUI's** and a little smaller than FAST's.
 
@@ -95,7 +95,7 @@ FAST's provider answers each request once, so a value it provides doesn't update
 
 - **Small browser code** for a few components, and none at all for components that don't react.
 - **A full application framework:** file-based routes, API routes, and forms that work without JavaScript, with the browser half written as plain platform code.
-- **Every server value in the HTML.** Enhance gives each element an instance id and context from its ancestors during the server render. Zubra leaves `id()` and `inject()` to the browser today, so a label's `for` and a context value aren't in Zubra's server HTML (planned below).
+- **Every server value in the HTML,** first. Enhance gives each element an instance id and context from its ancestors during the server render. Zubra does the same since 5.9.0: `id()` gives each instance a base the browser keeps, and `provide()` / `inject()` reach nested components and the page during the server render.
 
 **Where Zubra differs:**
 
@@ -116,10 +116,10 @@ FAST's provider answers each request once, so a value it provides doesn't update
 
 ## What this page changed in Zubra's plans
 
-1. **Compile once, render many times on the server.** Zubra's server re-parses every component on every render. A compiled render plan, cached by the component's source, should close most of the gap with WebUI without changing the output.
-2. **Instance ids and context in server HTML,** as Enhance does.
+1. **Compile once, render many times on the server.** Done in 5.9.0 for parsing: a component is parsed once while its sources are unchanged. The fixed cost of each request (the JSON in and out of WebAssembly, the warnings pass, validating with the props) is what's left, and a page of ten components pays it ten times. Next: one request for a page's components, and a request that names files it already sent.
+2. **Instance ids and context in server HTML,** as Enhance does. Done in 5.9.0.
 
-When either ships, the numbers and the sections above change with it.
+When the first ships in full, the numbers and the sections above change with it.
 
 ## Choosing
 
