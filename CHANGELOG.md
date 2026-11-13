@@ -4,6 +4,14 @@ All notable changes. The format follows [Keep a Changelog](https://keepachangelo
 
 ## Unreleased
 
+### Added
+
+- **`@zubra/unplugin` has typings for every entry.** `@zubra/unplugin/vite` (and `/rollup`, `/webpack`, `/esbuild`, `/rspack`, `/astro` and the package itself) ship declarations, so a `vite.config.ts` type-checks and its options are checked: `zubra({ framework: 'svelte' })` is an error that lists the frameworks it takes. Before, TypeScript reported `TS7016` for the import under `strict`, and apps declared the module themselves.
+
+### Documentation
+
+- **Class names inside light-DOM components.** The README's styles section and the component skill now say that an unlayered page rule for a common class name (`.table`, `.card`) matches a component's elements with that class and beats the component's own CSS, and that variants are safer as attributes. Found by an app whose layout `.table` collapsed a card component's `table` size to 2px.
+
 ## 5.9.1 — 2026-11-12
 
 A security fix for `@zubra/sync`, and faster lists and Signals. Sync used to take any change from any page: a server without `authorize` now serves reads and refuses writes from pages until it's told who may make them (`authorize`, or `allowAnyone` for a page everyone may edit), and `authorize` is told the field and value a change sets.
