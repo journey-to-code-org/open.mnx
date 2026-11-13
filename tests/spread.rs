@@ -422,7 +422,9 @@ fn a_spread_key_that_isn_t_a_name_is_left_out_not_written_as_markup() {
     assert!(!link.contains("evil"), "{link}");
     assert!(!link.contains("--x"), "{link}");
     assert!(
-        html.contains(r#"<a title="kept" data-ok="yes" style="color: blue; --brand: green">go</a>"#),
+        html.contains(
+            r#"<a title="kept" data-ok="yes" style="color: blue; --brand: green">go</a>"#
+        ),
         "{html}"
     );
 }
