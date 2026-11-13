@@ -248,11 +248,16 @@ pub fn emit(component: &ComponentAst, options: &Options<'_>) -> Result<String, D
     let list =
         |names: &mut dyn Iterator<Item = &str>| names.map(json).collect::<Vec<_>>().join(", ");
     out.push_str(&format!(
-        "  }},\n  abi: 3,\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}{}  template: {},\n  setup($p, $emit{}) {{\n",
+        "  }},\n  abi: 3,\n  shadow: {},\n  form: {},\n  slots: [{}],\n  events: [{}],\n{}{}{}  template: {},\n  setup($p, $emit{}) {{\n",
         component.shadow,
         component.form_associated,
         list(&mut slots.iter().map(String::as_str)),
         list(&mut interface.events.iter().map(|event| event.name.as_str())),
+        // `roots`: what server markup for a template that is only regions starts with.
+        region_roots(&component.nodes).map_or_else(String::new, |roots| format!(
+            "  roots: [{}],\n",
+            roots.iter().map(|name| json(name)).collect::<Vec<_>>().join(", ")
+        )),
         // `--devtools`: the file and the host tag's place in it, for the panel's "Open in editor".
         options.devtools.map_or_else(String::new, |path| format!(
             "  source: {{ file: {}, at: [{}, {}] }},\n",
@@ -644,6 +649,57 @@ pub(crate) struct ChildInfo {
     pub(crate) shadow: bool,
     /// Where each slot region is in the child's template (light DOM only), for hydrate paths.
     slot_paths: Vec<(String, Vec<usize>)>,
+}
+
+/// The elements that can be a top-level node of server markup for a template that is only regions
+/// (an `zb-if`/`zb-else` whose branches are a `<button>` and an `<a>`, say), for the runtime to
+/// tell such markup from the page's own content without waiting for `remark.js`. `None` when it
+/// can't say: the template has top-level elements or text of its own (the runtime checks those),
+/// or a region may hold content it can't name (a slot, an `zb-await`, a text-only branch).
+fn region_roots(nodes: &[ast::Node]) -> Option<Vec<String>> {
+    let blank = |parts: &[ast::Part]| {
+        parts.iter().all(|part| matches!(part, ast::Part::Literal(text) if text.trim().is_empty()))
+    };
+    let mut roots = std::collections::BTreeSet::new();
+    let mut regions = false;
+    for node in nodes {
+        match node {
+            ast::Node::Text(parts) if blank(parts) => {}
+            ast::Node::If { .. } | ast::Node::Each { .. } => {
+                regions = true;
+                if !branch_roots(std::slice::from_ref(node), &mut roots) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    (regions && !roots.is_empty()).then(|| roots.into_iter().collect())
+}
+
+/// Collect the top-level element names of a region's blocks into `roots`; false if one can't be
+/// named (a block with text on its own has no element to recognise its markup by).
+fn branch_roots(nodes: &[ast::Node], roots: &mut std::collections::BTreeSet<String>) -> bool {
+    for node in nodes {
+        let known = match node {
+            ast::Node::Text(parts) => parts
+                .iter()
+                .all(|part| matches!(part, ast::Part::Literal(text) if text.trim().is_empty())),
+            ast::Node::Element(element) => {
+                roots.insert(element.name.to_ascii_lowercase());
+                true
+            }
+            ast::Node::If { consequent, alternate, .. } => {
+                branch_roots(consequent, roots) && branch_roots(alternate, roots)
+            }
+            ast::Node::Each { children, .. } => branch_roots(children, roots),
+            _ => false,
+        };
+        if !known {
+            return false;
+        }
+    }
+    true
 }
 
 struct Emitter<'a> {

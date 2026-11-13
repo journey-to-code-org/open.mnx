@@ -375,18 +375,38 @@ test('text alone given to an element whose template starts with a condition is s
   await page.close();
 });
 
-test('updateComplete waits for a first render that is waiting on the check for stripped server markup', async () => {
-  // Asked for as soon as the element is defined, before remark.js (a dynamic import) can be here:
-  // what a framework's test does after mounting <zb-either>Save</zb-either>.
-  const { page, messages } = await open('<zb-either>Save</zb-either>', {
+test('text given to a template that is only regions renders at once, without loading remark.js', async () => {
+  // What React and Svelte do (text, then connect): the element's template starts with a condition,
+  // but the markup holds none of the elements its blocks start with (a, button), so it is the
+  // page's own content, not server markup that lost its comments: no check, no wait. whenDefined
+  // resolves right after the upgrade, so a render that waits for an import isn't there yet.
+  const { page, messages } = await open('<zb-either>Save</zb-either><zb-either href="/go"><b>Go</b></zb-either>', {
     modules: ['either'],
-    beforeModules: `window.rendered = customElements.whenDefined('zb-either').then(async () => {
+    beforeModules: `window.rendered = customElements.whenDefined('zb-either').then(() =>
+      [...document.querySelectorAll('zb-either')].map((el) => el.querySelector('.either')?.textContent ?? null));`,
+  });
+  assert.deepEqual(await page.evaluate(() => window.rendered), ['Save', 'Go']);
+  assert.equal(await page.evaluate(() => performance.getEntriesByType('resource').some((entry) => entry.name.includes('remark'))), false, 'remark.js was not loaded');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('updateComplete waits for a first render that is waiting on the check for stripped server markup', { skip: runtimeOnly }, async () => {
+  // Server markup of the same component with its markers stripped does hold a root (the button):
+  // remark.js, a dynamic import, puts them back before the element starts. Asked for as soon as the
+  // element is defined, updateComplete has to wait for that.
+  const html = compiler(join(here, 'fixtures/either-link.zb')).replace(/<!--[^]*?-->|<\?zb[^]*?>/g, '');
+  assert.match(html, /<button class="either"/);
+  const { page, messages } = await open(html, {
+    modules: ['either'],
+    beforeModules: `window.started = customElements.whenDefined('zb-either').then(async () => {
       const el = document.querySelector('zb-either');
       await el.updateComplete;
-      return el.querySelector('.either')?.textContent ?? null;
+      return el.matches(':state(hydrated)');
     });`,
   });
-  assert.equal(await page.evaluate(() => window.rendered), 'Save');
+  assert.equal(await page.evaluate(() => window.started), true);
+  assert.equal(await page.evaluate(() => performance.getEntriesByType('resource').some((entry) => entry.name.includes('remark'))), true, 'it had to load remark.js');
   assert.deepEqual(messages, []);
   await page.close();
 });
