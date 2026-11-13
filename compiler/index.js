@@ -10,7 +10,7 @@
 // imports, and makes that request.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, posix, resolve } from 'node:path';
+import { dirname, join, posix, resolve, win32 } from 'node:path';
 import { CompileError, CompilerCrash, over, restarting, ZUBRA_MARKER_COMMENT, ZUBRA_MARKER_DIRECTIVE, ZUBRA_MARKER_PATTERN } from './core.js';
 
 // For Workers, Deno and browsers, which have no disk to read zubra.wasm from: `@zubra/compiler/wasm`.
@@ -60,7 +60,11 @@ export function sources(path, files = {}, key = resolve(path)) {
   const script = /\.[jt]sx$/.test(absolute) ? source : source.match(/<script[^>]*>([\s\S]*?)<\/script>/i)?.[1] ?? '';
   for (const [, specifier] of script.matchAll(/import\s+(?:[^'"]*?from\s+)?['"]([^'"]+\.zb(?:\.[jt]sx)?)['"]/g)) {
     // A relative import is keyed like its importer: by path, or under the package specifier.
-    if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files, key.startsWith('/') ? resolve(dirname(absolute), specifier) : posix.join(posix.dirname(key), specifier));
+    // A path is absolute on any platform (`/app/x.zb`, `C:\app\x.zb`, `\\host\share\x.zb`); a
+    // specifier never is. On Windows a path key isn't `/…`, so testing for that keyed a
+    // component's relative imports as if they were under a package, and the compiler couldn't
+    // find them.
+    if (specifier.startsWith('.')) sources(resolve(dirname(absolute), specifier), files, win32.isAbsolute(key) ? resolve(dirname(absolute), specifier) : posix.join(posix.dirname(key), specifier));
     else {
       // A package's component, keyed by its specifier; its own relative imports are keyed under it.
       const found = packageFile(dirname(absolute), specifier);
