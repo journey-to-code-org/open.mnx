@@ -494,16 +494,23 @@ impl<'n, N: Names> Rewriter<'n, N> {
     /// A read at `at`, through the run's `track()` where it can run after the fetcher's first
     /// `await` (or in a function nested in it).
     fn tracked(&self, at: u32, text: String) -> String {
-        if self.tracking > 0 && (at >= self.cutoff || self.nested > 1) {
+        if self.later(at) {
             format!("{RUN}.track(() => {text})")
         } else {
             text
         }
     }
 
-    /// The fetcher of `resource(async …)` in script code: an async function or arrow, the first
-    /// argument. A fetcher that isn't async is left as written.
-    fn async_fetcher<'c>(&self, call: &'c CallExpression<'_>) -> Option<&'c Expression<'c>> {
+    /// Whether code at `at`, in a fetcher being rewritten, can run after its effect has finished:
+    /// after its first `await`, or in a function nested in it.
+    fn later(&self, at: u32) -> bool {
+        self.tracking > 0 && (at >= self.cutoff || self.nested > 1)
+    }
+
+    /// The fetcher of `resource(…)` in script code: a function or arrow, the first argument. An
+    /// async one can read after an `await`; any one can read in a callback that runs later
+    /// (`load().then((r) => r[page])`).
+    fn fetcher<'c>(&self, call: &'c CallExpression<'_>) -> Option<&'c Expression<'c>> {
         let Expression::Identifier(callee) = &call.callee else {
             return None;
         };
@@ -514,12 +521,24 @@ impl<'n, N: Names> Rewriter<'n, N> {
             return None;
         }
         let fetcher = call.arguments.first()?.as_expression()?;
-        let async_ = match fetcher.without_parentheses() {
-            Expression::ArrowFunctionExpression(arrow) => arrow.r#async,
-            Expression::FunctionExpression(function) => function.r#async,
-            _ => false,
+        matches!(
+            fetcher.without_parentheses(),
+            Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+        )
+        .then_some(fetcher)
+    }
+
+    /// `x.get()` (or `x?.get()`) on a signal the script holds, written out: the call is the read.
+    fn explicit_get(&self, call: &CallExpression<'_>) -> bool {
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return false;
         };
-        async_.then_some(fetcher)
+        let Expression::Identifier(object) = &member.object else {
+            return false;
+        };
+        member.property.name == "get"
+            && call.arguments.is_empty()
+            && self.names.kind(object) == Some(Kind::Signal)
     }
 
     /// Whether `identifier` is the whole argument of `signal(…)`: the signal is passed, not read.
@@ -614,12 +633,14 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if let Some(fetcher) = self.async_fetcher(call) {
+        if let Some(fetcher) = self.fetcher(call) {
             // `resource(async (…) => …)` → `resource($tracked(($run) => (async (…) => …)($run)))`:
-            // the fetcher is unchanged, and its reads can reach the run's `track()`.
+            // the fetcher is unchanged, and its reads can reach the run's `track()`. Only when
+            // it has a read that can run later: otherwise it's left as written, and the module
+            // isn't loaded.
             let span = fetcher.span();
-            self.insert(span.start, format!("{TRACKED}(({RUN}) => ("));
             self.visit_expression(&call.callee);
+            let first = self.edits.len();
             let outer = (self.cutoff, self.nested);
             self.cutoff = await_cutoff(fetcher);
             self.nested = 0;
@@ -627,7 +648,34 @@ impl<'a, N: Names> Visit<'a> for Rewriter<'_, N> {
             self.visit_arguments(&call.arguments);
             self.tracking -= 1;
             (self.cutoff, self.nested) = outer;
-            self.insert(span.end, format!(")({RUN}))"));
+            let track = format!("{RUN}.track(");
+            // A nested resource's fetcher has its own `$run`: its calls don't count here.
+            let mut depth = 0usize;
+            let mut used = false;
+            for edit in &self.edits[first..] {
+                if edit.text.starts_with(&format!("{TRACKED}((")) {
+                    depth += 1;
+                } else if edit.text == format!(")({RUN}))") {
+                    depth = depth.saturating_sub(1);
+                } else if depth == 0 && edit.text.contains(&track) {
+                    used = true;
+                }
+            }
+            if used {
+                let open = Edit {
+                    range: span.start as usize..span.start as usize,
+                    text: format!("{TRACKED}(({RUN}) => ("),
+                };
+                self.edits.insert(first, open);
+                self.insert(span.end, format!(")({RUN}))"));
+            }
+            return;
+        }
+        if self.later(call.span.start) && self.explicit_get(call) {
+            // `rate.get()` after an `await`: `$run.track(() => rate.get())`.
+            self.insert(call.span.start, format!("{RUN}.track(() => "));
+            walk::walk_call_expression(self, call);
+            self.insert(call.span.end, ")".to_owned());
             return;
         }
         if let Expression::Identifier(callee) = &call.callee {

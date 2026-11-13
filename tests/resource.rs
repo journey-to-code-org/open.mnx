@@ -133,3 +133,108 @@ fn only_the_runtime_resource_is_rewritten() {
         "{out}"
     );
 }
+
+fn js_with(imports: &str, script: &str) -> String {
+    let source = format!(
+        "<script>\n  import {{ {imports} }} from '@zubra/runtime'\n  let page = 1\n{script}\n</script>\n<x-list org>\n  <p>{{rows.value}}</p>\n</x-list>"
+    );
+    compile_js(&source, "@zubra/runtime", "x.zb").unwrap()
+}
+
+#[test]
+fn an_explicit_get_on_a_signal_after_the_first_await_is_tracked() {
+    let out = js_with(
+        "resource, state",
+        r#"  const rate = state(2)
+  const rows = resource(async () => {
+    const before = rate.get()
+    await load()
+    return [before, rate.get(), rate?.get()]
+  })"#,
+    );
+    assert!(out.contains("const before = rate.get()"), "{out}");
+    assert!(
+        out.contains(
+            "return [before, $run.track(() => rate.get()), $run.track(() => rate?.get())]"
+        ),
+        "{out}"
+    );
+    // Writing one isn't a read.
+    let out = js_with(
+        "resource, state",
+        r#"  const rate = state(2)
+  const rows = resource(async () => {
+    await load()
+    rate.set(3)
+  })"#,
+    );
+    assert!(!out.contains("$run"), "{out}");
+}
+
+#[test]
+fn a_fetcher_that_is_not_async_is_tracked_in_its_callbacks() {
+    let out =
+        js("  const rows = resource(({ signal }) => load(signal).then((r) => r.slice(0, page)))");
+    assert!(
+        out.contains(
+            "resource($tracked(($run) => (({ signal }) => load(signal).then((r) => r.slice(0, $run.track(() => page.get()))))($run)))"
+        ),
+        "{out}"
+    );
+    assert!(out.contains("@zubra/runtime/track"), "{out}");
+    let out = js(r#"  const rows = resource(function ({ signal }) {
+    return load(signal).then(function (r) { return [r, org] })
+  })"#);
+    assert!(
+        out.contains("return [r, $run.track(() => $p.org)]"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_fetcher_with_nothing_to_follow_later_is_left_as_written() {
+    // Every read is before the first `await`: no `$tracked`, and the module isn't loaded.
+    let out = js(r#"  const rows = resource(async ({ signal }) => {
+    const r = await fetch(`/api/${org}?page=${page}`, { signal })
+    return r.json()
+  })"#);
+    assert!(
+        out.contains("const rows = resource(async ({ signal }) => {"),
+        "{out}"
+    );
+    assert!(!out.contains("$run"), "{out}");
+    assert!(!out.contains("runtime/track"), "{out}");
+    // A nested resource that follows its own reads doesn't make the outer one tracked.
+    let out = js(r#"  const rows = resource(async () => {
+    const first = page
+    await load()
+    return resource(async () => { await load(); return org })
+  })"#);
+    assert!(out.contains("const rows = resource(async () => {"), "{out}");
+    assert!(
+        out.contains("return resource($tracked(($run) => (async () => { await load(); return $run.track(() => $p.org) })($run)))"),
+        "{out}"
+    );
+}
+
+#[test]
+fn jsx_and_tsx_components_are_rewritten_too() {
+    for (path, types) in [("x.zb.jsx", ""), ("x.zb.tsx", ": { org?: string }")] {
+        let source = format!(
+            "import {{ resource as load }} from '@zubra/runtime'\n\nexport default function XRows({{ org = 'a' }}{types}) {{\n  let page = 1\n  const rows = load(async () => {{\n    await next()\n    return [page, org]\n  }})\n  return <p onClick={{() => page++}}>{{rows.value}}</p>\n}}\n"
+        );
+        let out = compile_js(&source, "@zubra/runtime", path).unwrap();
+        assert!(
+            out.contains("const rows = load($tracked(($run) => (async () => {"),
+            "{path}: {out}"
+        );
+        assert!(
+            out.contains("return [$run.track(() => page.get()), $run.track(() => $p.org)]"),
+            "{path}: {out}"
+        );
+        assert!(
+            out.contains("import { tracked as $tracked } from \"@zubra/runtime/track\""),
+            "{path}: {out}"
+        );
+    }
+}
