@@ -161,7 +161,10 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
   /** What a request for `pathname` gets: `{ status, type, body }`, or null if it isn't ours. */
   function serve(pathname) {
     if (!pathname.startsWith(`${base}/`)) return null;
-    const rest = decodeURIComponent(pathname.slice(base.length + 1));
+    let rest;
+    // A malformed escape (`%E0%A4%A`) is the client's mistake: a 400, never a throw that
+    // takes down a server written as `if (zubra.handle(req, res)) return;`.
+    try { rest = decodeURIComponent(pathname.slice(base.length + 1)); } catch { return { status: 400, type: 'text/plain', body: 'Bad request' }; }
     if (rest.startsWith('components/') && rest.endsWith('.js')) {
       const name = rest.slice('components/'.length, -3);
       // A plain module a component imports (`./theme.js`): the host serves it from the

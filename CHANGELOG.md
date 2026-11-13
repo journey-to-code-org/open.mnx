@@ -2,6 +2,15 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Security
+
+- **One malformed request no longer stops a Node server.** Three handlers threw on input only a client controls, and the documented wiring (`if (zubra.handle(req, res)) return;`, `if (await actions.handle(req, res)) return;`, `if (await sync.handle(req, res)) return;`) let that end the process. Each now answers 400 and the server keeps serving. From the 2026-11-12 security audit (Z7, Z8, S3).
+  - `@zubra/server`: a `/_zubra/` path with a malformed `%` escape (`/_zubra/%E0%A4%A`) threw `URIError`.
+  - `@zubra/actions`: a post whose `Host` header isn't a host (`[::1`) couldn't make a URL.
+  - `@zubra/sync`: the same for any sync request, now refused before the body is read.
+
 ## 5.13.1 — 2026-11-13
 
 A box ticked or a field typed in before a component starts stays ticked or typed.

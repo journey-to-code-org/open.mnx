@@ -475,11 +475,15 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
   /** Node's http: answers sync requests (streaming the live ones) and returns true, else false. */
   async function handle(req, res) {
     if (!req.url.startsWith(`${base}/`)) return false;
+    let url;
+    // A Host header that isn't a host can't make a URL: a 400 before the body is read, not an
+    // unhandled rejection that ends the process.
+    try { url = new URL(`http://${req.headers.host ?? 'localhost'}${req.url}`); } catch { res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request'); return true; }
     const controller = new AbortController();
     res.on('close', () => controller.abort());
     const chunks = [];
     if (req.method !== 'GET' && req.method !== 'HEAD') for await (const chunk of req) chunks.push(chunk);
-    const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url}`, {
+    const request = new Request(url, {
       method: req.method,
       headers: Object.entries(req.headers).flatMap(([name, value]) => (Array.isArray(value) ? value.map((each) => [name, each]) : [[name, value]])),
       body: chunks.length ? Buffer.concat(chunks) : undefined,

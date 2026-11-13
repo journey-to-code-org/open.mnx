@@ -702,3 +702,15 @@ test('hasSlot is answered on the server from the slots it was given, and the ele
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a malformed escape in a /_zubra/ path is a 400, and the server keeps answering', { timeout: 10_000 }, async () => {
+  const zubra = createZubra({ components });
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    res.end('page');
+  });
+  servers.at(-1).unref(); // a crash mustn't leave the test run waiting on this server
+  const bad = await fetch(`${url}/_zubra/%E0%A4%A`, { signal: AbortSignal.timeout(3000) });
+  assert.equal(bad.status, 400);
+  assert.equal(await (await fetch(url)).text(), 'page');
+});

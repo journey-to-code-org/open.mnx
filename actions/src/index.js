@@ -66,7 +66,11 @@ export async function createActions({
   /** Node's http: answers ours and returns true, or returns false without reading the body. */
   async function handle(req, res) {
     if (!req.url.startsWith(MOUNT) && !req.url.startsWith(SCRIPT_PATH)) return false;
-    const response = await core.fetch(toRequest(req), { req });
+    let request;
+    // A Host header that isn't a host (`[::1`) can't make a URL: a 400, not an unhandled
+    // rejection that ends the process.
+    try { request = toRequest(req); } catch { res.writeHead(400, { 'content-type': 'text/plain' }).end('Bad request'); return true; }
+    const response = await core.fetch(request, { req });
     if (!response) return false;
     await send(response, res);
     return true;
