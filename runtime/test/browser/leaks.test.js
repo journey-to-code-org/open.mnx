@@ -84,6 +84,23 @@ async function live(page, tags) {
   return counts;
 }
 
+/**
+ * The live counts once what was removed has been collected. In Chromium an element and a
+ * MutationObserver watching it (a light-DOM component with slots) form a cycle between V8 and
+ * Blink's heap, and a busy machine can need more than one collection to free it: CI saw all 100
+ * Vue-mounted cards survive the first count once in a while, with their slotted ratings already
+ * gone. So count again, collecting each time, until every count is 0 or `deadline` ms pass. A real
+ * leak never reaches 0, and still fails with its counts.
+ */
+async function collected(page, tags, deadline = 5000) {
+  const until = Date.now() + deadline;
+  for (;;) {
+    const counts = await live(page, tags);
+    if (Object.values(counts).every((count) => count === 0) || Date.now() > until) return counts;
+    await page.waitForTimeout(100);
+  }
+}
+
 const settle = (page) => page.evaluate(async () => {
   await new Promise((resolve) => setTimeout(resolve, 10));
   await Promise.all([...document.querySelectorAll('*')].filter((el) => el.localName.startsWith('zb-')).map((el) => el.updateComplete));
@@ -104,7 +121,7 @@ test('removed elements are collected, even when they read a signal that outlives
   await settle(page);
   await page.evaluate(() => { document.getElementById('box').replaceChildren(); window.shared.set(3); });
   await settle(page);
-  assert.deepEqual(await live(page, ['zb-shared', 'zb-card', 'zb-inbox', 'zb-badge']), { 'zb-shared': 0, 'zb-card': 0, 'zb-inbox': 0, 'zb-badge': 0 });
+  assert.deepEqual(await collected(page, ['zb-shared', 'zb-card', 'zb-inbox', 'zb-badge']), { 'zb-shared': 0, 'zb-card': 0, 'zb-inbox': 0, 'zb-badge': 0 });
   assert.deepEqual(messages, []);
   await page.close();
 });
@@ -118,7 +135,7 @@ for (const framework of ['React', 'Vue']) {
     await page.evaluate(() => window.unmount());
     await page.evaluate(() => { delete window.unmount; });
     await settle(page);
-    assert.deepEqual(await live(page, ['zb-card', 'zb-rating']), { 'zb-card': 0, 'zb-rating': 0 });
+    assert.deepEqual(await collected(page, ['zb-card', 'zb-rating']), { 'zb-card': 0, 'zb-rating': 0 });
     assert.deepEqual(messages.filter((message) => !/You are running a development build of Vue/.test(message)), []);
     await page.close();
   });
