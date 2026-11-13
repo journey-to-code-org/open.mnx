@@ -131,6 +131,13 @@ test('the examples: slots with hasSlot, a list with directives, a spread, and co
   await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('info-card'));
   const cards = await frame(page, 'html');
   assert.deepEqual(await cards.$$eval('info-card', (els) => els.map((el) => !!el.querySelector('footer'))), [true, false]);
+  // The same slots in React and Vue: the footer goes to the named slot, the body to the default one.
+  for (const kind of frameworks ? ['react', 'vue'] : []) {
+    const preview = await frame(page, kind);
+    await preview.waitForSelector('info-card');
+    assert.deepEqual(await preview.$$eval('info-card', (els) => els.map((el) => !!el.querySelector('footer'))), [true, false], kind);
+    assert.deepEqual(await preview.$$eval('info-card', (els) => els.map((el) => el.querySelector('p')?.textContent)), ['Body text.', 'No footer here.'], kind);
+  }
 
   await page.selectOption('#example', 'list');
   await page.waitForFunction(() => document.querySelector('#out-js').textContent.includes('todo-list'));
