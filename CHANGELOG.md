@@ -2,6 +2,12 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
+## Unreleased
+
+### Fixed
+
+- **What someone does to a form before the element starts is kept.** On a server-rendered page, a visitor can tick a box, type or pick an option before the component's module has loaded. When the element then started, it wrote its state into every bound control (`checked={…}`, `value={…}`), undoing what they had done, so the form submitted something else. Outfitter's booking test found it: a day ticked while the page loaded was unticked, and the booking went off with no day ("Pick at least one day"), about one run in three. Now a control that no longer shows the server's default when the element takes over (`checked` against `defaultChecked`, `value` against `defaultValue`, a select's options against `defaultSelected`) keeps what the visitor did; the bound value applies to it again once the state changes. A control nobody touched is set from state as before. Browser tests: early input in a checkbox, a text field, a select and a textarea survives and is what the form submits; untouched controls follow state.
+
 ## 5.13.0 — 2026-11-13
 
 The server runs functions with loops and `if`s, and `Array.from`, so lists a component builds that way are in the server's HTML.

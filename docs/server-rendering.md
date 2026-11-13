@@ -32,6 +32,7 @@ What it doesn't evaluate: anything non-deterministic (`Date`, `Intl`, `Math.rand
 - `<select value>` and `<textarea value>` show the server's value.
 - A form-associated component with a `name`, inside another component the server renders, or under the SSR bridge: a hidden input carries its server-rendered value, so the form submits correctly (the element removes it when it starts, and submits its own value from then on). Not when the value is one only the browser knows, or the component sets its own with `formValue()`: then only JavaScript can submit it. A user can't *edit* that value without JavaScript (the hidden input holds what the server sent), so choices, steppers and selects work, and a typed text field doesn't.
 - `hydrated()` and `:state(hydrated)` let the markup show a no-JavaScript fallback (an Apply button) that disappears once the element is live.
+- Input made before the element starts is kept. A box ticked, text typed or an option picked on the server's HTML, before the module loads, stays when the element takes over, and is what the form submits; a bound value applies to that control again once the state changes.
 
 ## Where it still falls short
 

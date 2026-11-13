@@ -846,7 +846,7 @@ function bind(part, node, hydrating, context) {
       node[part.property] = $r(part.value());
     });
   } else if (part.attribute) {
-    bindAttribute(part, node);
+    bindAttribute(part, node, hydrating);
   } else if (part.when) {
     bindWhen(part, node, hydrating, context);
   } else if (part.await) {
@@ -1158,13 +1158,33 @@ function routeChildren(host, context, slots, tag) {
 // `checked={done}` with clicks.
 const LIVE = new Set(['input.value', 'textarea.value', 'select.value', 'input.checked', 'option.selected']);
 
-function bindAttribute(part, node) {
+/**
+ * Whether someone has already changed a server-rendered control: it no longer shows the default
+ * the server's HTML gave it (a box ticked, a field typed in, another option picked) before the
+ * element started.
+ */
+function touched(node, name) {
+  if (name === 'checked') return node.checked !== node.defaultChecked;
+  if (name === 'selected') return node.selected !== node.defaultSelected;
+  if (node.localName === 'select') return [...node.options].some((option) => option.selected !== option.defaultSelected);
+  return node.value !== node.defaultValue;
+}
+
+function bindAttribute(part, node, hydrating = false) {
   const name = part.attribute;
   // For live state: the last value written, so the property is written only when the bound
   // value changes (what the user typed stays until then).
   let written;
+  // Taking over server HTML: a control someone already used keeps what they did (a tick, typed
+  // text, a choice), as it keeps typing later. The bound value applies once it changes.
+  let keep = hydrating && LIVE.has(`${node.localName}.${name}`) && touched(node, name);
   effect(() => {
     const value = $r(part.value());
+    if (keep) {
+      keep = false;
+      written = part.boolean ? value : value == null ? '' : String(value);
+      return;
+    }
     // Another library's custom element: a property when it has one (React 19's rule).
     if (part.prop && part.prop in node) {
       node[part.prop] = value;
