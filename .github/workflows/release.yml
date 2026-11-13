@@ -25,11 +25,11 @@
 # fine-grained token for this repository with Contents and Workflows read and write), and the
 # workflow's own token otherwise.
 # - npm, per package on npmjs.com: Settings → Trusted publishing → GitHub Actions, organization
-#   `journey-to-code-org`, repository `zubra`, workflow `release.yml`, no environment; allowed
+#   `journey-to-code-org`, repository `zubra`, workflow `release.yml`, environment `release`; allowed
 #   actions: `npm publish` (not dist-tag). An NPM_TOKEN secret is used instead if there is one.
 #   A new package can't be set up until it exists: publish its first version by hand, then add it.
-# - The Marketplace, on the JourneytoCode publisher: Trusted Publishing, the same repository and
-#   workflow.
+# - The Marketplace, on the JourneytoCode publisher: Trusted Publishing, the same repository,
+#   workflow and environment.
 name: Release
 
 on:
@@ -53,6 +53,9 @@ jobs:
     # "commit that set the version" is looked up along whatever was checked out, and npm and the
     # Marketplace trust this workflow file, not the branch it runs on.
     if: github.ref == 'refs/heads/main'
+    # The `release` environment is limited to main in the repository's settings, and npm's and the
+    # Marketplace's trusted publishers name it, so they refuse a publish from anywhere else too.
+    environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: write # the tag and the release
