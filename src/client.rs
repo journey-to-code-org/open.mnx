@@ -500,9 +500,18 @@ fn template_calls(source: &str, found: &mut Vec<String>) {
     let mut seen: Vec<String> = Vec::new();
     for character in template.chars() {
         match character {
-            '{' => depth += 1,
+            '{' => {
+                // Nested braces (`${…}` in a template literal) stay part of the expression.
+                if depth > 0 {
+                    expression.push('{');
+                }
+                depth += 1;
+            }
             '}' if depth > 0 => {
                 depth -= 1;
+                if depth > 0 {
+                    expression.push('}');
+                }
                 if depth == 0 {
                     for name in called_methods(&expression) {
                         if !PURE_METHODS.contains(&name) && !seen.iter().any(|seen| seen == name) {
@@ -645,7 +654,7 @@ mod tests {
 
     #[test]
     fn template_calls_the_server_cant_compute_are_reasons_whatever_the_props() {
-        let source = "<zb-x items={[]} sorted={false}>\n  <p>{sorted ? items.sort().join(', ') : items.toSorted().join(', ')}</p><b>{format(Math.max(1, 2))} {Math.random()}</b>\n</zb-x>";
+        let source = "<zb-x items={[]} sorted={false}>\n  <p>{sorted ? items.sort().join(', ') : items.toSorted().join(', ')}</p><b>{format(Math.max(1, 2))} {Math.random()}</b><i style:width={`${Math.min(1, 2)}%`}></i>\n</zb-x>";
         let mut found = Vec::new();
         super::template_calls(source, &mut found);
         assert_eq!(
