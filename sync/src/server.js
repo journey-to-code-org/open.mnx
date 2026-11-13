@@ -40,6 +40,11 @@
 // they're pushed, and `presence` from the other viewers (POST <mount>/presence). Subscribers are
 // this process's; several server processes need a shared log and a pub/sub between them.
 //
+// A peer id belongs to the live stream holding it. The stream's first event, `hello`, carries a
+// secret `key`; presence and signals sent as that peer must carry it, and a second stream asking
+// for a peer id that's held gets it only with the key (`&key=`, a reconnect). So nobody can speak
+// as another viewer, leave a room for them, or receive the WebRTC signals meant for them.
+//
 // On Node, `handle(req, res)` answers sync requests (streaming the live ones) and returns true.
 export const MOUNT = '/_zb/sync';
 
@@ -326,6 +331,14 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
   async function broadcastChanges(changes, cursor) {
     for (const listener of listeners) listener.send('changes', { changes: await visible(listener, changes), cursor });
   }
+  /** The live stream holding a peer id, if any. */
+  const holder = (peer) => [...listeners].find((listener) => listener.peer === peer);
+  /** Whether `key` is the key of the stream holding `peer`; a peer no stream holds is anyone's. */
+  const speaksAs = (peer, key) => {
+    const held = holder(peer);
+    return !held || (typeof key === 'string' && key === held.key);
+  };
+  const newKey = () => Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
   async function broadcastPresence(message) {
     const { collection, key } = roomOf(message.room);
     for (const listener of listeners) {
@@ -409,6 +422,7 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       }
       if (!(await mayWrite(request, room.collection, room.key))) return json(403, { error: 'Not yours to join' });
       if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return refused('Not yours to join');
+      if (!speaksAs(message.peer, message.key)) return json(403, { error: "That peer id is another viewer's" });
       const clean = { room: message.room, peer: message.peer, state: message.state };
       for (const listener of listeners) if (listener.peer === clean.peer) {
         if (clean.state === null) listener.rooms.delete(clean.room);
@@ -432,13 +446,23 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
       }
       if (!(await mayWrite(request, room.collection, room.key))) return json(403, { error: 'Not yours to join' });
       if (!(await authorize({ request, ...room, write: true, kind: 'presence' }))) return refused('Not yours to join');
+      // Only from a peer with a live stream (it must hear the answer), and only by that stream.
+      if (!holder(message.from) || !speaksAs(message.from, message.key)) return json(403, { error: "That peer id is another viewer's" });
       const clean = { room: message.room, from: message.from, to: message.to, data: message.data };
-      for (const listener of listeners) if (listener.peer === clean.to) listener.send('signal', clean);
+      // To the recipient only if its own scope lets it into the room: a peer id from another
+      // business's room gets nothing.
+      const to = holder(clean.to);
+      if (to && (await sees(to, room.collection, room.key))) to.send('signal', clean);
       return json(200, { ok: true });
     }
     if (url.pathname === `${base}/live` && request.method === 'GET') {
       const peer = url.searchParams.get('peer') ?? '';
       if (!/^[\w-]{0,40}$/.test(peer)) return json(400, { error: 'Bad peer id' });
+      // A held peer id goes to a new stream only with the old stream's key (a reconnect, which
+      // then replaces it); the key carries over, so what the page sends keeps working.
+      const previous = peer ? holder(peer) : null;
+      if (previous && url.searchParams.get('key') !== previous.key) return json(409, { error: "That peer id is another viewer's; pick another" });
+      const key = previous?.key ?? newKey();
       const scopes = await scopesOf(request, url);
       if (scopes instanceof Response) return scopes;
       const { since, reset } = await startFrom(url.searchParams.get('since') ?? '0');
@@ -460,10 +484,13 @@ export function createSyncServer({ log = memoryLog(), mount = MOUNT, authorize: 
             for (const room of listener.rooms) broadcastPresence({ room, peer, state: null });
             try { controller.close(); } catch {}
           };
-          listener = { peer, request, scopes, rooms: new Set(), send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`), close };
+          listener = { peer, key, request, scopes, rooms: previous ? new Set(previous.rooms) : new Set(), send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`), close, closeQuietly: () => { clearInterval(timer); try { controller.close(); } catch {} } };
+          // A reconnect takes over quietly: no goodbye from the stream it replaces.
+          if (previous && listeners.delete(previous)) previous.closeQuietly();
           listeners.add(listener);
           request.signal?.addEventListener('abort', close);
           write('retry: 1000\n\n');
+          listener.send('hello', { key });
           // Read the backlog after subscribing, so nothing pushed in between is missed (a change
           // may come twice; applying one twice changes nothing).
           // Page by page: a log longer than one page is sent whole before anything live.

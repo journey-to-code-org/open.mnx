@@ -231,13 +231,14 @@ Some state should be seen by the other viewers of a document but never stored: w
 - **Without a server**, presence reaches the other tabs of the same site (BroadcastChannel). **With `connect()`**, it reaches other devices too: `POST /_zb/sync/presence { room, peer, state }`, and the live stream's `presence` events.
 - **It's cheap on purpose.** At most one message a frame, however fast the pointer moves; a heartbeat every 10 seconds; a viewer not heard from for 30 seconds has gone. Closing a tab says goodbye (`pagehide`), and the server says it for a device whose connection drops.
 - **Nothing is stored**, on the device or the server. `authorize` decides who may join a room (`kind: 'presence'`) and who sees its presence (`kind: 'read'`).
+- **A peer id is its own stream's.** The live stream's first event, `hello`, carries a secret `key` for its peer id; presence and signals sent as that peer must carry it, or they're refused with 403. A second stream asking for a peer id that's in use gets a 409, unless it presents the key (a reconnect, which takes over without a goodbye). So nobody can speak as another viewer, leave a room for them, or receive the signals meant for them. `connect()` does all of this itself.
 
 ### Device to device: `connect({ webrtc: true })`
 
 Presence changes far more often than documents, and nobody needs it stored, so it doesn't have to go through a server at all once two viewers have found each other. With `webrtc`, each pair of viewers in a room opens a WebRTC data channel and sends presence over it; the server carries only what a channel can't:
 
 - **introductions**: a newcomer's first presence, which is how the others learn it's there;
-- **signaling**: the offer, answer and ICE candidates that open a channel (`POST /_zb/sync/signal { room, from, to, data }`, delivered as a `signal` event on that one peer's live stream);
+- **signaling**: the offer, answer and ICE candidates that open a channel (`POST /_zb/sync/signal { room, from, to, data, key }`, from a peer with a live stream, delivered as a `signal` event on that one peer's live stream, and only if that peer's scope has the room);
 - **goodbyes**, and presence to anyone without a channel yet.
 
 On one network, the pointer moves never leave it. Across networks, peers need help finding a path: `connect({ webrtc: { iceServers: [{ urls: 'stun:stun.example.org' }] } })`. Some pairs can't connect directly at all (strict NATs, some corporate networks); that takes a TURN relay, which the app provides, since it carries traffic and costs bandwidth. Without one, those pairs simply keep using the server, so presence still works, just not directly.

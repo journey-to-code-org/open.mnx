@@ -3140,6 +3140,17 @@ pub fn is_safe_url(value: &str) -> bool {
     if value.is_empty() || value.chars().any(char::is_control) || value.starts_with("//") {
         return false;
     }
+    // A numeric reference without its `;` (`&#106avascript:`, `javascript&#58alert(1)`) isn't
+    // decoded above, but a browser decodes it in an attribute. Before the path it can only be
+    // hiding a scheme, so it's refused (cut at `/` and `?` only: `#` is part of the reference).
+    if value
+        .split(['/', '?'])
+        .next()
+        .unwrap_or_default()
+        .contains("&#")
+    {
+        return false;
+    }
     let before_path = value.split(['/', '?', '#']).next().unwrap_or_default();
     if let Some((scheme, _)) = before_path.split_once(':') {
         return matches!(

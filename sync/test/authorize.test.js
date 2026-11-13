@@ -14,6 +14,13 @@ const post = (sync, path, body) =>
 const pull = async (sync) => (await sync.fetch(new Request('http://localhost/_zb/sync/pull?since=0'))).json();
 const room = { room: 'tasks/t1', peer: 'p1', state: { name: 'Ada' } };
 const signal = { room: 'tasks/t1', from: 'p1', to: 'p2', data: { sdp: 'x' } };
+/** Open p1's live stream (a signal must come from a peer with one) and read its key from `hello`. */
+async function liveKey(response) {
+  const reader = response.body.getReader();
+  let text = '';
+  while (!/event: hello\ndata: (.*)\n\n/.test(text)) text += new TextDecoder().decode((await reader.read()).value);
+  return { key: JSON.parse(/event: hello\ndata: (.*)\n\n/.exec(text)[1]).key, close: () => reader.cancel().catch(() => {}) };
+}
 
 test('without authorize, a page may not push, join or signal, and is told why', async () => {
   const sync = createSyncServer();
@@ -39,8 +46,10 @@ test('without authorize, pages still read, and the server still writes', async (
 test('allowAnyone opens writes to every page', async () => {
   const sync = createSyncServer({ authorize: allowAnyone });
   assert.equal((await post(sync, 'push', { changes: [change('title', 'a')] })).status, 200);
-  assert.equal((await post(sync, 'presence', room)).status, 200);
-  assert.equal((await post(sync, 'signal', signal)).status, 200);
+  const p1 = await liveKey(await sync.fetch(new Request('http://localhost/_zb/sync/live?since=0&peer=p1')));
+  assert.equal((await post(sync, 'presence', { ...room, key: p1.key })).status, 200);
+  assert.equal((await post(sync, 'signal', { ...signal, key: p1.key })).status, 200);
+  p1.close();
   assert.equal((await sync.documents()).get('tasks', 't1').title, 'a');
 });
 
@@ -87,8 +96,10 @@ test('the zubra-sync binary takes no writes from pages unless started with --ope
       const pushed = await send('push', { changes: [change('title', 'x')] });
       assert.equal(pushed.status, status, `push ${args.join(' ') || '(closed)'}`);
       if (status === 403) assert.match((await pushed.json()).error, /start zubra-sync with --open/);
-      assert.equal((await send('presence', room)).status, status, `presence ${args.join(' ') || '(closed)'}`);
-      assert.equal((await send('signal', signal)).status, status, `signal ${args.join(' ') || '(closed)'}`);
+      const p1 = await liveKey(await fetch(`${base}/_zb/sync/live?since=0&peer=p1`));
+      assert.equal((await send('presence', { ...room, key: p1.key })).status, status, `presence ${args.join(' ') || '(closed)'}`);
+      assert.equal((await send('signal', { ...signal, key: p1.key })).status, status, `signal ${args.join(' ') || '(closed)'}`);
+      p1.close();
       const read = await (await fetch(`${base}/_zb/sync/pull?since=0`)).json();
       assert.equal(read.changes.length, status === 200 ? 1 : 0, 'reads always work');
     } finally {

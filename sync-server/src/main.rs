@@ -5,8 +5,12 @@
 //!
 //!   POST /_zb/sync/push      { changes: [Change] }            → { ok: true }
 //!   GET  /_zb/sync/pull?since=<cursor>[&scope=<json>]         → { changes, cursor }
-//!   GET  /_zb/sync/live?since=<cursor>&peer=<id>[&scope=…]    → server-sent events: changes, presence
-//!   POST /_zb/sync/presence  { room, peer, state | null }     → { ok: true }
+//!   GET  /_zb/sync/live?since=<cursor>&peer=<id>[&key=…][&scope=…] → server-sent events: hello, changes, presence
+//!   POST /_zb/sync/presence  { room, peer, state | null, key }  → { ok: true }
+//!
+//! A peer id belongs to the live stream holding it: its `hello` event carries a secret `key`,
+//! which presence and signals sent as that peer must carry, and which a reconnect presents to
+//! keep the peer id (as `@zubra/sync/server`).
 //!
 //! It has no notion of users: run it behind the app (a reverse proxy at `/_zb/sync`, after the
 //! app's own sign-in) or on a trusted network. Posts from a browser are accepted only from the
@@ -14,7 +18,9 @@
 
 use rusqlite::{params, Connection};
 use serde_json::{json, Value};
+use std::collections::hash_map::RandomState;
 use std::collections::HashSet;
+use std::hash::{BuildHasher, Hasher};
 use std::io::{Read, Write};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -79,6 +85,8 @@ fn options() -> Result<Options, String> {
 struct Listener {
     id: u64,
     peer: String,
+    /// The secret that proves a request speaks for `peer` (sent in the stream's `hello`).
+    key: String,
     rooms: HashSet<String>,
     /// What the page asked for (`?scope=`); None is everything.
     scope: Option<Value>,
@@ -411,6 +419,9 @@ fn handle(state: &State, mut request: Request) {
             };
             let room = message["room"].as_str().unwrap_or_default().to_owned();
             let peer = message["peer"].as_str().unwrap_or_default().to_owned();
+            if !speaks_as(state, &peer, message["key"].as_str(), false) {
+                return respond_json(request, extra, 403, json!({ "error": NOT_YOUR_PEER }));
+            }
             let clean = json!({ "room": room, "peer": peer, "state": message["state"] });
             {
                 let mut listeners = state.listeners.lock().expect("listeners");
@@ -449,11 +460,18 @@ fn handle(state: &State, mut request: Request) {
                     json!({ "error": "Expected { room, from, to, data: {…} }" }),
                 );
             };
+            let from = message["from"].as_str().unwrap_or_default();
+            if !speaks_as(state, from, message["key"].as_str(), true) {
+                return respond_json(request, extra, 403, json!({ "error": NOT_YOUR_PEER }));
+            }
             let to = message["to"].as_str().unwrap_or_default().to_owned();
+            let room = message["room"].as_str().unwrap_or_default();
+            let (collection, key) = room.split_once('/').unwrap_or((room, ""));
             let clean = json!({ "room": message["room"], "from": message["from"], "to": to, "data": message["data"] });
             let text = event("signal", &clean);
+            // Only to a recipient whose own scope lets it into the room.
             for listener in state.listeners.lock().expect("listeners").iter() {
-                if listener.peer == to {
+                if listener.peer == to && in_scope(&listener.scope, collection, key) {
                     let _ = listener.events.send(text.clone());
                 }
             }
@@ -625,6 +643,33 @@ fn after(state: &State, since: i64) -> rusqlite::Result<(Vec<Value>, i64)> {
     Ok((changes, cursor))
 }
 
+const NOT_YOUR_PEER: &str = "That peer id is another viewer's";
+
+/// Whether a request carrying `key` speaks for `peer`: the key of the stream holding it, or any
+/// key when no stream holds it (unless `held`, for a signal, which needs a stream to answer to).
+fn speaks_as(state: &State, peer: &str, key: Option<&str>, held: bool) -> bool {
+    let listeners = state.listeners.lock().expect("listeners");
+    match listeners.iter().find(|listener| listener.peer == peer) {
+        Some(listener) => key == Some(listener.key.as_str()),
+        None => !held,
+    }
+}
+
+/// A secret for a live stream: 128 bits from the standard library's randomly keyed hasher.
+fn new_key() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    (0..2u64)
+        .map(|part| {
+            let mut hasher = RandomState::new().build_hasher();
+            hasher.write_u64(part);
+            hasher.write_u128(nanos);
+            format!("{:016x}", hasher.finish())
+        })
+        .collect()
+}
+
 fn event(name: &str, data: &Value) -> String {
     format!("event: {name}\ndata: {data}\n\n")
 }
@@ -672,14 +717,42 @@ fn live(state: &State, request: Request, url: &str, extra: Vec<Header>) {
         *next += 1;
         *next
     };
-    state.listeners.lock().expect("listeners").push(Listener {
-        id,
-        peer: peer.clone(),
-        rooms: HashSet::new(),
-        scope: scope.clone(),
-        events: events.clone(),
-    });
+    let key = {
+        let mut listeners = state.listeners.lock().expect("listeners");
+        // A held peer id goes to a new stream only with the old one's key (a reconnect), which
+        // replaces it quietly: its rooms and key carry over, and no goodbye is sent.
+        let held = listeners
+            .iter()
+            .position(|listener| !peer.is_empty() && listener.peer == peer);
+        let (key, rooms) = match held {
+            Some(at) if query(url, "key") == Some(listeners[at].key.as_str()) => {
+                let previous = listeners.remove(at);
+                (previous.key, previous.rooms)
+            }
+            Some(_) => (String::new(), HashSet::new()),
+            None => (new_key(), HashSet::new()),
+        };
+        if key.is_empty() {
+            drop(listeners);
+            return respond_json(
+                request,
+                extra,
+                409,
+                json!({ "error": "That peer id is another viewer's; pick another" }),
+            );
+        }
+        listeners.push(Listener {
+            id,
+            peer: peer.clone(),
+            key: key.clone(),
+            rooms,
+            scope: scope.clone(),
+            events: events.clone(),
+        });
+        key
+    };
     let _ = events.send("retry: 1000\n\n".into());
+    let _ = events.send(event("hello", &json!({ "key": key })));
     let (mut since, reset) = start_from(
         state,
         query(url, "since")

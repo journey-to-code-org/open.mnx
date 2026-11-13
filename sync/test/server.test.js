@@ -12,6 +12,9 @@ const push = (sync, changes, headers = {}) =>
   sync.fetch(new Request('http://localhost/_zb/sync/push', { method: 'POST', body: JSON.stringify({ changes }), headers: { 'content-type': 'application/json', ...headers } }));
 const pull = async (sync, since = 0) => (await sync.fetch(new Request(`http://localhost/_zb/sync/pull?since=${since}`))).json();
 
+/** The stream's next event, or a failure after two seconds (a test fails rather than hangs). */
+const soon = (stream) => Promise.race([stream.next(), new Promise((_, reject) => setTimeout(() => reject(new Error('no event within 2 s')), 2000).unref())]);
+
 for (const backend of backends) {
 test(`${backend.name}: changes come back out in order, after a cursor`, async () => {
   const sync = await backend.start();
@@ -48,7 +51,7 @@ test('authorize() decides who writes and who sees what', async () => {
 });
 
 /** Read server-sent events from a live response, as `{ event, data }`. */
-async function* events(response) {
+async function* events(response, keys = []) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -63,14 +66,15 @@ async function* events(response) {
       buffer = buffer.slice(at + 2);
       const event = /^event: (.*)$/m.exec(block)?.[1];
       const data = /^data: (.*)$/m.exec(block)?.[1];
-      if (event) yield { event, data: JSON.parse(data) };
+      if (event === 'hello') keys.push(JSON.parse(data).key); // the stream's key for its peer id
+      else if (event) yield { event, data: JSON.parse(data) };
     }
   }
   } finally {
     await reader.cancel().catch(() => {});
   }
 }
-const live = (sync, peer, since = 0, signal) => sync.fetch(new Request(`http://localhost/_zb/sync/live?since=${since}&peer=${peer}`, { signal }));
+const live = (sync, peer, since = 0, signal, key) => sync.fetch(new Request(`http://localhost/_zb/sync/live?since=${since}&peer=${peer}${key ? `&key=${key}` : ''}`, { signal }));
 const say = (sync, message, headers = {}) => sync.fetch(new Request('http://localhost/_zb/sync/presence', { method: 'POST', body: JSON.stringify(message), headers: { 'content-type': 'application/json', ...headers } }));
 
 for (const backend of backends) {
@@ -92,13 +96,16 @@ test(`${backend.name}: presence: reaches the other viewers, not the sender; a dr
   const sync = await backend.start();
   const leaving = new AbortController();
   const theirs = await live(sync, 'p1', 0, leaving.signal);
+  const keys = [];
+  const p1 = events(theirs, keys);
+  await p1.next(); // the (empty) backlog, after hello
   const mine = events(await live(sync, 'p2'));
   await mine.next(); // the (empty) backlog
-  assert.equal((await say(sync, { room: 'boards/b1', peer: 'p1', state: { cursor: { x: 1 } } })).status, 200);
+  assert.equal((await say(sync, { room: 'boards/b1', peer: 'p1', state: { cursor: { x: 1 } }, key: keys[0] })).status, 200);
   assert.deepEqual((await mine.next()).value, { event: 'presence', data: { room: 'boards/b1', peer: 'p1', state: { cursor: { x: 1 } } } });
   // p1's connection drops (a crash, no goodbye): the others hear that it left.
   leaving.abort();
-  await theirs.body.cancel().catch(() => {});
+  await p1.return();
   assert.deepEqual((await mine.next()).value, { event: 'presence', data: { room: 'boards/b1', peer: 'p1', state: null } });
   await mine.return();
   sync.close();
@@ -108,21 +115,79 @@ test(`${backend.name}: signaling reaches only the peer it's for`, { timeout: 500
   const sync = await backend.start();
   const send = (message, headers = {}) =>
     sync.fetch(new Request('http://localhost/_zb/sync/signal', { method: 'POST', body: JSON.stringify(message), headers: { 'content-type': 'application/json', ...headers } }));
+  const keys = [];
+  const caller = events(await live(sync, 'p1'), keys);
   const target = events(await live(sync, 'p2'));
   const bystander = events(await live(sync, 'p3'));
+  await caller.next();
   await target.next();
   await bystander.next();
   const offer = { room: 'boards/b1', from: 'p1', to: 'p2', data: { description: { type: 'offer', sdp: 'v=0' } } };
-  assert.equal((await send(offer)).status, 200);
-  assert.deepEqual((await target.next()).value, { event: 'signal', data: offer });
-  assert.equal((await send({ ...offer, to: 'p3' })).status, 200);
+  assert.equal((await send({ ...offer, key: keys[0] })).status, 200);
+  assert.deepEqual((await target.next()).value, { event: 'signal', data: offer }, 'the key is not passed on');
+  assert.equal((await send({ ...offer, to: 'p3', key: keys[0] })).status, 200);
   assert.deepEqual((await bystander.next()).value.data.to, 'p3'); // p3's first event is its own, not p2's
   assert.equal((await send({ ...offer, data: 'not an object' })).status, 400);
   assert.equal((await send({ ...offer, to: 'bad peer!' })).status, 400);
   assert.equal((await send(offer, { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' })).status, 403);
+  await caller.return();
   await target.return();
   await bystander.return();
   sync.close();
+});
+
+test(`${backend.name}: a peer id belongs to its live stream: nobody else speaks, leaves or listens as it`, { timeout: 5000 }, async () => {
+  const sync = await backend.start();
+  const open = [];
+  const track = (stream) => (open.push(stream), stream);
+  try {
+    const send = (path, message) => sync.fetch(new Request(`http://localhost/_zb/sync/${path}`, { method: 'POST', body: JSON.stringify(message), headers: { 'content-type': 'application/json' } }));
+    const keys = [];
+    const alice = track(events(await live(sync, 'alice', 0), keys));
+    await alice.next();
+    const bob = track(events(await live(sync, 'bob')));
+    await bob.next();
+    const here = { room: 'boards/b1', peer: 'alice', state: { typing: 'hi' } };
+    assert.equal((await send('presence', here)).status, 403, 'as alice, without her key');
+    assert.equal((await send('presence', { ...here, key: 'f'.repeat(32) })).status, 403, 'with a wrong key');
+    assert.equal((await send('presence', { ...here, state: null })).status, 403, 'nor leave for her');
+    assert.equal((await send('presence', { ...here, key: keys[0] })).status, 200);
+    assert.deepEqual((await soon(bob)).value, { event: 'presence', data: here }, 'her own presence, without the key');
+    const offer = { room: 'boards/b1', from: 'alice', to: 'bob', data: { sdp: 'v=0' } };
+    assert.equal((await send('signal', offer)).status, 403, 'a signal as alice needs her key');
+    assert.equal((await send('signal', { ...offer, from: 'nobody' })).status, 403, 'and comes from a peer with a stream');
+    // A second stream can't take alice's id (and with it her signals) without her key.
+    assert.equal((await live(sync, 'alice')).status, 409);
+    // Her reconnect, with the key, takes over quietly: no goodbye, and the key still works.
+    const again = track(events(await live(sync, 'alice', 0, undefined, keys[0])));
+    await again.next();
+    await alice.return(); // the old connection goes, as a browser's does
+    assert.equal((await send('presence', { ...here, state: { typing: 'back' }, key: keys[0] })).status, 200);
+    assert.deepEqual((await soon(bob)).value.data.state, { typing: 'back' }, 'bob heard no goodbye in between');
+  } finally {
+    for (const stream of open) await stream.return().catch(() => {});
+    sync.close();
+  }
+});
+
+test(`${backend.name}: a signal reaches its peer only if that peer's scope has the room`, { timeout: 5000 }, async () => {
+  const sync = await backend.start();
+  const open = [];
+  const track = (stream) => (open.push(stream), stream);
+  try {
+    const keys = [];
+    const caller = track(events(await sync.fetch(new Request(`http://localhost/_zb/sync/live?since=0&peer=caller&scope=${encodeURIComponent(JSON.stringify({ orders: 'biz-a/' }))}`)), keys));
+    await caller.next();
+    const other = track(events(await sync.fetch(new Request(`http://localhost/_zb/sync/live?since=0&peer=other&scope=${encodeURIComponent(JSON.stringify({ orders: 'biz-b/' }))}`))));
+    await other.next();
+    const send = (message) => sync.fetch(new Request('http://localhost/_zb/sync/signal', { method: 'POST', body: JSON.stringify(message), headers: { 'content-type': 'application/json' } }));
+    assert.equal((await send({ room: 'orders/biz-a/1', from: 'caller', to: 'other', data: { sdp: 'a' }, key: keys[0] })).status, 200);
+    assert.equal((await send({ room: 'orders/biz-b/1', from: 'caller', to: 'other', data: { sdp: 'b' }, key: keys[0] })).status, 200);
+    assert.equal((await soon(other)).value.data.room, 'orders/biz-b/1', "biz-a's offer never reached it");
+  } finally {
+    for (const stream of open) await stream.return().catch(() => {});
+    sync.close();
+  }
 });
 
 test(`${backend.name}: presence: malformed messages are refused`, async () => {
