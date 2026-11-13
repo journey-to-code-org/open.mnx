@@ -5,6 +5,11 @@
 import { $r, isSafeSrcset, isSafeUrl } from './element.js';
 import { effect } from './effect.js';
 
+// The names a spread may write, as the server checks them: XML's attribute names, and CSS
+// property names (custom ones included).
+const ATTRIBUTE_NAME = /^[A-Za-z_:][A-Za-z0-9_.:-]*$/;
+const CSS_PROPERTY = /^(?:--[A-Za-z0-9_-]+|[A-Za-z][A-Za-z0-9-]*)$/;
+
 const see = (section) => ` (see https://github.com/journey-to-code-org/zubra#${section})`;
 
 // ---- {...spread}: an object's entries as attributes, properties and listeners --------------
@@ -80,6 +85,12 @@ export function spread(part, node) {
         console.error(`zubra: a spread can't set "${key}"${see('safety')}`);
         continue;
       }
+      // A key from a value (maybe a user's) that can't be an attribute name: left out, as the
+      // server leaves it out of the HTML.
+      if (!ATTRIBUTE_NAME.test(name)) {
+        console.error(`zubra: a spread's key isn't an attribute name, so it was left out${see('safety')}:`, key);
+        continue;
+      }
       if (name === 'class') {
         nextClasses = String(value ?? '').split(/\s+/).filter(Boolean);
         continue;
@@ -92,6 +103,10 @@ export function spread(part, node) {
         }
         for (const [property, propertyValue] of Object.entries(value)) {
           const css = kebab(property);
+          if (!CSS_PROPERTY.test(css)) {
+            console.error(`zubra: a spread's style key isn't a CSS property name, so it was left out${see('safety')}:`, property);
+            continue;
+          }
           if (own.has(`style:${css}`)) continue;
           if (propertyValue == null || propertyValue === false) continue;
           nextStyles.add(css);

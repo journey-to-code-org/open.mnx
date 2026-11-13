@@ -4,6 +4,8 @@ import { createSyncServer, memoryLog, allowAnyone } from '../src/server.js';
 import { backends } from './backends.js';
 
 const change = (field, value, clock = '000000000000001-00000-dev1') => ({ collection: 'tasks', key: 't1', field, value, clock });
+/** A device whose clock runs 30 s ahead of the server's: inside maxSkew, so its changes are taken. */
+const AHEAD = `${String(Date.now() + 30_000).padStart(15, '0')}-00003-fast`;
 const push = (sync, changes, headers = {}) =>
   sync.fetch(new Request('http://localhost/_zb/sync/push', { method: 'POST', body: JSON.stringify({ changes }), headers: { 'content-type': 'application/json', ...headers } }));
 const pull = async (sync, since = 0) => (await sync.fetch(new Request(`http://localhost/_zb/sync/pull?since=${since}`))).json();
@@ -187,19 +189,19 @@ test('documents(): every document as the devices merge it, from the log and kept
 test('write(): the server writes to the log and to every live page, and wins over what came before', { timeout: 5000 }, async () => {
   const sync = createSyncServer({ authorize: allowAnyone });
   // A device whose clock runs ahead: the server's next write still comes after it.
-  await push(sync, [{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
+  await push(sync, [{ ...change('status', 'placed', AHEAD), collection: 'orders', key: 'o1' }]);
   const stream = events(await live(sync, 'p1'));
   await stream.next(); // the backlog
   const written = await sync.write('orders', 'o1', { status: 'claimed', driver: 'jules' });
   assert.equal(written.length, 2);
-  assert.ok(written.every((c) => c.clock > '999999999999999-00003-fast' && c.clock.endsWith('-server')), written[0].clock);
+  assert.ok(written.every((c) => c.clock > AHEAD && c.clock.endsWith('-server')), written[0].clock);
   const next = (await stream.next()).value;
   assert.equal(next.event, 'changes');
   assert.deepEqual(next.data.changes.map((c) => [c.field, c.value]), [['status', 'claimed'], ['driver', 'jules']]);
   assert.deepEqual((await sync.documents()).get('orders', 'o1'), { status: 'claimed', driver: 'jules' });
   assert.deepEqual((await pull(sync)).changes.map((c) => c.value), ['placed', 'claimed', 'jules']);
   await stream.return();
-  await assert.rejects(() => sync.write('orders', 'o1', { $clocks: {} }), /not a field/);
+  await assert.rejects(() => sync.write('orders', 'o1', { $clocks: {} }), /can't be a field name/);
   await assert.rejects(() => sync.write('orders', 'o1', null), /sync\.write/);
 });
 
@@ -261,11 +263,11 @@ test('a change that comes in while documents() is first reading the log is in th
 
 test("a server that starts on a log writes after every clock in it, without documents() first", async () => {
   const log = memoryLog();
-  await log.append([{ ...change('status', 'placed', '999999999999999-00003-fast'), collection: 'orders', key: 'o1' }]);
+  await log.append([{ ...change('status', 'placed', AHEAD), collection: 'orders', key: 'o1' }]);
   // A restart (or an evicted Durable Object): a new server on the same log.
   const sync = createSyncServer({ authorize: allowAnyone, log });
   const [written] = await sync.write('orders', 'o1', { status: 'claimed' });
-  assert.ok(written.clock > '999999999999999-00003-fast', written.clock);
+  assert.ok(written.clock > AHEAD, written.clock);
   assert.deepEqual((await sync.documents()).get('orders', 'o1'), { status: 'claimed' });
 });
 
@@ -288,7 +290,7 @@ test("what the log refuses isn't in the documents: a failed push, and a failed w
   await sync.write('stock', 'eggs', { qty: 3, price: 450 });
   const docs = await sync.documents();
   fail = 1;
-  await assert.rejects(push(sync, [{ ...change('qty', 99, '999999999999990-00000-dev1'), collection: 'stock', key: 'eggs' }]), /disk full/);
+  await assert.rejects(push(sync, [{ ...change('qty', 99, `${String(Date.now() + 20_000).padStart(15, '0')}-00000-dev1`), collection: 'stock', key: 'eggs' }]), /disk full/);
   assert.equal(docs.get('stock', 'eggs').qty, 3, 'a push the log refused');
   fail = 1;
   await assert.rejects(sync.write('stock', 'eggs', { qty: 2 }), /disk full/);

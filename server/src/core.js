@@ -65,6 +65,37 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return response.output;
   };
   const css = (name) => once(`css:${name}`, () => call(pathOf(name), { emit: 'css' }));
+  /**
+   * The plain `.js` modules in the components folder that the browser imports: those a
+   * component's browser module imports by relative path, and those they import in turn. Paths
+   * relative to the folder. A module only a `'use server'` function imports isn't among them.
+   */
+  const browserModules = () => once('browser-modules', () => {
+    const found = new Set();
+    const queue = [];
+    const add = (from, specifier) => {
+      const path = joinPath(from.includes('/') ? from.slice(0, from.lastIndexOf('/')) : '', specifier);
+      if (path.endsWith('.js') && !found.has(path)) {
+        found.add(path);
+        queue.push(path);
+      }
+    };
+    for (const name of files.keys()) {
+      let code;
+      try {
+        code = js(name);
+      } catch {
+        continue; // a component that doesn't compile imports nothing
+      }
+      for (const specifier of relativeImports(code)) add(name, specifier);
+    }
+    while (queue.length) {
+      const path = queue.shift();
+      const module = localModule(path);
+      if (module) for (const specifier of relativeImports(String(module.body))) add(path, specifier);
+    }
+    return found;
+  });
   const js = (name) => once(`js:${name}`, () => {
     const path = pathOf(name);
     const response = request({ emit: 'js', runtime: '@zubra/runtime', devtools, path, files: sourcesOf(path) });
@@ -72,7 +103,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
     return needs(name, response.output);
   });
 
-  const importMap = () => `<script type="importmap">${JSON.stringify({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, '@zubra/runtime/track': `${base}/runtime/track.js`, ...syncImports, ...imports } })}</script>`;
+  const importMap = () => `<script type="importmap">${scriptJson({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, '@zubra/runtime/track': `${base}/runtime/track.js`, ...syncImports, ...imports } })}</script>`;
   const head = (names) => {
     // A component that needs a package that isn't installed fails here, while the page is built,
     // with the reason, rather than later in the browser as an unresolved import.
@@ -98,7 +129,12 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
       const name = rest.slice('components/'.length, -3);
       // A plain module a component imports (`./theme.js`): the host serves it from the
       // components folder, as it is.
-      if (!files.has(name)) return localModule(rest.slice('components/'.length)) ?? { status: 404, type: 'text/plain', body: 'Not found' };
+      // Only one a browser module imports, though: the folder also holds what `'use server'`
+      // functions import (keys, database code), and those stay on the server.
+      if (!files.has(name)) {
+        const path = rest.slice('components/'.length);
+        return (browserModules().has(path) && localModule(path)) || { status: 404, type: 'text/plain', body: 'Not found' };
+      }
       return { status: 200, type: TYPES['.js'], body: js(name) };
     }
     // The runtime and @zubra/sync are the host's to serve (from disk on Node, from static assets elsewhere).
@@ -160,7 +196,7 @@ export function createCore({ request, files, sourcesOf: readSources, cache = tru
         pendingRenders.push(entry);
         // Until the values arrive, the element (should it start first) holds a promise for
         // each, set before it upgrades, so its `zb-await` shows the pending content.
-        return `${named(shell, entry.names)}<script>(${HOLD_IN_BROWSER})(${JSON.stringify(id)},${JSON.stringify(names)})</script>`;
+        return `${named(shell, entry.names)}<script>(${HOLD_IN_BROWSER})(${scriptJson(id)},${scriptJson(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
       get pending() {
@@ -470,10 +506,19 @@ function named(html, names) {
   return out;
 }
 
+/**
+ * JSON for inside an inline `<script>`: `<` is written `\u003c`, so no value can close the script
+ * (`</script>`) or open a comment (`<!--`), and U+2028/U+2029 are escaped for older parsers.
+ * The script reads the same values.
+ */
+export function scriptJson(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
 /** The chunk for one settled promise: each resolved region in a `<template for>`, and the script. */
 function swapScript(id, regions, values) {
   const templates = (regions ?? []).map((region) => `<template for="${region.name}">${region.html}</template>`).join('');
-  const script = `<script>(${SWAP_IN_BROWSER})(${JSON.stringify(id)},${JSON.stringify(values)})</script>`;
+  const script = `<script>(${SWAP_IN_BROWSER})(${scriptJson(id)},${scriptJson(values)})</script>`;
   return `${templates}${script}\n`;
 }
 
@@ -568,6 +613,14 @@ function fallbackInput(attributeText, info, props) {
   if (value == null || value === false || value === '') return '';
   const text = value === true ? 'on' : typeof value === 'object' ? JSON.stringify(value) : String(value);
   return `<input type="hidden" name="${escapeAttribute(name)}" value="${escapeAttribute(text)}" data-zb-fallback>`;
+}
+
+/** The relative specifiers (`./x.js`, `../x.js`) a module imports, statically or with `import()`. */
+export function relativeImports(code) {
+  const found = [];
+  const pattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.\.?\/[^'"\n]+)\1/g;
+  for (const match of code.matchAll(pattern)) found.push(match[2]);
+  return found;
 }
 
 /** `module` (`./x.js`, `../x.js`) joined to the folder `base`, with `.` and `..` resolved, as the

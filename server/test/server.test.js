@@ -429,6 +429,32 @@ test('stream(): the shell first, then the resolved region, hydrated in place; a 
   await page.done();
 });
 
+test('stream(): a streamed value can\'t close the script it travels in (audit Z2)', async () => {
+  const zubra = createZubra({ components });
+  const hostile = '</script><script>window.pwned = 1</script><!--';
+  const url = await listen((req, res) => {
+    if (zubra.handle(req, res)) return;
+    const page = zubra.page();
+    const failing = req.url.includes('fail');
+    const body = page.render('review-list', { heading: 'Reviews', reviews: failing ? Promise.reject(new Error(hostile)) : Promise.resolve([{ id: 1, name: hostile, stars: 5 }]) });
+    res.writeHead(200, { 'content-type': 'text/html' });
+    page.stream(layout(body)).pipe(res);
+  });
+  const text = await (await fetch(url)).text();
+  assert.doesNotMatch(text, /<script>window\.pwned/, 'the value is not markup');
+  assert.match(text, /\\u003c\/script>\\u003cscript>window\.pwned/, 'it travels escaped');
+  for (const query of ['', '?fail']) {
+    const page = await open(`${url}/${query}`);
+    await page.waitForFunction((failing) => document.querySelector(failing ? 'review-list .error' : 'review-list li'), Boolean(query));
+    assert.equal(await page.evaluate(() => window.pwned), undefined, `no script ran ${query}`);
+    const shown = await page.textContent(query ? 'review-list .error' : 'review-list li');
+    assert.ok(shown.includes('</script><script>window.pwned = 1</script>'), `shown as text ${query}: ${shown}`);
+    // A rejection is logged (its message is the error); a value isn't.
+    assert.deepEqual(page.errors, query ? [hostile] : []);
+    await page.done();
+  }
+});
+
 test('stream(): the script puts regions in place where the browser doesn\'t (a shadow root, or no out-of-order streaming)', async () => {
   const zubra = createZubra({ components });
   const url = await listen((req, res) => {
@@ -500,5 +526,71 @@ test("a 'use collection' component without @zubra/sync installed says what to in
     assert.throws(() => page.finish(`<html><head></head><body>${body}</body></html>`), /needs @zubra\/sync\. Install it: npm install @zubra\/sync/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('only the plain modules a browser module imports are served, never what a server function imports (audit Z1)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-z1-'));
+  const outside = mkdtempSync(join(tmpdir(), 'zubra-z1-outside-'));
+  try {
+    writeFileSync(join(dir, 'secret.js'), "export const SECRET = 'sk_live_123';\n");
+    writeFileSync(join(dir, 'theme.js'), "import { shade } from './colors/shade.js';\nexport const theme = shade('dark');\n");
+    mkdirSync(join(dir, 'colors'));
+    writeFileSync(join(dir, 'colors', 'shade.js'), 'export const shade = (name) => `${name}!`;\n');
+    writeFileSync(join(dir, 'later.js'), 'export const later = 1;\n');
+    writeFileSync(join(dir, 'unused.js'), 'export const unused = 1;\n');
+    mkdirSync(join(dir, '.private'));
+    writeFileSync(join(dir, '.private', 'keys.js'), "export const key = 'k';\n");
+    writeFileSync(join(outside, 'passwd.js'), "export const root = 'x';\n");
+    symlinkSync(join(outside, 'passwd.js'), join(dir, 'linked.js'));
+    writeFileSync(join(dir, 'order-form.zb'), `<script>
+  import { SECRET } from './secret.js'
+  import { theme } from './theme.js'
+  const load = () => import('./later.js')
+  export async function place(form) {
+    'use server'
+    return { ok: SECRET.length > 0 }
+  }
+</script>
+<order-form>
+  <form action={place}><button onclick={load}>Order {theme}</button></form>
+</order-form>
+`);
+    const zubra = createZubra({ components: dir });
+    // null: not the server's to answer (the app's own 404).
+    const status = async (path) => (await zubra.fetch(new Request(`http://x/_zubra/components/${path}`)))?.status ?? 404;
+    const component = await (await zubra.fetch(new Request('http://x/_zubra/components/order-form.js'))).text();
+    assert.doesNotMatch(component, /secret\.js|sk_live/, "the browser module doesn't import it");
+    assert.equal(await status('secret.js'), 404, "what only a 'use server' function imports stays on the server");
+    assert.equal(await status('theme.js'), 200, 'a module the browser imports');
+    assert.equal(await status('colors/shade.js'), 200, 'and what that imports');
+    assert.equal(await status('later.js'), 200, 'and a dynamic import()');
+    assert.equal(await status('unused.js'), 404, 'nothing imports it');
+    assert.equal(await status('.private/keys.js'), 404, 'a hidden folder');
+    assert.equal(await status('linked.js'), 404, 'a link out of the folder');
+    assert.equal(await status('%2e%2e/x.js'), 404);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('a link out of the folder is refused even when a browser module imports it (audit Z1)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'zubra-z1-'));
+  const outside = mkdtempSync(join(tmpdir(), 'zubra-z1-outside-'));
+  try {
+    writeFileSync(join(outside, 'elsewhere.js'), 'export const x = 1;\n');
+    symlinkSync(join(outside, 'elsewhere.js'), join(dir, 'linked.js'));
+    writeFileSync(join(dir, 'link-user.zb'), `<script>
+  import { x } from './linked.js'
+</script>
+<link-user><p>{x}</p></link-user>
+`);
+    const zubra = createZubra({ components: dir });
+    assert.match(await (await zubra.fetch(new Request('http://x/_zubra/components/link-user.js'))).text(), /linked\.js/);
+    assert.equal((await zubra.fetch(new Request('http://x/_zubra/components/linked.js'))).status, 404);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });

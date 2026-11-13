@@ -24,15 +24,18 @@ render what the page has used so far. With Jinja, use `zubra.jinja` instead.
 """
 from __future__ import annotations
 
+import secrets
 from functools import lru_cache
 
 from .. import Page, Zubra, ZubraError
 
 __all__ = ["ZubraMiddleware", "get_zubra", "page_for", "zubra_module", "HEAD", "SCRIPTS"]
 
-# What the tags leave when the middleware will fill them in after rendering.
-HEAD = "<!--zubra:head-->"
-SCRIPTS = "<!--zubra:scripts:{base}-->"
+# What the tags leave when the middleware will fill them in after rendering. Each carries the
+# request's own random token, so text in the page (a user's comment containing a marker) is never
+# taken for one and filled with a script.
+HEAD = "<!--zubra:head:{token}-->"
+SCRIPTS = "<!--zubra:scripts:{token}:{base}-->"
 
 
 @lru_cache(maxsize=None)
@@ -68,19 +71,25 @@ class ZubraMiddleware:
     def __call__(self, request):
         page = request.zubra_page = get_zubra().page()
         request.zubra_deferred = True
+        token = request.zubra_marker = secrets.token_hex(12)
         response = self.get_response(request)
         if getattr(response, "streaming", False) or "html" not in response.get("Content-Type", ""):
             return response
         if hasattr(response, "render") and not getattr(response, "is_rendered", True):
             response.render()
         body = response.content.decode(response.charset or "utf-8")
-        if HEAD not in body and "<!--zubra:scripts:" not in body:
+        head = HEAD.format(token=token)
+        scripts = f"<!--zubra:scripts:{token}:"
+        if head not in body and scripts not in body:
             return response
-        body = body.replace(HEAD, page.head())
-        while (start := body.find("<!--zubra:scripts:")) != -1:
+        body = body.replace(head, page.head())
+        at = 0
+        while (start := body.find(scripts, at)) != -1:
             end = body.index("-->", start)
-            base = body[start + len("<!--zubra:scripts:"):end]
-            body = body[:start] + page.scripts(base) + body[end + 3:]
+            base = body[start + len(scripts):end]
+            filled = page.scripts(base)
+            body = body[:start] + filled + body[end + 3:]
+            at = start + len(filled)
         response.content = body.encode(response.charset or "utf-8")
         if response.has_header("Content-Length"):
             response["Content-Length"] = str(len(response.content))

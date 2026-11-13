@@ -19,16 +19,31 @@ import { mesh } from './webrtc.js';
 const CLOCKS = '$clocks';
 const pad = (number, width) => String(number).padStart(width, '0');
 
-function clock(client) {
+/** How far ahead of this device a clock it hears can be before it stops following it. */
+const MAX_SKEW = 60_000;
+
+/** A device's hybrid logical clock (exported for tests). */
+export function deviceClock(client) {
   let last = 0;
   let counter = 0;
   const tick = (seen = 0) => {
-    const now = Math.max(Date.now(), last, seen);
+    let now = Math.max(Date.now(), last, seen);
     counter = now === last ? counter + 1 : 0;
+    // Five digits of counter; past them, the next millisecond (a clock must compare as a string).
+    if (counter > 99_999) {
+      now += 1;
+      counter = 0;
+    }
     last = now;
     return `${pad(now, 15)}-${pad(counter, 5)}-${client}`;
   };
-  return { tick, see: (stamp) => tick(Number(stamp.slice(0, 15))) };
+  // A stamp far in the future (a device with a wrong clock, or one sent to poison the log) isn't
+  // followed: this device's writes keep its own time, and the server refuses such stamps anyway.
+  const see = (stamp) => {
+    const time = Number(stamp.slice(0, 15));
+    return tick(time > Date.now() + MAX_SKEW ? 0 : time);
+  };
+  return { tick, see };
 }
 
 /**
@@ -86,7 +101,7 @@ export function connect({ url = '/_zb/sync', interval = 2000, live = true, webrt
     keep('zubra-sync:client', id);
     return id;
   });
-  const clocks = clock(client);
+  const clocks = deviceClock(client);
   let cursor = remember(cursorName, () => '0');
   const outbox = outboxOf(JSON.parse(remember('zubra-sync:outbox', () => '[]')), (pending) =>
     keep('zubra-sync:outbox', JSON.stringify(pending)));

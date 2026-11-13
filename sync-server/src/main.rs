@@ -18,7 +18,7 @@ use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 const MOUNT: &str = "/_zb/sync";
@@ -333,9 +333,17 @@ fn handle(state: &State, mut request: Request) {
                     request,
                     extra,
                     400,
-                    json!({ "error": "Expected { changes: [{ collection, key, field, value, clock }] }" }),
+                    json!({ "error": "Expected { changes: [{ collection, key, field, value, clock }] }; a field can't be named key or $clocks" }),
                 );
             };
+            if changes.iter().any(clock_ahead) {
+                return respond_json(
+                    request,
+                    extra,
+                    400,
+                    json!({ "error": "A change's clock is ahead of the server's by more than 60 s; check the device's time" }),
+                );
+            }
             let cursor = match append(state, &changes) {
                 Ok(cursor) => cursor,
                 Err(error) => {
@@ -472,8 +480,24 @@ fn valid_change(change: &Value) -> bool {
     });
     text("collection").is_some()
         && text("key").is_some()
-        && text("field").is_some_and(|field| field != "$clocks")
+        && text("field").is_some_and(|field| field != "$clocks" && field != "key")
         && clock_ok
+}
+
+/// How far ahead of this server's clock a pushed change's clock may be (the JavaScript server's
+/// default `maxSkew`). Further ahead would win every merge for ever.
+const MAX_SKEW_MS: u128 = 60_000;
+
+/// Whether a (valid) change's clock is more than [`MAX_SKEW_MS`] ahead of now.
+fn clock_ahead(change: &Value) -> bool {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis());
+    change["clock"]
+        .as_str()
+        .and_then(|clock| clock.get(..15))
+        .and_then(|time| time.parse::<u128>().ok())
+        .is_some_and(|time| time > now + MAX_SKEW_MS)
 }
 
 fn clean_change(change: &Value) -> Value {

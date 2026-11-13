@@ -32,7 +32,9 @@ def _deferred(context):
 @register.simple_tag(takes_context=True)
 def zubra_head(context):
     """The CSS of the components the page renders (filled in by the middleware once it has)."""
-    return mark_safe(HEAD if _deferred(context) else _page(context).head())
+    if _deferred(context):
+        return mark_safe(HEAD.format(token=context["request"].zubra_marker))
+    return mark_safe(_page(context).head())
 
 
 @register.simple_tag(takes_context=True)
@@ -40,5 +42,5 @@ def zubra_scripts(context, base=None):
     """The modules of the components the page renders, from `base` (`ZUBRA_SCRIPTS_BASE`, `/components/`)."""
     base = base or getattr(settings, "ZUBRA_SCRIPTS_BASE", "/components/")
     if _deferred(context):
-        return mark_safe(SCRIPTS.format(base=base.replace("--", "")))
+        return mark_safe(SCRIPTS.format(token=context["request"].zubra_marker, base=base.replace("--", "")))
     return mark_safe(_page(context).scripts(base))

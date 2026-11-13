@@ -14,7 +14,7 @@
 // SolidStart, Next): `zubra.injectShadowRoots(html)` puts each shadow-DOM component's
 // server-rendered template into the page as a declarative shadow root, and gives
 // form-associated ones a hidden input, so the page is complete before JavaScript.
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -45,6 +45,8 @@ const posix = (path) => path.split(sep).join('/');
  */
 export function createZubra({ components = 'components', packages = [], prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn, clientModules } = {}) {
   const root = resolve(components);
+  // The folder as the disk has it, links resolved: what a served module's real path must be inside.
+  const realRoot = existsSync(root) ? realpathSync(root) : root;
   if (!existsSync(root)) throw new Error(`@zubra/server: no components folder at ${root}`);
   const sourceDir = dirname(fileURLToPath(import.meta.resolve('@zubra/runtime')));
   const productionDir = join(sourceDir, '..', 'dist', 'production');
@@ -127,10 +129,13 @@ export function createZubra({ components = 'components', packages = [], prefix =
     clientModules,
     // The compiler keys a context by its module's path, joined to the importing component's.
     contextKey: ({ module, export: name }) => `${joinPath(posix(root), module)}#${name}`,
-    // A `.js` file in the components folder that a component imports, served as it is.
+    // A `.js` file in the components folder, served as it is (core serves only those a browser
+    // module imports, so a hidden folder's files stay unserved unless one does). Never one a link
+    // leads out of the folder to.
     localModule: (path) => {
       const file = resolve(root, path);
       if (!file.startsWith(root + sep) || extname(file) !== '.js' || !existsSync(file) || statSync(file).isDirectory()) return null;
+      if (!realpathSync(file).startsWith(realRoot + sep)) return null;
       return { status: 200, type: TYPES['.js'], body: readFileSync(file) };
     },
     request: (body) => compiler.request(body),

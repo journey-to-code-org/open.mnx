@@ -76,3 +76,15 @@ test('what an attribute could not do, a spread cannot: unsafe URLs, text handler
   assert.equal(await page.textContent('spread-demo a'), 'link', 'no markup');
   assert.equal(messages.filter((message) => message.startsWith('error: zubra:')).length, 6, messages.join('\n'));
 });
+
+test("a key that can't be an attribute or CSS property name is left out, and the rest still applies (audit Z3)", async () => {
+  const { page, messages } = await open('<spread-demo></spread-demo>', { modules: ['spread'] });
+  await set(page, { attrs: { title: 'x', 'x onmouseover=alert(1) y': '1', 'a"><b>': '1', 'data-ok': 'yes', style: { color: 'blue', 'color:red;background:url(//evil)': '1', '--brand': 'green' } } });
+  const { attributes } = await link(page);
+  assert.equal(attributes['data-ok'], 'yes', 'the rest still applies');
+  assert.equal(attributes.style, 'color: blue; --brand: green;');
+  assert.equal(Object.keys(attributes).some((name) => /onmouseover|<|"/.test(name)), false, Object.keys(attributes).join(' '));
+  const left = messages.filter((message) => message.startsWith('error: zubra:'));
+  assert.equal(left.length, 3, left.join('\n'));
+  assert.ok(left.every((message) => /left out/.test(message)), left.join('\n'));
+});

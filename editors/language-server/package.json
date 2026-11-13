@@ -1,6 +1,6 @@
 {
   "name": "@zubra/language-server",
-  "version": "5.9.1",
+  "version": "5.9.2",
   "description": "Language server for .zb components: diagnostics, completion, hover and go to definition",
   "license": "ISC",
   "repository": {
