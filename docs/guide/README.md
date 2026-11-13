@@ -10,7 +10,7 @@ Zubra compiles components written as HTML with a script and styles into standard
 npm create zubra@latest my-app
 ```
 
-It asks for a framework (none, React, Vue, Svelte, Solid, Preact, Lit, Angular or Astro) and writes a working app with one component, a dev server that updates components in place, and a browser test.
+It asks for a framework (none, React, Vue, Svelte, Solid, Preact, Lit, Angular or Astro) and whether components should be TypeScript, and writes a working app with one component, a dev server that updates components in place, and a browser test. With TypeScript (`-- --typescript` to skip the question) the component is `<script lang="ts">` with an `interface Props`, and `npm run check` type-checks the components (`zubra check --types`), for CI.
 
 ## The tutorial
 

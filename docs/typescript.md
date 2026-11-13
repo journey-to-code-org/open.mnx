@@ -165,6 +165,8 @@ The React and Vue wrappers `@zubra/unplugin` and `zubra build --lib` write are t
 npx zubra check --types src
 ```
 
+An app made with `npm create zubra@latest -- --typescript` has it as `npm run check`, with a `tsconfig.json` and TypeScript installed.
+
 The project's own TypeScript checks its components: each script as written, **every template expression in its scope**, every child component's props against the child's types, and every event handler with its event typed. Errors land on the `.zb` lines they came from:
 
 ```text
