@@ -2,7 +2,9 @@
 
 All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/): from 1.0.0, the authoring formats, the CLI and the runtime's public API change incompatibly only in a new major version.
 
-## Unreleased
+## 5.14.0 — 2026-11-13
+
+The runtime a server sends is half the size, components' types reach `.ts` files in the editor, and the security audit's findings are fixed.
 
 ### Added
 
