@@ -4,10 +4,13 @@ export default {
     "signal.js",
     "effect.js"
   ],
-  "context.js": [
+  "context-element.js": [
     "signal.js",
     "effect.js",
     "element.js"
+  ],
+  "context.js": [
+    "context-element.js"
   ],
   "deep.js": [
     "signal.js"
@@ -33,10 +36,9 @@ export default {
   "outlet.js": [],
   "primitives.js": [],
   "react.js": [
-    "server.js",
     "outlet.js",
     "navigation.js",
-    "context.js",
+    "context-element.js",
     "bridge.js"
   ],
   "remark.js": [],
@@ -59,9 +61,8 @@ export default {
     "effect.js"
   ],
   "vue.js": [
-    "server.js",
     "navigation.js",
-    "context.js",
+    "context-element.js",
     "bridge.js"
   ],
   "zag.js": [
