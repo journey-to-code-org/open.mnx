@@ -318,6 +318,56 @@ test("content inserted next to another slot's marker moves to its own slot (Svel
   await page.close();
 });
 
+test("elements for one slot inserted together next to another slot's marker all move there (Angular's @if)", async () => {
+  // Moving the first out of the list being walked used to skip the one after it (#262).
+  const { page, messages } = await open('<zb-card><p>1</p><!--anchor--></zb-card>', {
+    beforeModules: "window.anchor = document.querySelector('zb-card').lastChild;",
+    modules: ['card'],
+  });
+  const card = await change(page, () => {
+    for (const text of ['A', 'B', 'C']) {
+      const h2 = Object.assign(document.createElement('h2'), { textContent: text, slot: 'title' });
+      window.anchor.parentNode.insertBefore(h2, window.anchor);
+    }
+  });
+  assert.equal(card.header, '<h2 slot="title">A</h2><h2 slot="title">B</h2><h2 slot="title">C</h2>');
+  assert.equal(card.section, '<p>1</p>');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
+test('an empty text node is slotted once it has text, and leaves when emptied (Angular\'s {{ }})', async () => {
+  // Angular creates the text node for {{ }} empty and writes it afterwards. Empty text is a
+  // marker, so it waited in the park and nothing heard it being written (#261).
+  const { page, messages } = await open('<zb-card id="alone"></zb-card><zb-card id="after"><h2 slot="title">T</h2></zb-card>', {
+    beforeModules: `
+      window.alone = document.createTextNode('');
+      document.getElementById('alone').append(window.alone);
+      window.after = document.createTextNode('');
+      document.getElementById('after').append(window.after);`,
+    modules: ['card'],
+  });
+  const read = () => page.evaluate(async () => {
+    await new Promise((resolve) => setTimeout(resolve));
+    const clean = (el) => el.innerHTML.replace(/<!--.*?-->|<\?zb.*?>/g, '');
+    return ['alone', 'after'].map((id) => [clean(document.querySelector(`#${id} header`)), clean(document.querySelector(`#${id} section`))].join(' | '));
+  });
+  assert.deepEqual(await read(), ['<h2>Card</h2> | <p>No content</p>', '<h2 slot="title">T</h2> | <p>No content</p>']);
+  await page.evaluate(() => { window.alone.data = 'Hello'; window.after.data = 'World'; });
+  assert.deepEqual(await read(), ['<h2>Card</h2> | Hello', '<h2 slot="title">T</h2> | World'], 'text is the default slot\'s, even after a named slot\'s element');
+  await page.evaluate(() => { window.alone.data = 'Again'; });
+  assert.deepEqual((await read())[0], '<h2>Card</h2> | Again');
+  await page.evaluate(() => { window.alone.data = ''; });
+  assert.deepEqual((await read())[0], '<h2>Card</h2> | <p>No content</p>', 'emptied, the fallback is back');
+  await page.evaluate(() => { window.alone.data = 'Back'; });
+  assert.deepEqual((await read())[0], '<h2>Card</h2> | Back');
+  // One added after startup, through the host (as Angular does once the element is defined).
+  await page.evaluate(() => { window.late = document.createTextNode(''); document.getElementById('after').append(window.late); window.late.data = '!'; });
+  assert.deepEqual((await read())[1], '<h2 slot="title">T</h2> | World!');
+  assert.deepEqual(messages, []);
+  await page.close();
+});
+
 test("a framework's empty-text anchors stay with the content they bracket, so it can reorder through their parent (Vue's fragments)", async () => {
   // Vue brackets a v-for (any fragment) with two empty text nodes, and moves rows through the
   // start anchor's real parent. After a named slot's content, the start anchor used to join that

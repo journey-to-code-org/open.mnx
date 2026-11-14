@@ -20,12 +20,13 @@
 // source line (in Vite's overlay, too); editing a `.zb` file reloads the page, because the
 // platform can't redefine a custom element. Next to each component the plugin writes typings
 // (`rating.d.zb.ts`, used by TypeScript with `allowArbitraryExtensions`) for the project's
-// framework.
+// framework, or in a folder of the app's own (`dts: { dir }`) when apps in different frameworks
+// share the components.
 import { createUnplugin } from 'unplugin';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { addProps, zubraImports } from './props.js';
-import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createRequire } from 'node:module';
 
 const VARIANTS = ['element', 'react', 'vue'];
@@ -132,6 +133,8 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
   const runtime = options.runtime ?? '@zubra/runtime';
   let project = options.framework && options.framework !== 'auto' ? options.framework : null;
   const typings = options.dts ?? true;
+  // `dts: { dir }`: the typings go in the app's own folder instead of beside each component.
+  const typingsDir = typeof typings === 'object' && typings.dir ? typings.dir : null;
   // Server builds render components with @zubra/compiler at request time (`ssr: false` leaves
   // that out: the elements then render on the client only).
   const serverRendering = options.ssr ?? true;
@@ -257,12 +260,52 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
     return app;
   }
 
-  function writeTypings(path) {
-    const framework = ['react', 'vue', 'svelte', 'solid'].includes(project) ? project : 'none';
-    const target = resolve(dirname(path), `${basename(path, '.zb')}.d.zb.ts`);
-    const contents = compile(path, '--emit', 'dts', '--framework', framework).code;
+  const writeIfChanged = (target, contents) => {
     // Only when changed, so watchers don't loop.
     if (!existsSync(target) || readFileSync(target, 'utf8') !== contents) writeFileSync(target, contents);
+  };
+  const warnedBeside = new Set();
+  let typingLevels = 0; // how many folders above the root `dir` mirrors, so far
+  /**
+   * Where a component's typings go under `dts: { dir }`: `dir` mirrors the root, so
+   * `src/rating.zb` is typed by `<dir>/src/rating.d.zb.ts`. A component outside the root (a
+   * folder several apps share) is mirrored under `__`, one per folder up: `../ui/rating.zb` by
+   * `<dir>/__/ui/rating.d.zb.ts`. TypeScript finds them through `rootDirs`, which pairs each
+   * mirrored folder with the real one; `<dir>/tsconfig.json` has that list, for the app's
+   * tsconfig to extend.
+   */
+  function typingsTarget(path) {
+    const base = resolve(root ?? process.cwd());
+    const dir = resolve(base, typingsDir);
+    const folders = relative(base, dirname(path));
+    if (isAbsolute(folders)) return null; // another drive: nothing to mirror
+    const parts = folders.split(sep).filter(Boolean);
+    const up = parts.filter((part) => part === '..').length;
+    const target = join(dir, ...parts.map((part) => (part === '..' ? '__' : part)), `${basename(path, '.zb')}.d.zb.ts`);
+    mkdirSync(dirname(target), { recursive: true });
+    // The list only grows: a build that imports fewer components keeps the folders it had.
+    const config = join(dir, 'tsconfig.json');
+    if (!typingLevels && existsSync(config)) {
+      try { typingLevels = JSON.parse(readFileSync(config, 'utf8')).compilerOptions.rootDirs.length / 2; } catch { /* rewritten below */ }
+    }
+    typingLevels = Math.max(typingLevels, up + 1);
+    const posix = (folder) => folder.split(sep).join('/') || '.';
+    const rootDirs = [];
+    for (let level = 0; level < typingLevels; level++) {
+      rootDirs.push(posix(relative(dir, resolve(base, ...Array(level).fill('..')))), posix(join('.', ...Array(level).fill('__'))));
+    }
+    writeIfChanged(config, `${JSON.stringify({ compilerOptions: { allowArbitraryExtensions: true, rootDirs } }, null, 2)}\n`);
+    return target;
+  }
+  function writeTypings(context, path) {
+    const framework = ['react', 'vue', 'svelte', 'solid'].includes(project) ? project : 'none';
+    const beside = resolve(dirname(path), `${basename(path, '.zb')}.d.zb.ts`);
+    const target = (typingsDir && typingsTarget(path)) || beside;
+    if (target !== beside && existsSync(beside) && !warnedBeside.has(beside)) {
+      warnedBeside.add(beside);
+      context?.warn?.(`${relativePath(beside)} is beside its component, where TypeScript reads it before the typings in ${typingsDir}: delete it, and set \`dts: { dir }\` (or \`dts: false\`) in every app that builds this folder`);
+    }
+    writeIfChanged(target, compile(path, '--emit', 'dts', '--framework', framework).code);
   }
 
   return {
@@ -350,7 +393,7 @@ export const unplugin = createUnplugin((options = {}, meta = {}) => {
         }
       }
       // (A JSX component is typed by its own source: TypeScript reads the function.)
-      if (typings && path.endsWith('.zb')) writeTypings(path);
+      if (typings && path.endsWith('.zb')) writeTypings(this, path);
       // With Vite, a <style> goes through Vite's CSS pipeline; elsewhere it's inlined as written.
       const styles = [];
       if (meta.framework === 'vite' && path.endsWith('.zb') && /<style[\s>]/i.test(readFileSync(path, 'utf8'))) {

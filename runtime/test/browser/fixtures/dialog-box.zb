@@ -1,0 +1,9 @@
+<script>
+  import { hasSlot } from '@zubra/runtime'
+
+  const hasActions = hasSlot('actions')
+</script>
+<zb-dialog-box>
+  <div class="body"><zb-slot></zb-slot></div>
+  <footer zb-if={hasActions}><zb-slot name="actions"></zb-slot></footer>
+</zb-dialog-box>
