@@ -278,6 +278,40 @@ pub struct ChildComponent {
     pub path: String,
     pub source: String,
     pub ast: ComponentAst,
+    /// The child's interface, once something has asked for it (`validate.rs`).
+    pub interface: Once<crate::validate::Interface>,
+}
+
+/// Something worked out from the tree it sits in, at most once, and kept with it: a copy of
+/// the tree shares it, and it has no part in whether two trees are the same.
+pub struct Once<T>(pub std::cell::OnceCell<std::rc::Rc<T>>);
+
+impl<T> Default for Once<T> {
+    fn default() -> Self {
+        Self(std::cell::OnceCell::new())
+    }
+}
+
+impl<T> Clone for Once<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> std::fmt::Debug for Once<T> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(if self.0.get().is_some() {
+            "Once(kept)"
+        } else {
+            "Once"
+        })
+    }
+}
+
+impl<T> PartialEq for Once<T> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

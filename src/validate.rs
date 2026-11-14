@@ -342,6 +342,18 @@ pub fn validate(
     lower_component(component, overrides, &Supply::Templates(slot_values), None)
 }
 
+/// [`analyze`] for a child component, worked out once for as long as its tree is kept however
+/// many times the child is used (a badge in every row of a table, on every render).
+fn interface_of(child: &ast::ChildComponent) -> Result<std::rc::Rc<Interface>, Diagnostic> {
+    if let Some(found) = child.interface.0.get() {
+        return Ok(std::rc::Rc::clone(found));
+    }
+    let interface = std::rc::Rc::new(analyze(&child.ast)?);
+    Ok(std::rc::Rc::clone(
+        child.interface.0.get_or_init(|| interface),
+    ))
+}
+
 /// Content supplied to a component's slots: template fragments (`--slots`), lowered in the
 /// component's own scope, or nodes a parent component already lowered in *its* scope.
 enum Supply<'a> {
@@ -1612,7 +1624,11 @@ impl Context<'_> {
             Some(Binding::Function(function)) => Some(function.clone()),
             _ => None,
         };
-        crate::pure::evaluate(source, &lookup)
+        let lend = |name: &str| match self.binding(name, state) {
+            Some(Binding::Value(value)) => Some(value),
+            _ => None,
+        };
+        crate::pure::evaluate_lent(source, &lookup, Some(&lend))
             .and_then(crate::pure::Val::into_json)
             .ok()
     }
@@ -1785,9 +1801,54 @@ impl Context<'_> {
             if needs_text_anchor(nodes, node, block_top) {
                 output.push(Node::Anchor);
             }
-            output.extend(self.lower_node(node, state)?);
+            // Text and elements, most of any template, are one node each: straight into the
+            // output, not through a list of one.
+            match node {
+                ast::Node::Text(parts) => output.push(Node::Text(self.lower_parts(parts, state)?)),
+                ast::Node::Element(element) => output.push(self.lower_element(element, state)?),
+                _ => output.extend(self.lower_node(node, state)?),
+            }
         }
         Ok(output)
+    }
+
+    /// An element: a placeholder for a listeners-only one, a child component rendered, or the
+    /// element with its attributes and children.
+    fn lower_element(
+        &self,
+        element: &ast::Element,
+        state: &mut LowerState,
+    ) -> Result<Node, Diagnostic> {
+        if crate::emit_js::is_global_listener(&element.name) {
+            // Listeners only: a placeholder the element finds them by.
+            return Ok(Node::Anchor);
+        }
+        if let Some(child) = self.component.child(&element.name) {
+            return self.lower_child(element, child, state);
+        }
+        let custom = element.name.contains('-');
+        let mut attributes = Vec::with_capacity(element.attributes.len());
+        for attribute in &element.attributes {
+            if attribute.name == crate::parser::SPREAD {
+                continue; // after the element's own (an explicit attribute wins)
+            }
+            if let Some(lowered) = self.lower_attribute(attribute, state, custom)? {
+                attributes.push(lowered);
+            }
+        }
+        self.lower_directives(element, &mut attributes, state)?;
+        for attribute in &element.attributes {
+            if attribute.name == crate::parser::SPREAD {
+                self.lower_spread(element, attribute, &mut attributes, state, &[])?;
+            }
+        }
+        let mut lowered = ir::Element {
+            name: element.name.clone(),
+            attributes,
+            children: self.lower_nodes(&element.children, state)?,
+        };
+        form_value_as_html(&mut lowered);
+        Ok(Node::Element(lowered))
     }
 
     fn lower_node(
@@ -1797,38 +1858,7 @@ impl Context<'_> {
     ) -> Result<Vec<Node>, Diagnostic> {
         match node {
             ast::Node::Text(parts) => Ok(vec![Node::Text(self.lower_parts(parts, state)?)]),
-            ast::Node::Element(element) => {
-                if crate::emit_js::is_global_listener(&element.name) {
-                    // Listeners only: a placeholder the element finds them by.
-                    return Ok(vec![Node::Anchor]);
-                }
-                if let Some(child) = self.component.child(&element.name) {
-                    return Ok(vec![self.lower_child(element, child, state)?]);
-                }
-                let custom = element.name.contains('-');
-                let mut attributes = Vec::with_capacity(element.attributes.len());
-                for attribute in &element.attributes {
-                    if attribute.name == crate::parser::SPREAD {
-                        continue; // after the element's own (an explicit attribute wins)
-                    }
-                    if let Some(lowered) = self.lower_attribute(attribute, state, custom)? {
-                        attributes.push(lowered);
-                    }
-                }
-                self.lower_directives(element, &mut attributes, state)?;
-                for attribute in &element.attributes {
-                    if attribute.name == crate::parser::SPREAD {
-                        self.lower_spread(element, attribute, &mut attributes, state, &[])?;
-                    }
-                }
-                let mut lowered = ir::Element {
-                    name: element.name.clone(),
-                    attributes,
-                    children: self.lower_nodes(&element.children, state)?,
-                };
-                form_value_as_html(&mut lowered);
-                Ok(vec![Node::Element(lowered)])
-            }
+            ast::Node::Element(element) => Ok(vec![self.lower_element(element, state)?]),
             ast::Node::If {
                 test,
                 test_span,
@@ -1882,7 +1912,7 @@ impl Context<'_> {
                 let mut output = vec![Node::Open];
                 let mut keys = HashSet::new();
                 for (position, entry) in list.into_iter().enumerate() {
-                    let mut scope = destructure(item, &entry);
+                    let mut scope = destructure_owned(item, entry);
                     if let Some(index) = index {
                         scope.push((index.clone(), Value::from(position)));
                     }
@@ -2070,7 +2100,7 @@ impl Context<'_> {
         state: &mut LowerState,
     ) -> Result<Node, Diagnostic> {
         let interface =
-            analyze(&child.ast).map_err(|error| error.in_file(&child.path, &child.source))?;
+            interface_of(child).map_err(|error| error.in_file(&child.path, &child.source))?;
         let mut overrides = serde_json::Map::new();
         let mut attributes = Vec::new();
         let mut spreads = Vec::new();
@@ -3526,6 +3556,16 @@ fn bound_names(text: &str) -> Vec<String> {
 /// An `as` bound to a value known at build time: each name with the part of the value its path
 /// reaches (`null` where the value has no such property or index, as JavaScript gives
 /// `undefined`).
+/// As [`destructure`], for a value that is ours to keep: a plain name takes it as it is,
+/// without a copy (each row of a list, once per row).
+fn destructure_owned(text: &str, value: Value) -> Vec<(String, Value)> {
+    if crate::ast::is_pattern(text) {
+        destructure(text, &value)
+    } else {
+        vec![(text.trim().to_owned(), value)]
+    }
+}
+
 fn destructure(text: &str, value: &Value) -> Vec<(String, Value)> {
     if !crate::ast::is_pattern(text) {
         return vec![(text.trim().to_owned(), value.clone())];

@@ -339,16 +339,9 @@ fn respond(request: &Map<String, Value>) -> Value {
             crate::compile_element_with(source, &path, (!keep).then_some(".js"), &loader)
         }
         ("compile", "html") => {
-            let props = request
-                .get("props")
-                .cloned()
-                .unwrap_or_else(|| json!({}))
-                .to_string();
-            let slots = request
-                .get("slots")
-                .cloned()
-                .unwrap_or_else(|| json!({}))
-                .to_string();
+            let none = json!({});
+            let props = request.get("props").unwrap_or(&none);
+            let slots = request.get("slots").unwrap_or(&none);
             let slot_source = match text("slotSource") {
                 None | Some("template") => crate::SlotSource::Template,
                 Some("html") => crate::SlotSource::Html,
@@ -380,11 +373,11 @@ fn respond(request: &Map<String, Value>) -> Value {
             // `gaps`: also say what this render left for the browser (as `check --server` does),
             // so a server can warn that part of a component's HTML is empty without JavaScript.
             let want_gaps = partial && request.get("gaps").and_then(Value::as_bool) == Some(true);
-            let render = || crate::validate::with_provided(provided, || crate::validate::with_id_prefix(id_prefix, || crate::compile_html_with_options(
+            let render = || crate::validate::with_provided(provided, || crate::validate::with_id_prefix(id_prefix, || crate::compile_html_values(
                 source,
                 &path,
-                &props,
-                &slots,
+                props,
+                slots,
                 crate::HtmlOptions {
                     slot_source,
                     partial,
@@ -599,6 +592,61 @@ mod tests {
 
     fn call(request: Value) -> Value {
         serde_json::from_str(&handle(&request.to_string())).unwrap()
+    }
+
+    #[test]
+    fn a_child_used_many_times_is_read_by_the_interface_it_has_now() {
+        // A child's interface is worked out once for its parsed tree, not once per use: every
+        // use is checked and filled in by it, and an edited child (another default, a prop that
+        // is now a number) by its new one.
+        let parent = r#"<script>import ZbTag from './tag.zb'
+const rows = [{ id: "a", tone: "warm" }, { id: "b", tone: "cool" }]</script><zb-list><zb-each items={rows} as="row" key={row.id}><zb-tag tone={row.tone}></zb-tag><zb-tag size="2"></zb-tag></zb-each></zb-list>"#;
+        let render = |tag: &str| {
+            call(json!({
+                "path": "/app/list.zb",
+                "files": { "/app/list.zb": parent, "/app/tag.zb": tag },
+                "emit": "html",
+            }))
+        };
+        let tag = |tone: &str, size: &str| {
+            format!("<zb-tag tone=\"{tone}\" size={size}><b>{{tone}} {{size + size}}</b></zb-tag>")
+        };
+        // Before it had a `tone`: passing one is an error, and stops being one.
+        let before = render("<zb-tag size=\"1\"><b>{size + size}</b></zb-tag>");
+        assert!(
+            before["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("<zb-tag> has no prop `tone`"),
+            "{before}"
+        );
+        let first = render(&tag("plain", "\"1\""));
+        let html = first["output"].as_str().unwrap_or_default();
+        for expected in ["<b>warm 11</b>", "<b>cool 11</b>", "<b>plain 22</b>"] {
+            assert_eq!(
+                html.matches(expected).count(),
+                if expected.contains("plain") { 2 } else { 1 },
+                "{expected} in {first}"
+            );
+        }
+        let other = render(&tag("none", "\"1\""));
+        assert_eq!(
+            other["output"]
+                .as_str()
+                .unwrap_or_default()
+                .matches("<b>none 22</b>")
+                .count(),
+            2,
+            "{other}"
+        );
+        let numbered = render(&tag("none", "{1}"));
+        assert!(
+            numbered["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("prop `size` must be a number"),
+            "{numbered}"
+        );
     }
 
     #[test]
