@@ -65,6 +65,7 @@ Every npm package entry and command below has a tier; `docs/test/stability.test.
 | `@zubra/runtime/navigation` | Supported | Runtime (React Router, Vue Router) | Nothing outside its tests yet |
 | `@zubra/runtime/testing` | Supported | WebAssembly compiler (`examples/testing-vitest`) | `examples/testing-vitest` |
 | `@zubra/runtime/outlet` | Experimental | Runtime (React 19, 18) | Nothing; React only, client only |
+| `@zubra/runtime/modules` | Supported | Runtime (the build's `--check`); Server (`preload.test.js`, `edge.test.js`) | `@zubra/server` and `@zubra/server/edge`, for a page's preload links |
 
 ### `@zubra/compiler`
 
