@@ -79,6 +79,16 @@ pub enum Expression {
     },
 }
 
+/// Where an evaluation's free names come from: copies of their values and, from a caller that
+/// can lend them, the values themselves.
+struct Names<'a, 'v> {
+    owned: &'a dyn Fn(&str) -> Option<Value>,
+    lent: Option<&'a Lend<'a, 'v>>,
+}
+
+/// A name's value, lent for `'v`.
+type Lend<'a, 'v> = dyn Fn(&str) -> Option<&'v Value> + 'a;
+
 impl Expression {
     /// Whether this is JavaScript beyond the build-time subset (see [`Expression::Runtime`]).
     pub fn is_runtime(&self) -> bool {
@@ -174,9 +184,64 @@ impl Expression {
     /// Evaluate at build time against a lookup for free identifiers (props, script locals,
     /// loop variables). Errors are plain messages; the caller attaches the file position.
     pub fn evaluate(&self, lookup: &dyn Fn(&str) -> Option<Value>) -> Result<Value, String> {
+        self.eval(&Names {
+            owned: lookup,
+            lent: None,
+        })
+    }
+
+    /// As [`Self::evaluate`], for a caller that can lend its values instead of handing out
+    /// copies. A path into a value (`row.total`, `row[column.key]`) then copies the one thing it
+    /// reads, not what it reads it from: a row's cell without the row, each time.
+    pub fn evaluate_lent<'v>(&self, lend: &Lend<'_, 'v>) -> Result<Value, String> {
+        self.eval(&Names {
+            owned: &|name| lend(name).cloned(),
+            lent: Some(lend),
+        })
+    }
+
+    /// The value this path reads, where it is: a name, or a field or item of one that is
+    /// there. `None` for anything else (a missing field, `length`, a computed value), which
+    /// [`Self::eval`] then works out from a copy, as it always has.
+    fn lent<'v>(&self, lend: &Lend<'_, 'v>) -> Option<&'v Value> {
+        match self {
+            Self::Identifier(name) => lend(name),
+            Self::Member {
+                object, property, ..
+            } => match object.lent(lend)? {
+                Value::Object(fields) => fields.get(property),
+                _ => None,
+            },
+            Self::Index { object, index, .. } => {
+                let object = object.lent(lend)?;
+                let literal;
+                let index = match &**index {
+                    Self::String(key) => {
+                        literal = Value::String(key.clone());
+                        &literal
+                    }
+                    other => other.lent(lend)?,
+                };
+                match (object, index) {
+                    (Value::Array(items), Value::Number(number)) => {
+                        let position = number.as_f64()?;
+                        if position.fract() != 0.0 || position < 0.0 {
+                            return None;
+                        }
+                        items.get(position as usize)
+                    }
+                    (Value::Object(fields), Value::String(key)) => fields.get(key),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn eval(&self, names: &Names<'_, '_>) -> Result<Value, String> {
         match self {
             Self::Identifier(name) => {
-                lookup(name).ok_or_else(|| format!("unknown reference `{name}`"))
+                (names.owned)(name).ok_or_else(|| format!("unknown reference `{name}`"))
             }
             Self::Runtime { .. } => Err(RUNTIME_ONLY.to_owned()),
             Self::String(value) => Ok(Value::String(value.clone())),
@@ -187,18 +252,18 @@ impl Expression {
             Self::Null => Ok(Value::Null),
             Self::Array(elements) => elements
                 .iter()
-                .map(|element| element.evaluate(lookup))
+                .map(|element| element.eval(names))
                 .collect::<Result<Vec<_>, _>>()
                 .map(Value::Array),
             Self::Object(properties) => {
                 let mut object = serde_json::Map::new();
                 for (key, value) in properties {
-                    object.insert(key.clone(), value.evaluate(lookup)?);
+                    object.insert(key.clone(), value.eval(names)?);
                 }
                 Ok(Value::Object(object))
             }
             Self::Unary { operator, operand } => {
-                let value = operand.evaluate(lookup)?;
+                let value = operand.eval(names)?;
                 match operator {
                     UnaryOperator::Not => Ok(Value::Bool(!is_truthy(&value))),
                     UnaryOperator::Negate => number_from(-expect_number(&value, "unary -")?),
@@ -208,20 +273,20 @@ impl Expression {
                 operator,
                 left,
                 right,
-            } => evaluate_binary(*operator, &left.evaluate(lookup)?, &right.evaluate(lookup)?),
+            } => evaluate_binary(*operator, &left.eval(names)?, &right.eval(names)?),
             Self::Logical {
                 operator,
                 left,
                 right,
             } => {
-                let left = left.evaluate(lookup)?;
+                let left = left.eval(names)?;
                 let take_right = match operator {
                     LogicalOperator::And => is_truthy(&left),
                     LogicalOperator::Or => !is_truthy(&left),
                     LogicalOperator::Nullish => left.is_null(),
                 };
                 if take_right {
-                    right.evaluate(lookup)
+                    right.eval(names)
                 } else {
                     Ok(left)
                 }
@@ -231,10 +296,10 @@ impl Expression {
                 consequent,
                 alternate,
             } => {
-                if is_truthy(&test.evaluate(lookup)?) {
-                    consequent.evaluate(lookup)
+                if is_truthy(&test.eval(names)?) {
+                    consequent.eval(names)
                 } else {
-                    alternate.evaluate(lookup)
+                    alternate.eval(names)
                 }
             }
             Self::Member {
@@ -242,7 +307,15 @@ impl Expression {
                 property,
                 optional,
             } => {
-                let object = object.evaluate(lookup)?;
+                // Read from the value where it is, when it can be lent: not from a copy of it.
+                let owned;
+                let object = match names.lent.and_then(|lend| object.lent(lend)) {
+                    Some(lent) => lent,
+                    None => {
+                        owned = object.eval(names)?;
+                        &owned
+                    }
+                };
                 if object.is_null() {
                     return if *optional {
                         Ok(Value::Null)
@@ -250,14 +323,21 @@ impl Expression {
                         Err(format!("cannot read property `{property}` of null"))
                     };
                 }
-                read_property(&object, property)
+                read_property(object, property)
             }
             Self::Index {
                 object,
                 index,
                 optional,
             } => {
-                let object = object.evaluate(lookup)?;
+                let owned;
+                let object = match names.lent.and_then(|lend| object.lent(lend)) {
+                    Some(lent) => lent,
+                    None => {
+                        owned = object.eval(names)?;
+                        &owned
+                    }
+                };
                 if object.is_null() {
                     return if *optional {
                         Ok(Value::Null)
@@ -265,8 +345,8 @@ impl Expression {
                         Err("cannot index null".to_owned())
                     };
                 }
-                let index = index.evaluate(lookup)?;
-                match (&object, &index) {
+                let index = index.eval(names)?;
+                match (object, &index) {
                     (Value::Array(items), Value::Number(number)) => {
                         let position = number.as_f64().unwrap_or(f64::NAN);
                         if position.fract() != 0.0 || position < 0.0 {
@@ -277,16 +357,16 @@ impl Expression {
                         Ok(items.get(position as usize).cloned().unwrap_or(Value::Null))
                     }
                     (Value::Object(_) | Value::String(_) | Value::Array(_), Value::String(key)) => {
-                        read_property(&object, key)
+                        read_property(object, key)
                     }
                     // An object's keys are strings, so a number indexes by its string, as in
                     // JavaScript (`Size[0]`, a numeric enum's reverse mapping).
                     (Value::Object(_), Value::Number(number)) => {
-                        read_property(&object, &number.to_string())
+                        read_property(object, &number.to_string())
                     }
                     _ => Err(format!(
                         "cannot index {} with {}",
-                        type_name(&object),
+                        type_name(object),
                         type_name(&index)
                     )),
                 }
@@ -1022,7 +1102,91 @@ mod tests {
 
     fn eval(source: &str, scope: Value) -> Result<Value, String> {
         let expression = parse(source).unwrap_or_else(|error| panic!("{source}: {error}"));
-        expression.evaluate(&|name| scope.get(name).cloned())
+        let answer = expression.evaluate(&|name| scope.get(name).cloned());
+        // Lending the values instead of copying them gives the same answer, an error included:
+        // every expression these tests evaluate is evaluated both ways.
+        assert_eq!(
+            expression.evaluate_lent(&|name| scope.get(name)),
+            answer,
+            "{source}, lent"
+        );
+        answer
+    }
+
+    #[test]
+    fn a_path_is_read_where_the_value_is_and_anything_else_is_not_lent() {
+        let scope = json!({
+            "row": { "id": 7, "total": 12.5, "tags": ["a", "b"], "by": { "0": "zero" } },
+            "column": { "key": "total" },
+            "rows": [{ "id": 1 }, { "id": 2 }],
+            "at": 1, "minus": -1, "half": 0.5, "none": null,
+        });
+        let lend = |name: &str| scope.get(name);
+        let lent = |source: &str| parse(source).unwrap().lent(&lend);
+        // The very value in the scope, not a copy of it.
+        assert!(std::ptr::eq(lent("row").unwrap(), &scope["row"]));
+        assert!(std::ptr::eq(
+            lent("row.total").unwrap(),
+            &scope["row"]["total"]
+        ));
+        assert!(std::ptr::eq(
+            lent("row[column.key]").unwrap(),
+            &scope["row"]["total"]
+        ));
+        assert!(std::ptr::eq(
+            lent("row[\"id\"]").unwrap(),
+            &scope["row"]["id"]
+        ));
+        assert!(std::ptr::eq(
+            lent("rows[at].id").unwrap(),
+            &scope["rows"][1]["id"]
+        ));
+        assert!(std::ptr::eq(
+            lent("row.tags[at]").unwrap(),
+            &scope["row"]["tags"][1]
+        ));
+        // Not there to lend: each of these is worked out, and says what it always said.
+        for (source, answer) in [
+            ("row.missing", Ok(Value::Null)),
+            ("row.tags.length", Ok(json!(2))),
+            ("rows[2]", Ok(Value::Null)),
+            ("row.by[0]", Ok(json!("zero"))),
+            ("none?.field", Ok(Value::Null)),
+            ("row.missing?.deeper", Ok(Value::Null)),
+            (
+                "none.field",
+                Err("cannot read property `field` of null".to_owned()),
+            ),
+            ("none[at]", Err("cannot index null".to_owned())),
+            (
+                "rows[minus]",
+                Err("array index `-1` must be a non-negative integer".to_owned()),
+            ),
+            (
+                "rows[half]",
+                Err("array index `0.5` must be a non-negative integer".to_owned()),
+            ),
+            (
+                "row.total.cents",
+                Err("cannot read property `cents` of a number".to_owned()),
+            ),
+            (
+                "unknown.field",
+                Err("unknown reference `unknown`".to_owned()),
+            ),
+        ] {
+            assert!(lent(source).is_none(), "{source}");
+            assert_eq!(eval(source, scope.clone()), answer, "{source}");
+        }
+        // Inside a larger expression, each path is still read in place.
+        assert_eq!(
+            eval(
+                "row[column.key] > rows[at].id ? row.tags[0] : none",
+                scope.clone()
+            ),
+            Ok(json!("a"))
+        );
+        assert_eq!(eval("column.type || \"text\"", scope), Ok(json!("text")));
     }
 
     #[test]

@@ -319,7 +319,7 @@ fn pending(name: &str) -> bool {
 /// error: text renders empty, attributes are left out, and conditionals and lists render as
 /// empty regions marked `<?zb [??>`, which the element fills when it starts.
 pub fn validate_partial(
-    component: ast::ComponentAst,
+    component: &ast::ComponentAst,
     values: &Value,
     slot_values: &HashMap<String, Vec<ast::Node>>,
 ) -> Result<ir::Component, Diagnostic> {
@@ -330,7 +330,7 @@ pub fn validate_partial(
 }
 
 pub fn validate(
-    component: ast::ComponentAst,
+    component: &ast::ComponentAst,
     values: &Value,
     slot_values: &HashMap<String, Vec<ast::Node>>,
 ) -> Result<ir::Component, Diagnostic> {
@@ -339,7 +339,7 @@ pub fn validate(
         .ok_or_else(|| Diagnostic::new(Span::new(1, 1), "component props must be a JSON object"))?;
     // Each render numbers its hosts' id bases from 1.
     ID_COUNTS.with(|counts| counts.borrow_mut().clear());
-    lower_component(&component, overrides, &Supply::Templates(slot_values), None)
+    lower_component(component, overrides, &Supply::Templates(slot_values), None)
 }
 
 /// Content supplied to a component's slots: template fragments (`--slots`), lowered in the
@@ -1713,12 +1713,12 @@ impl Context<'_> {
             )
             .with_help("pass the value as a prop, leave it to the element with `--partial`, or compute it with what the server evaluates (an arrow function, not a `function` declaration)"));
         }
-        let lookup = |name: &str| match self.binding(name, state) {
-            Some(Binding::Value(value)) => Some(value.clone()),
+        let lend = |name: &str| match self.binding(name, state) {
+            Some(Binding::Value(value)) => Some(value),
             _ => None,
         };
         expression
-            .evaluate(&lookup)
+            .evaluate_lent(&lend)
             .map_err(|message| Diagnostic::new(span, message))
     }
 

@@ -78,7 +78,7 @@ fn load(
     source: &str,
     path: &str,
     loader: Option<Loader<'_>>,
-) -> Result<ast::ComponentAst, Diagnostic> {
+) -> Result<std::rc::Rc<ast::ComponentAst>, Diagnostic> {
     // A TypeScript component is compiled under its nearest tsconfig.json. The options are read
     // before the cache is asked, and are part of what it checks: a tsconfig.json that changed,
     // or appeared nearer, means a fresh parse.
@@ -113,6 +113,7 @@ fn load(
         )?;
         Ok(component)
     })?;
+    let component = std::rc::Rc::new(component);
     parsed::put(source, path, &component, answers.into_inner(), options);
     Ok(component)
 }
@@ -127,6 +128,7 @@ mod parsed {
     use crate::components::Loader;
     use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::rc::Rc;
 
     /// The most components kept; past it, the cache starts again (a server renders a few dozen).
     const LIMIT: usize = 512;
@@ -138,7 +140,9 @@ mod parsed {
     }
 
     struct Entry {
-        component: ComponentAst,
+        /// Shared, not copied: a render reads the tree, and one request asks for it more than
+        /// once (for its warnings, then to render).
+        component: Rc<ComponentAst>,
         answers: Vec<Answer>,
         /// The tsconfig.json options it was parsed under.
         options: crate::tsconfig::Options,
@@ -153,7 +157,7 @@ mod parsed {
         path: &str,
         loader: Option<Loader<'_>>,
         options: &crate::tsconfig::Options,
-    ) -> Option<ComponentAst> {
+    ) -> Option<Rc<ComponentAst>> {
         CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
             let key = (path.to_owned(), source.to_owned());
@@ -166,7 +170,7 @@ mod parsed {
                     })
                 });
             if unchanged {
-                return Some(entry.component.clone());
+                return Some(Rc::clone(&entry.component));
             }
             cache.remove(&key);
             None
@@ -176,7 +180,7 @@ mod parsed {
     pub fn put(
         source: &str,
         path: &str,
-        component: &ComponentAst,
+        component: &Rc<ComponentAst>,
         answers: Vec<Answer>,
         options: crate::tsconfig::Options,
     ) {
@@ -188,7 +192,7 @@ mod parsed {
             cache.insert(
                 (path.to_owned(), source.to_owned()),
                 Entry {
-                    component: component.clone(),
+                    component: Rc::clone(component),
                     answers,
                     options,
                 },
@@ -300,7 +304,7 @@ pub fn compile_value_with_slots(
 ) -> Result<String, Diagnostic> {
     front(source, None, None, |source| {
         html(
-            load(source, "component.zb", None)?,
+            &*load(source, "component.zb", None)?,
             props,
             slots,
             SlotSource::Template,
@@ -460,9 +464,9 @@ pub fn compile_html_with_options(
         let slots = parse_json(slots_json, "slots")?;
         let previous = validate::set_pending(options.pending.clone());
         let result = if options.partial || !options.pending.is_empty() {
-            html_partial(component, &props, &slots, options.slot_source)
+            html_partial(&component, &props, &slots, options.slot_source)
         } else {
-            html(component, &props, &slots, options.slot_source)
+            html(&component, &props, &slots, options.slot_source)
         };
         validate::set_pending(previous);
         result
@@ -470,7 +474,7 @@ pub fn compile_html_with_options(
 }
 
 fn html_partial(
-    component: ast::ComponentAst,
+    component: &ast::ComponentAst,
     props: &serde_json::Value,
     slots: &serde_json::Value,
     slot_source: SlotSource,
@@ -486,7 +490,7 @@ thread_local! {
 }
 
 fn html(
-    component: ast::ComponentAst,
+    component: &ast::ComponentAst,
     props: &serde_json::Value,
     slots: &serde_json::Value,
     slot_source: SlotSource,
@@ -687,7 +691,7 @@ pub fn compile_css_file(path: &str) -> Result<String, Diagnostic> {
         Some(path),
         Some(&components::filesystem),
         |source| {
-            Ok(stylesheets(&load(
+            Ok(stylesheets(&*load(
                 source,
                 path,
                 Some(&components::filesystem),
@@ -700,7 +704,7 @@ pub fn compile_css_file(path: &str) -> Result<String, Diagnostic> {
 #[doc(hidden)]
 pub fn css_with(source: &str, path: &str, loader: Loader<'_>) -> Result<String, Diagnostic> {
     front(source, Some(path), Some(loader), |source| {
-        Ok(stylesheets(&load(source, path, Some(loader))?))
+        Ok(stylesheets(&*load(source, path, Some(loader))?))
     })
 }
 

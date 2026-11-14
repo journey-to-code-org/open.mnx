@@ -65,40 +65,102 @@ impl Val {
     }
 }
 
-/// The arrow function in `source` (`(a, b) => …`), or the function (`function f(a) { … }`), as
-/// a value; `None` if it isn't one.
-pub fn function(source: &str) -> Option<Val> {
+/// Parsed expressions, kept by their source: a render evaluates the same few expressions of a
+/// component's script and template over and over (a cell's, once per row), and parsing each
+/// time was a tenth of a render.
+///
+/// The trees live in one arena that is never freed, which is what lets them be kept at all (a
+/// tree borrows from its arena). So what is kept is bounded: [`KEPT`] expressions and
+/// [`KEPT_BYTES`] of source, after which an expression is parsed where it is used, as before.
+/// A component's expressions are a few dozen short strings.
+struct Kept {
+    arena: &'static Allocator,
+    /// `None`: it doesn't parse.
+    parsed: std::collections::HashMap<&'static str, Option<&'static Expression<'static>>>,
+    bytes: usize,
+}
+
+const KEPT: usize = 4096;
+const KEPT_BYTES: usize = 1 << 20;
+
+thread_local! {
+    static PARSED: std::cell::RefCell<Option<Kept>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `source` parsed and kept, with the kept copy of its text (which the tree's spans index);
+/// the outer `None` when there is no more room to keep it.
+#[allow(clippy::option_option)]
+fn kept(source: &str) -> Option<Option<(&'static Expression<'static>, &'static str)>> {
+    PARSED.with(|parsed| {
+        let mut parsed = parsed.borrow_mut();
+        let kept = parsed.get_or_insert_with(|| Kept {
+            arena: Box::leak(Box::new(Allocator::default())),
+            parsed: std::collections::HashMap::new(),
+            bytes: 0,
+        });
+        if let Some((text, expression)) = kept.parsed.get_key_value(source) {
+            return Some(expression.map(|expression| (expression, *text)));
+        }
+        if kept.parsed.len() >= KEPT || kept.bytes + source.len() > KEPT_BYTES {
+            return None;
+        }
+        let arena = kept.arena;
+        let text: &'static str = arena.alloc_str(source);
+        let expression = Parser::new(arena, text, SourceType::mjs())
+            .parse_expression()
+            .ok()
+            .map(|expression| &*arena.alloc(expression));
+        kept.bytes += source.len();
+        kept.parsed.insert(text, expression);
+        Some(expression.map(|expression| (expression, text)))
+    })
+}
+
+/// Run `with` on `source` parsed as an expression and the text its spans index, or on `None`
+/// when it doesn't parse.
+fn with_expression<T>(source: &str, with: impl FnOnce(Option<(&Expression<'_>, &str)>) -> T) -> T {
+    if let Some(found) = kept(source) {
+        return with(found);
+    }
     let allocator = Allocator::default();
     let expression = Parser::new(&allocator, source, SourceType::mjs())
         .parse_expression()
-        .ok()?;
-    let mut evaluator = Evaluator {
-        source,
-        lookup: &|_| None,
-        frames: Vec::new(),
-        steps: 0,
-        fixed: 0,
-    };
-    match evaluator.eval(&expression) {
-        Ok(value @ Val::Function(_)) => Some(value),
-        _ => None,
-    }
+        .ok();
+    with(expression.as_ref().map(|expression| (expression, source)))
+}
+
+/// The arrow function in `source` (`(a, b) => …`), or the function (`function f(a) { … }`), as
+/// a value; `None` if it isn't one.
+pub fn function(source: &str) -> Option<Val> {
+    with_expression(source, |parsed| {
+        let (expression, source) = parsed?;
+        let mut evaluator = Evaluator {
+            source,
+            lookup: &|_| None,
+            frames: Vec::new(),
+            steps: 0,
+            fixed: 0,
+        };
+        match evaluator.eval(expression) {
+            Ok(value @ Val::Function(_)) => Some(value),
+            _ => None,
+        }
+    })
 }
 
 /// Evaluate `source` with free names from `lookup`.
 pub fn evaluate(source: &str, lookup: &dyn Fn(&str) -> Option<Val>) -> Result<Val> {
-    let allocator = Allocator::default();
-    let expression = Parser::new(&allocator, source, SourceType::mjs())
-        .parse_expression()
-        .map_err(|_| Unsupported)?;
-    let mut evaluator = Evaluator {
-        source,
-        lookup,
-        frames: Vec::new(),
-        steps: 0,
-        fixed: 0,
-    };
-    evaluator.eval(&expression)
+    with_expression(source, |parsed| {
+        let (expression, source) = parsed.ok_or(Unsupported)?;
+        let mut evaluator = Evaluator {
+            source,
+            lookup,
+            frames: Vec::new(),
+            steps: 0,
+            fixed: 0,
+        };
+        evaluator.eval(expression)
+    })
 }
 
 /// Enough for a few thousand rows of list work; more than that belongs in the browser.
@@ -548,21 +610,20 @@ impl Evaluator<'_> {
     /// Evaluate a piece of source (a closure's body or one of its declarations) in the current
     /// frames. Its spans point into its own text.
     fn eval_source(&mut self, source: &str) -> Result<Val> {
-        let allocator = Allocator::default();
-        let expression = Parser::new(&allocator, source, SourceType::mjs())
-            .parse_expression()
-            .map_err(|_| Unsupported)?;
-        let mut inner = Evaluator {
-            source,
-            lookup: self.lookup,
-            frames: std::mem::take(&mut self.frames),
-            steps: self.steps,
-            fixed: self.fixed,
-        };
-        let result = inner.eval(&expression);
-        self.frames = inner.frames;
-        self.steps = inner.steps;
-        result
+        with_expression(source, |parsed| {
+            let (expression, source) = parsed.ok_or(Unsupported)?;
+            let mut inner = Evaluator {
+                source,
+                lookup: self.lookup,
+                frames: std::mem::take(&mut self.frames),
+                steps: self.steps,
+                fixed: self.fixed,
+            };
+            let result = inner.eval(expression);
+            self.frames = inner.frames;
+            self.steps = inner.steps;
+            result
+        })
     }
 
     /// Call `callback(item, index)` for an array method.
@@ -624,11 +685,20 @@ impl Evaluator<'_> {
     /// own above what it closed over, and only those may change.
     fn run_block(&mut self, closure: &Closure, arguments: Vec<Val>) -> Result<Val> {
         let wrapped = format!("({})", closure.body);
-        let allocator = Allocator::default();
-        let expression = Parser::new(&allocator, &wrapped, SourceType::mjs())
-            .parse_expression()
-            .map_err(|_| Unsupported)?;
-        let expression = match &expression {
+        with_expression(&wrapped, |parsed| {
+            let (expression, wrapped) = parsed.ok_or(Unsupported)?;
+            self.run_statements(closure, arguments, expression, wrapped)
+        })
+    }
+
+    fn run_statements(
+        &mut self,
+        closure: &Closure,
+        arguments: Vec<Val>,
+        expression: &Expression<'_>,
+        wrapped: &str,
+    ) -> Result<Val> {
+        let expression = match expression {
             Expression::ParenthesizedExpression(inner) => &inner.expression,
             other => other,
         };
@@ -654,7 +724,7 @@ impl Evaluator<'_> {
             })
             .collect();
         let mut inner = Evaluator {
-            source: &wrapped,
+            source: wrapped,
             lookup: self.lookup,
             frames: vec![closure.captured.clone(), params],
             steps: self.steps,
@@ -2059,6 +2129,66 @@ mod tests {
         evaluate(source, &lookup)
             .ok()
             .map(|value| value.into_json().unwrap())
+    }
+
+    #[test]
+    fn an_expression_is_parsed_once_and_answers_the_same_each_time() {
+        // The second evaluation reads the kept tree: the same answers, a regular expression's
+        // flags (read from the kept text by span) and a statement body included.
+        for _ in 0..3 {
+            assert_eq!(
+                run("rows.map((row) => row.label).join('-')"),
+                Some(serde_json::json!("a-b"))
+            );
+            assert_eq!(run("money(250)"), Some(serde_json::json!("$2.50")));
+            assert_eq!(
+                run("'Ada Bo'.replace(/[a-z]/gi, '*')"),
+                Some(serde_json::json!("*** **"))
+            );
+            assert_eq!(
+                run("name +"),
+                None,
+                "what doesn't parse is remembered as that"
+            );
+            let total = function("(list) => { let sum = 0; for (const each of list) { sum += each.kg; } return sum; }");
+            let lookup = |name: &str| match name {
+                "total" => total.clone(),
+                "rows" => Some(Val::json(serde_json::json!([{ "kg": 2.5 }, { "kg": 4 }]))),
+                _ => None,
+            };
+            assert_eq!(
+                evaluate("total(rows)", &lookup)
+                    .unwrap()
+                    .into_json()
+                    .unwrap(),
+                serde_json::json!(6.5)
+            );
+        }
+        assert!(kept("money(250)").is_some(), "kept");
+    }
+
+    #[test]
+    fn past_what_is_kept_an_expression_is_still_evaluated() {
+        // More distinct expressions than are kept (a server that renders generated ones would
+        // otherwise grow without end): the rest are parsed where they're used.
+        for n in 0..KEPT + 200 {
+            assert_eq!(run(&format!("{n} + 1")), Some(serde_json::json!(n + 1)));
+        }
+        assert!(kept("0 + 1").is_some(), "the first are kept");
+        assert!(
+            kept(&format!("{} + 1", KEPT + 100)).is_none(),
+            "the last are not"
+        );
+        assert_eq!(
+            run(&format!("{} + 1", KEPT + 100)),
+            Some(serde_json::json!(KEPT + 101))
+        );
+        // By size too: one long expression past the byte limit isn't kept either.
+        PARSED.with(|parsed| *parsed.borrow_mut() = None);
+        let long = format!("'{}'.length", "x".repeat(KEPT_BYTES));
+        assert_eq!(run(&long), Some(serde_json::json!(KEPT_BYTES)));
+        assert!(kept(&long).is_none());
+        assert!(kept("1 + 1").is_some(), "and a short one after it still is");
     }
 
     #[test]
