@@ -561,6 +561,12 @@ jobs:
           path: compiler/zubra.wasm
           retention-days: 30
           overwrite: true
+      # What rendering costs in this build, against the latest release's, for the job's log:
+      # both timed in one process, so the runner's noise is in both.
+      - run: |
+          npm pack @zubra/compiler --pack-destination "$RUNNER_TEMP" > /dev/null
+          mkdir -p "$RUNNER_TEMP/released" && tar -xzf "$RUNNER_TEMP"/zubra-compiler-*.tgz -C "$RUNNER_TEMP/released"
+          node benchmarks/server-render.mjs --against "$RUNNER_TEMP/released/package/zubra.wasm"
       # (Its test-only dependencies: LiquidJS for the embed build's Shopify blocks.)
       - run: npm ci
         working-directory: compiler
