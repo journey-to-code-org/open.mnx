@@ -173,23 +173,32 @@ for (const impl of IMPLS) {
     return Math.round(median(loads));
   };
 
+  // `pageState` is the state, or a function that makes the state of each render: data that is
+  // new each time (another customer's orders) is what a renderer does; the same data again also
+  // shows what a server keeps from the last render.
+  let turn = 0;
   const time = async (pageState) => {
-    for (let i = 0; i < Math.max(50, RENDERS / 10); i++) await server.renderer.page(pageState);
+    const next = typeof pageState === 'function' ? pageState : () => pageState;
+    for (let i = 0; i < Math.max(50, RENDERS / 10); i++) await server.renderer.page(next(turn++));
     const batches = [];
     for (let batch = 0; batch < 5; batch++) {
+      const states = Array.from({ length: RENDERS / 5 }, () => next(turn++)); // made outside the clock
       const started = performance.now();
-      for (let i = 0; i < RENDERS / 5; i++) await server.renderer.page(pageState);
+      for (const each of states) await server.renderer.page(each);
       batches.push(((performance.now() - started) / (RENDERS / 5)) * 1000);
     }
     return Math.round(median(batches));
   };
+  const fresh = (orders) => (i) => ({ orders: orders.map((order, at) => (at ? order : { ...order, customer: `Customer ${i}` })), error: '', message: '' });
   results.server[impl] = {
     html: gz(html),
     js,
     requests,
     defined: await defined(),
-    render3: await time(state),
-    render100: await time({ orders: many(100), error: '', message: '' }),
+    render3: await time(fresh(seed())),
+    render100: await time(fresh(many(100))),
+    again3: await time(state),
+    again100: await time({ orders: many(100), error: '', message: '' }),
     beforeJavaScript: await probes(open, server.url),
   };
   server.close();
@@ -200,8 +209,10 @@ table(`The server page (render: median of 5 batches, ${RENDERS} renders in all, 
   ['HTML, 3 orders (gzip)', ...IMPLS.map((impl) => kb(results.server[impl].html))],
   ['JavaScript loaded (gzip)', ...IMPLS.map((impl) => `${kb(results.server[impl].js)} in ${results.server[impl].requests} request${results.server[impl].requests === 1 ? '' : 's'}`)],
   ['elements defined, slow connection', ...IMPLS.map((impl) => `${results.server[impl].defined} ms`)],
-  ['render, 3 orders', ...IMPLS.map((impl) => `${results.server[impl].render3} µs`)],
-  ['render, 100 orders', ...IMPLS.map((impl) => `${results.server[impl].render100} µs`)],
+  ['render, 3 orders, new data each time', ...IMPLS.map((impl) => `${results.server[impl].render3} µs`)],
+  ['render, 100 orders, new data each time', ...IMPLS.map((impl) => `${results.server[impl].render100} µs`)],
+  ['render, 3 orders, the same data again', ...IMPLS.map((impl) => `${results.server[impl].again3} µs`)],
+  ['render, 100 orders, the same data again', ...IMPLS.map((impl) => `${results.server[impl].again100} µs`)],
   ['JS off: orders readable', ...IMPLS.map((impl) => yes(results.server[impl].beforeJavaScript.rows))],
   ['JS off: label names input', ...IMPLS.map((impl) => yes(results.server[impl].beforeJavaScript.label))],
   ['JS off: form adds the order', ...IMPLS.map((impl) => yes(results.server[impl].beforeJavaScript.post))],
