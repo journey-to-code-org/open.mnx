@@ -23,8 +23,26 @@
 <ds-quantity label="" name="" value:model={1} min={1} max={10}>
   <label for={inputId}>{label}</label>
   <div>
-    <button type="button" aria-label="Decrease {label}" disabled={value <= min} onclick={() => (value = clamp(value - 1))}>−</button>
-    <input id={inputId} name={name || null} type="number" min={min} max={max} value={value} onchange={typed}>
-    <button type="button" aria-label="Increase {label}" disabled={value >= max} onclick={() => (value = clamp(value + 1))}>+</button>
+    <button
+      type="button"
+      aria-label="Decrease {label}"
+      disabled={value <= min}
+      onclick={() => (value = clamp(value - 1))}
+    >−</button>
+    <input
+      id={inputId}
+      name={name || null}
+      type="number"
+      min={min}
+      max={max}
+      value={value}
+      onchange={typed}
+    >
+    <button
+      type="button"
+      aria-label="Increase {label}"
+      disabled={value >= max}
+      onclick={() => (value = clamp(value + 1))}
+    >+</button>
   </div>
 </ds-quantity>

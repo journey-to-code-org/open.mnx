@@ -37,12 +37,12 @@ Zubra 5.14.0, Lit 3.3.3, Stencil 4.45.3 and Enhance SSR 4.0.3, all from npm, on 
 
 | | Zubra | Lit | Stencil | Enhance |
 |---|---:|---:|---:|---:|
-| Components | 160 | 274 | 245 | 232 |
+| Components | 189 | 274 | 245 | 232 |
 | Support code the tool needed | 0 | 0 | 0 | 92 |
 | React and Vue bindings, by hand | 18 | 47 | 21 | 34 |
 | Build configuration | 1 | 0 | 36 | 0 |
 | Server page | 19 | 25 | 22 | 23 |
-| **Total** | **198** | **346** | **324** | **381** |
+| **Total** | **227** | **346** | **324** | **381** |
 
 **JavaScript the design system adds to each host** (gzip, over the same host with no design system):
 
@@ -70,7 +70,7 @@ Zubra also has a 1.1 KB chunk loaded on demand (it repairs hydration markers a s
 
 ## What the numbers don't say
 
-- **One author wrote all four**, in one sitting, and six components is a small design system. Line counts are that author's code, not the least possible.
+- **One author wrote all four**, in one sitting, and six components is a small design system. Line counts are that author's code, not the least possible. The Zubra components are counted as `zubra fmt` writes them (it puts long tags over several lines); the others are as written by hand.
 - **Lit and Stencil use shadow DOM here**, their default. That is why their forms don't post with JavaScript off: a form doesn't look inside a shadow root, so the controls submit through `ElementInternals`, which needs the element running. Stencil with `shadow: false` would post; that wasn't built.
 - **Enhance isn't on `@enhance/element` in the browser.** Its elements render in their constructor, which `document.createElement` refuses, and React and Angular create elements that way. It also has attributes and a store but no properties. `impl/enhance/element.mjs` (the 92 support lines) keeps Enhance's element functions and morphdom on a base that renders once connected. Enhance's small size is partly that base.
 - **The Vue host uses plain `v-model`** on the two controls, because Stencil's Vue output supports only that. Zubra's `v-model:selected` and `v-model:open` aren't exercised.

@@ -23,8 +23,13 @@
 <ds-tabs tabs={[]} selected:model="" label="">
   <div role="tablist" aria-label={label || null} ref={list} onkeydown={move}>
     <zb-each items={tabs} as="tab" key={tab.id}>
-      <button type="button" role="tab" aria-selected={tab.id === selected ? "true" : "false"}
-              tabindex={tab.id === selected ? 0 : -1} onclick={() => (selected = tab.id)}>{tab.label}</button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab.id === selected ? "true" : "false"}
+        tabindex={tab.id === selected ? 0 : -1}
+        onclick={() => (selected = tab.id)}
+      >{tab.label}</button>
     </zb-each>
   </div>
 </ds-tabs>

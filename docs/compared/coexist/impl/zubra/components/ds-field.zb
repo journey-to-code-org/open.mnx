@@ -17,8 +17,14 @@
 </style>
 <ds-field label="" name="" value:model="" required={false} error="">
   <label for={inputId}>{label}</label>
-  <input id={inputId} name={name || null} value={value} required={required}
-         aria-invalid={error ? "true" : "false"} aria-describedby={error ? errorId : null}
-         oninput={(event) => (value = event.target.value)}>
+  <input
+    id={inputId}
+    name={name || null}
+    value={value}
+    required={required}
+    aria-invalid={error ? "true" : "false"}
+    aria-describedby={error ? errorId : null}
+    oninput={(event) => (value = event.target.value)}
+  >
   <p zb-if={error} id={errorId} role="alert">{error}</p>
 </ds-field>
