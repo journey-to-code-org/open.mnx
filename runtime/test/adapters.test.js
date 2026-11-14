@@ -61,6 +61,31 @@ test('the React wrapper renders a shadow-DOM element\'s shadow root on the serve
   assert.equal(renderToString(React.createElement(Other, {})), '<zb-unrendered></zb-unrendered>');
 });
 
+test("without the server half loaded, a wrapper renders the bare host (it doesn't import server.js)", async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const adapter of ['react.js', 'vue.js']) {
+    assert.doesNotMatch(readFileSync(new URL(`../src/${adapter}`, import.meta.url), 'utf8'), /from '\.\/server\.js'/, `${adapter} reaches serverContent through the registry`);
+  }
+  const key = Symbol.for('zubra.serverContent');
+  const registered = globalThis[key];
+  assert.equal(typeof registered, 'function', 'server.js registers serverContent when it loads');
+  const field = { zubra: { tag: 'zb-late-field', props: { value: { attribute: 'value', default: 0, required: false, model: true } }, events: ['valuechange'], slots: [], shadow: true, form: true } };
+  registerRenderer('zb-late-field', (props) => `<zb-late-field><template shadowrootmode="open"><b>${props.value ?? 0}</b></template></zb-late-field>`);
+  const Field = wrapReact(field);
+  const VueField = wrapVue(field);
+  const { createSSRApp, h } = await import('vue');
+  const { renderToString: vueToString } = await import('vue/server-renderer');
+  delete globalThis[key];
+  try {
+    assert.equal(renderToString(React.createElement(Field, { value: 3 })), '<zb-late-field zb-props="{&quot;value&quot;:3}"></zb-late-field>');
+    assert.doesNotMatch(await vueToString(createSSRApp({ render: () => h(VueField, { value: 3 }) })), /shadowrootmode/);
+  } finally {
+    globalThis[key] = registered;
+  }
+  assert.match(renderToString(React.createElement(Field, { value: 3 })), /<template shadowrootmode="open"><b>3<\/b><\/template>/);
+  assert.match(await vueToString(createSSRApp({ render: () => h(VueField, { value: 3 }) })), /<template shadowrootmode="open"><b>3<\/b><\/template>/);
+});
+
 test('the Vue wrapper declares the props, events and v-model it supports', () => {
   const Picker = wrapVue(element({ value: '', label: 'x' }, ['valuechange', 'open']));
   assert.equal(Picker.name, 'ZbPicker');

@@ -14,11 +14,15 @@
 // - `value` + `onValueChange` is React's controlled pattern; any `<prop>` + `<prop>change` pair
 //   works the same way.
 import * as React from 'react';
-import { serverContent } from './server.js';
 import { outletsOf } from './outlet.js';
 import { routeLinks } from './navigation.js';
-import './context.js';
+import { defineContextElement } from './context-element.js';
 import { subscribe, read } from './bridge.js';
+
+// The server half (`server.js`) isn't imported here: a browser bundle would carry it for nothing.
+// It registers itself when a server build loads it (the plugin's server output imports it to
+// register each component's renderer), and without it there is nothing to render with anyway.
+const serverContent = (Element, options) => globalThis[Symbol.for('zubra.serverContent')]?.(Element, options) ?? '';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? React.useEffect : React.useLayoutEffect;
 
@@ -219,6 +223,7 @@ export function useRouteLinks(navigate, options) {
  * `value` can also be a signal. It renders a `<zb-context>` element, which is `display: contents`.
  */
 export function ZubraContext({ context, value, children }) {
+  defineContextElement(); // once, before the element below is created
   const ref = React.useRef(null);
   useIsomorphicLayoutEffect(() => {
     ref.current.context = context;

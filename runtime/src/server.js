@@ -89,6 +89,10 @@ export function serverContent(Element, { props = {}, name } = {}) {
   return `${content}<input type="hidden" name="${escapeAttribute(String(name))}" value="${escapeAttribute(text)}" data-zb-fallback>`;
 }
 
+// The React and Vue adapters reach `serverContent` through this, not an import, so their browser
+// bundles don't carry this module. One per process, as the renderers are.
+globalThis[Symbol.for('zubra.serverContent')] = serverContent;
+
 /** `serverContent` for a shadow-DOM element (the 2.11 name); empty for a light-DOM one. */
 export function shadowContent(Element, options) {
   return Element?.zubra?.shadow ? serverContent(Element, options) : '';
