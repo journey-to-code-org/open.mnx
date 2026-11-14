@@ -15,86 +15,10 @@
 // consumer that asked before the element was given its context asks again when the element
 // announces it with a `context-provider` event (children connect after their parent, so one
 // given its context before it's in the document is there when they first ask).
-import { Signal } from './signal.js';
-import { effect, root } from './effect.js';
-import { ContextProviderEvent } from './element.js';
+//
+// The element is in `context-element.js`; importing this module defines it.
+import { defineContextElement } from './context-element.js';
 
-const isSignal = (value) => value instanceof Signal.State || value instanceof Signal.Computed;
-const unwrap = (value) => (isSignal(value) ? value.get() : value);
-
-const Base = globalThis.HTMLElement ?? class {};
-
-export class ZubraContextElement extends Base {
-  #context = undefined;
-  #value = undefined;
-  #subscribers = new Set();
-  #watching = null; // the effect following a signal value
-
-  constructor() {
-    super();
-    this.addEventListener('context-request', (event) => {
-      if (this.#context === undefined || event.context !== this.#context || event.contextTarget === this) return;
-      event.stopPropagation();
-      const current = Signal.subtle.untrack(() => unwrap(this.#value));
-      if (!event.subscribe) return event.callback(current);
-      const subscriber = { callback: event.callback };
-      subscriber.unsubscribe = () => this.#subscribers.delete(subscriber);
-      this.#subscribers.add(subscriber);
-      event.callback(current, subscriber.unsubscribe);
-    });
-  }
-
-  /** The context key this element provides (from `createContext()`, or any protocol key). */
-  get context() {
-    return this.#context;
-  }
-
-  set context(key) {
-    if (key === this.#context) return;
-    // Consumers of the old key keep what they have, but stop hearing from this element.
-    this.#subscribers.clear();
-    this.#context = key;
-    this.#announce();
-  }
-
-  /** The value, or a signal holding it. */
-  get value() {
-    return this.#value;
-  }
-
-  set value(next) {
-    if (Object.is(next, this.#value)) return;
-    this.#value = next;
-    this.#watching?.dispose();
-    this.#watching = null;
-    if (isSignal(next)) {
-      let first = true;
-      this.#watching = root(() => effect(() => {
-        const value = next.get();
-        if (first) first = false;
-        else Signal.subtle.untrack(() => this.#notify(value));
-      }));
-    }
-    this.#notify(Signal.subtle.untrack(() => unwrap(next)));
-  }
-
-  connectedCallback() {
-    if (!this.style.display) this.style.display = 'contents';
-  }
-
-  #notify(value) {
-    for (const subscriber of [...this.#subscribers]) subscriber.callback(value, subscriber.unsubscribe);
-  }
-
-  #announce() {
-    if (this.#context !== undefined && this.isConnected) this.dispatchEvent(new ContextProviderEvent(this.#context, this));
-  }
-}
-
-/** Define `<zb-context>` (once; a no-op where there's no `customElements`, as on a server). */
-export function defineContextElement() {
-  const registry = globalThis.customElements;
-  if (registry && !registry.get('zb-context')) registry.define('zb-context', ZubraContextElement);
-}
+export * from './context-element.js';
 
 defineContextElement();

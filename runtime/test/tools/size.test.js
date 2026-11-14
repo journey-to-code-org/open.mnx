@@ -74,6 +74,30 @@ for (const [entry, budget] of Object.entries(BUDGETS)) {
   });
 }
 
+// What a framework adapter adds to an app that uses only `wrap()` (what a `.zb` import in a
+// `.jsx` or `.vue` file compiles to): the framework and the runtime's core are the app's
+// already. The server half (`server.js`) and `<zb-context>` are not in it: the first registers
+// itself where a server build loads it, the second is defined when a `ZubraContext` is rendered.
+// (React's includes `<zb-outlet>`, which `wrap()` itself fills.)
+const ADAPTERS = {
+  'dist/production/react.js': { gzip: 2 * 1024, external: ['react', 'react-dom', 'react-dom/client'] },
+  'dist/production/vue.js': { gzip: 1.5 * 1024, external: ['vue'] },
+};
+
+for (const [entry, budget] of Object.entries(ADAPTERS)) {
+  test(`${entry}: wrap() alone fits its budget, without the server half or <zb-context>`, async (t) => {
+    const core = ['element.js', 'effect.js', 'signal.js', 'signal-impl.js', 'deep.js', 'resource.js', 'index.js'];
+    const shared = { name: 'shared', setup(build) { build.onResolve({ filter: /.*/ }, (args) => (budget.external.includes(args.path) || core.includes(args.path.replace(/^\.\//, '')) ? { path: args.path, external: true } : undefined)); } };
+    const result = await build({ stdin: { contents: `export { wrap } from ${JSON.stringify(join(here, '../..', entry))};`, resolveDir: here }, bundle: true, minify: true, format: 'esm', write: false, logLevel: 'silent', plugins: [shared] });
+    const code = result.outputFiles[0].text;
+    const gzip = gzipSync(code).length;
+    t.diagnostic(`${entry} (wrap): ${code.length} B minified, ${gzip} B gzip`);
+    assert.ok(gzip <= budget.gzip, `${gzip} B gzip > ${budget.gzip} B`);
+    assert.ok(!code.includes('shadowrootmode') && !code.includes('data-zb-fallback'), 'no server rendering code');
+    assert.ok(!code.includes('zb-context'), 'no <zb-context> element');
+  });
+}
+
 // What a server without a bundler sends (`@zubra/server` in production): `dist/production` as it
 // is, each module its own file, compressed one by one. 38.4 KB before the production build was
 // minified (5.14); 17.9 KB after.

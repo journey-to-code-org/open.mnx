@@ -1,0 +1,30 @@
+<!--
+  A labelled text input with an error message. `value` is two-way. The input inside carries
+  `name`, so a form submits it before any JavaScript.
+  @fires valuechange - The text changed; `detail` is the new text.
+-->
+<script>
+  import { id } from '@zubra/runtime'
+  const inputId = id()
+  const errorId = id()
+</script>
+<style>
+  :host { display: grid; gap: 0.25rem; }
+  label { font-weight: 600; }
+  input { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; }
+  input[aria-invalid=true] { border-color: #c0271b; }
+  p { margin: 0; color: #c0271b; font-size: 0.85rem; }
+</style>
+<ds-field label="" name="" value:model="" required={false} error="">
+  <label for={inputId}>{label}</label>
+  <input
+    id={inputId}
+    name={name || null}
+    value={value}
+    required={required}
+    aria-invalid={error ? "true" : "false"}
+    aria-describedby={error ? errorId : null}
+    oninput={(event) => (value = event.target.value)}
+  >
+  <p zb-if={error} id={errorId} role="alert">{error}</p>
+</ds-field>

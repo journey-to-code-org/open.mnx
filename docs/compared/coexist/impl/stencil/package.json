@@ -1,0 +1,6 @@
+{
+  "name": "coexist-stencil",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The design system in Stencil. The Stencil output targets read this file; the toolchain is installed two folders up."
+}

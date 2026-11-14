@@ -108,6 +108,11 @@ export interface ZubraOptions {
    * Default `true`.
    */
   inline?: boolean;
+  /**
+   * `false`: a page's head has no `<link rel="modulepreload">` for the modules its components
+   * load. By default it has one per module, so the browser fetches them together.
+   */
+  preload?: boolean;
 }
 
 export declare function createZubra(options?: ZubraOptions): Zubra;

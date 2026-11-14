@@ -22,6 +22,7 @@ import { StringDecoder } from 'node:string_decoder';
 import * as nodeStream from 'node:stream';
 const { Transform } = nodeStream;
 import { findCompiler } from './compiler.js';
+import runtimeModules from '@zubra/runtime/modules';
 import { createCore, joinPath, parseAttributes, propsFrom, SOURCE_EXTENSION as SOURCE, TYPES } from './core.js';
 
 export { findCompiler, parseAttributes, propsFrom };
@@ -46,7 +47,7 @@ const posix = (path) => path.split(sep).join('/');
  *
  * Everything that doesn't need a disk is in `core.js`, shared with `edge.js` (Workers).
  */
-export function createZubra({ components = 'components', packages = [], prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn, gaps, clientModules, inline } = {}) {
+export function createZubra({ components = 'components', packages = [], prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn, gaps, clientModules, inline, preload } = {}) {
   const root = resolve(components);
   // The folder as the disk has it, links resolved: what a served module's real path must be inside.
   const realRoot = existsSync(root) ? realpathSync(root) : root;
@@ -134,6 +135,8 @@ export function createZubra({ components = 'components', packages = [], prefix =
     gaps,
     clientModules,
     inline,
+    preload,
+    runtimeModules,
     // The compiler keys a context by its module's path, joined to the importing component's.
     contextKey: ({ module, export: name }) => `${joinPath(posix(root), module)}#${name}`,
     // A `.js` file in the components folder, served as it is (core serves only those a browser

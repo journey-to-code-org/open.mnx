@@ -13,10 +13,14 @@
 // - Other attributes and listeners (class, style, @click, …) go to the element; slots become its
 //   children, named slots with `slot="name"`.
 import { defineComponent, h, withDirectives, Text, Comment, Fragment, customRef, getCurrentScope, onScopeDispose } from 'vue';
-import { serverContent } from './server.js';
 import { routeLinks } from './navigation.js';
-import './context.js';
+import { defineContextElement } from './context-element.js';
 import { subscribe, read, writable } from './bridge.js';
+
+// The server half (`server.js`) isn't imported here: a browser bundle would carry it for nothing.
+// It registers itself when a server build loads it (the plugin's server output imports it to
+// register each component's renderer), and without it there is nothing to render with anyway.
+const serverContent = (Element, options) => globalThis[Symbol.for('zubra.serverContent')]?.(Element, options) ?? '';
 
 const clone = (value) => (value && typeof value === 'object' ? structuredClone(value) : value);
 const pascal = (tag) => tag.split(/[-.]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join('');
@@ -146,14 +150,17 @@ export function useRouteLinks(navigate, options) {
  *
  * `value` can also be a signal. It renders a `<zb-context>` element, which is `display: contents`.
  */
-export const ZubraContext = defineComponent({
+// (A plain options object, not `defineComponent(…)`: a bundler can tell an object has no side
+// effects, and leaves this and `<zb-context>` out of an app that never provides a context.)
+export const ZubraContext = {
   name: 'ZubraContext',
   props: { context: { default: undefined }, value: { default: undefined } },
   setup(given, { slots }) {
+    defineContextElement(); // once, before the element below is created
     // Set as DOM properties when the element is created, before its children are inserted.
     return () => h('zb-context', { '.context': given.context, '.value': given.value, style: 'display: contents' }, slots.default?.());
   },
-});
+};
 
 /**
  * A Zubra signal (or a function of signals) as a Vue ref: reading `.value` tracks it in
