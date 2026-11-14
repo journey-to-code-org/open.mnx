@@ -945,6 +945,27 @@ fn form_associated_is_a_flag_not_a_prop() {
 }
 
 #[test]
+fn a_class_on_the_host_tag_is_warned_about_since_no_element_gets_it() {
+    // Issue #218: the class is a prop's default, so the server's HTML has no class.
+    let source = "<zb-x class=\"tool\" label=\"\">\n  <p>{label}</p>\n</zb-x>";
+    let warnings = zubra::warnings(source);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0]
+        .message
+        .ends_with("<zb-x> is rendered without the class"));
+    assert_eq!(warnings[0].span.column, 7);
+    let help = warnings[0].help.as_deref().unwrap_or_default();
+    assert!(help.contains("`zb-x { … }`") && help.contains("leave `class` to the page"));
+    assert!(!zubra::compile(source, "{}").unwrap().contains("class="));
+    // Without a value it's a prop the script can't name.
+    let bare = zubra::warnings("<zb-x class><p>x</p></zb-x>");
+    assert_eq!(bare.len(), 1, "{bare:?}");
+    assert!(bare[0].message.contains("`class` is a reserved word"));
+    // A class inside the component is the component's own.
+    assert!(zubra::warnings("<zb-x><p class=\"tool\">x</p></zb-x>").is_empty());
+}
+
+#[test]
 fn props_that_shadow_built_in_element_properties_are_warned_about() {
     let warnings =
         zubra::warnings("<zb-x title=\"\" hidden={false} label=\"\">\n  <p>{label}</p>\n</zb-x>");
@@ -1131,4 +1152,58 @@ fn blank_text_between_table_rows_and_cells_is_dropped_and_nowhere_else() {
         "{js}"
     );
     assert!(js.contains(r#"template: "<tr><td></td></tr>""#), "{js}");
+}
+
+#[test]
+fn the_runtime_option_moves_the_scripts_own_runtime_imports_too() {
+    // Issue #217: a bare `@zubra/runtime` left in the output needs an import map anyway.
+    let source = "<script>\n  import { hydrated } from '@zubra/runtime'\n  import { clamp } from \"@zubra/runtime/primitives\"\n  import { format } from './format.js'\n  let n = 1\n  const live = hydrated()\n</script>\n<zb-x>\n  <p>{clamp(n, 0, 2)} {live} {format(n)}</p>\n</zb-x>";
+    let imports = |runtime: &str| -> Vec<String> {
+        zubra::compile_js(source, runtime, "x.zb")
+            .unwrap()
+            .lines()
+            .filter(|line| line.starts_with("import "))
+            .map(str::to_owned)
+            .collect()
+    };
+    // A file: the entries are its siblings.
+    let file = imports("/assets/zubra/runtime/index.js");
+    assert!(
+        file.contains(&"import { hydrated } from \"/assets/zubra/runtime/index.js\";".to_owned()),
+        "{file:?}"
+    );
+    assert!(
+        file.contains(&"import { clamp } from \"/assets/zubra/runtime/primitives.js\";".to_owned()),
+        "{file:?}"
+    );
+    assert!(
+        file.contains(&"import { format } from './format.js';".to_owned()),
+        "{file:?}"
+    );
+    assert!(
+        !file.iter().any(|line| line.contains("@zubra/runtime")),
+        "{file:?}"
+    );
+    // A package or URL prefix: the entries are under it.
+    let prefix = imports("https://cdn.example/zubra");
+    assert!(
+        prefix.contains(&"import { hydrated } from \"https://cdn.example/zubra\";".to_owned()),
+        "{prefix:?}"
+    );
+    assert!(
+        prefix.contains(
+            &"import { clamp } from \"https://cdn.example/zubra/primitives\";".to_owned()
+        ),
+        "{prefix:?}"
+    );
+    // The default leaves the script's imports as written.
+    let default = imports("@zubra/runtime");
+    assert!(
+        default.contains(&"import { hydrated } from '@zubra/runtime';".to_owned()),
+        "{default:?}"
+    );
+    assert!(
+        default.contains(&"import { clamp } from \"@zubra/runtime/primitives\";".to_owned()),
+        "{default:?}"
+    );
 }

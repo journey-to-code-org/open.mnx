@@ -19,9 +19,10 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
+export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', inline = true, localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
   if (gaps !== 'warn' && gaps !== 'ignore') throw new Error(`@zubra/server: gaps is "warn" or "ignore", not ${JSON.stringify(gaps)}`);
   if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
+  if (typeof inline !== 'boolean') throw new Error(`@zubra/server: inline is true or false, not ${JSON.stringify(inline)}`);
   const memo = new Map();
   const once = (key, make) => {
     if (!cache || !memo.has(key)) memo.set(key, make());
@@ -137,25 +138,36 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
     const path = pathOf(name);
     const response = request({ emit: 'js', runtime: '@zubra/runtime', devtools, path, files: sourcesOf(path) });
     if (!response.ok) throw new Error(response.error);
-    return needs(name, response.output);
+    return resolved(needs(name, response.output));
   });
 
-  const importMap = () => `<script type="importmap">${scriptJson({ imports: { '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, '@zubra/runtime/track': `${base}/runtime/track.js`, ...syncImports, ...imports } })}</script>`;
-  const head = (names) => {
+  /** What each bare specifier a browser module may import resolves to: the import map's entries. */
+  const mapping = () => ({ '@zubra/runtime': `${base}/runtime/index.js`, '@zubra/runtime/spread': `${base}/runtime/spread.js`, '@zubra/runtime/primitives': `${base}/runtime/primitives.js`, '@zubra/runtime/motion': `${base}/runtime/motion.js`, '@zubra/runtime/track': `${base}/runtime/track.js`, ...syncImports, ...imports });
+  /**
+   * `inline: false` (a Content-Security-Policy without `'unsafe-inline'`, on a site that can't
+   * give each response a nonce): a page gets no import map, so every module is served with its
+   * bare imports already resolved, to what the import map would have said.
+   */
+  const resolved = (code) => (inline ? code : resolveImports(String(code), mapping()));
+  const importMap = (options) => (inline ? `<script type="importmap"${nonceAttribute(options)}>${scriptJson({ imports: mapping() })}</script>` : '');
+  const head = (names, options) => {
     // A component that needs a package that isn't installed fails here, while the page is built,
     // with the reason, rather than later in the browser as an unresolved import.
     for (const name of names) js(name);
+    // Without inline elements: a stylesheet link per component that has CSS, and no import map.
+    if (!inline) return names.filter((name) => css(name)).map((name) => `<link rel="stylesheet" href="${escapeAttribute(`${base}/components/${name}.css`)}" data-zb-components>`).join('\n');
     const styles = names.map(css).join('\n');
-    return `${styles ? `<style data-zb-components>${styles}</style>\n` : ''}${importMap()}`;
+    return `${styles ? `<style data-zb-components${nonceAttribute(options)}>${styles}</style>\n` : ''}${importMap(options)}`;
   };
   // `clientModules: 'needed'`: a component whose server HTML is complete on its own (the
   // compiler's `client` list is empty: no state, handlers, hooks or values computed in the
   // browser, in it or the components it uses) gets no module. For pages that never change
   // those components' props from script.
   const shipped = (names) => (clientModules === 'needed' ? names.filter((name) => (describe(name).client ?? ['unknown']).length > 0) : names);
-  const scripts = (all, async = false) => {
+  const scripts = (all, async = false, options) => {
     const names = shipped(all);
-    return names.length ? `<script type="module"${async ? ' async' : ''}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '';
+    if (!inline) return names.map((name) => `<script type="module"${async ? ' async' : ''} src="${escapeAttribute(`${base}/components/${name}.js`)}"></script>`).join('');
+    return names.length ? `<script type="module"${async ? ' async' : ''}${nonceAttribute(options)}>${names.map((name) => `import '${base}/components/${name}.js';`).join(' ')}</script>` : '';
   };
 
   /** What a request for `pathname` gets: `{ status, type, body }`, or null if it isn't ours. */
@@ -165,6 +177,11 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
     // A malformed escape (`%E0%A4%A`) is the client's mistake: a 400, never a throw that
     // takes down a server written as `if (zubra.handle(req, res)) return;`.
     try { rest = decodeURIComponent(pathname.slice(base.length + 1)); } catch { return { status: 400, type: 'text/plain', body: 'Bad request' }; }
+    // A component's stylesheet, for the `<link>` a page without inline elements has.
+    if (!inline && rest.startsWith('components/') && rest.endsWith('.css')) {
+      const name = rest.slice('components/'.length, -4);
+      return files.has(name) ? { status: 200, type: TYPES['.css'], body: css(name) } : { status: 404, type: 'text/plain', body: 'Not found' };
+    }
     if (rest.startsWith('components/') && rest.endsWith('.js')) {
       const name = rest.slice('components/'.length, -3);
       // A plain module a component imports (`./theme.js`): the host serves it from the
@@ -173,7 +190,8 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
       // functions import (keys, database code), and those stay on the server.
       if (!files.has(name)) {
         const path = rest.slice('components/'.length);
-        return (browserModules().has(path) && localModule(path)) || { status: 404, type: 'text/plain', body: 'Not found' };
+        const module = browserModules().has(path) && localModule(path);
+        return module ? (inline ? module : { ...module, body: resolved(module.body) }) : { status: 404, type: 'text/plain', body: 'Not found' };
       }
       // A package's copy of a tag the app has too: the module is the app's, so the browser
       // defines the tag once, however the package's components import it.
@@ -185,7 +203,9 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
       return { status: 200, type: TYPES['.js'], body: js(name) };
     }
     // The runtime and @zubra/sync are the host's to serve (from disk on Node, from static assets elsewhere).
-    return assets(rest);
+    const asset = assets(rest);
+    // The runtime's and @zubra/sync's own modules import each other by name too.
+    return asset && !inline && asset.status === 200 && rest.endsWith('.js') ? { ...asset, body: resolved(asset.body) } : asset;
   }
   const cacheControl = cache ? 'public, max-age=3600' : 'no-cache';
 
@@ -197,7 +217,8 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
   }
 
   /** One page: render components into it, then `finish()` it (or use `head()` and `scripts()`). */
-  function page() {
+  function page(options = {}) {
+    nonceAttribute(options); // a nonce that can't be one fails here, not in the middle of a page
     const used = [];
     let renders = 0;
     const provided = {};
@@ -234,6 +255,8 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
         if (!promises.length) return render(key, props, slots, [], idPrefix, provided);
         const given = Object.fromEntries(Object.entries(props).filter(([, value]) => !(value && typeof value.then === 'function')));
         const names = promises.map(([name]) => name);
+        // A promise prop is handed over by inline scripts, which a page can't do without.
+        if (!inline && options.nonce === undefined) throw new Error('@zubra/server: with inline: false, a prop given as a promise needs a nonce for the scripts that stream its value: page({ nonce })');
         const id = String(streamed++);
         const shell = withStreamId(render(key, given, slots, names, idPrefix, provided), id);
         const entry = { key, id, given, slots, promises: new Map(promises), shell, count: 0, idPrefix };
@@ -243,7 +266,7 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
         pendingRenders.push(entry);
         // Until the values arrive, the element (should it start first) holds a promise for
         // each, set before it upgrades, so its `zb-await` shows the pending content.
-        return `${named(shell, entry.names)}<script>(${HOLD_IN_BROWSER})(${scriptJson(id)},${scriptJson(names)})</script>`;
+        return `${named(shell, entry.names)}<script${nonceAttribute(options)}>(${HOLD_IN_BROWSER})(${scriptJson(id)},${scriptJson(names)})</script>`;
       },
       /** Whether a rendered component is waiting on a promise prop (then `stream()`, not `finish()`). */
       get pending() {
@@ -262,12 +285,12 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
         return new Response(webStream(chunks(html)), { ...init, headers: { 'content-type': 'text/html; charset=utf-8', ...init.headers } });
       },
       /** The components' CSS and the import map, for the page's `<head>`. */
-      head: () => head(used),
+      head: () => head(used, options),
       /** The module script that makes the components interactive, for the end of `<body>`. */
-      scripts: () => scripts(used),
+      scripts: () => scripts(used, false, options),
       /** A whole page with the head and scripts put in (before `</head>` and `</body>`). */
       finish(html) {
-        return insertBefore(insertBefore(html, '</head>', head(used)), '</body>', scripts(used));
+        return insertBefore(insertBefore(html, '</head>', head(used, options)), '</body>', scripts(used, false, options));
       },
     };
 
@@ -276,7 +299,7 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
       // start as soon as it has loaded instead of when the stream ends (a module script is
       // deferred until the document is complete). A region that arrives after an element has
       // started reaches it as a property change.
-      yield insertBefore(insertBefore(html, '</head>', head(used)), '</body>', scripts(used, true));
+      yield insertBefore(insertBefore(html, '</head>', head(used, options)), '</body>', scripts(used, true, options));
       const waiting = pendingRenders.splice(0).flatMap((entry) =>
         [...entry.promises].map(([name, promise]) => promise.then(
           (value) => ({ entry, name, value }),
@@ -292,7 +315,7 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
         open.delete(tagged);
         const { entry, name, value, error } = result;
         if (error !== undefined) {
-          yield swapScript(entry.id, null, { [name]: { error } });
+          yield swapScript(entry.id, null, { [name]: { error } }, options);
           continue;
         }
         entry.given[name] = value;
@@ -310,7 +333,7 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
           regions.push({ name: region, html: named(html, inner) });
           return inner;
         });
-        yield swapScript(entry.id, regions, { [name]: { value } });
+        yield swapScript(entry.id, regions, { [name]: { value } }, options);
       }
     }
   }
@@ -380,8 +403,10 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
     names: [...files.keys()],
     describe: (name) => describe(nameOf(name) ?? name),
     render: (name, props, slots) => render(nameOf(name) ?? name, props, slots),
-    head: (names = [...files.keys()]) => head(names),
-    scripts: (names = [...files.keys()]) => scripts(names),
+    css: (name) => css(nameOf(name) ?? name),
+    resolveImports: (code) => resolved(code),
+    head: (names = [...files.keys()], options) => head(names, options),
+    scripts: (names = [...files.keys()], options) => scripts(names, false, options),
   };
 }
 
@@ -563,9 +588,9 @@ export function scriptJson(value) {
 }
 
 /** The chunk for one settled promise: each resolved region in a `<template for>`, and the script. */
-function swapScript(id, regions, values) {
+function swapScript(id, regions, values, options) {
   const templates = (regions ?? []).map((region) => `<template for="${region.name}">${region.html}</template>`).join('');
-  const script = `<script>(${SWAP_IN_BROWSER})(${scriptJson(id)},${scriptJson(values)})</script>`;
+  const script = `<script${nonceAttribute(options)}>(${SWAP_IN_BROWSER})(${scriptJson(id)},${scriptJson(values)})</script>`;
   return `${templates}${script}\n`;
 }
 
@@ -663,6 +688,33 @@ function fallbackInput(attributeText, info, props) {
 }
 
 /** The relative specifiers (`./x.js`, `../x.js`) a module imports, statically or with `import()`. */
+/**
+ * ` nonce="…"` for an inline `<script>` or `<style>`, from `{ nonce }`: what a
+ * Content-Security-Policy with `'nonce-…'` lets through. Base64 (or base64url) only, as the
+ * policy's grammar has it, so it can't close the attribute.
+ */
+export function nonceAttribute(options) {
+  const nonce = options?.nonce;
+  if (nonce === undefined || nonce === null) return '';
+  if (typeof nonce !== 'string' || !/^[A-Za-z0-9+/_-]+={0,2}$/.test(nonce)) throw new Error('@zubra/server: nonce is the base64 value of the Content-Security-Policy\'s nonce (letters, digits, + / - _ and = padding)');
+  return ` nonce="${nonce}"`;
+}
+
+/**
+ * `code` with the bare specifiers its `import`s name resolved as an import map of `imports`
+ * would: an exact entry, or the longest entry ending in "/" that the specifier starts with.
+ * Relative paths, absolute paths and URLs are left alone, as is a specifier with no entry.
+ */
+export function resolveImports(code, imports) {
+  const prefixes = Object.keys(imports).filter((key) => key.endsWith('/')).sort((a, b) => b.length - a.length);
+  return code.replace(/(\bfrom\s*|\bimport\s*\(?\s*)(['"])([^'"\n]+)\2/g, (whole, before, quote, specifier) => {
+    if (/^(?:\.{0,2}\/|[a-z][a-z0-9+.-]*:)/i.test(specifier)) return whole;
+    if (Object.hasOwn(imports, specifier)) return `${before}${quote}${imports[specifier]}${quote}`;
+    const prefix = prefixes.find((key) => specifier.startsWith(key));
+    return prefix ? `${before}${quote}${imports[prefix]}${specifier.slice(prefix.length)}${quote}` : whole;
+  });
+}
+
 export function relativeImports(code) {
   const found = [];
   const pattern = /(?:\bfrom\s*|\bimport\s*\(?\s*)(['"])(\.\.?\/[^'"\n]+)\1/g;

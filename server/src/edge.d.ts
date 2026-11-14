@@ -1,7 +1,7 @@
 import type { Compiler } from '@zubra/compiler/wasm';
-import type { ComponentInfo, Page, PropInfo } from './index.js';
+import type { ComponentInfo, Page, PageOptions, PropInfo } from './index.js';
 
-export type { ComponentInfo, PropInfo };
+export type { ComponentInfo, PageOptions, PropInfo };
 
 /** A page on a host without Node: as Node's, minus `stream()` (a Node Readable); use `streamResponse()`. */
 export type EdgePage = Omit<Page, 'stream'>;
@@ -11,12 +11,12 @@ export interface EdgeZubra {
   readonly names: string[];
   describe(name: string): ComponentInfo;
   render(name: string, props?: Record<string, unknown>, slots?: Record<string, string>): string;
-  page(): EdgePage;
+  page(options?: PageOptions): EdgePage;
   /** A Response for the components' browser modules under the prefix, or null for any other request. */
   fetch(request: Request): Promise<Response | null>;
-  importMap(): string;
-  head(names?: string[]): string;
-  scripts(names?: string[]): string;
+  importMap(options?: PageOptions): string;
+  head(names?: string[], options?: PageOptions): string;
+  scripts(names?: string[], options?: PageOptions): string;
   injectShadowRoots(html: string, options?: { forms?: boolean; lightDom?: boolean }): string;
   /** A component's browser module (JavaScript). */
   module(name: string): string;
@@ -49,6 +49,13 @@ export interface EdgeOptions {
    * intended.
    */
   gaps?: 'warn' | 'ignore';
+  /**
+   * `false`: no inline `<style>` or `<script>` in a page's head and scripts, as `createZubra`'s
+   * on Node: stylesheet links, module scripts by `src`, and no import map (the components'
+   * modules are served with their imports resolved). The runtime files you serve yourself import
+   * each other by relative path, so they need nothing. Default `true`.
+   */
+  inline?: boolean;
 }
 
 export declare function createZubra(options: EdgeOptions): EdgeZubra;

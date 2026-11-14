@@ -21,6 +21,6 @@ Booking a doctor's appointment in React with MUI (Material UI): the app bar, the
   - Submitting without a time shows MUI's `FormHelperText` in MUI's error state.
   - React passes it `value` and listens with `onValueChange`, like a controlled input.
 
-The app is about 160 KB of gzipped JavaScript. React, MUI and Emotion are most of it; the Zubra runtime is about 13 KB, and the two components about 2 KB.
+The app is about 160 KB of gzipped JavaScript. React, MUI and Emotion are most of it; the Zubra runtime is about 15 KB, and the two components about 2 KB.
 
 `test/mui.test.js` checks the theme variables, both colour changes and the form in Chromium.

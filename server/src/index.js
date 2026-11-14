@@ -39,11 +39,14 @@ const posix = (path) => path.split(sep).join('/');
  * extension and serve the runtime build it reads (on by default except in production;
  * `ZUBRA_DEVTOOLS=1` turns it on there too, for a demo or a staging site). `imports`: more import map entries,
  * for packages the components import beyond `@zubra/runtime` and `@zubra/sync` (both of which
- * are served and mapped by themselves).
+ * are served and mapped by themselves). `inline: false`: no inline `<style>` or `<script>` in a
+ * page's head and scripts (stylesheet links, module scripts by `src`, and no import map: the
+ * modules are served with their imports resolved), for a Content-Security-Policy without
+ * `'unsafe-inline'`; `page({ nonce })` is the other way, where each response can have a nonce.
  *
  * Everything that doesn't need a disk is in `core.js`, shared with `edge.js` (Workers).
  */
-export function createZubra({ components = 'components', packages = [], prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn, gaps, clientModules } = {}) {
+export function createZubra({ components = 'components', packages = [], prefix = '/_zubra', cache = true, production = process.env.NODE_ENV === 'production', devtools = process.env.ZUBRA_DEVTOOLS === '1' || !production, imports = {}, warn, gaps, clientModules, inline } = {}) {
   const root = resolve(components);
   // The folder as the disk has it, links resolved: what a served module's real path must be inside.
   const realRoot = existsSync(root) ? realpathSync(root) : root;
@@ -130,6 +133,7 @@ export function createZubra({ components = 'components', packages = [], prefix =
     warn,
     gaps,
     clientModules,
+    inline,
     // The compiler keys a context by its module's path, joined to the importing component's.
     contextKey: ({ module, export: name }) => `${joinPath(posix(root), module)}#${name}`,
     // A `.js` file in the components folder, served as it is (core serves only those a browser
@@ -165,15 +169,16 @@ export function createZubra({ components = 'components', packages = [], prefix =
   }
 
   /** One page, as in core.js, and `stream(html)`: the same chunks as a Node Readable. */
-  function page() {
-    const one = core.page();
+  function page(options) {
+    const one = core.page(options);
     one.stream = (html) => nodeStream.Readable.from(one.chunks(html));
     return one;
   }
 
   /**
    * For static sites: write every component's browser module and @zubra/runtime under `dir`, at
-   * the paths the pages import (`<dir>/_zubra/components/…`, `<dir>/_zubra/runtime/…`).
+   * the paths the pages import (`<dir>/_zubra/components/…`, `<dir>/_zubra/runtime/…`), and with
+   * `inline: false` each component's stylesheet beside its module.
    */
   function writeAssets(dir) {
     const out = join(resolve(dir), ...base.split('/').filter(Boolean));
@@ -184,6 +189,20 @@ export function createZubra({ components = 'components', packages = [], prefix =
     }
     cpSync(runtimeDir, join(out, 'runtime'), { recursive: true });
     if (syncDir) cpSync(syncDir, join(out, 'sync'), { recursive: true, filter: (from) => !from.endsWith('.d.ts') });
+    if (inline !== false) return;
+    // `inline: false`: the pages link each component's stylesheet, and have no import map, so
+    // the copied modules' own bare imports (the runtime's, @zubra/sync's) are resolved here.
+    for (const name of files.keys()) {
+      const css = core.css(name);
+      if (css) writeFileSync(join(out, 'components', `${name}.css`), css);
+    }
+    (function walk(dir) {
+      for (const entry of readdirSync(dir)) {
+        const path = join(dir, entry);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (extname(path) === '.js') writeFileSync(path, core.resolveImports(readFileSync(path, 'utf8')));
+      }
+    })(out);
   }
 
   /**
