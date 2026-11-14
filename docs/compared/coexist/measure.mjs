@@ -5,8 +5,9 @@
 //   2. what each host sends: the JavaScript of its production build (Vite, minified, gzip level
 //      9), less the same host built with no design system (impl/none), which leaves what the
 //      components and their runtime add in that host;
-//   3. the server page: the HTML and the JavaScript it loads (gzip level 9), how long the page
-//      takes to render in this Node.js process, and what works with JavaScript off.
+//   3. the server page: the HTML and the JavaScript it loads (gzip level 9), how long until its
+//      elements are defined on a slow connection, how long the page takes to render in this
+//      Node.js process, and what works with JavaScript off.
 //
 //   npm install && npm run build:stencil && node measure.mjs [--renders 2000] [--json results.json]
 //
@@ -154,6 +155,24 @@ for (const impl of IMPLS) {
   const requests = scripts.length;
   await context.close();
 
+  // On a slow connection (150 ms latency, 1.6 Mbit/s down, nothing cached): how long after
+  // navigation until the page's elements are defined, so its controls work. Median of 5 loads.
+  const defined = async () => {
+    const loads = [];
+    for (let i = 0; i < 5; i++) {
+      const slow = await browser.newContext();
+      const tab = await slow.newPage();
+      const session = await slow.newCDPSession(tab);
+      await session.send('Network.enable');
+      await session.send('Network.setCacheDisabled', { cacheDisabled: true });
+      await session.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 0.75e6 / 8 });
+      await tab.goto(server.url, { waitUntil: 'commit' });
+      loads.push(await tab.evaluate(() => Promise.all(['ds-table', 'ds-badge', 'ds-field', 'ds-quantity'].map((tag) => customElements.whenDefined(tag))).then(() => performance.now())));
+      await slow.close();
+    }
+    return Math.round(median(loads));
+  };
+
   const time = async (pageState) => {
     for (let i = 0; i < Math.max(50, RENDERS / 10); i++) await server.renderer.page(pageState);
     const batches = [];
@@ -168,6 +187,7 @@ for (const impl of IMPLS) {
     html: gz(html),
     js,
     requests,
+    defined: await defined(),
     render3: await time(state),
     render100: await time({ orders: many(100), error: '', message: '' }),
     beforeJavaScript: await probes(open, server.url),
@@ -179,6 +199,7 @@ const yes = (value) => (value ? 'yes' : 'no');
 table(`The server page (render: median of 5 batches, ${RENDERS} renders in all, Node ${process.version})`, ['', ...IMPLS], [
   ['HTML, 3 orders (gzip)', ...IMPLS.map((impl) => kb(results.server[impl].html))],
   ['JavaScript loaded (gzip)', ...IMPLS.map((impl) => `${kb(results.server[impl].js)} in ${results.server[impl].requests} request${results.server[impl].requests === 1 ? '' : 's'}`)],
+  ['elements defined, slow connection', ...IMPLS.map((impl) => `${results.server[impl].defined} ms`)],
   ['render, 3 orders', ...IMPLS.map((impl) => `${results.server[impl].render3} µs`)],
   ['render, 100 orders', ...IMPLS.map((impl) => `${results.server[impl].render100} µs`)],
   ['JS off: orders readable', ...IMPLS.map((impl) => yes(results.server[impl].beforeJavaScript.rows))],
