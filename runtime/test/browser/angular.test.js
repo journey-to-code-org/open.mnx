@@ -12,6 +12,7 @@ useBrowser({
   rating: join(here, 'fixtures/rating.zb'),
   card: join(here, 'fixtures/card.zb'),
   badge: join(here, 'fixtures/badge.zb'),
+  'dialog-box': join(here, 'fixtures/dialog-box.zb'),
 });
 
 const src = join(here, '../../src');
@@ -25,6 +26,7 @@ import { ZubraModel } from '${src}/../fesm2022/zubra-runtime-angular.mjs';
 import '/rating.js';
 import '/card.js';
 import '/badge.js';
+import '/dialog-box.js';
 
 window.log = [];
 
@@ -35,6 +37,7 @@ class App {
   title = signal(true);
   info = signal({ color: 'red' });
   control = new FormControl(1);
+  question = signal(null);
   constructor() { window.app = this; }
   changed(event) { window.log.push(['valuechange', event.detail]); }
   committed() { window.log.push(['change']); }
@@ -53,6 +56,15 @@ Component({
       @for (item of items(); track item) { <p>{{ item }}</p> }
     </zb-card>
     <zb-badge label="x" [info]="info()"></zb-badge>
+    <zb-card id="text">{{ heading() }}</zb-card>
+    <zb-card id="mixed"><h2 slot="title">Named</h2>{{ heading() }}</zb-card>
+    <zb-dialog-box>
+      @if (question(); as q) {
+        <p>{{ q.body }}</p>
+        <button slot="actions" class="cancel">Cancel</button>
+        <button slot="actions" class="go">{{ q.action }}</button>
+      }
+    </zb-dialog-box>
   \`,
 })(App);
 
@@ -78,7 +90,7 @@ before(async () => {
 
 const settle = (page) => page.evaluate(async () => {
   await window.tick();
-  await Promise.all([...document.querySelectorAll('zb-rating, zb-card, zb-badge')].map((el) => el.updateComplete));
+  await Promise.all([...document.querySelectorAll('zb-rating, zb-card, zb-badge, zb-dialog-box')].map((el) => el.updateComplete));
 });
 
 const read = (page) => page.evaluate(() => {
@@ -142,6 +154,51 @@ test('angular: bindings, slots and the ZubraModel form control', async () => {
 
   await page.evaluate(() => window.appRef.destroy());
   assert.equal(await page.$('zb-card'), null);
+  assert.deepEqual(messages.filter((message) => !/development mode/i.test(message)), []);
+  await page.close();
+});
+
+test('angular: {{ }} text as a direct child is slotted, and follows its value (#261)', async () => {
+  const { page, messages } = await open('<app-root></app-root>', { modules: ['angular'] });
+  await page.waitForFunction(() => window.appRef);
+  await settle(page);
+  const section = () => page.$eval('#text section', (el) => el.innerHTML.replace(/<!--.*?-->/g, '').trim());
+  assert.equal(await section(), 'Hi');
+  const mixed = () => page.$eval('#mixed', (el) => [el.querySelector('header').textContent, el.querySelector('section').textContent.trim()].join('|'));
+  assert.equal(await mixed(), 'Named|Hi', 'text after a named slot\'s element is the default slot\'s');
+  await page.evaluate(() => { window.app.heading.set('New'); });
+  await settle(page);
+  assert.equal(await section(), 'New', 'Angular still updates the node it made');
+  await page.evaluate(() => { window.app.heading.set(''); });
+  await settle(page);
+  assert.equal(await section(), '<p>No content</p>', 'emptied text shows the fallback');
+  await page.evaluate(() => { window.app.heading.set('Back'); });
+  await settle(page);
+  assert.equal(await section(), 'Back');
+  assert.equal(await mixed(), 'Named|Back');
+  assert.deepEqual(messages.filter((message) => !/development mode/i.test(message)), []);
+  await page.close();
+});
+
+test('angular: slot="…" elements added by @if reach a slot that hasSlot() wraps (#262)', async () => {
+  const { page, messages } = await open('<app-root></app-root>', { modules: ['angular'] });
+  await page.waitForFunction(() => window.appRef);
+  await settle(page);
+  const strip = (html) => html.replace(/<!--.*?-->/g, '').replace(/ _ng\w+(-\w+)*=""/g, '').replace(/ data-zb-slotted="[^"]*"/g, '').replace(/>\s+</g, '><').trim();
+  const read = async () => {
+    const [body, footer] = await page.$eval('zb-dialog-box', (el) => [el.querySelector('.body').innerHTML, el.querySelector('footer')?.innerHTML ?? null]);
+    return [strip(body), footer == null ? null : strip(footer)];
+  };
+  assert.deepEqual(await read(), ['', null]);
+  await page.evaluate(() => { window.app.question.set({ body: 'Sure?', action: 'Delete' }); });
+  await settle(page);
+  assert.deepEqual(await read(), ['<p>Sure?</p>', '<button slot="actions" class="cancel">Cancel</button><button slot="actions" class="go">Delete</button>']);
+  await page.evaluate(() => { window.app.question.set(null); });
+  await settle(page);
+  assert.deepEqual(await read(), ['', null]);
+  await page.evaluate(() => { window.app.question.set({ body: 'Again?', action: 'Go' }); });
+  await settle(page);
+  assert.deepEqual(await read(), ['<p>Again?</p>', '<button slot="actions" class="cancel">Cancel</button><button slot="actions" class="go">Go</button>']);
   assert.deepEqual(messages.filter((message) => !/development mode/i.test(message)), []);
   await page.close();
 });

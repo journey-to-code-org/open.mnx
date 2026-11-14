@@ -624,6 +624,7 @@ function @assignSlots(nodes) {
       for (const child of [...node.childNodes]) this.#route(child, before);
       return;
     }
+    this.#watch(node);
     const from = this.#take(node);
     // A marker or whitespace goes in the slot of what it's inserted before.
     const name = @isContent(node) ? @slotName(node) : (before && this.#holding(before)?.name) || "default";
@@ -668,11 +669,19 @@ function @assignSlots(nodes) {
       record.park.append(...record.nodes);
     }
   }
+  // A slot's text node is content only while it has words (Angular creates {{ }} text empty and
+  // fills it afterwards): hear when that changes.
+  #watch(node) {
+    if (node.nodeType === 3) this.#observer?.observe(node, { characterData: true });
+  }
   // Content removed or moved through its real parent (Vue removes via parentNode; Lit and Svelte
-  // change content next to their markers), and content whose slot attribute changed.
+  // change content next to their markers), content whose slot attribute changed, and text that
+  // was written.
   #observe() {
     this.#observer = new MutationObserver((records) => {
+      const written = new Set();
       for (const record of records) {
+        if (record.type === "characterData") written.add(record.target);
         const slot = record.type === "attributes" && this.#holding(record.target);
         if (slot && @slotName(record.target) !== slot.name) this.#route(record.target, null);
       }
@@ -684,16 +693,24 @@ function @assignSlots(nodes) {
         } else {
           actual = [...slot.park.childNodes];
         }
-        if (actual.length === slot.nodes.length && actual.every((node, i) => node === slot.nodes[i])) continue;
-        for (const node of slot.nodes) if (!actual.includes(node)) this.#unmark(node);
-        slot.nodes = actual;
-        // An element that belongs to another slot (added next to a marker here) goes there.
-        for (const node of actual) if (node.nodeType === 1 && @slotName(node) !== slot.name) this.#route(node, null);
+        if (actual.length === slot.nodes.length && actual.every((node, i) => node === slot.nodes[i])) {
+          if (!slot.nodes.some((node) => written.has(node))) continue;
+        } else {
+          for (const node of slot.nodes) if (!actual.includes(node)) this.#unmark(node);
+          slot.nodes = actual;
+          for (const node of actual) this.#watch(node);
+        }
+        // Content that belongs to another slot goes there: an element added next to a marker
+        // here, or text that was a marker while it was empty. (A copy: moving one takes it out.)
+        for (const node of [...slot.nodes]) if (@isContent(node) && @slotName(node) !== slot.name) this.#route(node, null);
         this.#show(slot);
       }
     });
     this.#observer.observe(this, { childList: true, subtree: true, attributes: true, attributeFilter: ["slot"] });
-    for (const record of this.#slots.values()) this.#observer.observe(record.park, { childList: true });
+    for (const record of this.#slots.values()) {
+      this.#observer.observe(record.park, { childList: true });
+      for (const node of record.nodes) this.#watch(node);
+    }
   }
 
   // Frameworks keep managing what they gave the element through the element itself (React calls

@@ -948,7 +948,9 @@ function bindSlot(part, open, hydrating, context) {
 // calls host.insertBefore(node, sibling) and host.removeChild(node), Vue sets textContent — so
 // the host's child methods are routed to the slots, and a MutationObserver notices content
 // removed through its real parent. Each slot keeps its nodes in order; while its region isn't
-// rendered (inside an zb-if branch that's off) they're parked in a fragment.
+// rendered (inside an zb-if branch that's off) they're parked in a fragment. A slot's own text
+// nodes are watched too: Angular creates `{{ }}` text empty and fills it afterwards, and empty
+// text is a marker until it has words.
 
 function slotRecord(context, name) {
   let slot = context.slots.get(name);
@@ -1043,11 +1045,14 @@ function routeChildren(host, context, slots, tag) {
     if (slot) slot.nodes.splice(slot.nodes.indexOf(node), 1);
     return slot;
   };
+  // A slot's text node counts as content only while it has words: hear when that changes.
+  const watch = (node) => { if (node.nodeType === TEXT) context.observer.observe(node, { characterData: true }); };
   const insert = (node, before) => {
     if (node.nodeType === 11) {
       for (const child of [...node.childNodes]) insert(child, before);
       return;
     }
+    watch(node);
     const from = take(node);
     // A marker or whitespace goes in the slot of what it's inserted before.
     const name = isContent(node) ? slotName(node) : (before && holding(before)?.name) || 'default';
@@ -1118,7 +1123,9 @@ function routeChildren(host, context, slots, tag) {
   // Content removed or moved away through its real parent (Vue removes via child.parentNode),
   // and content whose `slot` attribute changed (it moves to that slot, as with native slots).
   context.observer = new MutationObserver((records) => {
+    const written = []; // text nodes that were written
     for (const record of records) {
+      if (record.type === 'characterData') written.push(record.target);
       const slot = record.type === 'attributes' && holding(record.target);
       if (slot && slotName(record.target) !== slot.name) insert(record.target, null);
     }
@@ -1132,11 +1139,17 @@ function routeChildren(host, context, slots, tag) {
       } else {
         actual = [...slot.park.childNodes];
       }
-      if (actual.length === slot.nodes.length && actual.every((node, i) => node === slot.nodes[i])) continue;
-      for (const node of slot.nodes) if (!actual.includes(node)) unmark(node, context.slotted);
-      slot.nodes = actual;
-      // An element that belongs to another slot (added next to a marker here) goes there.
-      for (const node of actual) if (node.nodeType === 1 && slotName(node) !== slot.name) insert(node, null);
+      if (actual.length === slot.nodes.length && actual.every((node, i) => node === slot.nodes[i])) {
+        // The same nodes, but one's text was written: it may have become content, or stopped being.
+        if (!written.some((node) => slot.nodes.includes(node))) continue;
+      } else {
+        for (const node of slot.nodes) if (!actual.includes(node)) unmark(node, context.slotted);
+        slot.nodes = actual;
+        actual.forEach(watch);
+      }
+      // Content that belongs to another slot goes there: an element added next to a marker here,
+      // or text that was a marker while it was empty. (A copy: moving one takes it out of the list.)
+      for (const node of [...slot.nodes]) if (isContent(node) && slotName(node) !== slot.name) insert(node, null);
       show(slot);
     }
     // Content a parent adds inside a slot itself (its zb-if or zb-each there) is slotted too;
@@ -1151,7 +1164,10 @@ function routeChildren(host, context, slots, tag) {
     }
   });
   context.observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['slot'] });
-  for (const slot of context.slots.values()) context.observer.observe(slot.park, { childList: true });
+  for (const slot of context.slots.values()) {
+    context.observer.observe(slot.park, { childList: true });
+    slot.nodes.forEach(watch);
+  }
 }
 
 // Form controls' live state: bound as properties, so `value={draft}` keeps up with typing and
@@ -1992,7 +2008,10 @@ function defineElement(tag, definition) {
         if (nodes) {
           parts.forEach((part, index) => bind(part, nodes[index], true, context));
         } else {
-          if (server && !shadow && slots.length) {
+          // An empty text node is a framework's (the parser makes none): Angular's `{{ }}` before
+          // its first write, which is content once written, so it's kept though nothing shows yet.
+          // (Without `server`, every child is text.)
+          if ((server || [...root.childNodes].some((node) => node.data === '')) && !shadow && slots.length) {
             // Not server markup: the page's own children for this element, to be slotted.
             const children = [...root.childNodes];
             assignSlots(children).forEach((name, i) => slotRecord(context, name).nodes.push(children[i]));
