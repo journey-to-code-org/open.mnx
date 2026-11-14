@@ -1,0 +1,11 @@
+node_modules/
+.tmp/
+results.json
+# Stencil's output (npm run build:stencil)
+impl/stencil/dist/
+impl/stencil/hydrate/
+impl/stencil/generated/
+impl/stencil/src/components.d.ts
+impl/stencil/.stencil/
+# Typings the build plugin writes next to each .zb file
+impl/zubra/components/*.d.zb.ts

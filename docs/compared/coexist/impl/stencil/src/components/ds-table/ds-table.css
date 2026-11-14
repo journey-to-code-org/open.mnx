@@ -1,0 +1,7 @@
+table { width: 100%; border-collapse: collapse; }
+caption { text-align: left; font-weight: 600; padding-bottom: 0.5rem; }
+th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--line, #d5d9e2); }
+th button { font: inherit; font-weight: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+th[aria-sort=ascending] button::after { content: " ▲"; }
+th[aria-sort=descending] button::after { content: " ▼"; }
+td button { border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; background: var(--surface, #fff); cursor: pointer; }

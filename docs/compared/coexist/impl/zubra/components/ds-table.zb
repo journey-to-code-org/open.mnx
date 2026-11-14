@@ -1,0 +1,60 @@
+<!--
+  A table of records. `columns` is `[{ key, label, sortable?, type? }]` (`type` "money" or
+  "status"); `rows` is the records, each with an `id`. A sortable column's header sorts by it,
+  ascending then descending. Each row has a View button.
+  @fires rowselect - A row's View button was pressed; `detail` is the row's id.
+-->
+<script>
+  import { emit } from '@zubra/runtime'
+  import './ds-badge.zb'
+  let sortKey = ""
+  let descending = false
+  const compare = (a, b) => (a[sortKey] < b[sortKey] ? -1 : a[sortKey] > b[sortKey] ? 1 : 0)
+  const sorted = sortKey ? [...rows].sort((a, b) => (descending ? compare(b, a) : compare(a, b))) : rows
+  const ariaSort = (column) => (column.key !== sortKey ? null : descending ? "descending" : "ascending")
+  function sortBy(key) {
+    descending = sortKey === key ? !descending : false
+    sortKey = key
+  }
+</script>
+<style>
+  table { width: 100%; border-collapse: collapse; }
+  caption { text-align: left; font-weight: 600; padding-bottom: 0.5rem; }
+  th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--line, #d5d9e2); }
+  th button { font: inherit; font-weight: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+  th[aria-sort=ascending] button::after { content: " ▲"; }
+  th[aria-sort=descending] button::after { content: " ▼"; }
+  td button { border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; background: var(--surface, #fff); cursor: pointer; }
+</style>
+<ds-table caption="" columns={[]} rows={[]}>
+  <table>
+    <caption>{caption}</caption>
+    <thead>
+      <tr>
+        <zb-each items={columns} as="column" key={column.key}>
+          <th scope="col" aria-sort={ariaSort(column)}>
+            <button zb-if={column.sortable} type="button" onclick={() => sortBy(column.key)}>{column.label}</button>
+            <span zb-else>{column.label}</span>
+          </th>
+        </zb-each>
+        <th scope="col"><span>Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <zb-each items={sorted} as="row" key={row.id}>
+        <tr>
+          <zb-each items={columns} as="column" key={column.key}>
+            <td>
+              <zb-switch value={column.type || "text"}>
+                <zb-case is="status"><ds-badge status={row[column.key]}></ds-badge></zb-case>
+                <zb-case is="money">${row[column.key].toFixed(2)}</zb-case>
+                <zb-else>{row[column.key]}</zb-else>
+              </zb-switch>
+            </td>
+          </zb-each>
+          <td><button type="button" aria-label="View order {row.id}" onclick={() => emit('rowselect', row.id)}>View</button></td>
+        </tr>
+      </zb-each>
+    </tbody>
+  </table>
+</ds-table>

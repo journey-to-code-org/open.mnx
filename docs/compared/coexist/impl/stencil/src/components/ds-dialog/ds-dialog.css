@@ -1,0 +1,5 @@
+dialog { border: 0; border-radius: 0.8rem; padding: 1.25rem; width: min(26rem, calc(100vw - 2rem)); box-shadow: 0 24px 64px #0d122040; }
+dialog::backdrop { background: #0d122066; }
+header { display: flex; align-items: center; gap: 1rem; }
+h2 { flex: 1; margin: 0; font-size: 1.1rem; }
+header button { border: 0; background: none; font-size: 1.4rem; line-height: 1; cursor: pointer; }
