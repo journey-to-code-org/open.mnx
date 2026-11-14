@@ -165,6 +165,7 @@ fn load_from(
             path: child_path,
             source,
             ast: child,
+            interface: crate::ast::Once::default(),
         });
     }
     Ok(())

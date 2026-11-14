@@ -458,15 +458,33 @@ pub fn compile_html_with_options(
     options: HtmlOptions,
     loader: Loader<'_>,
 ) -> Result<String, Diagnostic> {
+    compile_html_values(
+        source,
+        path,
+        &parse_json(props_json, "props")?,
+        &parse_json(slots_json, "slots")?,
+        options,
+        loader,
+    )
+}
+
+/// As [`compile_html_with_options`], with the props and slots as values: a request has them
+/// parsed already, and writing them out to parse them again was a pass over every prop.
+pub(crate) fn compile_html_values(
+    source: &str,
+    path: &str,
+    props: &serde_json::Value,
+    slots: &serde_json::Value,
+    options: HtmlOptions,
+    loader: Loader<'_>,
+) -> Result<String, Diagnostic> {
     front(source, Some(path), Some(loader), |source| {
         let component = load(source, path, Some(loader))?;
-        let props = parse_json(props_json, "props")?;
-        let slots = parse_json(slots_json, "slots")?;
         let previous = validate::set_pending(options.pending.clone());
         let result = if options.partial || !options.pending.is_empty() {
-            html_partial(&component, &props, &slots, options.slot_source)
+            html_partial(&component, props, slots, options.slot_source)
         } else {
-            html(&component, &props, &slots, options.slot_source)
+            html(&component, props, slots, options.slot_source)
         };
         validate::set_pending(previous);
         result

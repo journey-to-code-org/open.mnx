@@ -137,6 +137,7 @@ pub fn function(source: &str) -> Option<Val> {
         let mut evaluator = Evaluator {
             source,
             lookup: &|_| None,
+            lend: None,
             frames: Vec::new(),
             steps: 0,
             fixed: 0,
@@ -150,11 +151,22 @@ pub fn function(source: &str) -> Option<Val> {
 
 /// Evaluate `source` with free names from `lookup`.
 pub fn evaluate(source: &str, lookup: &dyn Fn(&str) -> Option<Val>) -> Result<Val> {
+    evaluate_lent(source, lookup, None)
+}
+
+/// As [`evaluate`], from a caller that can also lend the JSON values `lookup` would copy: for
+/// each name, `lend` gives the value `lookup` gives, or nothing.
+pub fn evaluate_lent(
+    source: &str,
+    lookup: &dyn Fn(&str) -> Option<Val>,
+    lend: Option<&Lend<'_, '_>>,
+) -> Result<Val> {
     with_expression(source, |parsed| {
         let (expression, source) = parsed.ok_or(Unsupported)?;
         let mut evaluator = Evaluator {
             source,
             lookup,
+            lend,
             frames: Vec::new(),
             steps: 0,
             fixed: 0,
@@ -183,9 +195,15 @@ fn within(length: usize) -> Result<()> {
     }
 }
 
-struct Evaluator<'a> {
+/// A free name's JSON value, lent for `'v`.
+pub type Lend<'a, 'v> = dyn Fn(&str) -> Option<&'v Value> + 'a;
+
+struct Evaluator<'a, 'v> {
     source: &'a str,
     lookup: &'a dyn Fn(&str) -> Option<Val>,
+    /// The same names' JSON values, lent where the caller can: a path into one
+    /// (`row[column.key]`) then copies the field it reads, not the value it reads it from.
+    lend: Option<&'a Lend<'a, 'v>>,
     /// Arrow parameters in scope, innermost last.
     frames: Vec<Vec<(String, Val)>>,
     steps: usize,
@@ -202,7 +220,7 @@ enum Flow {
     Continue,
 }
 
-impl Evaluator<'_> {
+impl Evaluator<'_, '_> {
     fn name(&self, name: &str) -> Result<Val> {
         for frame in self.frames.iter().rev() {
             if let Some((_, value)) = frame.iter().rev().find(|(local, _)| local == name) {
@@ -215,6 +233,47 @@ impl Evaluator<'_> {
         match name {
             "undefined" => Ok(Val::Undefined),
             _ => Err(Unsupported),
+        }
+    }
+
+    /// The JSON value this path reads, where it is: a name (a parameter, a local, or one the
+    /// caller lends), or a field or item of one that is there. `None` for anything else (a
+    /// missing field, `length`, a call, an optional link), which [`Self::eval`] works out.
+    fn peek(&self, expression: &Expression<'_>) -> Option<&Value> {
+        match expression {
+            Expression::Identifier(identifier) => {
+                let name = identifier.name.as_str();
+                for frame in self.frames.iter().rev() {
+                    if let Some((_, value)) = frame.iter().rev().find(|(local, _)| local == name) {
+                        return match value {
+                            Val::Json(value) => Some(value),
+                            _ => None,
+                        };
+                    }
+                }
+                self.lend.and_then(|lend| lend(name))
+            }
+            Expression::StaticMemberExpression(member) if !member.optional => {
+                match self.peek(&member.object)? {
+                    Value::Object(fields) => fields.get(member.property.name.as_str()),
+                    _ => None,
+                }
+            }
+            Expression::ComputedMemberExpression(member) if !member.optional => {
+                let object = self.peek(&member.object)?;
+                match (self.peek(&member.expression)?, object) {
+                    (Value::String(key), Value::Object(fields)) => fields.get(key),
+                    (Value::Number(number), Value::Array(items)) => {
+                        let at = number.as_f64()?;
+                        if at.fract() != 0.0 || at < 0.0 {
+                            return None;
+                        }
+                        items.get(at as usize)
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 
@@ -337,6 +396,9 @@ impl Evaluator<'_> {
                 Ok(Val::json(Value::Object(js_key_order(fields))))
             }
             Expression::StaticMemberExpression(member) => {
+                if let Some(found) = self.peek(expression) {
+                    return Ok(Val::Json(found.clone()));
+                }
                 let object = self.eval(&member.object)?;
                 if member.optional && is_nullish(&object) {
                     return Ok(Val::Undefined);
@@ -344,6 +406,9 @@ impl Evaluator<'_> {
                 property(&object, member.property.name.as_str())
             }
             Expression::ComputedMemberExpression(member) => {
+                if let Some(found) = self.peek(expression) {
+                    return Ok(Val::Json(found.clone()));
+                }
                 let object = self.eval(&member.object)?;
                 if member.optional && is_nullish(&object) {
                     return Ok(Val::Undefined);
@@ -615,6 +680,7 @@ impl Evaluator<'_> {
             let mut inner = Evaluator {
                 source,
                 lookup: self.lookup,
+                lend: self.lend,
                 frames: std::mem::take(&mut self.frames),
                 steps: self.steps,
                 fixed: self.fixed,
@@ -726,6 +792,7 @@ impl Evaluator<'_> {
         let mut inner = Evaluator {
             source: wrapped,
             lookup: self.lookup,
+            lend: self.lend,
             frames: vec![closure.captured.clone(), params],
             steps: self.steps,
             fixed: 1,
@@ -2129,6 +2196,109 @@ mod tests {
         evaluate(source, &lookup)
             .ok()
             .map(|value| value.into_json().unwrap())
+    }
+
+    #[test]
+    fn a_path_read_where_the_value_is_answers_as_one_worked_out() {
+        // Lent the same values the lookup gives, every expression answers as it does without:
+        // fields and items that are there, ones that aren't, `length`, optional links, keys
+        // that are also method names, and a parameter that hides a lent name.
+        let order = serde_json::json!({
+            "id": "A-1",
+            "lines": [{ "sku": "kale", "kg": 2.5 }, { "sku": "leek", "kg": 4 }],
+            "customer": { "name": "Ada", "toString": "field", "length": 7 },
+            "note": null,
+            "at": 1,
+            "minus": -1,
+            "half": 0.5,
+            "key": "id",
+        });
+        let lookup = |name: &str| match name {
+            "order" => Some(Val::json(order.clone())),
+            "label" => function("(line) => line.sku + ' ' + line.kg"),
+            _ => None,
+        };
+        let lend = |name: &str| match name {
+            "order" => Some(&order),
+            _ => None,
+        };
+        let answers = |source: &str, lend: Option<&Lend<'_, '_>>| {
+            evaluate_lent(source, &lookup, lend)
+                .ok()
+                .map(|value| value.into_json().ok())
+        };
+        for (source, expected) in [
+            ("order.id", serde_json::json!("A-1")),
+            ("order.customer.name", serde_json::json!("Ada")),
+            ("order.customer.toString", serde_json::json!("field")),
+            ("order.customer.length", serde_json::json!(7)),
+            ("order.lines.length", serde_json::json!(2)),
+            ("order.lines[1].sku", serde_json::json!("leek")),
+            ("order.lines[order.at].kg", serde_json::json!(4)),
+            ("order[order.key]", serde_json::json!("A-1")),
+            (
+                "order.lines[0].kg + order.lines[1].kg",
+                serde_json::json!(6.5),
+            ),
+            ("order.note?.text ?? 'none'", serde_json::json!("none")),
+            ("order.missing ?? 'none'", serde_json::json!("none")),
+            ("order.lines[5] ?? 'none'", serde_json::json!("none")),
+            ("order.lines[-1] ?? 'none'", serde_json::json!("none")),
+            (
+                "order.lines[order.minus] ?? 'none'",
+                serde_json::json!("none"),
+            ),
+            (
+                "order.lines[order.half] ?? 'none'",
+                serde_json::json!("none"),
+            ),
+            ("order.lines[0.5] ?? 'none'", serde_json::json!("none")),
+            ("order.id.length", serde_json::json!(3)),
+            (
+                "order.lines.map(label).join(', ')",
+                serde_json::json!("kale 2.5, leek 4"),
+            ),
+            // `order` inside the arrow is its parameter, not the order lent.
+            (
+                "order.lines.map((order) => order.sku).join()",
+                serde_json::json!("kale,leek"),
+            ),
+            (
+                "order.lines.map((line, at) => order.lines[at].kg).join()",
+                serde_json::json!("2.5,4"),
+            ),
+            (
+                "((order) => order.id)({ id: 'other' })",
+                serde_json::json!("other"),
+            ),
+            (
+                "((order) => order.id ?? 'none')({})",
+                serde_json::json!("none"),
+            ),
+        ] {
+            assert_eq!(
+                answers(source, Some(&lend)),
+                Some(Some(expected.clone())),
+                "{source}"
+            );
+            assert_eq!(
+                answers(source, None),
+                Some(Some(expected)),
+                "{source}, not lent"
+            );
+        }
+        // What can't be answered can't be either way.
+        for source in [
+            "order.note.text",
+            "order.missing.deeper",
+            "order.lines[0]()",
+        ] {
+            assert_eq!(
+                answers(source, Some(&lend)),
+                answers(source, None),
+                "{source}"
+            );
+        }
     }
 
     #[test]
