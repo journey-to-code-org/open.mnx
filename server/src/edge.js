@@ -14,6 +14,7 @@
 // the import map at a CDN with `imports`. Everything else, including streaming (`page().streamResponse`)
 // and `injectShadowRoots`, is the Node entry's, from the same code (`core.js`).
 import { createCompiler } from '@zubra/compiler/wasm';
+import runtimeModules from '@zubra/runtime/modules';
 import { createCore, parseAttributes, propsFrom, SOURCE_EXTENSION } from './core.js';
 
 export { parseAttributes, propsFrom };
@@ -78,6 +79,7 @@ export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : nul
     clientModules,
     inline,
     preload,
+    runtimeModules,
     request: (body) => compiler.request(body),
     files,
     sourcesOf: (path) => sourcesOf(path),

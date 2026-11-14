@@ -19,7 +19,7 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', inline = true, preload = true, localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
+export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', inline = true, preload = true, runtimeModules = {}, localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
   if (gaps !== 'warn' && gaps !== 'ignore') throw new Error(`@zubra/server: gaps is "warn" or "ignore", not ${JSON.stringify(gaps)}`);
   if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
   if (typeof inline !== 'boolean') throw new Error(`@zubra/server: inline is true or false, not ${JSON.stringify(inline)}`);
@@ -153,17 +153,21 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
   const importMap = (options) => (inline ? `<script type="importmap"${nonceAttribute(options)}>${scriptJson({ imports: mapping() })}</script>` : '');
   /**
    * The modules under `base` that the module at `url` imports statically, as URLs. A module this
-   * server can't read (the runtime, where the host serves it from static assets) imports nothing
-   * as far as it knows.
+   * server can't read (`@zubra/sync`, where the host serves it from static assets) imports
+   * nothing as far as it knows.
    */
   const importsOf = (url) => once(`imports:${url}`, () => {
+    // The runtime's own modules: from its list (`@zubra/runtime/modules`), not from the files,
+    // so a page is the same wherever it is built, a host that can't read them included.
+    if (url.startsWith(`${base}/runtime/`)) return (runtimeModules[url.slice(`${base}/runtime/`.length)] ?? []).map((name) => `${base}/runtime/${name}`);
     const served = serve(url);
     if (!served || served.status !== 200) return [];
     const map = mapping();
     return staticImports(String(served.body))
       .map((specifier) => resolveSpecifier(specifier, url, map))
       // Ours, and there: text that only looks like an import (in a string) names nothing we serve.
-      .filter((to) => to !== null && to.startsWith(`${base}/`) && (serve(to)?.status ?? 200) === 200);
+      // (The runtime's modules aren't asked for: the host may serve them from somewhere else.)
+      .filter((to) => to !== null && to.startsWith(`${base}/`) && (to.startsWith(`${base}/runtime/`) || (serve(to)?.status ?? 200) === 200));
   });
   /**
    * Every module the page's components load, each once, the components' own first: what they

@@ -75,6 +75,10 @@
       "production": "./dist/production/outlet.js",
       "default": "./src/outlet.js"
     },
+    "./modules": {
+      "types": "./types/modules.d.ts",
+      "default": "./dist/modules.js"
+    },
     "./testing": {
       "types": "./types/testing.d.ts",
       "production": "./dist/production/testing.js",

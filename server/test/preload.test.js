@@ -74,6 +74,24 @@ test('a page preloads its components, what they import and the runtime, each onc
   for (const link of links) assert.equal(typeof link === 'string' && link.startsWith('/_zubra/'), true);
 });
 
+test("the runtime's modules come from its own list, so they are there in either build and on any host", async () => {
+  const { existsSync } = await import('node:fs');
+  const { default: modules } = await import('@zubra/runtime/modules');
+  const runtime = join(dirname(fileURLToPath(import.meta.resolve('@zubra/runtime/modules'))), '..');
+  // The list is the production build's; every module in it is in the development build too.
+  for (const [name, imports] of Object.entries(modules)) {
+    for (const file of [name, ...imports]) assert.ok(existsSync(join(runtime, 'src', file)) && existsSync(join(runtime, 'dist/production', file)), file);
+  }
+  // A development server (the default) preloads the same runtime modules as a production one.
+  const links = (options) => {
+    const page = createZubra({ components, ...options }).page();
+    page.render('hello-there', { name: 'Ada', items: [] });
+    return preloaded(page.finish(layout(''))).filter((link) => link.startsWith('/_zubra/runtime/'));
+  };
+  assert.deepEqual(links({}), links({ production: true }));
+  assert.ok(links({}).length > 3 && !links({}).some((link) => link.includes('devhook')));
+});
+
 test('preload: false leaves the links out; anything else is refused', () => {
   const zubra = createZubra({ components, preload: false });
   const page = zubra.page();

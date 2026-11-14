@@ -22,6 +22,7 @@ import { StringDecoder } from 'node:string_decoder';
 import * as nodeStream from 'node:stream';
 const { Transform } = nodeStream;
 import { findCompiler } from './compiler.js';
+import runtimeModules from '@zubra/runtime/modules';
 import { createCore, joinPath, parseAttributes, propsFrom, SOURCE_EXTENSION as SOURCE, TYPES } from './core.js';
 
 export { findCompiler, parseAttributes, propsFrom };
@@ -135,6 +136,7 @@ export function createZubra({ components = 'components', packages = [], prefix =
     clientModules,
     inline,
     preload,
+    runtimeModules,
     // The compiler keys a context by its module's path, joined to the importing component's.
     contextKey: ({ module, export: name }) => `${joinPath(posix(root), module)}#${name}`,
     // A `.js` file in the components folder, served as it is (core serves only those a browser
