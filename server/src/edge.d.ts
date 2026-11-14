@@ -31,7 +31,7 @@ export interface EdgeOptions {
   components: Record<string, string>;
   /** Where the browser modules are served (default `/_zubra`). */
   prefix?: string;
-  /** Keep compiled output (default true). */
+  /** Keep compiled output, and the HTML of recent renders (the same component with the same props is rendered once). Default true. */
   cache?: boolean;
   /** Compile for the Zubra DevTools (default false: the runtime build they read isn't served from here). */
   devtools?: boolean;

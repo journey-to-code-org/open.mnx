@@ -73,7 +73,11 @@ export interface ZubraOptions {
   components?: string;
   /** Where the browser modules are served (default `/_zubra`). */
   prefix?: string;
-  /** Keep compiled output (default true); false recompiles on every request, for development. */
+  /**
+   * Keep compiled output, and the HTML of recent renders: the same component with the same
+   * props, slots and context is rendered once (default true). False recompiles and renders on
+   * every request, for development.
+   */
   cache?: boolean;
   /** Serve the runtime's production build, without hot reloading (default: `NODE_ENV` is `production`). */
   production?: boolean;

@@ -11,6 +11,12 @@ const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 
 export { SOURCE_EXTENSION, TYPES };
 
+// The renders kept for asking again (see `answer` in `createCore`): how many, how many characters
+// of keys and HTML in all, and the largest one answer may be.
+const RENDERS = 500;
+const RENDER_BYTES = 8 * 1024 * 1024;
+const RENDER_LARGEST = 512 * 1024;
+
 /**
  * `request(body)`: the compiler (`{ ok, output, error }`). `files`: a Map from component name
  * (the path without its extension, "/"-separated) to the path its source is known by.
@@ -85,9 +91,41 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
 
   // `idPrefix`: renders that end up in one page number their hosts' ids apart (`id()`).
   // `context`: the values the page provides (`page.provide()`), by context key.
-  const render = (name, props = {}, slots = {}, pending = [], idPrefix = '', context = {}) => {
+  // A component's HTML is a function of its sources and what it is rendered with, and nothing
+  // else: the compiler evaluates only what is deterministic. So with `cache` (where the sources
+  // are read once), a render asked for again with the same props, slots, context and id prefix
+  // is answered from the last one: a page's navigation, its forms, a list that hasn't changed.
+  // The most recently used are kept, within `RENDERS` entries and `RENDER_BYTES` characters; one
+  // answer larger than `RENDER_LARGEST` isn't kept. A promise prop is never the same twice.
+  const rendered = new Map();
+  let renderedSize = 0;
+  const answer = (name, props, slots, pending, idPrefix, context) => {
     const path = pathOf(name);
-    const response = request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(gaps === 'warn' ? { gaps: true } : {}), ...(pending.length ? { pending } : {}), ...(idPrefix ? { idPrefix } : {}), ...(Object.keys(context).length ? { context } : {}) });
+    const ask = () => request({ path, files: sourcesOf(path), emit: 'html', props, slots, slotSource: 'html', partial: true, ...(gaps === 'warn' ? { gaps: true } : {}), ...(pending.length ? { pending } : {}), ...(idPrefix ? { idPrefix } : {}), ...(Object.keys(context).length ? { context } : {}) });
+    if (!cache || pending.length) return ask();
+    // What the request would say, as it would say it (JSON), so two keys are equal exactly when
+    // the two requests are.
+    const key = `${path}\n${idPrefix}\n${JSON.stringify([props, slots, context])}`;
+    const kept = rendered.get(key);
+    if (kept !== undefined) {
+      rendered.delete(key); // (moved to the end: the most recently used)
+      rendered.set(key, kept);
+      return kept;
+    }
+    const response = ask();
+    const size = key.length + (response.ok ? response.output.length : 0);
+    if (!response.ok || size > RENDER_LARGEST) return response;
+    rendered.set(key, response);
+    renderedSize += size;
+    for (const [oldest, old] of rendered) {
+      if (rendered.size <= RENDERS && renderedSize <= RENDER_BYTES) break;
+      rendered.delete(oldest);
+      renderedSize -= oldest.length + old.output.length;
+    }
+    return response;
+  };
+  const render = (name, props = {}, slots = {}, pending = [], idPrefix = '', context = {}) => {
+    const response = answer(name, props, slots, pending, idPrefix, context);
     if (!response.ok) throw new Error(response.error);
     // A value that isn't a safe URL (a user's `javascript:` link) is left out, as the element
     // leaves it out in the browser; the page still renders, and this says what was dropped.
