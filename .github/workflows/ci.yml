@@ -687,6 +687,27 @@ jobs:
       - run: node measure.mjs --renders 1000
         working-directory: docs/compared/html-first
 
+  compared-coexist:
+    name: Compared with Lit, Stencil and Enhance (one design system, four hosts and a server page)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/compared/coexist/package-lock.json
+      - run: npm ci
+        working-directory: docs/compared/coexist
+      - run: bash "$GITHUB_WORKSPACE/scripts/install-browsers.sh" chromium
+        working-directory: docs/compared/coexist
+      # The same suite passes for every tool in every host (`npm test` builds Stencil's output
+      # first); then the measurements, for the job's log.
+      - run: npm test
+        working-directory: docs/compared/coexist
+      - run: node measure.mjs --renders 1000
+        working-directory: docs/compared/coexist
+
 
   skills:
     name: Skills (examples compile, copies in sync)

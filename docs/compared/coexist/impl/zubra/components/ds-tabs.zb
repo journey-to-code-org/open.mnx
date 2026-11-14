@@ -1,0 +1,35 @@
+<!--
+  A tab list. `tabs` is `[{ id, label }]`; `selected` is two-way. Arrow keys, Home and End move
+  between the tabs and choose the one they land on. The panels are the page's.
+  @fires selectedchange - Another tab was chosen; `detail` is its id.
+-->
+<script>
+  let list = null
+  function move(event) {
+    const index = tabs.findIndex((tab) => tab.id === selected)
+    const last = tabs.length - 1
+    const next = { ArrowRight: index === last ? 0 : index + 1, ArrowLeft: index <= 0 ? last : index - 1, Home: 0, End: last }[event.key]
+    if (next === undefined) return
+    event.preventDefault()
+    selected = tabs[next].id
+    queueMicrotask(() => list.querySelector("[aria-selected=true]")?.focus())
+  }
+</script>
+<style>
+  [role=tablist] { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line, #d5d9e2); }
+  [role=tab] { padding: 0.5rem 0.9rem; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--muted, #667085); font: inherit; font-weight: 600; cursor: pointer; }
+  [role=tab][aria-selected=true] { color: var(--ink, #1d2130); border-bottom-color: var(--accent, #2f5fd0); }
+</style>
+<ds-tabs tabs={[]} selected:model="" label="">
+  <div role="tablist" aria-label={label || null} ref={list} onkeydown={move}>
+    <zb-each items={tabs} as="tab" key={tab.id}>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={tab.id === selected ? "true" : "false"}
+        tabindex={tab.id === selected ? 0 : -1}
+        onclick={() => (selected = tab.id)}
+      >{tab.label}</button>
+    </zb-each>
+  </div>
+</ds-tabs>

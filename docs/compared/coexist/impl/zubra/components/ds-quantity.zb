@@ -1,0 +1,48 @@
+<!--
+  A number with − and + buttons, kept between `min` and `max`. `value` is two-way. The input
+  inside carries `name`, so a form submits it before any JavaScript.
+  @fires valuechange - The number changed; `detail` is the new number.
+-->
+<script>
+  import { id } from '@zubra/runtime'
+  const inputId = id()
+  const clamp = (n) => Math.min(max, Math.max(min, n))
+  function typed(event) {
+    const n = Number(event.target.value)
+    if (event.target.value !== "" && !Number.isNaN(n)) value = clamp(n)
+  }
+</script>
+<style>
+  :host { display: grid; gap: 0.25rem; }
+  label { font-weight: 600; }
+  div { display: flex; gap: 0.25rem; }
+  input { font: inherit; width: 4rem; padding: 0.4rem 0.5rem; border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; text-align: center; }
+  button { width: 2.2rem; border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; background: var(--surface, #fff); cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+</style>
+<ds-quantity label="" name="" value:model={1} min={1} max={10}>
+  <label for={inputId}>{label}</label>
+  <div>
+    <button
+      type="button"
+      aria-label="Decrease {label}"
+      disabled={value <= min}
+      onclick={() => (value = clamp(value - 1))}
+    >−</button>
+    <input
+      id={inputId}
+      name={name || null}
+      type="number"
+      min={min}
+      max={max}
+      value={value}
+      onchange={typed}
+    >
+    <button
+      type="button"
+      aria-label="Increase {label}"
+      disabled={value >= max}
+      onclick={() => (value = clamp(value + 1))}
+    >+</button>
+  </div>
+</ds-quantity>

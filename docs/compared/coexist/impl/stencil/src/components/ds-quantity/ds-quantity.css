@@ -1,0 +1,6 @@
+:host { display: grid; gap: 0.25rem; }
+label { font-weight: 600; }
+div { display: flex; gap: 0.25rem; }
+input { font: inherit; width: 4rem; padding: 0.4rem 0.5rem; border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; text-align: center; }
+button { width: 2.2rem; border: 1px solid var(--line, #d5d9e2); border-radius: 0.4rem; background: var(--surface, #fff); cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: default; }

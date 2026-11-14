@@ -1,0 +1,6 @@
+:root { --ink: #1d2130; --muted: #667085; --line: #d5d9e2; --accent: #2f5fd0; --surface: #fff; font-family: system-ui, sans-serif; color: var(--ink); }
+body { margin: 0 auto; max-width: 46rem; padding: 1.5rem; }
+h1 { font-size: 1.4rem; }
+form { display: grid; gap: 1rem; max-width: 22rem; }
+button { font: inherit; }
+[role=tabpanel] { padding: 1rem 0; }
