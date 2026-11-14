@@ -13,3 +13,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 zubra = { path = ".." }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+talc = "5.1.1"

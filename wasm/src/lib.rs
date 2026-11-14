@@ -9,6 +9,13 @@
 
 use std::{alloc, slice};
 
+// The module's allocator. A render allocates about 75 times the HTML it writes (6 MB for an
+// 84 KB table), so what an allocation costs is a large part of what a render costs, and Talc's
+// costs less than the default (dlmalloc). Single-threaded WebAssembly only, which this is.
+#[cfg(all(not(target_feature = "atomics"), target_family = "wasm"))]
+#[global_allocator]
+static ALLOCATOR: talc::wasm::WasmDynamicTalc = talc::wasm::new_wasm_dynamic_allocator();
+
 /// Reserve `len` bytes for the host to write into.
 #[no_mangle]
 pub extern "C" fn zubra_alloc(len: usize) -> *mut u8 {
