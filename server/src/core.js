@@ -19,10 +19,11 @@ export { SOURCE_EXTENSION, TYPES };
  * host serves under `<base>/` beyond the components' modules (`{ status, type, body }` or null).
  * `needs(name, code)`: the host's check on a compiled module (a package it needs being installed).
  */
-export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', inline = true, localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
+export function createCore({ request, files, fromPackage = () => false, sourcesOf: readSources, cache = true, devtools = false, base, imports = {}, syncImports = {}, needs = (_name, code) => code, where = 'the components', assets = () => null, warn = (message) => console.warn(message), gaps = 'warn', clientModules = 'all', inline = true, preload = true, runtimeModules = {}, localModule = () => null, contextKey = ({ module, export: name }) => `${joinPath('', module)}#${name}` }) {
   if (gaps !== 'warn' && gaps !== 'ignore') throw new Error(`@zubra/server: gaps is "warn" or "ignore", not ${JSON.stringify(gaps)}`);
   if (clientModules !== 'all' && clientModules !== 'needed') throw new Error(`@zubra/server: clientModules is "all" or "needed", not ${JSON.stringify(clientModules)}`);
   if (typeof inline !== 'boolean') throw new Error(`@zubra/server: inline is true or false, not ${JSON.stringify(inline)}`);
+  if (typeof preload !== 'boolean') throw new Error(`@zubra/server: preload is true or false, not ${JSON.stringify(preload)}`);
   const memo = new Map();
   const once = (key, make) => {
     if (!cache || !memo.has(key)) memo.set(key, make());
@@ -150,14 +151,46 @@ export function createCore({ request, files, fromPackage = () => false, sourcesO
    */
   const resolved = (code) => (inline ? code : resolveImports(String(code), mapping()));
   const importMap = (options) => (inline ? `<script type="importmap"${nonceAttribute(options)}>${scriptJson({ imports: mapping() })}</script>` : '');
+  /**
+   * The modules under `base` that the module at `url` imports statically, as URLs. A module this
+   * server can't read (`@zubra/sync`, where the host serves it from static assets) imports
+   * nothing as far as it knows.
+   */
+  const importsOf = (url) => once(`imports:${url}`, () => {
+    // The runtime's own modules: from its list (`@zubra/runtime/modules`), not from the files,
+    // so a page is the same wherever it is built, a host that can't read them included.
+    if (url.startsWith(`${base}/runtime/`)) return (runtimeModules[url.slice(`${base}/runtime/`.length)] ?? []).map((name) => `${base}/runtime/${name}`);
+    const served = serve(url);
+    if (!served || served.status !== 200) return [];
+    const map = mapping();
+    return staticImports(String(served.body))
+      .map((specifier) => resolveSpecifier(specifier, url, map))
+      // Ours, and there: text that only looks like an import (in a string) names nothing we serve.
+      // (The runtime's modules aren't asked for: the host may serve them from somewhere else.)
+      .filter((to) => to !== null && to.startsWith(`${base}/`) && (to.startsWith(`${base}/runtime/`) || (serve(to)?.status ?? 200) === 200));
+  });
+  /**
+   * Every module the page's components load, each once, the components' own first: what they
+   * import, and what those import. The browser otherwise finds each level by fetching and
+   * parsing the one before (the component, the runtime's entry, the entry's modules, theirs),
+   * a round trip per level; told up front, it fetches them all at once.
+   */
+  const moduleGraph = (names) => {
+    const found = new Set(names.map((name) => `${base}/components/${name}.js`));
+    for (const url of found) for (const to of importsOf(url)) found.add(to);
+    return [...found];
+  };
+  const preloads = (names, options) => (preload ? moduleGraph(shipped(names)).map((url) => `<link rel="modulepreload" href="${escapeAttribute(url)}"${nonceAttribute(options)}>`).join('\n') : '');
   const head = (names, options) => {
     // A component that needs a package that isn't installed fails here, while the page is built,
     // with the reason, rather than later in the browser as an unresolved import.
     for (const name of names) js(name);
+    const links = preloads(names, options);
     // Without inline elements: a stylesheet link per component that has CSS, and no import map.
-    if (!inline) return names.filter((name) => css(name)).map((name) => `<link rel="stylesheet" href="${escapeAttribute(`${base}/components/${name}.css`)}" data-zb-components>`).join('\n');
+    if (!inline) return [...names.filter((name) => css(name)).map((name) => `<link rel="stylesheet" href="${escapeAttribute(`${base}/components/${name}.css`)}" data-zb-components>`), ...(links ? [links] : [])].join('\n');
     const styles = names.map(css).join('\n');
-    return `${styles ? `<style data-zb-components${nonceAttribute(options)}>${styles}</style>\n` : ''}${importMap(options)}`;
+    // The preload links come after the import map: a module fetched before it couldn't be one the map names.
+    return `${styles ? `<style data-zb-components${nonceAttribute(options)}>${styles}</style>\n` : ''}${importMap(options)}${links ? `\n${links}` : ''}`;
   };
   // `clientModules: 'needed'`: a component whose server HTML is complete on its own (the
   // compiler's `client` list is empty: no state, handlers, hooks or values computed in the
@@ -713,6 +746,31 @@ export function resolveImports(code, imports) {
     const prefix = prefixes.find((key) => specifier.startsWith(key));
     return prefix ? `${before}${quote}${imports[prefix]}${specifier.slice(prefix.length)}${quote}` : whole;
   });
+}
+
+/**
+ * The specifiers of `code`'s static imports and re-exports (`import … from 'x'`, `import 'x'`,
+ * `export … from 'x'`), minified or not. `import('x')` isn't among them: it loads when it runs.
+ */
+export function staticImports(code) {
+  const found = [];
+  const pattern = /(?:^|[^.\w$])(?:import|export)\s*(?:[\w$*{},\s]+?\bfrom\s*|[*{][^'"()]*?\bfrom\s*)?(['"])([^'"\n]+)\1/g;
+  for (const match of code.matchAll(pattern)) found.push(match[2]);
+  return found;
+}
+
+/**
+ * What `specifier`, imported by the module at the absolute path `from`, resolves to: a path
+ * for a relative or absolute one, the import map's answer (`imports`) for a bare one, and null
+ * for a URL with a scheme or a bare specifier the map doesn't have.
+ */
+export function resolveSpecifier(specifier, from, imports) {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(specifier) || specifier.startsWith('//')) return null;
+  if (specifier.startsWith('/')) return specifier;
+  if (specifier.startsWith('./') || specifier.startsWith('../')) return joinPath(from.slice(0, from.lastIndexOf('/')), specifier);
+  if (Object.hasOwn(imports, specifier)) return imports[specifier];
+  const prefix = Object.keys(imports).filter((key) => key.endsWith('/')).sort((a, b) => b.length - a.length).find((key) => specifier.startsWith(key));
+  return prefix ? `${imports[prefix]}${specifier.slice(prefix.length)}` : null;
 }
 
 export function relativeImports(code) {

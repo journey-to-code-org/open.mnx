@@ -14,6 +14,7 @@
 // the import map at a CDN with `imports`. Everything else, including streaming (`page().streamResponse`)
 // and `injectShadowRoots`, is the Node entry's, from the same code (`core.js`).
 import { createCompiler } from '@zubra/compiler/wasm';
+import runtimeModules from '@zubra/runtime/modules';
 import { createCore, parseAttributes, propsFrom, SOURCE_EXTENSION } from './core.js';
 
 export { parseAttributes, propsFrom };
@@ -37,7 +38,7 @@ function normalize(path) {
  * `cache`, `devtools` (off by default here: the DevTools need the runtime's development build,
  * which you would have to serve yourself) and `imports`.
  */
-export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : null, components = {}, prefix = '/_zubra', cache = true, devtools = false, imports = {}, warn, gaps, clientModules, inline } = {}) {
+export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : null, components = {}, prefix = '/_zubra', cache = true, devtools = false, imports = {}, warn, gaps, clientModules, inline, preload } = {}) {
   if (!compiler) throw new Error("@zubra/server/edge: createZubra() needs the compiler's WebAssembly module (`wasm`), or a `compiler` from createCompiler()");
   const sources = new Map(); // path → source
   const files = new Map(); // name → path
@@ -77,6 +78,8 @@ export function createZubra({ wasm, compiler = wasm ? createCompiler(wasm) : nul
     gaps,
     clientModules,
     inline,
+    preload,
+    runtimeModules,
     request: (body) => compiler.request(body),
     files,
     sourcesOf: (path) => sourcesOf(path),
