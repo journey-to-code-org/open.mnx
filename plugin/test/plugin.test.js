@@ -5,7 +5,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, extname, join } from 'node:path';
@@ -148,8 +148,9 @@ test('no framework: the import is the element class', async () => {
   await page.close();
 });
 
-function typecheck(root, files) {
+function typecheck(root, files, extra = {}) {
   writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({
+    ...extra,
     compilerOptions: {
       strict: true, noEmit: true, jsx: 'react-jsx', module: 'esnext', moduleResolution: 'bundler', target: 'es2022',
       lib: ['es2022', 'dom'], allowArbitraryExtensions: true, skipLibCheck: true, types: [],
@@ -192,6 +193,68 @@ test('the typings it writes type the Vue components', async () => {
     export const bad = h(Rating, { value: 'two' });
   `);
   assert.equal(typecheck(root, ['src/check.ts']), '');
+});
+
+test('dts: { dir }: apps in different frameworks type one shared components folder, each from its own typings', async () => {
+  // Beside the components, the last build to run decided what every app's typings said (#263).
+  const shared = join(work, 'shared');
+  mkdirSync(join(shared, 'ui'), { recursive: true });
+  for (const component of ['rating', 'card', 'inbox', 'badge']) cpSync(join(fixtures, `${component}.zb`), join(shared, 'ui', `${component}.zb`));
+  const roots = {};
+  const warnings = [];
+  const buildApp = (name) => build({
+    root: roots[name], configFile: false, logLevel: 'silent',
+    plugins: [zubra({ compiler, dts: { dir: '.zubra/types' } }), ...plugins[name]()],
+    build: { outDir: join(roots[name], 'dist'), minify: false, rollupOptions: { onwarn: (warning) => warnings.push(warning.message) } },
+  });
+  for (const name of ['react', 'vue']) {
+    const root = roots[name] = join(shared, name);
+    cpSync(join(here, 'apps', name), root, { recursive: true });
+    for (const file of readdirSync(join(root, 'src'))) {
+      writeFileSync(join(root, 'src', file), readFileSync(join(root, 'src', file), 'utf8').replaceAll('../components/', '../../ui/'));
+    }
+    await buildApp(name);
+  }
+  assert.deepEqual(readdirSync(join(shared, 'ui')).filter((file) => file.endsWith('.d.zb.ts')), [], 'nothing beside the components');
+  assert.deepEqual(warnings.filter((message) => message.includes('.d.zb.ts')), []);
+  for (const root of Object.values(roots)) {
+    assert.ok(existsSync(join(root, '.zubra/types/__/ui/rating.d.zb.ts')), 'a folder above the root is mirrored under __');
+    assert.deepEqual(JSON.parse(readFileSync(join(root, '.zubra/types/tsconfig.json'), 'utf8')), {
+      compilerOptions: { allowArbitraryExtensions: true, rootDirs: ['../..', '.', '../../..', '__'] },
+    });
+  }
+  assert.match(readFileSync(join(roots.react, '.zubra/types/__/ui/rating.d.zb.ts'), 'utf8'), /react/i);
+  assert.notEqual(readFileSync(join(roots.react, '.zubra/types/__/ui/rating.d.zb.ts'), 'utf8'), readFileSync(join(roots.vue, '.zubra/types/__/ui/rating.d.zb.ts'), 'utf8'));
+
+  // Each app's tsconfig extends the one written with its typings.
+  const own = { extends: './.zubra/types/tsconfig.json' };
+  writeFileSync(join(roots.react, 'src/client.d.ts'), "/// <reference path=\"../../../../../client.d.ts\" />\n");
+  writeFileSync(join(roots.react, 'src/bad.tsx'), `
+    import Rating from '../../ui/rating.zb';
+    export const a = <Rating value="2" />;
+  `);
+  assert.equal(typecheck(roots.react, ['src/client.d.ts', 'src/App.tsx', 'src/kinds.ts'], own), '');
+  assert.match(typecheck(roots.react, ['src/client.d.ts', 'src/bad.tsx'], own), /bad\.tsx\(3,.*Type 'string' is not assignable to type 'number'/);
+  writeFileSync(join(roots.vue, 'src/check.ts'), `
+    import { h } from 'vue';
+    import Rating from '../../ui/rating.zb';
+    export const ok = h(Rating, { modelValue: 2, 'onUpdate:modelValue': (value: number) => value });
+    // @ts-expect-error a number prop
+    export const bad = h(Rating, { value: 'two' });
+  `);
+  assert.equal(typecheck(roots.vue, ['src/check.ts'], own), '');
+
+  // The app's own components (inside the root) are mirrored as they are.
+  cpSync(join(fixtures, 'badge.zb'), join(roots.react, 'src/own-badge.zb'));
+  writeFileSync(join(roots.react, 'src/kinds.ts'), `${readFileSync(join(roots.react, 'src/kinds.ts'), 'utf8')}\nimport './own-badge.zb';\n`);
+  await buildApp('react');
+  assert.ok(existsSync(join(roots.react, '.zubra/types/src/own-badge.d.zb.ts')));
+  assert.equal(existsSync(join(roots.react, 'src/own-badge.d.zb.ts')), false);
+
+  // Typings left beside a component (an app still on the default) would be read first: say so.
+  writeFileSync(join(shared, 'ui/rating.d.zb.ts'), 'export {};\n');
+  await buildApp('vue');
+  assert.ok(warnings.some((message) => /rating\.d\.zb\.ts is beside its component.*delete it/.test(message)), warnings.join('\n'));
 });
 
 test('compile errors fail the build with the source line', async () => {

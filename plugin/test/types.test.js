@@ -35,7 +35,7 @@ test('every bundler entry has typings, and a Vite config type-checks with option
     'vite.config.mts': `
       import { defineConfig } from 'vite';
       import zubra from '@zubra/unplugin/vite';
-      export default defineConfig({ plugins: [zubra(), zubra({ framework: 'react', dts: false, ssr: false, devtools: true })] });
+      export default defineConfig({ plugins: [zubra(), zubra({ framework: 'react', dts: false, ssr: false, devtools: true }), zubra({ dts: { dir: '.zubra/types' } })] });
     `,
     'others.mts': `
       import rollup from '@zubra/unplugin/rollup';
@@ -65,6 +65,6 @@ test('a wrong option is a type error', () => {
   });
   assert.equal(errors.length, 3, errors.join('\n'));
   assert.match(errors[0], /'"svelte"' is not assignable/);
-  assert.match(errors[1], /'string' is not assignable to type 'boolean \| undefined'/);
+  assert.match(errors[1], /'string' is not assignable to type 'boolean \| \{ dir: string; \} \| undefined'/);
   assert.match(errors[2], /'compilr' does not exist/);
 });

@@ -6,8 +6,12 @@ export interface ZubraOptions {
   compiler?: string;
   /** What a `.zb` import gives plain `.js`/`.ts` files. Default: `'auto'` (detected from the React or Vue Vite plugin). */
   framework?: 'auto' | 'react' | 'vue' | 'element';
-  /** Write typings (`x.d.zb.ts`) next to each component. Default: `true`. */
-  dts?: boolean;
+  /**
+   * Write typings (`x.d.zb.ts`) next to each component. Default: `true`. `{ dir }` writes them
+   * under that folder of the app instead (with a `tsconfig.json` there to extend), for
+   * components that apps in different frameworks share.
+   */
+  dts?: boolean | { dir: string };
   /** The runtime module compiled code imports. Default: `'@zubra/runtime'`. */
   runtime?: string;
   /** Server builds register a renderer, which needs `@zubra/compiler` at run time. Default: `true`. */

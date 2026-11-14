@@ -81,7 +81,8 @@ With Vite, a component's `<style>` is a CSS module in Vite's pipeline, so PostCS
 zubra({
   compiler: '/path/to/zubra',    // default: $ZUBRA_COMPILER, then @zubra/compiler, then `zubra` on PATH
   framework: 'auto',           // or 'react' | 'vue' | 'element': the default for plain files
-  dts: true,                   // write typings next to each component
+  dts: true,                   // write typings next to each component; { dir: '.zubra/types' } writes them
+                               // in the app instead (see Types), false writes none
   runtime: '@zubra/runtime',     // the runtime module compiled code imports
   ssr: true,                   // server builds register a renderer (needs @zubra/compiler at run time)
   root: process.cwd(),         // where your own components are (default: Vite's root, or the current folder):
@@ -98,6 +99,20 @@ Next to each component the plugin writes `rating.d.zb.ts`, typed for the project
 ```
 
 `@zubra/unplugin/client` covers `.zb` imports that don't have typings yet (before the first build) and the `?element` form. The generated files can be committed or ignored (`*.d.zb.ts`).
+
+### Components shared by apps in different frameworks
+
+Typings beside a component are typed for one framework, so when a React app and a Svelte app both build the same components folder, the last build decides what both read. Give each app its own:
+
+```js
+zubra({ dts: { dir: '.zubra/types' } })
+```
+
+```json
+{ "extends": "./.zubra/types/tsconfig.json", "compilerOptions": { "types": ["@zubra/unplugin/client"] } }
+```
+
+The folder (relative to the app's root) mirrors the root: `src/rating.zb` is typed by `.zubra/types/src/rating.d.zb.ts`, and a component above the root by a `__` per folder up (`../ui/rating.zb` by `.zubra/types/__/ui/rating.d.zb.ts`). The `tsconfig.json` written there sets `allowArbitraryExtensions` and the `rootDirs` that pair each mirrored folder with the real one, so imports stay as written; if your tsconfig has its own `rootDirs`, add those to it. Set the option in every app that builds the shared folder and delete the `*.d.zb.ts` files already beside the components: TypeScript reads one beside a component first, and the build warns when it finds one. Ignore the folder in git.
 
 In the editor you don't need these files: the VS Code extension's TypeScript plugin types `.zb` imports from the components directly, updated each time one is saved (see [Editor support](../docs/editor-support.md)). They're for `tsc` in builds and CI.
 
